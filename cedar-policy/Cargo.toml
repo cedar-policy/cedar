@@ -25,6 +25,7 @@ serde_with = "3.21.0"
 nonempty = { version = "0.12", optional = true }
 prost = { version = "0.14", optional = true }
 linked-hash-map = { version = "0.5.6", features = ["serde_impl"] }
+linked_hash_set = "0.1.6"
 
 # wasm dependencies
 # Intentionally not updated to 0.5.5, see issue #1744

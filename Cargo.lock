@@ -363,6 +363,7 @@ dependencies = [
  "insta",
  "itertools 0.15.0",
  "linked-hash-map",
+ "linked_hash_set",
  "miette",
  "nonempty",
  "oorandom",

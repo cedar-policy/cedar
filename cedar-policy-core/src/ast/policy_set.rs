@@ -15,8 +15,8 @@
  */
 
 use super::{
-    EntityUID, LinkingError, LiteralPolicy, Policy, PolicyID, ReificationError, SlotId,
-    StaticPolicy, Template, TemplateValidationError,
+    EntityUID, LinkingError, Policy, PolicyID, SlotId, StaticPolicy, Template,
+    TemplateValidationError,
 };
 use itertools::Itertools;
 use linked_hash_map::{Entry, LinkedHashMap};
@@ -47,116 +47,6 @@ pub struct PolicySet {
     /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
     /// set of every `p` in `links` s.t. `p.template().id() == t`.
     template_to_links_map: LinkedHashMap<PolicyID, LinkedHashSet<PolicyID>>,
-}
-
-/// A Policy Set that contains less rich information than `PolicySet`.
-///
-/// In particular, this form is easier to convert to/from the Protobuf
-/// representation of a `PolicySet`, because policies are represented as
-/// `LiteralPolicy` instead of `Policy`.
-#[derive(Debug)]
-pub struct LiteralPolicySet {
-    /// Like the `templates` field of `PolicySet`
-    templates: LinkedHashMap<PolicyID, Template>,
-    /// Like the `links` field of `PolicySet`, but maps to `LiteralPolicy` only.
-    /// The same invariants apply: e.g., a `StaticPolicy` must have exactly one `Policy` in `links`.
-    links: LinkedHashMap<PolicyID, LiteralPolicy>,
-}
-
-impl LiteralPolicySet {
-    /// Create a new `LiteralPolicySet`. Caller is responsible for ensuring the
-    /// invariants on `LiteralPolicySet`.
-    pub fn new(
-        templates: impl IntoIterator<Item = (PolicyID, Template)>,
-        links: impl IntoIterator<Item = (PolicyID, LiteralPolicy)>,
-    ) -> Self {
-        Self {
-            templates: templates.into_iter().collect(),
-            links: links.into_iter().collect(),
-        }
-    }
-
-    /// Iterate over the `Template`s in the `LiteralPolicySet`. This will
-    /// include both templates and static policies (represented as templates
-    /// with zero slots)
-    pub fn templates(&self) -> impl Iterator<Item = &Template> {
-        self.templates.values()
-    }
-
-    /// Iterate over the `LiteralPolicy`s in the `LiteralPolicySet`. This will
-    /// include both static and template-linked policies.
-    pub fn policies(&self) -> impl Iterator<Item = &LiteralPolicy> {
-        self.links.values()
-    }
-}
-
-/// Converts a LiteralPolicySet into a PolicySet, ensuring the invariants are met
-/// Every `Policy` must point to a `Template` that exists in the set.
-impl TryFrom<LiteralPolicySet> for PolicySet {
-    type Error = ReificationError;
-    fn try_from(pset: LiteralPolicySet) -> Result<Self, Self::Error> {
-        // Allocate the templates into Arc's
-        let templates = pset
-            .templates
-            .into_iter()
-            .map(|(id, template)| (id, Arc::new(template)))
-            .collect::<LinkedHashMap<PolicyID, Arc<Template>>>();
-        let links = pset
-            .links
-            .into_iter()
-            .map(|(id, literal)| {
-                if *literal.id() != id {
-                    return Err(ReificationError::PolicyIdMismatch {
-                        key: id,
-                        policy_id: literal.id().clone(),
-                    });
-                }
-                literal.reify(&templates).map(|linked| (id, linked))
-            })
-            .collect::<Result<LinkedHashMap<PolicyID, Policy>, ReificationError>>()?;
-
-        let mut template_to_links_map = LinkedHashMap::new();
-        for template in &templates {
-            template_to_links_map.insert(template.0.clone(), LinkedHashSet::new());
-        }
-        for (link_id, link) in &links {
-            let template = link.template().id();
-            // Check that template-linked policy IDs do not collide with template IDs.
-            // This is enforced when using `ast::policy_set::PolicySet::link` to construct a
-            // policy set incrementally and should also be enforced here.
-            if !link.is_static() && templates.contains_key(link_id) {
-                return Err(ReificationError::Linking(LinkingError::PolicyIdConflict {
-                    id: link_id.clone(),
-                }));
-            }
-            match template_to_links_map.entry(template.clone()) {
-                Entry::Occupied(t) => t.into_mut().insert(link_id.clone()),
-                Entry::Vacant(_) => return Err(ReificationError::NoSuchTemplate(template.clone())),
-            };
-        }
-
-        Ok(Self {
-            templates,
-            links,
-            template_to_links_map,
-        })
-    }
-}
-
-impl From<PolicySet> for LiteralPolicySet {
-    fn from(pset: PolicySet) -> Self {
-        let templates = pset
-            .templates
-            .into_iter()
-            .map(|(id, template)| (id, template.as_ref().clone()))
-            .collect();
-        let links = pset
-            .links
-            .into_iter()
-            .map(|(id, p)| (id, p.into()))
-            .collect();
-        Self { templates, links }
-    }
 }
 
 /// Potential errors when working with `PolicySet`s.
@@ -228,6 +118,27 @@ impl PolicySet {
             templates: LinkedHashMap::new(),
             links: LinkedHashMap::new(),
             template_to_links_map: LinkedHashMap::new(),
+        }
+    }
+
+    /// Create a `PolicySet` from pre-built components.
+    ///
+    /// The caller is responsible for ensuring the invariants hold:
+    /// - Every link references a template that exists in `templates`
+    /// - `template_to_links_map` is consistent with `templates` and `links`
+    /// - Non-static link IDs do not collide with template IDs
+    ///
+    /// This is not intended for external use; use the incremental builder methods
+    /// (`add`, `add_template`, `link`) instead.
+    pub fn from_raw_components(
+        templates: LinkedHashMap<PolicyID, Arc<Template>>,
+        links: LinkedHashMap<PolicyID, Policy>,
+        template_to_links_map: LinkedHashMap<PolicyID, LinkedHashSet<PolicyID>>,
+    ) -> Self {
+        Self {
+            templates,
+            links,
+            template_to_links_map,
         }
     }
 
@@ -700,7 +611,7 @@ impl PolicySet {
     /// - every non-static link references a template with at least one slot.
     ///
     /// This does NOT check the following, which are instead ensured by construction
-    /// via the public API methods or the conversion [`TryFrom<LiteralPolicySet>`]:
+    /// via the public API methods or [`from_raw_components`](Self::from_raw_components):
     /// - slot binding correctness: the `values` match the template's slots,
     /// - no duplicate policy IDs across templates and links,
     /// - every link's template exists in `templates`,
@@ -1378,14 +1289,11 @@ mod policy_set_validate_test {
     }
 
     fn make_policy_set(templates: impl IntoIterator<Item = Template>) -> PolicySet {
-        let literal = LiteralPolicySet::new(
-            templates
-                .into_iter()
-                .map(|t| (t.id().clone(), t))
-                .collect::<Vec<_>>(),
-            std::iter::empty(),
-        );
-        PolicySet::try_from(literal).expect("failed to construct policy set")
+        let mut pset = PolicySet::new();
+        for t in templates {
+            pset.add_template(t).expect("failed to add template");
+        }
+        pset
     }
 
     #[test]
@@ -1425,106 +1333,19 @@ mod policy_set_validate_test {
     #[test]
     fn link_with_no_slots_rejected() {
         let t = valid_template("no_slots");
-        let literal = LiteralPolicySet::new(
-            [(t.id().clone(), t)],
-            [(
-                PolicyID::from_string("link1"),
-                LiteralPolicy::template_linked_policy(
-                    PolicyID::from_string("no_slots"),
-                    PolicyID::from_string("link1"),
-                    HashMap::new(),
-                ),
-            )],
-        );
-        let pset = PolicySet::try_from(literal).expect("failed to construct policy set");
+        let mut pset = PolicySet::new();
+        pset.add_template(t).unwrap();
+        pset.link(
+            PolicyID::from_string("no_slots"),
+            PolicyID::from_string("link1"),
+            HashMap::new(),
+        )
+        .unwrap();
         assert_matches!(
             pset.try_validate(),
             Err(PolicySetValidationError::LinkToSlotlessTemplate { link_id, template_id })
                 if link_id == PolicyID::from_string("link1")
                 && template_id == PolicyID::from_string("no_slots")
-        );
-    }
-
-    #[test]
-    fn link_id_conflicts_with_template_id_rejected() {
-        let id = PolicyID::from_string("t");
-        let t = Template::new(
-            id.clone(),
-            None,
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq_slot(),
-            ActionConstraint::Eq(action_euid()),
-            ResourceConstraint::any(),
-            None,
-        );
-        let mut values = HashMap::new();
-        values.insert(
-            SlotId::principal(),
-            EntityUID::with_eid_and_type("User", "alice").unwrap(),
-        );
-        let literal = LiteralPolicySet::new(
-            [(id.clone(), t.clone())],
-            [(
-                id.clone(),
-                LiteralPolicy::template_linked_policy(id.clone(), id, values),
-            )],
-        );
-        assert_matches!(
-            PolicySet::try_from(literal),
-            Err(ReificationError::Linking(LinkingError::PolicyIdConflict { id }))
-                if id == PolicyID::from_string("t")
-        );
-    }
-
-    #[test]
-    fn outer_key_mismatch_static_policy_rejected() {
-        let t = valid_template("policy1");
-        let literal = LiteralPolicySet::new(
-            [(t.id().clone(), t)],
-            [(
-                PolicyID::from_string("wrong_key"),
-                LiteralPolicy::static_policy(PolicyID::from_string("policy1")),
-            )],
-        );
-        assert_matches!(
-            PolicySet::try_from(literal),
-            Err(ReificationError::PolicyIdMismatch { key, policy_id })
-                if key == PolicyID::from_string("wrong_key")
-                && policy_id == PolicyID::from_string("policy1")
-        );
-    }
-
-    #[test]
-    fn outer_key_mismatch_linked_policy_rejected() {
-        let id = PolicyID::from_string("t");
-        let t = Template::new(
-            id.clone(),
-            None,
-            Annotations::new(),
-            Effect::Permit,
-            PrincipalConstraint::is_eq_slot(),
-            ActionConstraint::Eq(action_euid()),
-            ResourceConstraint::any(),
-            None,
-        );
-        let mut values = HashMap::new();
-        values.insert(
-            SlotId::principal(),
-            EntityUID::with_eid_and_type("User", "alice").unwrap(),
-        );
-        let literal = LiteralPolicySet::new(
-            [(id.clone(), t)],
-            [(
-                PolicyID::from_string("wrong_key"),
-                LiteralPolicy::template_linked_policy(id, PolicyID::from_string("link1"), values),
-            )],
-        );
-        assert_matches!(
-            PolicySet::try_from(literal),
-            Err(ReificationError::PolicyIdMismatch { key, policy_id })
-                if key == PolicyID::from_string("wrong_key")
-                && policy_id == PolicyID::from_string("link1")
         );
     }
 }

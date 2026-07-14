@@ -142,8 +142,6 @@ impl traits::Protobuf for api::PolicySet {
         traits::encode_to_vec::<models::PolicySet>(self)
     }
     fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
-        // TODO: find a way to skip additional validation on PolicySet, currently validation happens
-        // once for decode_unchecked and twice for decode
         traits::try_decode::<models::PolicySet, _, Self>(buf)
     }
 }

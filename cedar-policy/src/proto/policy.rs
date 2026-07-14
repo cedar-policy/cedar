@@ -19,7 +19,12 @@
 use super::ast::ProtobufConversionError;
 use super::models;
 use cedar_policy_core::{ast, FromNormalizedStr};
-use std::collections::{HashMap, HashSet};
+use linked_hash_map::{Entry, LinkedHashMap};
+use linked_hash_set::LinkedHashSet;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 impl TryFrom<models::Policy> for ast::LiteralPolicy {
     type Error = ProtobufConversionError;
@@ -431,8 +436,11 @@ impl From<&ast::Effect> for models::Effect {
     }
 }
 
-impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
+impl TryFrom<models::PolicySet> for ast::PolicySet {
     type Error = ProtobufConversionError;
+    // TODO: simplify this implementation — the second half (reification) contains redundant checks
+    // that are already guaranteed by the first half (proto validation). This was intentionally
+    // written as a mechanical composition of the two former conversion steps to ease review.
     fn try_from(v: models::PolicySet) -> Result<Self, Self::Error> {
         let mut template_ids: HashSet<ast::PolicyID> = HashSet::new();
         let mut link_ids: HashSet<ast::PolicyID> = HashSet::new();
@@ -494,15 +502,60 @@ impl TryFrom<models::PolicySet> for ast::LiteralPolicySet {
             })
             .collect::<Result<Vec<_>, ProtobufConversionError>>()?;
 
-        Ok(Self::new(templates_and_static_policies, links))
-    }
-}
+        // Allocate the templates into Arc's
+        let templates = templates_and_static_policies
+            .into_iter()
+            .map(|(id, template)| (id, Arc::new(template)))
+            .collect::<LinkedHashMap<ast::PolicyID, Arc<ast::Template>>>();
+        let links = links
+            .into_iter()
+            .map(|(id, literal)| {
+                if *literal.id() != id {
+                    return Err(ast::ReificationError::PolicyIdMismatch {
+                        key: id,
+                        policy_id: literal.id().clone(),
+                    });
+                }
+                literal.reify(&templates).map(|linked| (id, linked))
+            })
+            .collect::<Result<LinkedHashMap<ast::PolicyID, ast::Policy>, ast::ReificationError>>()
+            .map_err(|e| {
+                ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}"))
+            })?;
 
-impl From<&ast::LiteralPolicySet> for models::PolicySet {
-    fn from(v: &ast::LiteralPolicySet) -> Self {
-        let templates = v.templates().map(models::TemplateBody::from).collect();
-        let links = v.policies().map(models::Policy::from).collect();
-        Self { templates, links }
+        let mut template_to_links_map = LinkedHashMap::new();
+        for template in &templates {
+            template_to_links_map.insert(template.0.clone(), LinkedHashSet::new());
+        }
+        for (link_id, link) in &links {
+            let template = link.template().id();
+            // Check that template-linked policy IDs do not collide with template IDs.
+            // This is enforced when using `ast::policy_set::PolicySet::link` to construct a
+            // policy set incrementally and should also be enforced here.
+            if !link.is_static() && templates.contains_key(link_id) {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "invalid policy set: {}",
+                    ast::ReificationError::Linking(ast::LinkingError::PolicyIdConflict {
+                        id: link_id.clone(),
+                    })
+                )));
+            }
+            match template_to_links_map.entry(template.clone()) {
+                Entry::Occupied(t) => t.into_mut().insert(link_id.clone()),
+                Entry::Vacant(_) => {
+                    return Err(ProtobufConversionError::InvalidValue(format!(
+                        "invalid policy set: {}",
+                        ast::ReificationError::NoSuchTemplate(template.clone())
+                    )));
+                }
+            };
+        }
+
+        Ok(ast::PolicySet::from_raw_components(
+            templates,
+            links,
+            template_to_links_map,
+        ))
     }
 }
 
@@ -511,15 +564,6 @@ impl From<&ast::PolicySet> for models::PolicySet {
         let templates = v.all_templates().map(models::TemplateBody::from).collect();
         let links = v.policies().map(models::Policy::from).collect();
         Self { templates, links }
-    }
-}
-
-impl TryFrom<models::PolicySet> for ast::PolicySet {
-    type Error = ProtobufConversionError;
-    fn try_from(pset: models::PolicySet) -> Result<Self, Self::Error> {
-        let literal = ast::LiteralPolicySet::try_from(pset)?;
-        ast::PolicySet::try_from(literal)
-            .map_err(|e| ProtobufConversionError::InvalidValue(format!("invalid policy set: {e}")))
     }
 }
 
@@ -869,7 +913,7 @@ mod test {
         .unwrap();
         let mut mps = models::PolicySet::from(&ps);
         let mut mps_roundtrip =
-            models::PolicySet::from(&ast::LiteralPolicySet::try_from(mps.clone()).unwrap());
+            models::PolicySet::from(&ast::PolicySet::try_from(mps.clone()).unwrap());
 
         // we accept permutations as equivalent, so before comparison, we sort
         // both `.templates` and `.links`
@@ -940,7 +984,7 @@ mod test {
         .unwrap();
         let mut mps = models::PolicySet::from(&ps);
         let mut mps_roundtrip =
-            models::PolicySet::from(&ast::LiteralPolicySet::try_from(mps.clone()).unwrap());
+            models::PolicySet::from(&ast::PolicySet::try_from(mps.clone()).unwrap());
 
         // we accept permutations as equivalent, so before comparison, we sort
         // both `.templates` and `.links`
@@ -1111,7 +1155,7 @@ mod test {
             }],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::MissingField(f)) if f == "link_id"
         );
     }
@@ -1124,7 +1168,7 @@ mod test {
             links: vec![],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate template_id")
         );
     }
@@ -1139,7 +1183,7 @@ mod test {
             ],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
@@ -1151,7 +1195,7 @@ mod test {
             links: vec![template_link("shared_id", "shared_id")],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a template_id")
         );
     }
@@ -1165,7 +1209,7 @@ mod test {
         };
         // This should succeed — static policies legitimately share an ID
         // between their template entry and link entry
-        assert_matches!(ast::LiteralPolicySet::try_from(pset), Ok(_));
+        assert_matches!(ast::PolicySet::try_from(pset), Ok(_));
     }
 
     #[test]
@@ -1175,7 +1219,7 @@ mod test {
             links: vec![static_policy_link("nonexistent")],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("references non-existent template")
         );
     }
@@ -1190,7 +1234,7 @@ mod test {
             ],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
@@ -1204,7 +1248,7 @@ mod test {
             links: vec![static_policy_link("X"), template_link("T", "X")],
         };
         assert_matches!(
-            ast::LiteralPolicySet::try_from(bad),
+            ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
     }
