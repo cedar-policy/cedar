@@ -28,7 +28,7 @@ use std::{
 
 /// Convert a [`models::Policy`] to an [`ast::Policy`] given a set of `templates`.
 /// Returns an error when any of the invariants of [`ast::Policy`] would be violated,
-/// or the template references in the model doesn't exist in the set of templates.
+/// or the template referenced by the model doesn't exist in the set of templates.
 fn reify(
     v: models::Policy,
     templates: &LinkedHashMap<ast::PolicyID, Arc<ast::Template>>,
@@ -1337,5 +1337,119 @@ mod test {
             ast::PolicySet::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
         );
+    }
+
+    #[test]
+    fn literal_policy_set_rejects_static_policy_colliding_with_template_link_id() {
+        // Template-link with link_id "X" where "X" is also a template_id.
+        // The link_id-vs-template_id check catches this regardless of ordering
+        // with static policies, because a static policy's ID is always a template_id.
+        let bad = models::PolicySet {
+            templates: vec![slotted_template_body("T"), trivial_template_body("X")],
+            links: vec![template_link("T", "X"), static_policy_link("X")],
+        };
+        assert_matches!(
+            ast::PolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a template_id")
+        );
+    }
+
+    // Tests with realistic policy sets containing multiple valid entries alongside
+    // the problematic one, to ensure validation works in the presence of noise.
+
+    #[test]
+    fn noisy_policy_set_rejects_duplicate_template_ids() {
+        let bad = models::PolicySet {
+            templates: vec![
+                trivial_template_body("ok1"),
+                slotted_template_body("ok2"),
+                trivial_template_body("duplicate"),
+                trivial_template_body("duplicate"),
+            ],
+            links: vec![static_policy_link("ok1"), template_link("ok2", "link1")],
+        };
+        assert_matches!(
+            ast::PolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("duplicate template_id")
+        );
+    }
+
+    #[test]
+    fn noisy_policy_set_rejects_duplicate_link_ids() {
+        let bad = models::PolicySet {
+            templates: vec![
+                trivial_template_body("t1"),
+                trivial_template_body("t2"),
+                slotted_template_body("t3"),
+            ],
+            links: vec![
+                static_policy_link("t1"),
+                template_link("t3", "link_ok"),
+                static_policy_link("t2"),
+                static_policy_link("t2"), // duplicate
+            ],
+        };
+        assert_matches!(
+            ast::PolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a policy id")
+        );
+    }
+
+    #[test]
+    fn noisy_policy_set_rejects_template_link_id_colliding_with_template_id() {
+        let bad = models::PolicySet {
+            templates: vec![
+                trivial_template_body("t1"),
+                slotted_template_body("t2"),
+                trivial_template_body("collide"),
+            ],
+            links: vec![
+                static_policy_link("t1"),
+                template_link("t2", "link_ok"),
+                template_link("t2", "collide"), // link_id == template_id "collide"
+            ],
+        };
+        assert_matches!(
+            ast::PolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("conflicts with a template_id")
+        );
+    }
+
+    #[test]
+    fn noisy_policy_set_rejects_nonexistent_template() {
+        let bad = models::PolicySet {
+            templates: vec![trivial_template_body("t1"), slotted_template_body("t2")],
+            links: vec![
+                static_policy_link("t1"),
+                template_link("t2", "link_ok"),
+                static_policy_link("ghost"), // references nonexistent template
+            ],
+        };
+        assert_matches!(
+            ast::PolicySet::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("no such template")
+        );
+    }
+
+    #[test]
+    fn noisy_policy_set_valid_with_multiple_templates_and_links() {
+        let pset = models::PolicySet {
+            templates: vec![
+                trivial_template_body("static1"),
+                trivial_template_body("static2"),
+                slotted_template_body("tmpl1"),
+                slotted_template_body("tmpl2"),
+            ],
+            links: vec![
+                static_policy_link("static1"),
+                static_policy_link("static2"),
+                template_link("tmpl1", "link1"),
+                template_link("tmpl1", "link2"),
+                template_link("tmpl2", "link3"),
+            ],
+        };
+        let ps = ast::PolicySet::try_from(pset).unwrap();
+        assert_eq!(ps.all_templates().count(), 4);
+        assert_eq!(ps.policies().count(), 5);
     }
 }
