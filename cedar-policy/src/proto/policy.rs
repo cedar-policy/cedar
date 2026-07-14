@@ -631,6 +631,24 @@ mod test {
         }
     }
 
+    /// Build a templates map with a single template that has a `?principal` slot.
+    fn slotted_templates_map(id: &str) -> LinkedHashMap<ast::PolicyID, Arc<ast::Template>> {
+        let tb = ast::TemplateBody::new(
+            ast::PolicyID::from_string(id),
+            None,
+            ast::Annotations::from_iter([]),
+            ast::Effect::Permit,
+            ast::PrincipalConstraint::is_eq_slot(),
+            ast::ActionConstraint::Any,
+            ast::ResourceConstraint::any(),
+            None,
+        );
+        LinkedHashMap::from_iter([(
+            ast::PolicyID::from_string(id),
+            Arc::new(ast::Template::from(tb)),
+        )])
+    }
+
     /// Create a template-linked `ast::Policy` with a `?principal` slot bound to
     /// `entity_type`::`eid`, along with the templates map needed for reification.
     fn make_linked_policy(
@@ -642,21 +660,12 @@ mod test {
         ast::Policy,
         LinkedHashMap<ast::PolicyID, Arc<ast::Template>>,
     ) {
-        let tb = ast::TemplateBody::new(
-            ast::PolicyID::from_string(template_id),
-            None,
-            ast::Annotations::from_iter([]),
-            ast::Effect::Permit,
-            ast::PrincipalConstraint::is_eq_slot(),
-            ast::ActionConstraint::Any,
-            ast::ResourceConstraint::any(),
-            None,
-        );
-        let template = Arc::new(ast::Template::from(tb));
-        let templates =
-            LinkedHashMap::from_iter([(ast::PolicyID::from_string(template_id), template.clone())]);
+        let templates = slotted_templates_map(template_id);
+        let template = templates
+            .get(&ast::PolicyID::from_string(template_id))
+            .unwrap();
         let policy = ast::Template::link(
-            template,
+            template.clone(),
             ast::PolicyID::from_string(link_id),
             HashMap::from_iter([(
                 ast::SlotId::principal(),
@@ -1134,6 +1143,88 @@ mod test {
         assert_matches!(
             reify(bad, &templates),
             Err(ProtobufConversionError::MissingField(f)) if f == "link_id"
+        );
+    }
+
+    #[test]
+    fn reify_rejects_link_with_wrong_slots() {
+        // Template has ?principal slot, but we provide ?resource instead
+        let templates = slotted_templates_map("t");
+        let bad = models::Policy {
+            template_id: "t".to_string(),
+            link_id: Some("link".to_string()),
+            is_template_link: true,
+            principal_euid: None,
+            resource_euid: Some(models::EntityUid {
+                ty: Some(models::Name {
+                    id: "User".to_string(),
+                    path: vec![],
+                }),
+                eid: "alice".to_string(),
+            }),
+        };
+        assert_matches!(
+            reify(bad, &templates),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("failed to convert to policy")
+        );
+    }
+
+    #[test]
+    fn reify_rejects_static_policy_from_slotted_template() {
+        // Template has ?principal slot, but we try to use it as a static policy
+        let templates = slotted_templates_map("t");
+        let bad = models::Policy {
+            template_id: "t".to_string(),
+            link_id: None,
+            is_template_link: false,
+            principal_euid: None,
+            resource_euid: None,
+        };
+        assert_matches!(
+            reify(bad, &templates),
+            Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("failed to convert a static policy")
+        );
+    }
+
+    #[test]
+    fn template_body_try_from_missing_action_constraint() {
+        let bad = models::TemplateBody {
+            action_constraint: None,
+            ..trivial_template_body("t")
+        };
+        assert_matches!(
+            ast::TemplateBody::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "action_constraint"
+        );
+    }
+
+    #[test]
+    fn template_body_try_from_missing_resource_constraint() {
+        let bad = models::TemplateBody {
+            resource_constraint: None,
+            ..trivial_template_body("t")
+        };
+        assert_matches!(
+            ast::TemplateBody::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "resource_constraint"
+        );
+    }
+
+    #[test]
+    fn action_constraint_try_from_in_with_invalid_euid() {
+        let bad = models::ActionConstraint {
+            data: Some(models::action_constraint::Data::In(
+                models::action_constraint::InMessage {
+                    euids: vec![models::EntityUid {
+                        ty: None,
+                        eid: "read".to_string(),
+                    }],
+                },
+            )),
+        };
+        assert_matches!(
+            ast::ActionConstraint::try_from(bad),
+            Err(ProtobufConversionError::MissingField(f)) if f == "ty"
         );
     }
 
