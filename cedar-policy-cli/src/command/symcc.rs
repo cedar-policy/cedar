@@ -231,17 +231,33 @@ fn warn_if_contains_templates(pset: &PolicySet, name: &str) {
     }
 }
 
+/// Extract exactly on policy from `pset`.
+///
+/// Returns an error if `pset` returns 0 or more than one policies. Returns an
+/// error if `pset` contains _any_ templates. This is an error for the single
+/// policy analysis targets because we expect the input to be a single policy,
+/// not a policy set. Any templates indicates that we were given a policy set.
+fn exactly_one_policy(pset: &PolicySet, name: &str) -> Result<Policy> {
+    let num_templates = pset.templates().count();
+    if num_templates > 0 {
+        Err(miette!(
+            "Expected exactly one static policy in {name}, found {num_templates} templates"
+        ))
+    } else {
+        pset.policies()
+            .exactly_one()
+            .map_err(|e| miette!("Expected exactly one policy in {name}, found {}", e.count()))
+            .cloned()
+    }
+}
+
 fn load_single_policy(
     policies: &SymccPoliciesArgs,
     schema_args: &SchemaArgs,
 ) -> Result<(Policy, Schema)> {
     let pset = policies.get_policy_set()?;
     let schema = schema_args.get_schema()?;
-    let policy = pset
-        .policies()
-        .exactly_one()
-        .map_err(|e| miette!("Expected exactly one policy, found {}", e.count()))?
-        .clone();
+    let policy = exactly_one_policy(&pset, "--policy")?;
     Ok((policy, schema))
 }
 
@@ -252,26 +268,8 @@ fn load_two_policies(
     let pset1 = args.get_policy_set_1()?;
     let pset2 = args.get_policy_set_2()?;
     let schema = schema_args.get_schema()?;
-    let p1 = pset1
-        .policies()
-        .exactly_one()
-        .map_err(|e| {
-            miette!(
-                "Expected exactly one policy in --policy1, found {}",
-                e.count()
-            )
-        })?
-        .clone();
-    let p2 = pset2
-        .policies()
-        .exactly_one()
-        .map_err(|e| {
-            miette!(
-                "Expected exactly one policy in --policy2, found {}",
-                e.count()
-            )
-        })?
-        .clone();
+    let p1 = exactly_one_policy(&pset1, "--policy1")?;
+    let p2 = exactly_one_policy(&pset2, "--policy2")?;
     Ok((p1, p2, schema))
 }
 
