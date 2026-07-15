@@ -21,6 +21,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 - For the experimental `tpe` feature, fixed `PartialEntities::from_json_value` to return an error given two entities with duplicate ids.
 
 ### Added
+- Implemented [RFC 104](https://github.com/cedar-policy/rfcs/pull/104), adding
+  a human-readable Cedar syntax for entity data under the experimental flag `cedar-entity-syntax`.
+  Adds `Entities::from_cedar_str()` and `Entities::to_cedar_string()` APIs, and `--entities-format cedar`
+  CLI option.
 - Public syntax tree (`pst`) support for `variadic-is-in-range` feature: a variadic `isInRange` is modelled by a `pst::Expr::VariadicOp{...}` in the PST (#2380).
 - For the experimental `tpe` feature, added functions for inspecting partial evaluation results. Adds `TpeResponse::reason` to get the ids for policies
   contributing to the authorization decision, and specific iterators to list true/false/error/residual permit/forbid policy IDs. Also adds `TpeResponse::get_policy`

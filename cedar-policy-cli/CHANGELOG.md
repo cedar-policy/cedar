@@ -10,6 +10,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 - `cedar license` subcommand printing the project license and bundled third-party attributions.
 - Pre-built `cedar` binaries on GitHub releases for Linux (x86_64, aarch64), macOS (x86_64, aarch64), and Windows (x86_64), built via cargo-dist on `cedar-policy-cli-v*` tags.
 - Experimental archive `cedar-policy-cli-experimental-<target>` with `tpe` and `analyze` (`cedar symcc`) enabled. The `symcc` subcommands additionally require [cvc5](https://github.com/cvc5/cvc5) installed at runtime.
+- For the experimental `cedar-entity-syntax` feature, added `--entities-format cedar` option to load
+  entity data in the human-readable Cedar syntax instead of JSON.
 
 ### Changed
 

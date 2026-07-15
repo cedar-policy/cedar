@@ -1,0 +1,89 @@
+[
+    {
+        "uid": {
+            "type": "Resource",
+            "id": "document1"
+        },
+        "attrs": {
+            "title": "Design Doc"
+        },
+        "parents": [],
+        "tags": {
+            "env": "production",
+            "team": "backend",
+            "priority": "high"
+        }
+    },
+    {
+        "uid": {
+            "type": "Resource",
+            "id": "document2"
+        },
+        "attrs": {
+            "title": "API Spec"
+        },
+        "parents": [
+            {
+                "type": "Folder",
+                "id": "shared"
+            }
+        ],
+        "tags": {
+            "owner": {
+                "__entity": {
+                    "type": "User",
+                    "id": "alice"
+                }
+            },
+            "reviewer": {
+                "__entity": {
+                    "type": "User",
+                    "id": "bob"
+                }
+            }
+        }
+    },
+    {
+        "uid": {
+            "type": "Resource",
+            "id": "document3"
+        },
+        "attrs": {},
+        "parents": [],
+        "tags": {
+            "created": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2026-01-15T09:00:00Z"
+                }
+            },
+            "ttl": {
+                "__extn": {
+                    "fn": "duration",
+                    "arg": "90d"
+                }
+            },
+            "version": 3,
+            "draft": true
+        }
+    },
+    {
+        "uid": {
+            "type": "Resource",
+            "id": "empty_tags"
+        },
+        "attrs": {
+            "title": "Minimal"
+        },
+        "parents": [],
+        "tags": {}
+    },
+    {
+        "uid": {
+            "type": "Folder",
+            "id": "shared"
+        },
+        "attrs": {},
+        "parents": []
+    }
+]

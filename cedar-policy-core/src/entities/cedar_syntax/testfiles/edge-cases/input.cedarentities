@@ -1,0 +1,44 @@
+// Special characters in entity IDs
+instance User::"alice smith";
+instance User::"bob\tbuilder";
+instance User::"carol \"C\" davis";
+instance User::"";
+
+// String values with escapes
+instance Document::"escapes" = {
+    "tab": "col1\tcol2",
+    "newline": "line1\nline2",
+    "quote": "she said \"hello\"",
+    "backslash": "path\\to\\file",
+    "unicode": "エモジ: \u{1F600}",
+    "empty": ""
+};
+
+// Attribute keys that could conflict with keywords
+instance Config::"settings" = {
+    "in": "production",
+    "type": "service",
+    "instance": "primary",
+    "namespace": "default",
+    "tags": "metadata",
+    "true": false,
+    "false": true
+};
+
+// Numeric edge cases
+instance Metrics::"extremes" = {
+    "max_long": 9223372036854775807,
+    "min_long": -9223372036854775808,
+    "zero": 0,
+    "negative": -42
+};
+
+// Single-element collections
+instance Collection::"singles" = {
+    "one_item_set": [42],
+    "one_item_record": { "only_key": "only_value" },
+    "one_parent_list": [User::"alice"]
+};
+
+// Empty attributes
+instance Empty::"no_attrs" = {};
