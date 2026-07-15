@@ -1,0 +1,19 @@
+[package]
+name = "cedar-lean-symc"
+edition.workspace = true
+rust-version.workspace = true
+version = "0.1.0"
+publish = false
+description = "Transpile a Cedar policy-set (text) into the equivalent Cedar Lean AST source."
+
+[[bin]]
+name = "cedar-lean-symc"
+path = "src/main.rs"
+
+[dependencies]
+cedar-policy-core = { path = "../cedar-policy-core", version = "=4.11.0" }
+clap = { version = "4", features = ["derive"] }
+thiserror = "2.0"
+
+[dev-dependencies]
+insta = "1.47.2"

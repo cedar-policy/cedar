@@ -350,6 +350,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "cedar-lean-symc"
+version = "0.1.0"
+dependencies = [
+ "cedar-policy-core",
+ "clap",
+ "insta",
+ "thiserror",
+]
+
+[[package]]
 name = "cedar-policy"
 version = "4.11.0"
 dependencies = [
