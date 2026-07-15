@@ -21,12 +21,12 @@
 use clap::Args;
 use miette::{IntoDiagnostic, Report, Result, WrapErr};
 use serde::Deserialize;
-use std::{path::Path, time::Instant};
+use std::time::Instant;
 
 use cedar_policy::*;
 
 use crate::CedarExitCode;
-use crate::{load_entities, OptionalSchemaArgs, PoliciesArgs};
+use crate::{EntitiesArgs, OptionalSchemaArgs, PoliciesArgs};
 
 #[derive(Args, Debug)]
 pub struct PartiallyAuthorizeArgs {
@@ -42,9 +42,9 @@ pub struct PartiallyAuthorizeArgs {
     /// parsing of entity hierarchy, if present
     #[command(flatten)]
     pub schema: OptionalSchemaArgs,
-    /// File containing JSON representation of the Cedar entity hierarchy
-    #[arg(long = "entities", value_name = "FILE")]
-    pub entities_file: String,
+    /// Entities args (incorporated by reference)
+    #[command(flatten)]
+    pub entities: EntitiesArgs,
     /// Time authorization and report timing information
     #[arg(short, long)]
     pub timing: bool,
@@ -186,7 +186,7 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
     let ans = execute_partial_request(
         &args.request,
         &args.policies,
-        &args.entities_file,
+        &args.entities,
         &args.schema,
         args.timing,
     );
@@ -221,7 +221,7 @@ pub fn partial_authorize(args: &PartiallyAuthorizeArgs) -> CedarExitCode {
 fn execute_partial_request(
     request: &PartialRequestArgs,
     policies: &PoliciesArgs,
-    entities_filename: impl AsRef<Path>,
+    entities: &EntitiesArgs,
     schema: &OptionalSchemaArgs,
     compute_duration: bool,
 ) -> Result<PartialResponse, Vec<Report>> {
@@ -240,7 +240,7 @@ fn execute_partial_request(
             None
         }
     };
-    let entities = match load_entities(entities_filename, schema.as_ref()) {
+    let entities = match entities.get_entities(schema.as_ref()) {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
