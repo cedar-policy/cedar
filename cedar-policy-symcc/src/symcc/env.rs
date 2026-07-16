@@ -423,17 +423,17 @@ impl SymEnv {
 /// A [`Schema`] paired with its precomputed [`SymEntities`].
 ///
 /// Building [`SymEntities`] from a schema is expensive and depends only on the
-/// schema, not on any particular request environment. [`SymSchema`] computes it
+/// schema, not on any particular request environment. [`CompiledSchema`] computes it
 /// once so it can be reused across many request environments via
-/// [`SymSchema::sym_env`], which is significantly cheaper than rebuilding the
+/// [`CompiledSchema::sym_env`], which is significantly cheaper than rebuilding the
 /// symbolic entities per environment (as [`SymEnv::new`] does).
 #[derive(Debug, Clone)]
-pub struct SymSchema {
+pub struct CompiledSchema {
     schema: Schema,
     entities: Arc<SymEntities>,
 }
 
-impl SymSchema {
+impl CompiledSchema {
     /// Builds the symbolic entities for `schema` once, up front.
     pub fn new(schema: &Schema) -> crate::err::Result<Self> {
         Ok(Self {
@@ -454,7 +454,7 @@ impl SymSchema {
     /// [`SymEnv`] is identical to one built by [`SymEnv::new`] for the same
     /// schema and request environment.
     // INVARIANT: must produce the same SymEnv as SymEnv::of_env / SymEnv::new.
-    // Guarded by test sym_schema_sym_env_matches_sym_env_new.
+    // Guarded by test compiled_schema_sym_env_matches_sym_env_new.
     pub fn sym_env(&self, req_env: &RequestEnv) -> crate::err::Result<SymEnv> {
         let env = Environment::from_request_env(req_env, self.schema.as_ref())
             .ok_or_else(|| crate::err::Error::ActionNotInSchema(req_env.action().to_string()))?;

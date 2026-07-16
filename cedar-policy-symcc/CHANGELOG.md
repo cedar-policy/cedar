@@ -10,7 +10,7 @@ Cedar Language Version: TBD
 
 ### Added
 
-- `SymSchema` type that precomputes symbolic entities once per schema and produces
+- `CompiledSchema` type that precomputes symbolic entities once per schema and produces
   `SymEnv` instances via `sym_env()`, avoiding expensive per-environment rebuilds.
 
 ### Fixed
