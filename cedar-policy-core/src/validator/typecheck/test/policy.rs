@@ -108,6 +108,69 @@ fn simple_schema_file() -> json_schema::NamespaceDefinition<RawName> {
     .expect("Expected valid schema")
 }
 
+/// Two-env schema (User + Admin principals) with an optional attribute, for
+/// exercising the env-independent subtree cache across a multi-env cross product.
+fn schema_with_optional_multi_env() -> json_schema::NamespaceDefinition<RawName> {
+    serde_json::from_value(serde_json::json!(
+        {
+            "entityTypes": {
+                "User": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "nickname": { "type": "String", "required": false }
+                        }
+                    }
+                },
+                "Admin": { "shape": { "type": "Record", "attributes": {} } },
+                "Photo": { "shape": { "type": "Record", "attributes": {} } }
+            },
+            "actions": {
+                "view": {
+                    "appliesTo": {
+                        "principalTypes": ["User", "Admin"],
+                        "resourceTypes": ["Photo"]
+                    }
+                }
+            }
+        }
+    ))
+    .expect("Expected valid schema")
+}
+
+/// Regression test for the env-independent subtree cache (#2439): a policy
+/// mixing env-dependent (`principal`) and env-independent (`1 + 1 == 2`)
+/// sub-expressions must typecheck across every env in the cross product, where
+/// the env-independent subtree is typechecked once and reused across envs.
+#[test]
+fn env_independent_cache_mixed_policy_typechecks() {
+    assert_policy_typechecks(
+        simple_schema_file(),
+        parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { 1 + 1 == 2 && principal has name };"#,
+        )
+        .expect("Policy should parse."),
+    );
+}
+
+/// Regression test for the cache's capability invariant: a cache hit reuses a
+/// cached env-independent node and ignores `prior_capability`. A capability on
+/// an env-independent base (an entity literal) is only ever consumed by
+/// env-independent nodes, so reuse stays sound. Exercised across a 2-env cross
+/// product with an optional attribute reached through a `has` guard.
+#[test]
+fn env_independent_cache_capability_on_entity_literal() {
+    assert_policy_typechecks(
+        schema_with_optional_multi_env(),
+        parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { User::"alice" has nickname && User::"alice".nickname == "bob" };"#,
+        )
+        .expect("Policy should parse."),
+    );
+}
+
 #[track_caller] // report the caller's location as the location of the panic, not the location in this function
 fn assert_policy_typechecks_permissive_simple_schema(p: impl Into<Arc<Template>>) {
     assert_policy_typechecks_for_mode(simple_schema_file(), p, ValidationMode::Permissive)

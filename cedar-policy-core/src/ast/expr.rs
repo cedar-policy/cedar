@@ -300,6 +300,40 @@ impl<T> Expr<T> {
         matches!(&self.expr_kind, ExprKind::Slot(_))
     }
 
+    /// Whether this node *directly* reads the request environment — i.e. it is
+    /// a `Var`, a template `Slot`, or an `Unknown`. Such a node can typecheck
+    /// to a different type in each request environment.
+    ///
+    /// A node whose whole subtree contains no such leaf is *env-independent*:
+    /// it typechecks identically in every environment, so the validator
+    /// typechecks it once and reuses the result across the request-env
+    /// cross-product (see `EnvMemo` in `validator::typecheck`).
+    ///
+    /// This is an exhaustive match with no wildcard arm on purpose: a future
+    /// env-referencing `ExprKind` must fail to compile here until it is
+    /// classified, rather than silently defaulting to env-independent and being
+    /// cached with the wrong type.
+    pub(crate) fn references_request_env(&self) -> bool {
+        match &self.expr_kind {
+            ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => true,
+            ExprKind::Lit(_)
+            | ExprKind::If { .. }
+            | ExprKind::And { .. }
+            | ExprKind::Or { .. }
+            | ExprKind::UnaryApp { .. }
+            | ExprKind::BinaryApp { .. }
+            | ExprKind::GetAttr { .. }
+            | ExprKind::HasAttr { .. }
+            | ExprKind::Like { .. }
+            | ExprKind::Is { .. }
+            | ExprKind::ExtensionFunctionApp { .. }
+            | ExprKind::Set(_)
+            | ExprKind::Record(_) => false,
+            #[cfg(feature = "tolerant-ast")]
+            ExprKind::Error { .. } => false,
+        }
+    }
+
     /// Check whether this expression is a set of entity references
     ///
     /// This is used for policy scopes, where some syntax is

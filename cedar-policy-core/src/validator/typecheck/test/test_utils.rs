@@ -26,6 +26,7 @@ use crate::entities::{err::EntitiesError, Entities, EntityJsonParser, TCComputat
 use crate::extensions::Extensions;
 use crate::parser::Loc;
 
+use super::super::EnvMemo;
 use crate::validator::{
     json_schema,
     typecheck::{SingleEnvTypechecker, TypecheckAnswer, Typechecker},
@@ -119,12 +120,14 @@ impl Typechecker<'_> {
         policy_id: &'a PolicyID,
         unique_type_errors: &mut HashSet<ValidationError>,
     ) -> TypecheckAnswer<'a> {
+        let no_memo = EnvMemo::default();
         let typechecker = SingleEnvTypechecker {
             schema: self.schema,
             extensions: self.extensions,
             mode: self.mode,
             policy_id,
             request_env,
+            memo: &no_memo,
         };
         let mut type_errors = Vec::new();
         let ans = typechecker.typecheck(&CapabilitySet::new(), e, &mut type_errors);

@@ -25,6 +25,9 @@ use itertools::EitherOrBoth::{Both, Left, Right};
 use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
@@ -59,6 +62,235 @@ pub enum PolicyCheck {
     Irrelevant(Vec<ValidationError>, Expr<Option<Type>>),
     /// Policy will have errors
     Fail(Vec<ValidationError>),
+}
+
+/// Identity key for an AST node: its address.
+///
+/// Keying is per syntactic position, not per shape: two occurrences of an
+/// identical sub-expression can typecheck differently (different capabilities
+/// or source locations), so they must stay distinct. This holds only while
+/// each position has its own address; `ExprKind` children are `Arc<Expr>`, so
+/// sharing one `Arc` across two positions would alias them. Parsed ASTs are
+/// trees, so this holds today, and `mark_env_dep_walk` asserts it (in all
+/// builds) while populating a memo.
+///
+/// The address is only hashed and compared, never dereferenced. The keyed
+/// `Expr` must outlive the memo: `condition()` returns a fresh `Expr`, so
+/// `typecheck_policy` holds one `cond` for the whole cross-product and keys the
+/// memo on it. `EnvMemo` borrows that `cond` via `PhantomData`, making this
+/// compiler-enforced.
+type NodeId = *const Expr;
+
+fn expr_key(e: &Expr) -> NodeId {
+    e as NodeId
+}
+
+/// A cached typecheck result for an env-independent node: the typed expression
+/// to clone on a hit, tagged with whether it was a typecheck success or fail.
+#[derive(Clone)]
+enum CachedResult {
+    Success(Expr<Option<Type>>),
+    Fail(Expr<Option<Type>>),
+}
+
+/// Memoizes typechecking results for env-independent AST nodes.  An
+/// env-independent node — one that does not transitively reference `Var`,
+/// `Slot`, or `Unknown` — produces the same type in every request env, so it
+/// is typechecked once and reused for the rest of the cross-product.
+///
+/// This encapsulates the interior mutability: callers see plain `cacheable` /
+/// `get` / `put` methods, never a `RefCell` borrow.
+///
+/// `Clone` is required because the per-env closure in
+/// `apply_typecheck_fn_by_request_env` captures the memo and must be `Fn +
+/// Clone`.  Only the empty `default()` memo is ever cloned; the populated memo
+/// from `new` is shared by reference within a single `typecheck_policy` call.
+/// The manual `Clone` impl below asserts that invariant in all builds.
+#[derive(Default)]
+struct EnvMemo<'a> {
+    /// Whether caching is active.  `false` for the `default()` no-op memo used
+    /// by single-env entry points: there every node is visited once per
+    /// traversal, so a cache would only add pointless inserts and clones.
+    enabled: bool,
+    /// Nodes that are env-dependent, and therefore must be re-typechecked in
+    /// every env (never cached).
+    dep: HashSet<NodeId>,
+    /// Typed results for env-independent nodes.  `RefCell` because
+    /// `typecheck()` takes `&self`.
+    cache: RefCell<HashMap<NodeId, CachedResult>>,
+    /// Ties the memo's lifetime to the `cond` it keys into.  `NodeId` is a raw
+    /// `*const Expr` pointing into `cond`, so without this the borrow checker
+    /// cannot stop `cond` being dropped or rebuilt while cached keys still
+    /// reference it — a silent stale-pointer hit.  This phantom borrow makes
+    /// "`cond` outlives the memo" a compile error to violate; `default()` (the
+    /// no-op memo) simply picks an unconstrained lifetime.
+    _cond: PhantomData<&'a Expr>,
+}
+
+impl<'a> Clone for EnvMemo<'a> {
+    fn clone(&self) -> Self {
+        // Cloning a populated memo would give each clone an independent cache
+        // and silently lose the cross-env sharing that is the whole point.
+        // `assert!` (not `debug_assert!`): the consequence of violation is a
+        // silent correctness regression, not a crash, so guard it in release too.
+        assert!(
+            !self.enabled,
+            "cloning a populated EnvMemo loses cross-env cache sharing"
+        );
+        Self {
+            enabled: self.enabled,
+            dep: self.dep.clone(),
+            cache: self.cache.clone(),
+            _cond: PhantomData,
+        }
+    }
+}
+
+impl<'a> EnvMemo<'a> {
+    /// Build a memo for `cond`, marking every env-dependent node up front.
+    ///
+    /// Enabling contract: a populated (enabled) memo makes a cache hit return
+    /// the first env's answer verbatim — no `prior_capability`, no per-env
+    /// `type_errors`. That is sound only for a caller that (a) aggregates errors
+    /// env-agnostically (as `typecheck_policy` does, deduping into a `HashSet`,
+    /// so a first-env error still surfaces) and (b) never inspects the per-env
+    /// capability or per-env error list of a cached node. Any new caller that
+    /// enables the memo must honour both; a caller needing faithful per-env
+    /// diagnostics must use `EnvMemo::default()` instead.
+    fn new(cond: &'a Expr) -> Self {
+        let mut dep = HashSet::new();
+        mark_env_dep_walk(cond, &mut dep);
+        Self {
+            enabled: true,
+            dep,
+            cache: RefCell::new(HashMap::new()),
+            _cond: PhantomData,
+        }
+    }
+
+    /// Is `e` env-independent, and therefore safe to cache across envs?
+    fn cacheable(&self, e: &Expr) -> bool {
+        // `enabled` distinguishes the `default()` no-op memo (single-env
+        // callers) from a real one. It can't be replaced by `dep.is_empty()`:
+        // a fully env-independent condition also has empty `dep` but must cache.
+        self.enabled && !self.dep.contains(&expr_key(e))
+    }
+
+    /// Fetch a cached result for env-independent node `e`, if present.
+    /// The returned answer is fully owned (empty capability, cloned expr), so
+    /// its lifetime `'b` is unconstrained by design.
+    fn get<'b>(&self, e: &Expr) -> Option<TypecheckAnswer<'b>> {
+        self.cache
+            .borrow()
+            .get(&expr_key(e))
+            .map(|cached| match cached {
+                CachedResult::Success(ty) => TypecheckAnswer::success(ty.clone()),
+                CachedResult::Fail(ty) => TypecheckAnswer::fail(ty.clone()),
+            })
+    }
+
+    /// Record the typechecking result for env-independent node `e`.
+    /// `RecursionLimit`/error answers carry no typed expr and are not cached.
+    fn put(&self, e: &Expr, ans: &TypecheckAnswer<'_>) {
+        let entry = match ans {
+            TypecheckAnswer::TypecheckSuccess { expr_type, .. } => {
+                CachedResult::Success(expr_type.clone())
+            }
+            TypecheckAnswer::TypecheckFail { expr_recovery_type } => {
+                CachedResult::Fail(expr_recovery_type.clone())
+            }
+            _ => return,
+        };
+        self.cache.borrow_mut().insert(expr_key(e), entry);
+    }
+}
+
+/// Push `expr`'s immediate sub-expressions onto `out`.
+fn push_children<'a>(expr: &'a Expr, out: &mut Vec<&'a Expr>) {
+    match expr.expr_kind() {
+        // Leaf nodes: no children.
+        ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => {}
+        ExprKind::If {
+            test_expr,
+            then_expr,
+            else_expr,
+        } => {
+            out.push(test_expr);
+            out.push(then_expr);
+            out.push(else_expr);
+        }
+        ExprKind::And { left, right } | ExprKind::Or { left, right } => {
+            out.push(left);
+            out.push(right);
+        }
+        ExprKind::UnaryApp { arg, .. } => out.push(arg),
+        ExprKind::BinaryApp { arg1, arg2, .. } => {
+            out.push(arg1);
+            out.push(arg2);
+        }
+        ExprKind::GetAttr { expr: sub, .. }
+        | ExprKind::HasAttr { expr: sub, .. }
+        | ExprKind::Like { expr: sub, .. }
+        | ExprKind::Is { expr: sub, .. } => out.push(sub),
+        ExprKind::ExtensionFunctionApp { args, .. } | ExprKind::Set(args) => {
+            out.extend(args.as_ref().iter());
+        }
+        ExprKind::Record(map) => {
+            out.extend(map.values());
+        }
+        #[cfg(feature = "tolerant-ast")]
+        ExprKind::Error { .. } => {}
+    }
+}
+
+/// Insert into `dep` every node of `root` that is env-dependent — i.e. whose
+/// subtree transitively references `Var`, `Slot`, or `Unknown`.
+///
+/// Iterative (heap work-list) rather than recursive: this runs from
+/// `EnvMemo::new` before `typecheck`'s own `stacker` guard would apply, so a
+/// deeply nested policy must not be able to overflow the stack here.
+fn mark_env_dep_walk(root: &Expr, dep: &mut HashSet<NodeId>) {
+    // Pass 1: pre-order collect, so every node precedes its descendants.
+    // `seen` also guards the no-aliasing invariant that `NodeId` keying relies
+    // on: distinct syntactic positions must have distinct addresses. If a
+    // future AST change shared an `Arc<Expr>` across positions (dedup/CSE, an
+    // interned literal), two positions would collide on one key and the second
+    // would silently read the first's cached type. Assert always-on, not just
+    // in debug: a wrong type is a silent soundness regression rather than a
+    // crash, and this costs O(n) once per policy — cheap next to typechecking.
+    let mut order: Vec<&Expr> = Vec::new();
+    let mut seen: HashSet<NodeId> = HashSet::new();
+    let mut stack: Vec<&Expr> = vec![root];
+    while let Some(n) = stack.pop() {
+        assert!(
+            seen.insert(expr_key(n)),
+            "aliased AST node in policy condition: NodeId cache keying \
+             requires distinct positions to have distinct addresses"
+        );
+        order.push(n);
+        push_children(n, &mut stack);
+    }
+    // Pass 2: walk in reverse (every node after its descendants), so a child's
+    // membership in `dep` is already decided when its parent is processed. A
+    // node is env-dependent if it is a `Var`/`Slot`/`Unknown` leaf or any child
+    // is env-dependent.
+    let mut children: Vec<&Expr> = Vec::new();
+    for &n in order.iter().rev() {
+        // A node is env-dependent if it directly reads the request env, or if
+        // any child is env-dependent. `references_request_env` (in `ast::expr`)
+        // owns the direct classification as an exhaustive, wildcard-free match,
+        // so a new env-referencing `ExprKind` is a compile error there until
+        // classified — it can never silently default to env-independent here.
+        let mut env_dependent = n.references_request_env();
+        if !env_dependent {
+            children.clear();
+            push_children(n, &mut children);
+            env_dependent = children.iter().copied().any(|c| dep.contains(&expr_key(c)));
+        }
+        if env_dependent {
+            dep.insert(expr_key(n));
+        }
+    }
 }
 
 /// This structure implements typechecking for Cedar policies through the
@@ -101,21 +333,35 @@ impl<'a> Typechecker<'a> {
         // is computed, so peak live memory is O(one condition) rather than
         // O(envs * condition).
         let cond = t.condition();
+        // Flatten the env cross-product into one lazy stream so we can peek
+        // whether there is more than one env before building the memo.
+        let mut envs = self
+            .schema
+            .unlinked_request_envs(self.mode)
+            .flat_map(move |unlinked_e| self.link_request_env(unlinked_e, t))
+            .peekable();
+        // The cache only pays off across multiple envs; with 0 or 1 env it
+        // yields no reuse, so skip the up-front condition walk and use a no-op
+        // memo. `peek` pulls at most one extra env, preserving O(1) live envs.
+        let first = envs.next();
+        let memo = if first.is_some() && envs.peek().is_some() {
+            EnvMemo::new(&cond)
+        } else {
+            EnvMemo::default()
+        };
         let mut all_false = true;
         let mut all_succ = true;
-        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
-            for linked_e in self.link_request_env(unlinked_e, t) {
-                match self.single_env_typechecking(&linked_e, t.id(), &cond) {
-                    PolicyCheck::Success(_) => all_false = false,
-                    PolicyCheck::Irrelevant(err, _) => {
-                        all_succ = all_succ && err.is_empty();
-                        type_errors.extend(err);
-                    }
-                    PolicyCheck::Fail(err) => {
-                        type_errors.extend(err);
-                        all_false = false;
-                        all_succ = false;
-                    }
+        for linked_e in first.into_iter().chain(envs) {
+            match self.single_env_typechecking(&linked_e, t.id(), &cond, &memo) {
+                PolicyCheck::Success(_) => all_false = false,
+                PolicyCheck::Irrelevant(err, _) => {
+                    all_succ = all_succ && err.is_empty();
+                    type_errors.extend(err);
+                }
+                PolicyCheck::Fail(err) => {
+                    type_errors.extend(err);
+                    all_false = false;
+                    all_succ = false;
                 }
             }
         }
@@ -147,8 +393,9 @@ impl<'a> Typechecker<'a> {
         &'b self,
         t: &'b Template,
     ) -> impl Iterator<Item = (RequestEnv<'b>, PolicyCheck)> + 'b {
+        let empty_memo = EnvMemo::default();
         self.apply_typecheck_fn_by_request_env(t, move |request_env, policy_id, expr| {
-            self.single_env_typechecking(request_env, policy_id, expr)
+            self.single_env_typechecking(request_env, policy_id, expr, &empty_memo)
         })
     }
 
@@ -157,6 +404,7 @@ impl<'a> Typechecker<'a> {
         request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
         expr: &Expr,
+        memo: &EnvMemo<'_>,
     ) -> PolicyCheck {
         let mut type_errors = Vec::new();
         let single_env_typechecker = SingleEnvTypechecker {
@@ -165,6 +413,7 @@ impl<'a> Typechecker<'a> {
             mode: self.mode,
             policy_id,
             request_env,
+            memo,
         };
         let empty_prior_capability = CapabilitySet::new();
         let ans = single_env_typechecker.expect_type(
@@ -200,7 +449,8 @@ impl<'a> Typechecker<'a> {
         t: &'b Template,
         request_env: &RequestEnv<'b>,
     ) -> PolicyCheck {
-        self.single_env_typechecking(request_env, t.id(), &t.condition())
+        let empty_memo = EnvMemo::default();
+        self.single_env_typechecking(request_env, t.id(), &t.condition(), &empty_memo)
     }
 
     /// Apply `typecheck_fn` to the given policy in every schema-defined request
@@ -329,6 +579,9 @@ struct SingleEnvTypechecker<'a> {
     policy_id: &'a PolicyID,
     /// The single env which we're performing typechecking for
     request_env: &'a RequestEnv<'a>,
+    /// Memoizes typechecking of env-independent nodes across the request-env
+    /// cross-product (populated on the first env, reused thereafter).
+    memo: &'a EnvMemo<'a>,
 }
 
 impl<'a> SingleEnvTypechecker<'a> {
@@ -342,11 +595,39 @@ impl<'a> SingleEnvTypechecker<'a> {
         e: &'b Expr,
         type_errors: &mut Vec<ValidationError>,
     ) -> TypecheckAnswer<'b> {
-        // We assume there's enough space if we cannot determine it with `remaining_stack`
         if stacker::remaining_stack().unwrap_or(REQUIRED_STACK_SPACE) < REQUIRED_STACK_SPACE {
             return TypecheckAnswer::RecursionLimit;
         }
 
+        // Env-independent nodes produce identical types in every env: typecheck
+        // once, reuse thereafter. A hit returns the cached answer directly,
+        // ignoring `prior_capability` and emitting no `type_errors`. Safe
+        // because a capability on an env-independent base is only consumed by
+        // env-independent (cached) nodes, and `typecheck_policy` — the only
+        // caller that enables the memo — dedups errors across envs, so a
+        // first-env error still survives.
+        let cacheable = self.memo.cacheable(e);
+        if cacheable {
+            if let Some(cached) = self.memo.get(e) {
+                return cached;
+            }
+        }
+
+        let ans = self.typecheck_inner(prior_capability, e, type_errors);
+
+        if cacheable {
+            self.memo.put(e, &ans);
+        }
+
+        ans
+    }
+
+    fn typecheck_inner<'b>(
+        &self,
+        prior_capability: &CapabilitySet<'b>,
+        e: &'b Expr,
+        type_errors: &mut Vec<ValidationError>,
+    ) -> TypecheckAnswer<'b> {
         match e.expr_kind() {
             // Principal, resource, and context have types defined by
             // the request type.
