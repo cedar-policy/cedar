@@ -47,7 +47,7 @@ pub use symcc::term_type;
 pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
 pub use symcc::Interpretation;
-pub use symcc::{Env, SmtLibScript, SymEnv};
+pub use symcc::{CompiledSchema, Env, SmtLibScript, SymEnv};
 
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].

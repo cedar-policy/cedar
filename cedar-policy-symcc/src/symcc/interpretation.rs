@@ -317,7 +317,7 @@ impl SymEnv {
     /// Interpret a [`SymEnv`] with the given interpretation.
     pub fn interpret(&self, interp: &Interpretation<'_>) -> SymEnv {
         SymEnv {
-            entities: self.entities.interpret(interp),
+            entities: Arc::new(self.entities.interpret(interp)),
             request: self.request.interpret(interp),
         }
     }

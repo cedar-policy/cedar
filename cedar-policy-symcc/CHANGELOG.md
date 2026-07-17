@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 Cedar Language Version: TBD
 
+### Added
+
+- `CompiledSchema` type that precomputes symbolic entities once per schema and produces
+  `SymEnv` instances via `sym_env()`, avoiding expensive per-environment rebuilds.
+
 ### Fixed
 
 - Fix errors decoding models from Z3. The model decoder now accepts hexadecimal bitvectors

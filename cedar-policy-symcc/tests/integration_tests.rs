@@ -17,10 +17,12 @@ use std::str::FromStr;
  */
 use cedar_policy::{EntityUid, Policy, PolicyId, PolicySet, Schema, SlotId, Template, Validator};
 use cedar_policy_symcc::{
-    err::CompileError, solver::LocalSolver, CedarSymCompiler, CompiledPolicySet,
+    err::CompileError, solver::LocalSolver, CedarSymCompiler, CompiledPolicySet, CompiledSchema,
+    SymEnv,
 };
 use cool_asserts::assert_matches;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 mod utils;
 use utils::Environments;
@@ -2529,5 +2531,113 @@ async fn template_linked_policy_unsupported() {
         Some(cedar_policy_symcc::err::Error::CompileError(
             CompileError::UnsupportedFeature(..)
         ))
+    );
+}
+
+/// `CompiledSchema::sym_env` reuses shared symbolic entities across request envs
+/// instead of rebuilding them per env (as `SymEnv::new` does), and its doc
+/// claims the result is *identical* to `SymEnv::new`. Every other test builds
+/// envs via `SymEnv::new`, so this is the sole guard that the cheaper reuse
+/// path has not diverged. `sample_schema`'s entity hierarchy (`Thing in
+/// Account`) exercises the shared ancestor tables.
+#[test]
+fn compiled_schema_sym_env_matches_sym_env_new() {
+    let schema = sample_schema();
+    let req_env = utils::req_env_from_strs("Identity", "Action::\"view\"", "Thing");
+    let reused = CompiledSchema::new(&schema)
+        .unwrap()
+        .sym_env(&req_env)
+        .unwrap();
+    let fresh = SymEnv::new(&schema, &req_env).unwrap();
+    assert_eq!(reused, fresh);
+}
+
+/// Multiple `sym_env` calls on the same `CompiledSchema` share the same `Arc`'d
+/// entities and each produce a result equal to a fresh `SymEnv::new`.
+#[test]
+fn compiled_schema_reuse_across_envs() {
+    let schema = sample_schema();
+    let compiled_schema = CompiledSchema::new(&schema).unwrap();
+    let req_env = utils::req_env_from_strs("Identity", "Action::\"view\"", "Thing");
+    let env_a = compiled_schema.sym_env(&req_env).unwrap();
+    let env_b = compiled_schema.sym_env(&req_env).unwrap();
+    // Both reuse the same underlying entities (Arc pointer equality).
+    assert!(Arc::ptr_eq(&env_a.entities, &env_b.entities));
+    // And both match a fresh build.
+    assert_eq!(env_a, SymEnv::new(&schema, &req_env).unwrap());
+}
+
+/// End-to-end example: use `CompiledSchema` to amortize `SymEntities` across
+/// request environments when calling `check_implies_opt`.
+#[tokio::test]
+async fn compiled_schema_check_implies_opt_example() {
+    let schema = sample_schema();
+    let mut pset_a = PolicySet::new();
+    pset_a
+        .add(
+            Policy::parse(
+                Some(PolicyId::from_str("a").unwrap()),
+                r#"permit(principal, action == Action::"view", resource);"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let mut pset_b = PolicySet::new();
+    pset_b
+        .add(
+            Policy::parse(
+                Some(PolicyId::from_str("b").unwrap()),
+                r#"permit(principal, action == Action::"view", resource);"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    let request_envs = vec![utils::req_env_from_strs(
+        "Identity",
+        "Action::\"view\"",
+        "Thing",
+    )];
+
+    let compiled_schema = CompiledSchema::new(&schema).unwrap();
+    let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+
+    for req_env in &request_envs {
+        let sym_env = compiled_schema.sym_env(req_env).unwrap();
+        let compiled_a = CompiledPolicySet::compile_with_custom_symenv(
+            &pset_a,
+            req_env,
+            &schema,
+            sym_env.clone(),
+        )
+        .unwrap();
+        let compiled_b = CompiledPolicySet::compile_with_custom_symenv(
+            &pset_b,
+            req_env,
+            &schema,
+            sym_env.clone(),
+        )
+        .unwrap();
+        let implies = compiler
+            .check_implies_opt(&compiled_a, &compiled_b)
+            .await
+            .unwrap();
+        assert!(implies);
+    }
+}
+
+/// `CompiledSchema::sym_env` must surface `ActionNotInSchema` when the request env
+/// names an action absent from the schema, rather than panicking or building a
+/// bogus env.
+#[test]
+fn compiled_schema_sym_env_rejects_unknown_action() {
+    let schema = sample_schema();
+    let req_env = utils::req_env_from_strs("Identity", "Action::\"nonexistent\"", "Thing");
+    let err = CompiledSchema::new(&schema)
+        .unwrap()
+        .sym_env(&req_env)
+        .unwrap_err();
+    assert!(
+        matches!(err, cedar_policy_symcc::err::Error::ActionNotInSchema(_)),
+        "expected ActionNotInSchema, got {err:?}"
     );
 }
