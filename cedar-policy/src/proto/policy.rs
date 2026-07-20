@@ -26,46 +26,89 @@ use std::{
     sync::Arc,
 };
 
-/// Convert a [`models::Policy`] to an [`ast::Policy`] given a set of `templates`.
-/// Returns an error when any of the invariants of [`ast::Policy`] would be violated,
-/// or the template referenced by the model doesn't exist in the set of templates.
-fn reify(
+/// Convert a template-link [`models::Policy`] to an [`ast::Policy`] given a set of
+/// `templates`.
+///
+/// Returns an error when:
+/// - the link id is not in `v` (should have been a static policy),
+/// - the set of `link_ids` already contains a link with the same id,
+/// - the link id conflicts with a template id,
+/// - any of the invariants of [`ast::Policy`] would be violated,
+/// - the template referenced by the model doesn't exist in the set of templates.
+fn reify_template_link(
     v: models::Policy,
+    link_ids: &mut HashSet<ast::PolicyID>,
     templates: &LinkedHashMap<ast::PolicyID, Arc<ast::Template>>,
 ) -> Result<ast::Policy, ProtobufConversionError> {
     let template_id = ast::PolicyID::from_string(v.template_id);
     let template = templates.get(&template_id).ok_or_else(|| {
         ProtobufConversionError::InvalidValue(format!("no such template: {template_id}"))
     })?;
-
-    if v.is_template_link {
-        let mut values: ast::SlotEnv = HashMap::new();
-        if let Some(principal_euid) = v.principal_euid {
-            values.insert(
-                ast::SlotId::principal(),
-                ast::EntityUID::try_from(principal_euid)?,
-            );
-        }
-        if let Some(resource_euid) = v.resource_euid {
-            values.insert(
-                ast::SlotId::resource(),
-                ast::EntityUID::try_from(resource_euid)?,
-            );
-        }
-
-        let link_id = ast::PolicyID::from_string(
-            v.link_id
-                .as_ref()
-                .ok_or_else(|| ProtobufConversionError::missing("link_id"))?,
-        );
-        ast::Template::link(template.clone(), link_id, values).map_err(|e| {
-            ProtobufConversionError::InvalidValue(format!("failed to convert to policy: {e}"))
-        })
-    } else {
-        ast::Template::try_as_policy(template.clone()).map_err(|e| {
-            ProtobufConversionError::InvalidValue(format!("failed to convert a static policy: {e}"))
-        })
+    let link_id = v
+        .link_id
+        .as_ref()
+        .ok_or_else(|| ProtobufConversionError::missing("link_id"))?;
+    let link_id = ast::PolicyID::from_string(link_id);
+    if !link_ids.insert(link_id.clone()) {
+        return Err(ProtobufConversionError::InvalidValue(format!(
+            "link_id `{link_id}` conflicts with a policy id (link_id or template_id) in `links`"
+        )));
     }
+    if templates.contains_key(&link_id) {
+        return Err(ProtobufConversionError::InvalidValue(format!(
+            "link_id `{link_id}` conflicts with a template_id in `templates`"
+        )));
+    }
+
+    let mut values: ast::SlotEnv = HashMap::new();
+    if let Some(principal_euid) = v.principal_euid {
+        values.insert(
+            ast::SlotId::principal(),
+            ast::EntityUID::try_from(principal_euid)?,
+        );
+    }
+    if let Some(resource_euid) = v.resource_euid {
+        values.insert(
+            ast::SlotId::resource(),
+            ast::EntityUID::try_from(resource_euid)?,
+        );
+    }
+
+    let link_id = ast::PolicyID::from_string(
+        v.link_id
+            .as_ref()
+            .ok_or_else(|| ProtobufConversionError::missing("link_id"))?,
+    );
+    ast::Template::link(template.clone(), link_id, values).map_err(|e| {
+        ProtobufConversionError::InvalidValue(format!("failed to convert to policy: {e}"))
+    })
+}
+
+/// Convert a template-link [`models::Policy`] to an [`ast::Policy`] given a set of
+/// `templates`, in the context of an already existing set of `link_ids`.
+///
+/// Returns an error when:
+/// - the static policy id (`v.template_id`) conflicts with an id in `link_ids`,
+/// - any of the invariants of [`ast::Policy`] would be violated,
+/// - the template referenced by the model doesn't exist in the set of templates.
+fn reify_static_policy(
+    v: models::Policy,
+    link_ids: &mut HashSet<ast::PolicyID>,
+    templates: &LinkedHashMap<ast::PolicyID, Arc<ast::Template>>,
+) -> Result<ast::Policy, ProtobufConversionError> {
+    let template_id = ast::PolicyID::from_string(v.template_id);
+    // the policy id is the template id (see protobuf docs)
+    if !link_ids.insert(template_id.clone()) {
+        return Err(ProtobufConversionError::InvalidValue(format!(
+                        "template_id `{template_id}` of a static link conflicts with a policy id (link_id or template_id) in `links`"
+                    )));
+    }
+    let template = templates.get(&template_id).ok_or_else(|| {
+        ProtobufConversionError::InvalidValue(format!("no such template: {template_id}"))
+    })?;
+    ast::Template::try_as_policy(template.clone()).map_err(|e| {
+        ProtobufConversionError::InvalidValue(format!("failed to convert a static policy: {e}"))
+    })
 }
 
 impl From<&ast::Policy> for models::Policy {
@@ -457,35 +500,16 @@ impl TryFrom<models::PolicySet> for ast::PolicySet {
             // and the ID of the policy is the `template_id`.
             let template_id = ast::PolicyID::from_string(&p.template_id);
             if p.is_template_link {
-                let link_id = p
-                    .link_id
-                    .as_ref()
-                    .ok_or_else(|| ProtobufConversionError::missing("link_id"))?;
-                let link_id = ast::PolicyID::from_string(link_id);
-                if !link_ids.insert(link_id.clone()) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "link_id `{link_id}` conflicts with a policy id (link_id or template_id) in `links`"
-                    )));
-                }
-                if templates.contains_key(&link_id) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "link_id `{link_id}` conflicts with a template_id in `templates`"
-                    )));
-                }
-                let policy = reify(p, &templates)?;
+                let policy = reify_template_link(p, &mut link_ids, &templates)?;
+                // The id of the policy is policy id, the underlying template id is template_id
                 template_to_links_map
                     .entry(template_id)
                     .or_insert_with(LinkedHashSet::new)
-                    .insert(link_id.clone());
-                links.insert(link_id, policy);
+                    .insert(policy.id().clone());
+                links.insert(policy.id().clone(), policy);
             } else {
-                // the policy id is the template id (see protobuf docs)
-                if !link_ids.insert(template_id.clone()) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "template_id `{template_id}` of a static link conflicts with a policy id (link_id or template_id) in `links`"
-                    )));
-                }
-                let policy = reify(p, &templates)?;
+                let policy = reify_static_policy(p, &mut link_ids, &templates)?;
+                // The policy and the template id are the same, it's template_id
                 template_to_links_map
                     .entry(template_id.clone())
                     .or_insert_with(LinkedHashSet::new)
@@ -828,7 +852,8 @@ mod test {
         // Test reify roundtrip: ast::Policy -> models::Policy -> reify
         let (linked_policy, templates) = make_linked_policy("template", "id", "A", "eid");
         let model = models::Policy::from(&linked_policy);
-        let roundtripped = reify(model, &templates).unwrap();
+        let mut link_ids = HashSet::new();
+        let roundtripped = reify_template_link(model, &mut link_ids, &templates).unwrap();
         assert_eq!(linked_policy, roundtripped);
 
         let tb = ast::TemplateBody::new(
@@ -850,7 +875,8 @@ mod test {
         let (linked_policy2, templates2) =
             make_linked_policy("template\0\n \' \"+-$^!", "link\0\n \' \"+-$^!", "A", "eid");
         let model2 = models::Policy::from(&linked_policy2);
-        let roundtripped2 = reify(model2, &templates2).unwrap();
+        let mut link_ids = HashSet::new();
+        let roundtripped2 = reify_template_link(model2, &mut link_ids, &templates2).unwrap();
         assert_eq!(linked_policy2, roundtripped2);
     }
 
@@ -1140,8 +1166,9 @@ mod test {
                 ast::TemplateBody::try_from(trivial_template_body("t")).unwrap(),
             )),
         )]);
+        let mut link_ids = HashSet::new();
         assert_matches!(
-            reify(bad, &templates),
+            reify_template_link(bad, &mut link_ids, &templates),
             Err(ProtobufConversionError::MissingField(f)) if f == "link_id"
         );
     }
@@ -1163,8 +1190,9 @@ mod test {
                 eid: "alice".to_string(),
             }),
         };
+        let mut link_ids = HashSet::new();
         assert_matches!(
-            reify(bad, &templates),
+            reify_template_link(bad, &mut link_ids, &templates),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("failed to convert to policy")
         );
     }
@@ -1180,8 +1208,9 @@ mod test {
             principal_euid: None,
             resource_euid: None,
         };
+        let mut link_ids = HashSet::new();
         assert_matches!(
-            reify(bad, &templates),
+            reify_static_policy(bad, &mut link_ids, &templates),
             Err(ProtobufConversionError::InvalidValue(msg)) if msg.contains("failed to convert a static policy")
         );
     }
