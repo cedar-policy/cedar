@@ -1,0 +1,14 @@
+[
+  {
+    "request": {
+      "principal": "User::\"bob\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"BAA\"",
+      "context": {}
+    },
+    "entities": [],
+    "decision": "deny",
+    "reason": [],
+    "num_errors": 0
+  }
+]
