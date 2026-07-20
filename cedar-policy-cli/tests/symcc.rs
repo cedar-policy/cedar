@@ -524,7 +524,7 @@ fn test_never_errors_rejects_empty_policy() {
         .assert()
         .failure()
         .stderr(predicates::str::contains(
-            "Expected exactly one policy, found 0",
+            "Expected exactly one policy in --policies, found 0",
         ));
 }
 
@@ -1030,6 +1030,42 @@ fn test_no_template_warning_without_templates() {
         .assert()
         .success()
         .stderr(predicates::str::contains("will be ignored by analysis").not());
+}
+
+#[test]
+fn test_error_if_contains_templates_single_policy() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(
+        r#"
+        permit(principal, action, resource);
+        forbid(principal == ?principal, action, resource);
+        "#,
+    );
+
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("symcc")
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--schema-format")
+        .arg("cedar")
+        .arg("always-matches")
+        .arg("--policies")
+        .arg(policy.path())
+        .output()
+        .expect("failed to run cedar");
+
+    assert!(!output.status.success(), "expected non-zero exit code");
+    insta::assert_snapshot!(String::from_utf8_lossy(&output.stderr), @"
+    × Analysis failed
+    ╰─▶ Expected exactly one static policy in --policies, found 1 policy
+        template(s)
+    ");
 }
 
 #[test]

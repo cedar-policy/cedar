@@ -16,6 +16,11 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 - The `authorize` command with the `--template-linked` argument will now error if the link file does not exist.
 - For the experimental `tpe` and `partial-eval` features, an unknown authorization decision now causes the CLI to exit with exit code 4 instead of 0, making it distinguishable from a successful authorization allow decision (exit code 0).
 
+### Fixed
+
+- `symcc` single-policy and two-policy commands now error if the `--policies` file contains templates. Previously templates were silently ignored.
+   Policy-set commands continue to accept and ignore templates with a warning.
+
 ## 4.11.2
 
 ## 4.11.1
