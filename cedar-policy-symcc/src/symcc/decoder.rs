@@ -248,7 +248,7 @@ impl SExpr {
         }
     }
 
-    /// Checks if the [`SExpr`] is an `App` where the target functions is the given symbol.
+    /// Checks if the [`SExpr`] is an `App` where the target function is the given symbol.
     fn is_app_of(&self, s: &str) -> bool {
         matches!(self, SExpr::App(sexprs) if sexprs.first().is_some_and(|e| e.is_symbol(s)))
     }
