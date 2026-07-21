@@ -1666,6 +1666,7 @@ mod test_decode_unexpected_model {
 
     #[rstest::rstest]
     #[case::eq_missing_operand(br#"((define-fun f0 ((x E0)) Bool (= x)))"#)]
+    #[case::eq_wrong_var(br#"((define-fun f0 ((x E0)) Bool (= (E0 "a") y)))"#)]
     #[case::eq_extra_operand(br#"((define-fun f0 ((x E0)) Bool (= (E0 "a") x x)))"#)]
     #[case::ite_missing_else(br#"((define-fun f0 ((x E0)) Bool (ite (= (E0 "a") x) true)))"#)]
     #[case::ite_extra_arg(
