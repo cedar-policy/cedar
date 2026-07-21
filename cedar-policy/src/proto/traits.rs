@@ -125,6 +125,7 @@ pub trait Protobuf: Sized + TryValidate + private::Sealed {
     /// Returns [`EncodeError::MaxDepthExceeded`] if the data structure has too many
     /// recursion levels to be safely encoded and decoded by prost.
     fn encode(&self) -> Result<Vec<u8>, EncodeError>;
+
     /// Decode the binary data in `buf`, producing something of type `Self`
     ///
     /// # Errors
@@ -153,12 +154,13 @@ pub trait Protobuf: Sized + TryValidate + private::Sealed {
     fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError>;
 }
 
-/// Encode `thing` into a freshly-allocated buffer using the protobuf format `M`
+/// Encode `thing` into a caller provided buffer using the protobuf format `M`
 ///
 /// # Errors
 ///
-/// Returns [`EncodeError`] if the model fails pre-encode validation
-/// (e.g., expression depth exceeds [`MAX_ENCODE_DEPTH`]).
+/// Returns [`EncodeError`] if the model fails pre-encode checks
+/// (e.g., expression depth exceeds [`MAX_ENCODE_DEPTH`]) or the
+/// user-provided buffer does not have enough capacity.
 #[expect(
     dead_code,
     reason = "experimental feature, we might have use for this one in the future"

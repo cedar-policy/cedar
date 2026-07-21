@@ -490,7 +490,7 @@ mod encode_test {
 
     /// Build a deeply nested `models::Expr` of the form `!(!(!(...true...)))` with `n` levels
     /// of `UnaryApp` nesting. The protobuf recursion cost is 1 (root `Expr`) + 2*n (each wrapper).
-    fn make_deep_expr(n: usize) -> crate::proto::models::Expr {
+    fn make_deep_unary_expr(n: usize) -> crate::proto::models::Expr {
         use crate::proto::models::{self, expr};
         let mut expr = models::Expr {
             expr_kind: Some(expr::ExprKind::Lit(expr::Literal {
@@ -508,6 +508,44 @@ mod encode_test {
         expr
     }
 
+    /// Build a deeply nested `models::Expr` of the form `{key:{key:{..}..}}` with `n` levels
+    /// of `Record` nesting. The protobuf recursion cost is 1 (root `Expr`) + 2*n (each wrapper).
+    fn make_deep_record_expr(n: usize) -> crate::proto::models::Expr {
+        use crate::proto::models::{self, expr};
+        let mut expr = models::Expr {
+            expr_kind: Some(expr::ExprKind::Lit(expr::Literal {
+                lit: Some(expr::literal::Lit::B(true)),
+            })),
+        };
+        for _ in 0..n {
+            let mut items = HashMap::new();
+            items.insert("k".into(), expr);
+            expr = models::Expr {
+                expr_kind: Some(expr::ExprKind::Record(expr::Record { items })),
+            };
+        }
+        expr
+    }
+
+    fn ok_at_depth(depth: usize, expect_ok: bool) {
+        use crate::proto::traits::{EncodeCheck, EncodeError};
+        let expr = make_deep_unary_expr(depth);
+        if expect_ok {
+            assert!(expr.check_for_encode().is_ok());
+        } else {
+            assert_matches!(expr.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        };
+        let expr_record = make_deep_record_expr(depth);
+        if expect_ok {
+            assert!(expr_record.check_for_encode().is_ok());
+        } else {
+            assert_matches!(
+                expr_record.check_for_encode(),
+                Err(EncodeError::MaxDepthExceeded)
+            );
+        };
+    }
+
     /// Maximum nesting levels that fit within `MAX_ENCODE_DEPTH`.
     /// Each `UnaryApp` nesting costs 2 prost levels; root `Expr` costs 1.
     /// So max nestings = (`MAX_ENCODE_DEPTH` - 1) / 2.
@@ -515,18 +553,12 @@ mod encode_test {
 
     #[test]
     fn encode_expression_within_depth_limit() {
-        use crate::proto::traits::EncodeCheck;
-        // Exactly at the limit should succeed
-        let expr = make_deep_expr(MAX_NESTING);
-        assert!(expr.check_for_encode().is_ok());
+        ok_at_depth(MAX_NESTING, true);
     }
 
     #[test]
     fn encode_expression_exceeds_depth_limit() {
-        use crate::proto::traits::{EncodeCheck, EncodeError};
-        // One past the limit should fail
-        let expr = make_deep_expr(MAX_NESTING + 1);
-        assert_matches!(expr.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        ok_at_depth(MAX_NESTING + 1, false);
     }
 
     #[test]
@@ -571,7 +603,7 @@ mod encode_test {
     fn encode_entities_with_deep_attr_fails() {
         use crate::proto::traits::{EncodeCheck, EncodeError};
         // Build an Entity model with an attribute that is too deep.
-        let deep_expr = make_deep_expr(MAX_NESTING + 1);
+        let deep_expr = make_deep_unary_expr(MAX_NESTING + 1);
         let entity = crate::proto::models::Entity {
             uid: Some(crate::proto::models::EntityUid {
                 ty: Some(crate::proto::models::Name {
@@ -602,7 +634,7 @@ mod encode_test {
     fn encode_at_limit_roundtrips_through_prost() {
         use crate::proto::traits::{EncodeCheck, Protobuf};
         // Verify that an expression exactly at the limit can actually be decoded by prost.
-        let expr = make_deep_expr(MAX_NESTING);
+        let expr = make_deep_unary_expr(MAX_NESTING);
         assert!(expr.check_for_encode().is_ok());
         // Encode via the API and decode to confirm prost doesn't reject it.
         use cedar_policy_core::ast;
