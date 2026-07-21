@@ -248,6 +248,30 @@ impl SExpr {
         }
     }
 
+    /// Checks if the [`SExpr`] is an `App` where the target functions is the given symbol.
+    fn is_app_of(&self, s: &str) -> bool {
+        matches!(self, SExpr::App(sexprs) if sexprs.first().is_some_and(|e| e.is_symbol(s)))
+    }
+
+    /// If this [`SExpr`] is an `App` applying the function named `func`, returns its arguments
+    /// (excluding the function symbol itself).
+    fn as_app(&self, func: &str) -> Option<&[SExpr]> {
+        match self {
+            SExpr::App(sexprs) => match sexprs.as_slice() {
+                [SExpr::Symbol(f), args @ ..] if f == func => Some(args),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// If this [`SExpr`] is an `App` applying the function named `func` to
+    /// exactly `N` arguments, returns those arguments (excluding the function symbol itself).
+    fn as_app_n<const N: usize>(&self, func: &str) -> Option<&[SExpr; N]> {
+        self.as_app(func)
+            .and_then(|args| <&[SExpr; N]>::try_from(args).ok())
+    }
+
     /// Decodes [`TermType`] from an [`SExpr`].
     pub fn decode_type(&self, id_maps: &IdMaps<'_>) -> Result<TermType, DecodeError> {
         match self {
@@ -687,8 +711,10 @@ impl SExpr {
         Ok((term_var.clone(), val))
     }
 
-    /// Decodes a unary function in the form of
-    /// `x. ite(<literal> == x, <literal>, ite(<literal> == x, <literal>, ...))`
+    /// Decodes a unary function with the forms:
+    /// * `(ite (= lit x) <lit> (ite (= <lit> x) default))`
+    /// * `(or (= <literal> arg) (= <literal> arg))`
+    /// * `(= <lit> arg)`
     ///
     /// TODO: generalize to other forms?
     pub fn decode_unary_function(
@@ -716,59 +742,119 @@ impl SExpr {
             return Err(DecodeError::UnmatchedType(ret_ty, uuf.out.clone()));
         }
 
+        if body.is_app_of("or") {
+            Self::decode_or_table(uuf, id_maps, arg_name, body)
+        } else if body.is_app_of("=") {
+            Self::decode_eq_table(uuf, id_maps, arg_name, body)
+        } else {
+            // `ite` case also handles constant functions without any conditions
+            Self::decode_ite_table(uuf, id_maps, arg_name, &ret_ty, body)
+        }
+    }
+
+    /// Decode UDF table `(ite (= lit x) <lit> (ite (= <lit> x) default))`
+    fn decode_ite_table(
+        uuf: &Uuf,
+        id_maps: &IdMaps<'_>,
+        arg_name: &str,
+        ret_ty: &TermType,
+        body: &SExpr,
+    ) -> Result<(Uuf, Udf), DecodeError> {
         // Decode the body as a nested ite term
         let mut table = BTreeMap::new();
 
         let mut cur_body = body;
 
-        loop {
-            // Check if the body is of the form
-            // (ite (= <literal> <arg_name>) <literal> <else>)
-            // or
-            // (ite (= <arg_name> <literal>) <literal> <else>)
-            if let SExpr::App(exprs) = cur_body {
-                #[expect(
-                    clippy::indexing_slicing,
-                    reason = "Slice of length 4 can be indexed by 0-3"
-                )]
-                if exprs.len() == 4 && exprs[0].is_symbol("ite") {
-                    if let SExpr::App(args) = &exprs[1] {
-                        if args.len() == 3 && args[0].is_symbol("=") {
-                            // Find the literal the `ite` compares the argument against.
-                            // This could be either the first or second `=` operand,
-                            // depending on the solver.
-                            let cond_lit_term = if args[2].is_symbol(arg_name) {
-                                &args[1]
-                            } else if args[1].is_symbol(arg_name) {
-                                &args[2]
-                            } else {
-                                return Err(DecodeError::UnexpectedUnaryFunctionForm(body.clone()));
-                            }
-                            .decode_literal(id_maps)?;
-                            let then_term =
-                                exprs[2].decode_literal_expecting(id_maps, Some(&ret_ty))?;
-                            table.insert(cond_lit_term, then_term);
-                            cur_body = &exprs[3];
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            // otherwise take as the default value
-            // assuming it doesn't contain any bound variables
-            let default = cur_body.decode_literal_expecting(id_maps, Some(&ret_ty))?;
-
-            return Ok((
-                uuf.clone(),
-                Udf {
-                    arg: uuf.arg.clone(),
-                    out: uuf.out.clone(),
-                    table: Arc::new(table),
-                    default,
-                },
-            ));
+        while let Some([cond, then_expr, else_expr]) = cur_body.as_app_n("ite") {
+            table.insert(
+                Self::decode_eq_operand(arg_name, id_maps, cond)?,
+                then_expr.decode_literal_expecting(id_maps, Some(ret_ty))?,
+            );
+            cur_body = else_expr;
         }
+
+        // Next `App` isn't an `ite`, so decode it as the default value.
+        let default = cur_body.decode_literal_expecting(id_maps, Some(ret_ty))?;
+        Ok((
+            uuf.clone(),
+            Udf {
+                arg: uuf.arg.clone(),
+                out: uuf.out.clone(),
+                table: Arc::new(table),
+                default,
+            },
+        ))
+    }
+
+    /// Decode UDF table with a disjunction `(or (= <literal> arg) (= <literal> arg))`
+    fn decode_or_table(
+        uuf: &Uuf,
+        id_maps: &IdMaps<'_>,
+        arg_name: &str,
+        body: &SExpr,
+    ) -> Result<(Uuf, Udf), DecodeError> {
+        let disjuncts = body
+            .as_app("or")
+            .ok_or_else(|| DecodeError::UnexpectedUnaryFunctionForm(body.clone()))?;
+
+        let mut table = BTreeMap::new();
+
+        for expr in disjuncts {
+            table.insert(
+                Self::decode_eq_operand(arg_name, id_maps, expr)?,
+                Term::Prim(TermPrim::Bool(true)),
+            );
+        }
+
+        Ok((
+            uuf.clone(),
+            Udf {
+                arg: uuf.arg.clone(),
+                out: uuf.out.clone(),
+                table: Arc::new(table),
+                default: Term::Prim(TermPrim::Bool(false)),
+            },
+        ))
+    }
+
+    /// Decode UDF table with a single entry `(= <lit> arg)`
+    fn decode_eq_table(
+        uuf: &Uuf,
+        id_maps: &IdMaps<'_>,
+        arg_name: &str,
+        body: &SExpr,
+    ) -> Result<(Uuf, Udf), DecodeError> {
+        let cond_lit_term = Self::decode_eq_operand(arg_name, id_maps, body)?;
+        Ok((
+            uuf.clone(),
+            Udf {
+                arg: uuf.arg.clone(),
+                out: uuf.out.clone(),
+                table: Arc::new(BTreeMap::from([(
+                    cond_lit_term,
+                    Term::Prim(TermPrim::Bool(true)),
+                )])),
+                default: Term::Prim(TermPrim::Bool(false)),
+            },
+        ))
+    }
+
+    /// Get the literal in an s-expr with the shape `(= <lit> <arg>)` or `(= <arg> <lit>)`
+    fn decode_eq_operand(
+        arg_name: &str,
+        id_maps: &IdMaps<'_>,
+        eq: &SExpr,
+    ) -> Result<Term, DecodeError> {
+        let [lhs, rhs] = eq.as_app_n("=").ok_or(DecodeError::UnexpectedModel)?;
+
+        if rhs.is_symbol(arg_name) {
+            lhs
+        } else if lhs.is_symbol(arg_name) {
+            rhs
+        } else {
+            return Err(DecodeError::UnexpectedModel);
+        }
+        .decode_literal(id_maps)
     }
 
     /// Decodes the output of `(get-model)` to as [`Interpretation`].
@@ -1135,6 +1221,78 @@ mod test_decode {
         let rec = |b| Term::Record(Arc::new(BTreeMap::from([("admin".into(), Term::from(b))])));
         assert_eq!(udf.table.get(&bob_key), Some(&rec(false)));
         assert_eq!(udf.default, rec(true));
+    }
+
+    #[test]
+    fn decode_bool_uuf_eq() {
+        let entity_ty = TermType::Entity {
+            ety: EntityTypeName::from_str("E0").unwrap(),
+        };
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: entity_ty.clone(),
+            out: TermType::Bool,
+        };
+        let ety_id: SmolStr = "E0".into();
+        let uuf_id: SmolStr = "f0".into();
+        let id_maps = IdMaps {
+            types: BTreeMap::from([(&ety_id, &entity_ty)]),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+            enums: BTreeMap::new(),
+        };
+
+        let sexpr =
+            parse_sexpr(br#"((define-fun f0 ((_arg_1 E0)) Bool (= (E0 "") _arg_1)))"#).unwrap();
+        let interp = sexpr
+            .decode_model(&TEST_ENV, &id_maps)
+            .expect("Bool-codomain UF model with `=` body should decode");
+        let udf = interp.funs.get(&uuf).expect("f0 should be in the model");
+        let empty_key = Term::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
+            EntityTypeName::from_str("E0").unwrap(),
+            EntityId::new(""),
+        )));
+        assert_eq!(udf.table.get(&empty_key), Some(&Term::from(true)));
+        assert_eq!(udf.default, Term::from(false));
+    }
+
+    #[test]
+    fn decode_bool_uuf_or() {
+        let entity_ty = TermType::Entity {
+            ety: EntityTypeName::from_str("E0").unwrap(),
+        };
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: entity_ty.clone(),
+            out: TermType::Bool,
+        };
+        let ety_id: SmolStr = "E0".into();
+        let uuf_id: SmolStr = "f0".into();
+        let id_maps = IdMaps {
+            types: BTreeMap::from([(&ety_id, &entity_ty)]),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+            enums: BTreeMap::new(),
+        };
+        let key = |eid: &str| {
+            Term::Prim(TermPrim::Entity(EntityUid::from_type_name_and_id(
+                EntityTypeName::from_str("E0").unwrap(),
+                EntityId::new(eid),
+            )))
+        };
+
+        let sexpr = parse_sexpr(
+            br#"((define-fun f0 ((_arg_1 E0)) Bool (or (= (E0 "a") _arg_1) (= _arg_1 (E0 "b")) (= _arg_1 (E0 "c")))))"#,
+        )
+        .unwrap();
+        let interp = sexpr
+            .decode_model(&TEST_ENV, &id_maps)
+            .expect("cvc5 Bool-codomain UF model with `or` body should decode");
+        let udf = interp.funs.get(&uuf).expect("f0 should be in the model");
+        assert_eq!(udf.table.get(&key("a")), Some(&Term::from(true)));
+        assert_eq!(udf.table.get(&key("b")), Some(&Term::from(true)));
+        assert_eq!(udf.table.get(&key("c")), Some(&Term::from(true)));
+        assert_eq!(udf.default, Term::from(false));
     }
 
     /// Z3 produces bare `none` / `(some val)` without type annotations.
@@ -1504,6 +1662,41 @@ mod test_decode_unexpected_model {
             },
         );
         assert_matches!(result, Err(DecodeError::UnexpectedModel));
+    }
+
+    #[rstest::rstest]
+    #[case::eq_missing_operand(br#"((define-fun f0 ((x E0)) Bool (= x)))"#)]
+    #[case::eq_extra_operand(br#"((define-fun f0 ((x E0)) Bool (= (E0 "a") x x)))"#)]
+    #[case::ite_missing_else(br#"((define-fun f0 ((x E0)) Bool (ite (= (E0 "a") x) true)))"#)]
+    #[case::ite_extra_arg(
+        br#"((define-fun f0 ((x E0)) Bool (ite (= (E0 "a") x) true false false)))"#
+    )]
+    fn malformed_uuf_table(#[case] input: &[u8]) {
+        let entity_ty = TermType::Entity {
+            ety: "E0".parse().unwrap(),
+        };
+        let uuf = Uuf {
+            id: "f".into(),
+            arg: entity_ty.clone(),
+            out: TermType::Bool,
+        };
+        let ety_id: SmolStr = "E0".into();
+        let uuf_id: SmolStr = "f0".into();
+        let id_maps = IdMaps {
+            types: BTreeMap::from([(&ety_id, &entity_ty)]),
+            vars: BTreeMap::new(),
+            uufs: BTreeMap::from([(&uuf_id, &uuf)]),
+            enums: BTreeMap::new(),
+        };
+        let err = parse_sexpr(input)
+            .unwrap()
+            .decode_model(&TEST_ENV, &id_maps);
+        assert_matches!(
+            err,
+            Err(DecodeError::UnexpectedModel
+                | DecodeError::UnknownLiteral(_)
+                | DecodeError::UnexpectedUnaryFunctionForm(_))
+        );
     }
 
     #[test]

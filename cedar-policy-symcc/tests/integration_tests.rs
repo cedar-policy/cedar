@@ -2641,3 +2641,81 @@ fn compiled_schema_sym_env_rejects_unknown_action() {
         "expected ActionNotInSchema, got {err:?}"
     );
 }
+
+mod bool_tags {
+    use cedar_policy::Validator;
+    use cedar_policy_symcc::solver::LocalSolver;
+    use cedar_policy_symcc::CedarSymCompiler;
+
+    use crate::utils::{self, assert_does_not_always_deny, Environments};
+
+    fn bool_tag_schema() -> cedar_policy::Schema {
+        utils::schema_from_cedarstr(
+            r#"
+            entity User tags Bool;
+            entity Resource;
+            action access appliesTo {
+                principal: [User],
+                resource: [Resource]
+            };
+        "#,
+        )
+    }
+
+    /// Exercises decoding `(= <literal> _arg_1)` udf model
+    #[tokio::test]
+    async fn eq_decode() {
+        let schema = bool_tag_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "User", "Action::\"access\"", "Resource");
+
+        let pset = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when {
+                principal.hasTag("a") && principal.getTag("a") &&
+                principal.hasTag("b") && !principal.getTag("b")
+            };"#,
+            &validator,
+        );
+        assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    }
+
+    /// Exercises decoding `(or (= ...) (= ...))` udf model
+    #[tokio::test]
+    async fn or_decode() {
+        let schema = bool_tag_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "User", "Action::\"access\"", "Resource");
+
+        let pset = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when {
+                principal.hasTag("a") && principal.getTag("a") &&
+                principal.hasTag("b") && principal.getTag("b") &&
+                principal.hasTag("c") && !principal.getTag("c")
+            };"#,
+            &validator,
+        );
+        assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    }
+
+    /// Exercises decoding constant `Bool` udf model
+    #[tokio::test]
+    async fn constant_decode() {
+        let schema = bool_tag_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "User", "Action::\"access\"", "Resource");
+
+        let pset = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when {
+                principal.hasTag("x") && principal.getTag("x")
+            };"#,
+            &validator,
+        );
+        assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
+    }
+}
