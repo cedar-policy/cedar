@@ -405,8 +405,11 @@ impl EncodeCheck for models::Expr {
                         }
                     }
                     ExprKind::Record(record) => {
+                        // map<string, Expr> adds an extra map-entry wrapper message:
+                        // Record (+1) → map entry (+1) → Expr (+1) = +3 from parent Expr
+                        let record_child_depth = depth + 3;
                         for value in record.items.values() {
-                            stack.push((value, child_depth));
+                            stack.push((value, record_child_depth));
                         }
                     }
                 }

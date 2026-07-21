@@ -56,3 +56,7 @@ mod api;
 
 /// `Protobuf` trait and associated utilities
 pub mod traits;
+
+/// Shared test helpers for constructing protobuf model values.
+#[cfg(test)]
+pub(crate) mod test_utils;
