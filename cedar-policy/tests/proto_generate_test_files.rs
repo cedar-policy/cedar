@@ -42,7 +42,7 @@ const BASE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/proto_test_files"
 fn write_test_files(dir: &str, ext: &str, name: &str, value: &impl Protobuf, contents: &str) {
     let dir = Path::new(BASE).join(dir);
     create_dir_all(&dir).unwrap();
-    write(dir.join(format!("{name}.pb")), value.encode()).unwrap();
+    write(dir.join(format!("{name}.pb")), value.encode().unwrap()).unwrap();
     write(dir.join(format!("{name}.{ext}")), contents).unwrap();
 }
 

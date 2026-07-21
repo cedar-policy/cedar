@@ -93,8 +93,8 @@ impl TryFrom<models::PolicySet> for api::PolicySet {
 macro_rules! standard_protobuf_impl {
     ( $api:ty, $model:ty) => {
         impl traits::Protobuf for $api {
-            fn encode(&self) -> Vec<u8> {
-                traits::encode_to_vec::<$model>(self)
+            fn encode(&self) -> Result<Vec<u8>, traits::EncodeError> {
+                traits::encode_to_vec::<$model, _>(self)
             }
             fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
                 traits::try_decode::<$model, _, _>(buf)
@@ -116,8 +116,8 @@ standard_protobuf_impl!(api::Request, models::Request);
 // nonstandard implementations of `traits::Protobuf`
 
 impl traits::Protobuf for api::Entities {
-    fn encode(&self) -> Vec<u8> {
-        traits::encode_to_vec::<models::Entities>(self)
+    fn encode(&self) -> Result<Vec<u8>, traits::EncodeError> {
+        traits::encode_to_vec::<models::Entities, _>(self)
     }
     fn decode(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
         // Uses the standard TryFrom path which computes TC via ComputeNow
@@ -138,8 +138,8 @@ impl traits::Protobuf for api::Entities {
 }
 
 impl traits::Protobuf for api::PolicySet {
-    fn encode(&self) -> Vec<u8> {
-        traits::encode_to_vec::<models::PolicySet>(self)
+    fn encode(&self) -> Result<Vec<u8>, traits::EncodeError> {
+        traits::encode_to_vec::<models::PolicySet, _>(self)
     }
     fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
         traits::try_decode::<models::PolicySet, _, Self>(buf)
@@ -147,9 +147,7 @@ impl traits::Protobuf for api::PolicySet {
 }
 
 #[cfg(test)]
-mod test {
-    use crate::proto::traits::Protobuf;
-    use cool_asserts::assert_matches;
+mod roundtrip_test {
     use prost::Message as _;
     use std::{collections::HashMap, str::FromStr};
 
@@ -172,14 +170,6 @@ mod test {
     fn roundtrip_policies_text(text: &str) {
         let pset = crate::PolicySet::from_str(text).expect("Failed to parse policy set");
         roundtrip_policies(pset);
-    }
-
-    /// [`decode`] and [`decode_unchecked`] should produce the same data when they don't fail.
-    fn decode_eq_decode_unchecked<T: Protobuf + PartialEq>(x: T) {
-        let buf = x.encode();
-        let checked = T::decode(&buf[..]).expect("decode failed");
-        let unchecked = T::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
-        similar_asserts::assert_eq!(checked, unchecked);
     }
 
     #[test]
@@ -360,6 +350,22 @@ mod test {
             "#,
         );
     }
+}
+
+#[cfg(test)]
+mod decode_test {
+    use crate::proto::traits::Protobuf;
+    use cool_asserts::assert_matches;
+    use std::collections::HashMap;
+    use std::str::FromStr;
+
+    /// [`decode`] and [`decode_unchecked`] should produce the same data when they don't fail.
+    fn decode_eq_decode_unchecked<T: Protobuf + PartialEq>(x: T) {
+        let buf = x.encode().expect("encode failed");
+        let checked = T::decode(&buf[..]).expect("decode failed");
+        let unchecked = T::decode_unchecked(&buf[..]).expect("decode_unchecked failed");
+        similar_asserts::assert_eq!(checked, unchecked);
+    }
 
     /// Decoding arbitrary bytes must never panic — it should return `Err`.
     #[test]
@@ -407,9 +413,9 @@ mod test {
                 }),
                 eid: "x".to_string(),
             }),
-            attrs: Default::default(),
+            attrs: HashMap::new(),
             ancestors: vec![],
-            tags: Default::default(),
+            tags: HashMap::new(),
         };
         let buf = prost::Message::encode_to_vec(&model);
         assert_matches!(
@@ -473,5 +479,249 @@ mod test {
         )
         .expect("Failed to create request");
         decode_eq_decode_unchecked::<crate::Request>(request);
+    }
+}
+
+#[cfg(test)]
+mod encode_test {
+    use cool_asserts::assert_matches;
+    use std::collections::HashMap;
+    use std::str::FromStr;
+
+    /// Build a deeply nested `models::Expr` of the form `!(!(!(...true...)))` with `n` levels
+    /// of `UnaryApp` nesting. The protobuf recursion cost is 1 (root `Expr`) + 2*n (each wrapper).
+    fn make_deep_expr(n: usize) -> crate::proto::models::Expr {
+        use crate::proto::models::{self, expr};
+        let mut expr = models::Expr {
+            expr_kind: Some(expr::ExprKind::Lit(expr::Literal {
+                lit: Some(expr::literal::Lit::B(true)),
+            })),
+        };
+        for _ in 0..n {
+            expr = models::Expr {
+                expr_kind: Some(expr::ExprKind::UApp(Box::new(expr::UnaryApp {
+                    op: expr::unary_app::Op::Not.into(),
+                    expr: Some(Box::new(expr)),
+                }))),
+            };
+        }
+        expr
+    }
+
+    /// Maximum nesting levels that fit within `MAX_ENCODE_DEPTH`.
+    /// Each `UnaryApp` nesting costs 2 prost levels; root `Expr` costs 1.
+    /// So max nestings = (`MAX_ENCODE_DEPTH` - 1) / 2.
+    const MAX_NESTING: usize = (crate::proto::traits::MAX_ENCODE_DEPTH - 1) / 2;
+
+    #[test]
+    fn encode_expression_within_depth_limit() {
+        use crate::proto::traits::EncodeCheck;
+        // Exactly at the limit should succeed
+        let expr = make_deep_expr(MAX_NESTING);
+        assert!(expr.check_for_encode().is_ok());
+    }
+
+    #[test]
+    fn encode_expression_exceeds_depth_limit() {
+        use crate::proto::traits::{EncodeCheck, EncodeError};
+        // One past the limit should fail
+        let expr = make_deep_expr(MAX_NESTING + 1);
+        assert_matches!(expr.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+    }
+
+    #[test]
+    fn encode_expression_api_returns_error_on_deep_expr() {
+        use crate::proto::traits::{EncodeError, Protobuf};
+        // Build a deep AST expression and test the full encode path via the API type.
+        use cedar_policy_core::ast;
+        let mut e = ast::Expr::var(ast::Var::Principal);
+        for _ in 0..=MAX_NESTING {
+            e = ast::Expr::not(e);
+        }
+        let expression = crate::Expression(e);
+        assert_matches!(expression.encode(), Err(EncodeError::MaxDepthExceeded));
+    }
+
+    #[test]
+    fn encode_policyset_with_deep_condition_fails() {
+        use crate::proto::traits::{EncodeError, Protobuf};
+        // Build a policy with an excessively deep when-condition.
+        use cedar_policy_core::ast;
+        let mut e = ast::Expr::val(true);
+        for _ in 0..=MAX_NESTING {
+            e = ast::Expr::not(e);
+        }
+        let template = ast::Template::new(
+            ast::PolicyID::from_string("deep_policy"),
+            None,
+            ast::Annotations::new(),
+            ast::Effect::Permit,
+            ast::PrincipalConstraint::any(),
+            ast::ActionConstraint::any(),
+            ast::ResourceConstraint::any(),
+            Some(e),
+        );
+        let mut pset = ast::PolicySet::new();
+        pset.add_template(template).expect("add template");
+        let api_pset = crate::PolicySet::from_ast(pset);
+        assert_matches!(api_pset.encode(), Err(EncodeError::MaxDepthExceeded));
+    }
+
+    #[test]
+    fn encode_entities_with_deep_attr_fails() {
+        use crate::proto::traits::{EncodeCheck, EncodeError};
+        // Build an Entity model with an attribute that is too deep.
+        let deep_expr = make_deep_expr(MAX_NESTING + 1);
+        let entity = crate::proto::models::Entity {
+            uid: Some(crate::proto::models::EntityUid {
+                ty: Some(crate::proto::models::Name {
+                    id: "User".to_string(),
+                    path: vec![],
+                }),
+                eid: "alice".to_string(),
+            }),
+            attrs: HashMap::from([("deep_attr".to_string(), deep_expr)]),
+            ancestors: vec![],
+            tags: HashMap::new(),
+        };
+        assert_matches!(
+            entity.check_for_encode(),
+            Err(EncodeError::MaxDepthExceeded)
+        );
+    }
+
+    #[test]
+    fn encode_shallow_expression_succeeds() {
+        use crate::proto::traits::Protobuf;
+        // A simple expression should encode fine.
+        let expression = crate::Expression::from_str("1 + 2").expect("parse");
+        assert!(expression.encode().is_ok());
+    }
+
+    #[test]
+    fn encode_at_limit_roundtrips_through_prost() {
+        use crate::proto::traits::{EncodeCheck, Protobuf};
+        // Verify that an expression exactly at the limit can actually be decoded by prost.
+        let expr = make_deep_expr(MAX_NESTING);
+        assert!(expr.check_for_encode().is_ok());
+        // Encode via the API and decode to confirm prost doesn't reject it.
+        use cedar_policy_core::ast;
+        let mut e = ast::Expr::val(true);
+        for _ in 0..MAX_NESTING {
+            e = ast::Expr::not(e);
+        }
+        let expression = crate::Expression(e);
+        let buf = expression.encode().expect("should encode within limit");
+        crate::Expression::decode(&buf[..]).expect("should decode within prost's recursion limit");
+    }
+
+    /// Build a deeply nested `models::Type` of the form `Set(Set(Set(...Long...)))`.
+    /// Each Set nesting costs 1 prost recursion level.
+    fn make_deep_set_type(n: usize) -> crate::proto::models::Type {
+        use crate::proto::models::{self, r#type};
+        let mut ty = models::Type {
+            data: Some(r#type::Data::Prim(r#type::Prim::Long.into())),
+        };
+        for _ in 0..n {
+            ty = models::Type {
+                data: Some(r#type::Data::SetElem(Box::new(ty))),
+            };
+        }
+        ty
+    }
+
+    /// Build a deeply nested record type: `Record { x: Record { x: ... Long } }`.
+    /// Each record nesting costs 3 prost recursion levels (`Record` + `AttributeType` + `Type`).
+    fn make_deep_record_type(n: usize) -> crate::proto::models::Type {
+        use crate::proto::models::{self, r#type};
+        let mut ty = models::Type {
+            data: Some(r#type::Data::Prim(r#type::Prim::Long.into())),
+        };
+        for _ in 0..n {
+            ty = models::Type {
+                data: Some(r#type::Data::Record(r#type::Record {
+                    attrs: std::collections::HashMap::from([(
+                        "x".to_string(),
+                        models::AttributeType {
+                            attr_type: Some(ty),
+                            is_required: true,
+                        },
+                    )]),
+                })),
+            };
+        }
+        ty
+    }
+
+    #[test]
+    fn encode_schema_deep_set_type_fails() {
+        use crate::proto::traits::{EncodeCheck, EncodeError, MAX_ENCODE_DEPTH};
+        // Set nesting: each level costs 1 prost level. Need > MAX_ENCODE_DEPTH levels.
+        let deep_type = make_deep_set_type(MAX_ENCODE_DEPTH + 1);
+        let schema = crate::proto::models::Schema {
+            entity_decls: vec![crate::proto::models::EntityDecl {
+                name: Some(crate::proto::models::Name {
+                    id: "Foo".to_string(),
+                    path: vec![],
+                }),
+                descendants: vec![],
+                attributes: std::collections::HashMap::from([(
+                    "attr".to_string(),
+                    crate::proto::models::AttributeType {
+                        attr_type: Some(deep_type),
+                        is_required: true,
+                    },
+                )]),
+                tags: None,
+                enum_choices: vec![],
+            }],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            schema.check_for_encode(),
+            Err(EncodeError::MaxDepthExceeded)
+        );
+    }
+
+    #[test]
+    fn encode_schema_deep_record_type_fails() {
+        use crate::proto::traits::{EncodeCheck, EncodeError, MAX_ENCODE_DEPTH};
+        // Record nesting: each level costs 3 prost levels.
+        // Need (n * 3) > MAX_ENCODE_DEPTH from the starting depth inside validate_type_depth.
+        let levels = MAX_ENCODE_DEPTH / 3 + 1;
+        let deep_type = make_deep_record_type(levels);
+        let schema = crate::proto::models::Schema {
+            entity_decls: vec![crate::proto::models::EntityDecl {
+                name: Some(crate::proto::models::Name {
+                    id: "Bar".to_string(),
+                    path: vec![],
+                }),
+                descendants: vec![],
+                attributes: std::collections::HashMap::from([(
+                    "nested".to_string(),
+                    crate::proto::models::AttributeType {
+                        attr_type: Some(deep_type),
+                        is_required: true,
+                    },
+                )]),
+                tags: None,
+                enum_choices: vec![],
+            }],
+            action_decls: vec![],
+        };
+        assert_matches!(
+            schema.check_for_encode(),
+            Err(EncodeError::MaxDepthExceeded)
+        );
+    }
+
+    #[test]
+    fn encode_schema_shallow_type_succeeds() {
+        use crate::proto::traits::Protobuf;
+        // A simple schema should encode fine.
+        let (schema, _) =
+            crate::Schema::from_cedarschema_str("entity User { name: String, age: Long };")
+                .expect("parse schema");
+        assert!(schema.encode().is_ok());
     }
 }

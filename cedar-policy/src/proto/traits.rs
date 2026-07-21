@@ -48,6 +48,46 @@ impl From<ProtobufConversionError> for DecodeError {
     }
 }
 
+/// Error type for protobuf encoding failures
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum EncodeError {
+    /// The input data contains too many recursion levels to be encoded
+    #[error("data structure depth exceeds maximum encodable depth of {MAX_ENCODE_DEPTH}")]
+    MaxDepthExceeded,
+    /// The protobuf message could not be encoded (e.g., buffer too small)
+    #[error(transparent)]
+    Proto(#[from] prost::EncodeError),
+}
+
+/// Maximum allowed protobuf recursion depth for encoding.
+///
+/// Prost's decoder has a hardcoded recursion limit of 100, where each nested
+/// message entry counts as one level. We use this limit when calculating the
+/// depth of a `prost::Message` (i.e. the `models::...`), not the depth of
+/// syntax tree (e.g. type or expression).
+/// Typically, the depth of a model is twice the one of the internal representation's
+/// tree.
+///
+/// We set this to 90 to leave a small margin (10 levels) for outer wrappers
+/// like `TemplateBody` or `Entity` that contain an `Expr` field.
+pub const MAX_ENCODE_DEPTH: usize = 90;
+
+/// A trait for protobuf model types that require validation before encoding.
+///
+/// Model types implement this to perform structural checks (such as depth limits)
+/// before the protobuf encoding step. Types that need no pre-encode validation
+/// implement this as a no-op returning `Ok(())`.
+pub trait EncodeCheck {
+    /// Validate that this model is safe to encode.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError`] if the model violates encoding constraints
+    /// (e.g., exceeds the maximum nesting depth).
+    fn check_for_encode(&self) -> Result<(), EncodeError>;
+}
+
 /// A trait for objects that have a `try_validate` method returning `self` if the object is
 /// valid.
 pub trait TryValidate: Sized {
@@ -79,7 +119,12 @@ mod private {
 /// Trait allowing serializing and deserializing in protobuf format.
 pub trait Protobuf: Sized + TryValidate + private::Sealed {
     /// Encode into protobuf format. Returns a freshly-allocated buffer containing binary data.
-    fn encode(&self) -> Vec<u8>;
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError::MaxDepthExceeded`] if the data structure has too many
+    /// recursion levels to be safely encoded and decoded by prost.
+    fn encode(&self) -> Result<Vec<u8>, EncodeError>;
     /// Decode the binary data in `buf`, producing something of type `Self`
     ///
     /// # Errors
@@ -108,23 +153,54 @@ pub trait Protobuf: Sized + TryValidate + private::Sealed {
     fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, DecodeError>;
 }
 
-/// Encode `thing` into `buf` using the protobuf format `M`
+/// Encode `thing` into a freshly-allocated buffer using the protobuf format `M`
 ///
-/// `Err` is only returned if `buf` has insufficient space.
+/// # Errors
+///
+/// Returns [`EncodeError`] if the model fails pre-encode validation
+/// (e.g., expression depth exceeds [`MAX_ENCODE_DEPTH`]).
 #[expect(
     dead_code,
     reason = "experimental feature, we might have use for this one in the future"
 )]
-pub(crate) fn encode<M: prost::Message>(
-    thing: impl Into<M>,
+#[expect(
+    clippy::multiple_bound_locations,
+    clippy::type_repetition_in_bounds,
+    reason = "HRTB requires where clause"
+)]
+pub(crate) fn encode_with_buf<M: prost::Message + EncodeCheck, T>(
+    thing: &T,
     buf: &mut impl prost::bytes::BufMut,
-) -> Result<(), prost::EncodeError> {
-    thing.into().encode(buf)
+) -> Result<(), EncodeError>
+where
+    for<'a> M: From<&'a T>,
+{
+    let model = M::from(thing);
+    model.check_for_encode()?;
+    model.encode(buf)?;
+    Ok(())
 }
 
 /// Encode `thing` into a freshly-allocated buffer using the protobuf format `M`
-pub(crate) fn encode_to_vec<M: prost::Message>(thing: impl Into<M>) -> Vec<u8> {
-    thing.into().encode_to_vec()
+///
+/// # Errors
+///
+/// Returns [`EncodeError`] if the model fails pre-encoding validation
+/// (e.g., expression depth exceeds [`MAX_ENCODE_DEPTH`]).
+#[expect(
+    clippy::multiple_bound_locations,
+    clippy::type_repetition_in_bounds,
+    reason = "HRTB requires where clause"
+)]
+pub(crate) fn encode_to_vec<M: prost::Message + EncodeCheck, T>(
+    thing: &T,
+) -> Result<Vec<u8>, EncodeError>
+where
+    for<'a> M: From<&'a T>,
+{
+    let model = M::from(thing);
+    model.check_for_encode()?;
+    Ok(model.encode_to_vec())
 }
 
 use std::{default::Default, fmt::Display};
@@ -153,6 +229,10 @@ pub(crate) fn try_decode<
         .try_into()
         .map_err(|e: E| DecodeError::Conversion(e.into()))
 }
+
+// ====================================================================
+// TryValidate implementations for api types
+// ====================================================================
 
 impl TryValidate for api::PolicySet {
     type Err = PolicySetValidationError;
@@ -222,4 +302,239 @@ impl TryValidate for api::EntityNamespace {
         // EntityNamespace also doesn't need additional validation
         Ok(self)
     }
+}
+
+// ====================================================================
+// EncodeCheck implementations for protobuf model types.
+// Encoding checks are implemented on the protobuf model type rather than
+// the AST/Validator level type to get a more predictable outcome: it is easier to
+// know how much recursion is needed to decode the protobuf representation
+// at this level than at the expression/type level.
+// ====================================================================
+
+use super::models;
+
+impl EncodeCheck for models::Expr {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        // Iterative depth-first traversal measuring protobuf recursion depth.
+        let mut stack: Vec<(&Self, usize)> = vec![(self, 1)];
+
+        while let Some((expr, depth)) = stack.pop() {
+            if depth > MAX_ENCODE_DEPTH {
+                return Err(EncodeError::MaxDepthExceeded);
+            }
+
+            if let Some(ref kind) = expr.expr_kind {
+                use models::expr::ExprKind;
+                // Prost counts each message entry as one recursion level. For our Expr
+                // schema, entering an Expr costs 1 level, and entering the variant
+                // wrapper message (BinaryApp, UnaryApp, If, etc.) costs another 1 level.
+                let child_depth = depth + 2;
+                match kind {
+                    ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) => {}
+                    ExprKind::If(if_expr) => {
+                        if let Some(ref e) = if_expr.test_expr {
+                            stack.push((e, child_depth));
+                        }
+                        if let Some(ref e) = if_expr.then_expr {
+                            stack.push((e, child_depth));
+                        }
+                        if let Some(ref e) = if_expr.else_expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::And(bin) => {
+                        if let Some(ref e) = bin.left {
+                            stack.push((e, child_depth));
+                        }
+                        if let Some(ref e) = bin.right {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::Or(bin) => {
+                        if let Some(ref e) = bin.left {
+                            stack.push((e, child_depth));
+                        }
+                        if let Some(ref e) = bin.right {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::UApp(unary) => {
+                        if let Some(ref e) = unary.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::BApp(binary) => {
+                        if let Some(ref e) = binary.left {
+                            stack.push((e, child_depth));
+                        }
+                        if let Some(ref e) = binary.right {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::ExtApp(ext) => {
+                        for arg in &ext.args {
+                            stack.push((arg, child_depth));
+                        }
+                    }
+                    ExprKind::GetAttr(get) => {
+                        if let Some(ref e) = get.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::HasAttr(has) => {
+                        if let Some(ref e) = has.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::Like(like) => {
+                        if let Some(ref e) = like.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::Is(is) => {
+                        if let Some(ref e) = is.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
+                    ExprKind::Set(set) => {
+                        for elem in &set.elements {
+                            stack.push((elem, child_depth));
+                        }
+                    }
+                    ExprKind::Record(record) => {
+                        for value in record.items.values() {
+                            stack.push((value, child_depth));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::Entity {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        // Validate all attribute and tag expressions
+        for expr in self.attrs.values().chain(self.tags.values()) {
+            expr.check_for_encode()?;
+        }
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::Entities {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        for entity in &self.entities {
+            entity.check_for_encode()?;
+        }
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::TemplateBody {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        // Validate the non-scope constraint expression within the template body
+        if let Some(ref expr) = self.non_scope_constraints {
+            expr.check_for_encode()?;
+        }
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::PolicySet {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        for template in &self.templates {
+            template.check_for_encode()?;
+        }
+        Ok(())
+    }
+}
+
+/// Trivial `EncodeCheck` for model types that have no recursive structure
+/// requiring depth checks.
+impl EncodeCheck for models::Name {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::Request {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        // The context field contains expressions that may be deeply nested
+        for expr in self.context.values() {
+            expr.check_for_encode()?;
+        }
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::Schema {
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        for entity_decl in &self.entity_decls {
+            for attr_type in entity_decl.attributes.values() {
+                check_type_depth(attr_type)?;
+            }
+            if let Some(ref tag_type) = entity_decl.tags {
+                check_type_depth_inner(tag_type, 1)?;
+            }
+        }
+        for action_decl in &self.action_decls {
+            for attr_type in action_decl.context.values() {
+                check_type_depth(attr_type)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Validate that an [`AttributeType`](models::AttributeType) doesn't exceed
+/// the prost recursion budget.
+///
+/// Prost recursion cost from an `AttributeType`:
+/// +1 (`AttributeType` message) + cost of inner `Type`
+fn check_type_depth(attr_type: &models::AttributeType) -> Result<(), EncodeError> {
+    if let Some(ref ty) = attr_type.attr_type {
+        // AttributeType itself costs 1 prost level, then the Type inside costs 1 more
+        check_type_depth_inner(ty, 2)?;
+    }
+    Ok(())
+}
+
+/// Iteratively check `Type` nesting depth in prost recursion terms.
+///
+/// Prost recursion costs per `Type` variant:
+/// - `SetElem(Box<Type>)`: the child `Type` is directly nested → +1 per level
+/// - `Record`: +1 (`Record` message) + 1 (`AttributeType` message) + 1 (child `Type`) = +3
+/// - Primitive/Entity/Extension: terminal, no recursion
+fn check_type_depth_inner(root: &models::Type, starting_depth: usize) -> Result<(), EncodeError> {
+    // Stack of (Type, prost_depth)
+    let mut stack: Vec<(&models::Type, usize)> = vec![(root, starting_depth)];
+
+    while let Some((ty, depth)) = stack.pop() {
+        if depth > MAX_ENCODE_DEPTH {
+            return Err(EncodeError::MaxDepthExceeded);
+        }
+
+        if let Some(ref data) = ty.data {
+            use models::r#type::Data;
+            match data {
+                Data::Prim(_) | Data::Entity(_) | Data::Ext(_) => {}
+                Data::SetElem(inner_type) => {
+                    // set_elem is directly a Type field: +1 prost level
+                    stack.push((inner_type, depth + 1));
+                }
+                Data::Record(record) => {
+                    // Record message (+1) -> map entry -> AttributeType (+1) -> Type (+1) = +3
+                    for attr_type in record.attrs.values() {
+                        if let Some(ref inner_ty) = attr_type.attr_type {
+                            stack.push((inner_ty, depth + 3));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
 }
