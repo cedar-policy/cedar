@@ -148,7 +148,7 @@ jobs:
                   SYMCC_VERSION: ${{ inputs.symcc_version }}
                   CLI_VERSION: ${{ inputs.cli_version }}
             - name: Checkout tag
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: refs/tags/${{ inputs.target == 'cli' && inputs.cli_tag || inputs.tag }}
                   fetch-depth: 0
@@ -157,7 +157,7 @@ jobs:
             # present, so a bug in the script can't accidentally validate main's
             # version.
             - name: Checkout main (for scripts)
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   sparse-checkout: .github/scripts
                   path: __main
@@ -174,7 +174,7 @@ jobs:
                   TAG: ${{ inputs.tag }}
                   CLI_TAG: ${{ inputs.cli_tag }}
             - name: Set up Python
-              uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+              uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
               with:
                   python-version: ">=3.11" # needs tomllib, in stdlib from 3.11
 
@@ -210,7 +210,7 @@ jobs:
             id-token: write # Required for OIDC token exchange
         steps:
             - name: Checkout tag
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: refs/tags/${{ inputs.tag }}
             - name: Configure rust toolchain
@@ -243,7 +243,7 @@ jobs:
             id-token: write # Required for OIDC token exchange
         steps:
             - name: Checkout tag
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: refs/tags/${{ inputs.tag }}
             - name: Configure rust toolchain
@@ -268,7 +268,7 @@ jobs:
             id-token: write # Required for OIDC token exchange
         steps:
             - name: Checkout tag
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: refs/tags/${{ inputs.cli_tag }}
             - name: Configure rust toolchain
@@ -294,7 +294,7 @@ jobs:
             id-token: write # Required for OIDC token exchange
         steps:
             - name: Checkout tag
-              uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: refs/tags/${{ inputs.tag }}
             - name: Configure rust toolchain
