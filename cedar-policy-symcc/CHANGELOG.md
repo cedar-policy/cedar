@@ -19,6 +19,7 @@ Cedar Language Version: TBD
   in solver output (e.g., `#xff`). It also handles an option literal `none`
   without an explicit type annotation, as long as it can infer the type. Finally, it accepts
   models for UUFs with equality operands in either order.
+- Fix errors decoding models for entities with `Bool` typed tags.
 
 ## [0.5.3] - 2026-06-09
 Cedar Language Version: 4.5
