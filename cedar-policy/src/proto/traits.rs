@@ -79,13 +79,24 @@ pub const MAX_ENCODE_DEPTH: usize = 90;
 /// before the protobuf encoding step. Types that need no pre-encode validation
 /// implement this as a no-op returning `Ok(())`.
 pub trait EncodeCheck {
-    /// Validate that this model is safe to encode.
+    /// Check that this model is safe to encode.
     ///
     /// # Errors
     ///
     /// Returns [`EncodeError`] if the model violates encoding constraints
     /// (e.g., exceeds the maximum nesting depth).
-    fn check_for_encode(&self) -> Result<(), EncodeError>;
+    fn check_for_encode(&self) -> Result<(), EncodeError> {
+        self.check_for_encode_from_depth(1)
+    }
+
+    /// Check that this model is safe to encode, assuming an `init` recursion
+    /// level.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`EncodeError`] if the model violates encoding constraints
+    /// (e.g., exceeds the maximum nesting depth).
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError>;
 }
 
 /// A trait for objects that have a `try_validate` method returning `self` if the object is
@@ -317,9 +328,9 @@ impl TryValidate for api::EntityNamespace {
 use super::models;
 
 impl EncodeCheck for models::Expr {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // Iterative depth-first traversal measuring protobuf recursion depth.
-        let mut stack: Vec<(&Self, usize)> = vec![(self, 1)];
+        let mut stack: Vec<(&Self, usize)> = vec![(self, init)];
 
         while let Some((expr, depth)) = stack.pop() {
             if depth > MAX_ENCODE_DEPTH {
@@ -420,38 +431,38 @@ impl EncodeCheck for models::Expr {
 }
 
 impl EncodeCheck for models::Entity {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // Validate all attribute and tag expressions
         for expr in self.attrs.values().chain(self.tags.values()) {
-            expr.check_for_encode()?;
+            expr.check_for_encode_from_depth(init + 2)?;
         }
         Ok(())
     }
 }
 
 impl EncodeCheck for models::Entities {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         for entity in &self.entities {
-            entity.check_for_encode()?;
+            entity.check_for_encode_from_depth(init + 1)?;
         }
         Ok(())
     }
 }
 
 impl EncodeCheck for models::TemplateBody {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // Validate the non-scope constraint expression within the template body
         if let Some(ref expr) = self.non_scope_constraints {
-            expr.check_for_encode()?;
+            expr.check_for_encode_from_depth(init + 1)?;
         }
         Ok(())
     }
 }
 
 impl EncodeCheck for models::PolicySet {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         for template in &self.templates {
-            template.check_for_encode()?;
+            template.check_for_encode_from_depth(init + 1)?;
         }
         Ok(())
     }
@@ -460,34 +471,34 @@ impl EncodeCheck for models::PolicySet {
 /// Trivial `EncodeCheck` for model types that have no recursive structure
 /// requiring depth checks.
 impl EncodeCheck for models::Name {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, _init: usize) -> Result<(), EncodeError> {
         Ok(())
     }
 }
 
 impl EncodeCheck for models::Request {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // The context field contains expressions that may be deeply nested
         for expr in self.context.values() {
-            expr.check_for_encode()?;
+            expr.check_for_encode_from_depth(init + 2)?;
         }
         Ok(())
     }
 }
 
 impl EncodeCheck for models::Schema {
-    fn check_for_encode(&self) -> Result<(), EncodeError> {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         for entity_decl in &self.entity_decls {
             for attr_type in entity_decl.attributes.values() {
-                check_type_depth(attr_type)?;
+                check_type_depth(attr_type, init + 3)?;
             }
             if let Some(ref tag_type) = entity_decl.tags {
-                check_type_depth_inner(tag_type, 1)?;
+                check_type_depth_inner(tag_type, init + 3)?;
             }
         }
         for action_decl in &self.action_decls {
             for attr_type in action_decl.context.values() {
-                check_type_depth(attr_type)?;
+                check_type_depth(attr_type, init + 3)?;
             }
         }
         Ok(())
@@ -499,10 +510,10 @@ impl EncodeCheck for models::Schema {
 ///
 /// Prost recursion cost from an `AttributeType`:
 /// +1 (`AttributeType` message) + cost of inner `Type`
-fn check_type_depth(attr_type: &models::AttributeType) -> Result<(), EncodeError> {
+fn check_type_depth(attr_type: &models::AttributeType, init: usize) -> Result<(), EncodeError> {
     if let Some(ref ty) = attr_type.attr_type {
         // AttributeType itself costs 1 prost level, then the Type inside costs 1 more
-        check_type_depth_inner(ty, 2)?;
+        check_type_depth_inner(ty, init + 2)?;
     }
     Ok(())
 }

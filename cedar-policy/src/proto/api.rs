@@ -785,9 +785,11 @@ mod encode_test {
 
     #[test]
     fn encode_schema_set_type_limit() {
-        // Set nesting costs 1 prost level per level, starting at depth 2
-        // (AttributeType + Type). Exceeds when 2 + n > MAX_ENCODE_DEPTH.
-        let max_set_depth = MAX_ENCODE_DEPTH - 2;
+        // Set nesting costs 1 prost level per level. The starting depth for
+        // `check_type_depth_inner` when called through Schema → entity attributes is:
+        //   check_for_encode starts at init=1, Schema adds +3, check_type_depth adds +2 = 6.
+        // Exceeds when 6 + n > MAX_ENCODE_DEPTH.
+        let max_set_depth = MAX_ENCODE_DEPTH - 6;
         let ok_schema = schema([entity_decl(
             "Foo",
             [("a", required(deep_set_type(max_set_depth)))],
@@ -806,9 +808,11 @@ mod encode_test {
 
     #[test]
     fn encode_schema_record_type_limit() {
-        // Record nesting costs 3 prost levels per level, starting at depth 2.
-        // Exceeds when 2 + 3*n > MAX_ENCODE_DEPTH.
-        let max_rec_depth = (MAX_ENCODE_DEPTH - 2) / 3;
+        // Record nesting costs 3 prost levels per level. The starting depth for
+        // `check_type_depth_inner` through Schema → entity attributes is 6
+        // (init=1, Schema +3, check_type_depth +2).
+        // Exceeds when 6 + 3*n > MAX_ENCODE_DEPTH.
+        let max_rec_depth = (MAX_ENCODE_DEPTH - 6) / 3;
         let ok_schema = schema([entity_decl(
             "Bar",
             [("a", required(deep_record_type(max_rec_depth)))],
