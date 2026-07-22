@@ -128,7 +128,14 @@ pub enum Commands {
     ///   - num_errors: expected number of erroring policies
     #[clap(verbatim_doc_comment)] // stops clap from dropping newlines in bulleted list
     RunTests(RunTestsArgs),
-    /// Symbolic analysis of Cedar policies using SymCC
+    /// Analyze Cedar policies by proving properties with an SMT solver
+    ///
+    /// Every command requires a schema (--schema) and a request environment
+    /// to analyze (--principal-type, --action, and --resource-type).
+    ///
+    /// Requires the cvc5 SMT solver <https://github.com/cvc5/cvc5>, located via
+    /// --cvc5-path, the CVC5 environment variable, or `cvc5` on your PATH.
+    #[clap(verbatim_doc_comment)] // stops clap from dropping newlines in the grouped list
     Symcc(SymccArgs),
     /// Print Cedar language version
     LanguageVersion,

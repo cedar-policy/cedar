@@ -13,6 +13,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ### Changed
 
+- For the experimental `symcc` command all options (`--schema`, `--principal-type`, `--action`, `--resource-type`, etc.)
+  now come after the subcommand, consistent with other `cedar` commands.  This is a **breaking changes**
+  for users of the `symcc` command.
+- Exit with a unique non-zero exit code when a `symcc` analysis command cannot verify a property.
 - The `authorize` command with the `--template-linked` argument will now error if the link file does not exist.
 - For the experimental `tpe` and `partial-eval` features, an unknown authorization decision now causes the CLI to exit with exit code 4 instead of 0, making it distinguishable from a successful authorization allow decision (exit code 0).
 

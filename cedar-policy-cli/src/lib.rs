@@ -91,6 +91,9 @@ pub enum CedarExitCode {
     // The command completed successfully with an incomplete result, e.g.,
     // partial authorization result is not determining.
     Unknown,
+    #[cfg(feature = "analyze")]
+    // The analysis ran successfully, but the analyzed property does not hold.
+    PropertyViolation,
 }
 
 impl Termination for CedarExitCode {
@@ -102,6 +105,8 @@ impl Termination for CedarExitCode {
             CedarExitCode::ValidationFailure => ExitCode::from(3),
             #[cfg(any(feature = "partial-eval", feature = "tpe"))]
             CedarExitCode::Unknown => ExitCode::from(4),
+            #[cfg(feature = "analyze")]
+            CedarExitCode::PropertyViolation => ExitCode::from(5),
         }
     }
 }

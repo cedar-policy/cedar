@@ -70,6 +70,7 @@ fn test_never_errors_permit_all() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-errors")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -80,7 +81,6 @@ fn test_never_errors_permit_all() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-errors")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -95,6 +95,7 @@ fn test_always_matches_permit_all() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -105,7 +106,6 @@ fn test_always_matches_permit_all() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -120,6 +120,7 @@ fn test_never_matches_impossible_policy() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -130,7 +131,6 @@ fn test_never_matches_impossible_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -147,6 +147,7 @@ fn test_single_policy_rejects_multi_policy() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-errors")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -157,7 +158,6 @@ fn test_single_policy_rejects_multi_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-errors")
         .arg("--policies")
         .arg(multi.path())
         .assert()
@@ -175,6 +175,7 @@ fn test_matches_equivalent_same_policy() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-equivalent")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -185,7 +186,6 @@ fn test_matches_equivalent_same_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-equivalent")
         .arg("--policy1")
         .arg(p1.path())
         .arg("--policy2")
@@ -203,6 +203,7 @@ fn test_matches_implies_permit_all_implies_permit_all() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-implies")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -213,7 +214,6 @@ fn test_matches_implies_permit_all_implies_permit_all() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-implies")
         .arg("--policy1")
         .arg(p1.path())
         .arg("--policy2")
@@ -231,6 +231,7 @@ fn test_matches_disjoint_permit_all_vs_never_matches() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-disjoint")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -241,7 +242,6 @@ fn test_matches_disjoint_permit_all_vs_never_matches() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-disjoint")
         .arg("--policy1")
         .arg(p1.path())
         .arg("--policy2")
@@ -260,6 +260,7 @@ fn test_always_allows_permit_all() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-allows")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -270,7 +271,6 @@ fn test_always_allows_permit_all() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-allows")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -286,6 +286,7 @@ fn test_always_denies_empty_set() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-denies")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -296,7 +297,6 @@ fn test_always_denies_empty_set() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-denies")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -312,6 +312,7 @@ fn test_equivalent_same_policy_set() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("equivalent")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -322,7 +323,6 @@ fn test_equivalent_same_policy_set() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("equivalent")
         .arg("--policies1")
         .arg(ps1.path())
         .arg("--policies2")
@@ -340,6 +340,7 @@ fn test_implies_permit_all_implies_itself() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("implies")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -350,7 +351,6 @@ fn test_implies_permit_all_implies_itself() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("implies")
         .arg("--policies1")
         .arg(ps1.path())
         .arg("--policies2")
@@ -368,6 +368,7 @@ fn test_implies_never_matches_implies_permit_all() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("implies")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -378,7 +379,6 @@ fn test_implies_never_matches_implies_permit_all() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("implies")
         .arg("--policies1")
         .arg(ps1.path())
         .arg("--policies2")
@@ -397,6 +397,7 @@ fn test_disjoint_permit_vs_empty() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("disjoint")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -407,7 +408,6 @@ fn test_disjoint_permit_vs_empty() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("disjoint")
         .arg("--policies1")
         .arg(ps1.path())
         .arg("--policies2")
@@ -424,6 +424,7 @@ fn test_nonexistent_cvc5_path_error() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-errors")
         .arg("--cvc5-path")
         .arg("/nonexistent/path/to/cvc5")
         .arg("--principal-type")
@@ -436,7 +437,6 @@ fn test_nonexistent_cvc5_path_error() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-errors")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -458,6 +458,7 @@ fn test_always_matches_rejects_multi_policy() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -468,7 +469,6 @@ fn test_always_matches_rejects_multi_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-matches")
         .arg("--policies")
         .arg(multi.path())
         .assert()
@@ -483,6 +483,7 @@ fn test_never_matches_rejects_multi_policy() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -493,7 +494,6 @@ fn test_never_matches_rejects_multi_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-matches")
         .arg("--policies")
         .arg(multi.path())
         .assert()
@@ -508,6 +508,7 @@ fn test_never_errors_rejects_empty_policy() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-errors")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -518,7 +519,6 @@ fn test_never_errors_rejects_empty_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-errors")
         .arg("--policies")
         .arg(empty.path())
         .assert()
@@ -536,6 +536,7 @@ fn test_matches_equivalent_rejects_multi_policy_in_policy1() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-equivalent")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -546,7 +547,6 @@ fn test_matches_equivalent_rejects_multi_policy_in_policy1() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-equivalent")
         .arg("--policy1")
         .arg(multi.path())
         .arg("--policy2")
@@ -566,6 +566,7 @@ fn test_matches_implies_rejects_multi_policy_in_policy2() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-implies")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -576,7 +577,6 @@ fn test_matches_implies_rejects_multi_policy_in_policy2() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-implies")
         .arg("--policy1")
         .arg(single.path())
         .arg("--policy2")
@@ -595,6 +595,7 @@ fn test_matches_disjoint_rejects_multi_policy_in_both() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-disjoint")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -605,7 +606,6 @@ fn test_matches_disjoint_rejects_multi_policy_in_both() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-disjoint")
         .arg("--policy1")
         .arg(multi.path())
         .arg("--policy2")
@@ -626,6 +626,7 @@ fn test_never_errors_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-errors")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -637,7 +638,6 @@ fn test_never_errors_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-errors")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -652,6 +652,7 @@ fn test_always_matches_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-matches")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -663,7 +664,6 @@ fn test_always_matches_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -678,6 +678,7 @@ fn test_never_matches_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-matches")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -689,7 +690,6 @@ fn test_never_matches_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -704,6 +704,7 @@ fn test_matches_equivalent_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-equivalent")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -715,7 +716,6 @@ fn test_matches_equivalent_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-equivalent")
         .arg("--policy1")
         .arg(policy.path())
         .arg("--policy2")
@@ -732,6 +732,7 @@ fn test_always_allows_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-allows")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -743,7 +744,6 @@ fn test_always_allows_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-allows")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -758,6 +758,7 @@ fn test_equivalent_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("equivalent")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -769,7 +770,6 @@ fn test_equivalent_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("equivalent")
         .arg("--policies1")
         .arg(policy.path())
         .arg("--policies2")
@@ -789,6 +789,7 @@ fn test_always_matches_does_not_hold_with_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -799,11 +800,10 @@ fn test_always_matches_does_not_hold_with_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found"));
 }
@@ -816,6 +816,7 @@ fn test_never_matches_does_not_hold_with_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -826,11 +827,10 @@ fn test_never_matches_does_not_hold_with_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found"));
 }
@@ -843,6 +843,7 @@ fn test_always_denies_does_not_hold_with_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-denies")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -853,11 +854,10 @@ fn test_always_denies_does_not_hold_with_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-denies")
         .arg("--policies")
         .arg(policy.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found"));
 }
@@ -870,6 +870,7 @@ fn test_matches_equivalent_does_not_hold_with_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("matches-equivalent")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -880,13 +881,12 @@ fn test_matches_equivalent_does_not_hold_with_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("matches-equivalent")
         .arg("--policy1")
         .arg(policy1.path())
         .arg("--policy2")
         .arg(policy2.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found"));
 }
@@ -900,6 +900,7 @@ fn test_always_matches_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-matches")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -911,11 +912,10 @@ fn test_always_matches_does_not_hold_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found").not());
 }
@@ -927,6 +927,7 @@ fn test_never_matches_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("never-matches")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -938,11 +939,10 @@ fn test_never_matches_does_not_hold_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-matches")
         .arg("--policies")
         .arg(policy.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found").not());
 }
@@ -954,6 +954,7 @@ fn test_always_denies_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-denies")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -965,11 +966,10 @@ fn test_always_denies_does_not_hold_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-denies")
         .arg("--policies")
         .arg(policy.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found").not());
 }
@@ -987,6 +987,7 @@ fn test_warn_if_contains_templates_single_policy_set() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-allows")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -997,7 +998,6 @@ fn test_warn_if_contains_templates_single_policy_set() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-allows")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -1014,6 +1014,7 @@ fn test_no_template_warning_without_templates() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-allows")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -1024,7 +1025,6 @@ fn test_no_template_warning_without_templates() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-allows")
         .arg("--policies")
         .arg(policy.path())
         .assert()
@@ -1044,6 +1044,7 @@ fn test_error_if_contains_templates_single_policy() {
 
     let output = cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("always-matches")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -1054,7 +1055,6 @@ fn test_error_if_contains_templates_single_policy() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("always-matches")
         .arg("--policies")
         .arg(policy.path())
         .output()
@@ -1083,6 +1083,7 @@ fn test_warn_if_contains_templates_two_policy_sets() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("equivalent")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -1093,7 +1094,6 @@ fn test_warn_if_contains_templates_two_policy_sets() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("equivalent")
         .arg("--policies1")
         .arg(ps1.path())
         .arg("--policies2")
@@ -1113,6 +1113,7 @@ fn test_equivalent_does_not_hold_no_counterexample() {
 
     cargo::cargo_bin_cmd!("cedar")
         .arg("symcc")
+        .arg("equivalent")
         .arg("--no-counterexample")
         .arg("--principal-type")
         .arg("Identity")
@@ -1124,13 +1125,12 @@ fn test_equivalent_does_not_hold_no_counterexample() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("equivalent")
         .arg("--policies1")
         .arg(policy1.path())
         .arg("--policies2")
         .arg(policy2.path())
         .assert()
-        .success()
+        .code(5)
         .stdout(predicates::str::contains("DOES NOT HOLD"))
         .stdout(predicates::str::contains("Counterexample found").not());
 }
@@ -1143,6 +1143,7 @@ fn validation_error_pretty_print() {
     let output = cargo::cargo_bin_cmd!("cedar")
         .env("NO_COLOR", "1")
         .arg("symcc")
+        .arg("never-errors")
         .arg("--principal-type")
         .arg("Identity")
         .arg("--action")
@@ -1153,7 +1154,6 @@ fn validation_error_pretty_print() {
         .arg(schema.path())
         .arg("--schema-format")
         .arg("cedar")
-        .arg("never-errors")
         .arg("--policies")
         .arg(policy.path())
         .output()
@@ -1173,5 +1173,41 @@ fn validation_error_pretty_print() {
        ·                                            ────────────────────
        ╰────
       help: did you mean `description`?
+    ");
+}
+
+#[test]
+fn test_cvc5_not_found_error() {
+    let schema = write_temp(SAMPLE_SCHEMA);
+    let policy = write_temp(PERMIT_ALL);
+
+    // No --cvc5-path, no CVC5 env var, and a PATH with no cvc5 on it.
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .env("NO_COLOR", "1")
+        .env_remove("CVC5")
+        .env("PATH", "/nonexistent")
+        .arg("symcc")
+        .arg("never-errors")
+        .arg("--schema")
+        .arg(schema.path())
+        .arg("--principal-type")
+        .arg("Identity")
+        .arg("--action")
+        .arg(r#"Action::"view""#)
+        .arg("--resource-type")
+        .arg("Thing")
+        .arg("--policies")
+        .arg(policy.path())
+        .output()
+        .expect("failed to run cedar");
+
+    assert_eq!(output.status.code(), Some(1));
+    insta::assert_snapshot!(String::from_utf8_lossy(&output.stderr), @"
+    × Analysis failed
+    ├─▶ CVC5 solver not found or failed to start
+    ├─▶ IO error during a solver operation
+    ╰─▶ No such file or directory (os error 2)
+    help: install cvc5 <https://github.com/cvc5/cvc5> and make it available via
+          --cvc5-path, the CVC5 environment variable, or `cvc5` on your PATH
     ");
 }
