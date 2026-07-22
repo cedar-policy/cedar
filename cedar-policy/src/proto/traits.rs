@@ -176,18 +176,10 @@ pub trait Protobuf: Sized + TryValidate + private::Sealed {
     dead_code,
     reason = "experimental feature, we might have use for this one in the future"
 )]
-#[expect(
-    clippy::multiple_bound_locations,
-    clippy::type_repetition_in_bounds,
-    reason = "HRTB requires where clause"
-)]
-pub(crate) fn encode_with_buf<M: prost::Message + EncodeCheck, T>(
+pub(crate) fn encode_with_buf<M: prost::Message + EncodeCheck + for<'a> From<&'a T>, T>(
     thing: &T,
     buf: &mut impl prost::bytes::BufMut,
-) -> Result<(), EncodeError>
-where
-    for<'a> M: From<&'a T>,
-{
+) -> Result<(), EncodeError> {
     let model = M::from(thing);
     model.check_for_encode()?;
     model.encode(buf)?;
@@ -200,12 +192,7 @@ where
 ///
 /// Returns [`EncodeError`] if the model fails pre-encoding validation
 /// (e.g., expression depth exceeds [`MAX_ENCODE_DEPTH`]).
-#[expect(
-    clippy::multiple_bound_locations,
-    clippy::type_repetition_in_bounds,
-    reason = "HRTB requires where clause"
-)]
-pub(crate) fn encode_to_vec<M: prost::Message + EncodeCheck, T>(
+pub(crate) fn encode_to_vec<M: prost::Message + EncodeCheck + for<'a> From<&'a T>, T>(
     thing: &T,
 ) -> Result<Vec<u8>, EncodeError>
 where
@@ -434,6 +421,7 @@ impl EncodeCheck for models::Entity {
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // Validate all attribute and tag expressions
         for expr in self.attrs.values().chain(self.tags.values()) {
+            // Map: +1 for entering the list, +1 for entering the map entry
             expr.check_for_encode_from_depth(init + 2)?;
         }
         Ok(())
@@ -453,6 +441,7 @@ impl EncodeCheck for models::TemplateBody {
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // Validate the non-scope constraint expression within the template body
         if let Some(ref expr) = self.non_scope_constraints {
+            // List: +1 for entering the list
             expr.check_for_encode_from_depth(init + 1)?;
         }
         Ok(())
@@ -462,6 +451,7 @@ impl EncodeCheck for models::TemplateBody {
 impl EncodeCheck for models::PolicySet {
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         for template in &self.templates {
+            // List: +1 for entering the list
             template.check_for_encode_from_depth(init + 1)?;
         }
         Ok(())
@@ -480,6 +470,7 @@ impl EncodeCheck for models::Request {
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // The context field contains expressions that may be deeply nested
         for expr in self.context.values() {
+            // Map: +1 for entering the list, +1 for entering the map entry
             expr.check_for_encode_from_depth(init + 2)?;
         }
         Ok(())
@@ -489,15 +480,20 @@ impl EncodeCheck for models::Request {
 impl EncodeCheck for models::Schema {
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         for entity_decl in &self.entity_decls {
+            // + 1 for entering entity decls
             for attr_type in entity_decl.attributes.values() {
+                // Map: +1 for entering the list, +1 for entering the map entry
                 check_type_depth(attr_type, init + 3)?;
             }
             if let Some(ref tag_type) = entity_decl.tags {
+                // Map: +1 for entering the list, +1 for entering the map entry
                 check_type_depth_inner(tag_type, init + 3)?;
             }
         }
         for action_decl in &self.action_decls {
+            // + 1 for entering action decls list
             for attr_type in action_decl.context.values() {
+                // Map: +1 for entering the list, +1 for entering the map entry
                 check_type_depth(attr_type, init + 3)?;
             }
         }
@@ -542,10 +538,10 @@ fn check_type_depth_inner(root: &models::Type, starting_depth: usize) -> Result<
                     stack.push((inner_type, depth + 1));
                 }
                 Data::Record(record) => {
-                    // Record message (+1) -> map entry -> AttributeType (+1) -> Type (+1) = +3
+                    // Record message (+1) -> map entry (+1) -> AttributeType (+1) -> Type (+1) = +4
                     for attr_type in record.attrs.values() {
                         if let Some(ref inner_ty) = attr_type.attr_type {
-                            stack.push((inner_ty, depth + 3));
+                            stack.push((inner_ty, depth + 4));
                         }
                     }
                 }

@@ -642,8 +642,16 @@ mod encode_test {
     /// Assert that the given expression passes or fails the encode check.
     /// When `expect_ok`, also verifies the encode→decode roundtrip succeeds
     /// (i.e., prost can decode what we encoded).
+    /// When `expect_still_decodes` and `expect_ok` is false, this checks that
+    /// `check_for_encode` returns an [`EncodeError::MaxDepthExceeded`] but
+    /// the encodeing then decoding still succeeds.
     #[track_caller]
-    fn assert_encode_check(name: &str, expr: &models::Expr, expect_ok: bool) {
+    fn assert_encode_check(
+        name: &str,
+        expr: &models::Expr,
+        expect_ok: bool,
+        expect_still_decodes: bool,
+    ) {
         if expect_ok {
             assert!(
                 expr.check_for_encode().is_ok(),
@@ -661,6 +669,14 @@ mod encode_test {
                 Err(EncodeError::MaxDepthExceeded),
                 "{name} did not error with MaxDepthExceeded"
             );
+            // We still expect this to encode-decode
+            if expect_still_decodes {
+                let bytes = prost::Message::encode_to_vec(expr);
+                assert!(
+                    <models::Expr as prost::Message>::decode(&bytes[..]).is_ok(),
+                    "{name}: decoding failed when MaxDepthExceeded but expected to still decode",
+                );
+            }
         }
     }
 
@@ -682,9 +698,13 @@ mod encode_test {
         ];
         for (name, builder, limit) in builders {
             let ok = builder(*limit);
-            assert_encode_check(name, &ok, true);
+            assert_encode_check(name, &ok, true, true); // check succeeds, decodes
             let bad = builder(*limit + 1);
-            assert_encode_check(name, &bad, false);
+            assert_encode_check(name, &bad, false, true); // check fails, still decodes
+            let bad = builder(*limit + 2);
+            assert_encode_check(name, &bad, false, true); // check fails, still decodes
+            let bad = builder(*limit + 8);
+            assert_encode_check(name, &bad, false, false); // check fails, fails decode
         }
     }
 
@@ -804,15 +824,19 @@ mod encode_test {
             bad_schema.check_for_encode(),
             Err(EncodeError::MaxDepthExceeded)
         );
+        // Just over the limit, prost can still encode+decode (our limit is conservative)
+        let bytes = prost::Message::encode_to_vec(&bad_schema);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
     }
 
     #[test]
     fn encode_schema_record_type_limit() {
-        // Record nesting costs 3 prost levels per level. The starting depth for
-        // `check_type_depth_inner` through Schema → entity attributes is 6
+        // Record nesting costs 4 prost levels per level (Record msg + map entry +
+        // AttributeType + Type). The starting depth for `check_type_depth_inner`
+        // through Schema → entity attributes is 6
         // (init=1, Schema +3, check_type_depth +2).
-        // Exceeds when 6 + 3*n > MAX_ENCODE_DEPTH.
-        let max_rec_depth = (MAX_ENCODE_DEPTH - 6) / 3;
+        // Exceeds when 6 + 4*n > MAX_ENCODE_DEPTH.
+        let max_rec_depth = (MAX_ENCODE_DEPTH - 6) / 4;
         let ok_schema = schema([entity_decl(
             "Bar",
             [("a", required(deep_record_type(max_rec_depth)))],
@@ -827,29 +851,148 @@ mod encode_test {
             bad_schema.check_for_encode(),
             Err(EncodeError::MaxDepthExceeded)
         );
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&bad_schema);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
     }
 
     #[test]
-    fn encode_schema_tag_type_deep_fails() {
-        // Tags start at depth 1 (no AttributeType wrapper), so Set nesting
-        // exceeds at 1 + n > MAX_ENCODE_DEPTH → n > MAX_ENCODE_DEPTH - 1.
-        let bad_tag = deep_set_type(MAX_ENCODE_DEPTH);
-        let decl = entity_decl_full("Foo", [], [], Some(bad_tag));
-        let s = schema([decl]);
-        assert_matches!(s.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+    fn encode_schema_tag_set_type_limit() {
+        // Tags path: init=1, Schema impl passes init+3=4 to check_type_depth_inner.
+        // So Set nesting exceeds when 4 + n > MAX_ENCODE_DEPTH.
+        let max_tag_set = MAX_ENCODE_DEPTH - 4;
+        let ok_decl = entity_decl_full("Foo", [], [], Some(deep_set_type(max_tag_set)));
+        let ok = schema([ok_decl]);
+        assert!(ok.check_for_encode().is_ok());
+
+        let bad_decl = entity_decl_full("Foo", [], [], Some(deep_set_type(max_tag_set + 1)));
+        let bad = schema([bad_decl]);
+        assert_matches!(bad.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&bad);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
     }
 
     #[test]
-    fn encode_schema_action_context_deep_fails() {
-        let deep_ty = deep_set_type(MAX_ENCODE_DEPTH);
-        let action = action_decl(
+    fn encode_schema_tag_record_type_limit() {
+        // Tags path starts at depth 4; record nesting costs 4 per level.
+        // Exceeds when 4 + 4*n > MAX_ENCODE_DEPTH.
+        let max_tag_rec = (MAX_ENCODE_DEPTH - 4) / 4;
+        let ok_decl = entity_decl_full("Foo", [], [], Some(deep_record_type(max_tag_rec)));
+        let ok = schema([ok_decl]);
+        assert!(ok.check_for_encode().is_ok());
+
+        let bad_decl = entity_decl_full("Foo", [], [], Some(deep_record_type(max_tag_rec + 1)));
+        let bad = schema([bad_decl]);
+        assert_matches!(bad.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&bad);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
+    }
+
+    #[test]
+    fn encode_schema_action_context_set_type_limit() {
+        // Action context path: init=1, Schema impl passes init+3=4 to check_type_depth,
+        // which adds +2 = 6 before entering check_type_depth_inner (same as entity attrs).
+        // Exceeds when 6 + n > MAX_ENCODE_DEPTH.
+        let max_ctx_set = MAX_ENCODE_DEPTH - 6;
+        let ok_action = action_decl(
             ("Action", "read"),
             ["User"],
             ["Doc"],
-            [("deep_ctx", required(deep_ty))],
+            [("ctx", required(deep_set_type(max_ctx_set)))],
         );
-        let s = schema_full([], [action]);
+        let ok = schema_full(
+            [entity_decl("User", []), entity_decl("Doc", [])],
+            [ok_action],
+        );
+        assert!(ok.check_for_encode().is_ok());
+
+        let bad_action = action_decl(
+            ("Action", "read"),
+            ["User"],
+            ["Doc"],
+            [("ctx", required(deep_set_type(max_ctx_set + 1)))],
+        );
+        let bad = schema_full(
+            [entity_decl("User", []), entity_decl("Doc", [])],
+            [bad_action],
+        );
+        assert_matches!(bad.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&bad);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
+    }
+
+    #[test]
+    fn encode_schema_action_context_record_type_limit() {
+        // Action context starts at depth 6; record costs 4 per level.
+        let max_ctx_rec = (MAX_ENCODE_DEPTH - 6) / 4;
+        let ok_action = action_decl(
+            ("Action", "write"),
+            ["User"],
+            ["Doc"],
+            [("ctx", required(deep_record_type(max_ctx_rec)))],
+        );
+        let ok = schema_full(
+            [entity_decl("User", []), entity_decl("Doc", [])],
+            [ok_action],
+        );
+        assert!(ok.check_for_encode().is_ok());
+
+        let bad_action = action_decl(
+            ("Action", "write"),
+            ["User"],
+            ["Doc"],
+            [("ctx", required(deep_record_type(max_ctx_rec + 1)))],
+        );
+        let bad = schema_full(
+            [entity_decl("User", []), entity_decl("Doc", [])],
+            [bad_action],
+        );
+        assert_matches!(bad.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&bad);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
+    }
+
+    #[test]
+    fn encode_schema_multiple_entities_one_deep_fails() {
+        // Only one entity has a deeply nested type; the check should still catch it.
+        let max_set_depth = MAX_ENCODE_DEPTH - 6;
+        let s = schema([
+            entity_decl("Shallow", [("x", required(long_type()))]),
+            entity_decl("Deep", [("a", required(deep_set_type(max_set_depth + 1)))]),
+        ]);
         assert_matches!(s.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&s);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
+    }
+
+    #[test]
+    fn encode_schema_multiple_actions_one_deep_fails() {
+        let max_ctx_set = MAX_ENCODE_DEPTH - 6;
+        let shallow_action = action_decl(
+            ("Action", "read"),
+            ["User"],
+            ["Doc"],
+            [("flag", required(bool_type()))],
+        );
+        let deep_action = action_decl(
+            ("Action", "write"),
+            ["User"],
+            ["Doc"],
+            [("ctx", required(deep_set_type(max_ctx_set + 1)))],
+        );
+        let s = schema_full(
+            [entity_decl("User", []), entity_decl("Doc", [])],
+            [shallow_action, deep_action],
+        );
+        assert_matches!(s.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
+        // Just over the limit, we can still decode
+        let bytes = prost::Message::encode_to_vec(&s);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
     }
 
     #[test]
@@ -858,6 +1001,19 @@ mod encode_test {
             crate::Schema::from_cedarschema_str("entity User { name: String, age: Long };")
                 .expect("parse schema");
         assert!(schema.encode().is_ok());
+    }
+
+    #[test]
+    fn encode_schema_mixed_nesting_succeeds() {
+        let nested_type = record_type([
+            ("inner_set", required(set_type(set_type(long_type())))),
+            (
+                "inner_rec",
+                optional(record_type([("x", required(string_type()))])),
+            ),
+        ]);
+        let s = schema([entity_decl("Complex", [("data", required(nested_type))])]);
+        assert!(s.check_for_encode().is_ok());
     }
 
     // ================================================================
