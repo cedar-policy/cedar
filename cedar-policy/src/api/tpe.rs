@@ -429,12 +429,12 @@ impl TpeResponse<'_> {
     ///
     /// This function can return three possible values:
     /// * `Some(Decision::Allow)`, when there was enough information in the
-    ///    partial request to concretely decide that the request should be allowed.
+    ///   partial request to concretely decide that the request should be allowed.
     /// * `Some(Decision::Deny)`, when there was enough information to decide
-    ///    that the request should be denied.
+    ///   that the request should be denied.
     /// * `None`, when the partial request did _not_ provide enough information to reach an
-    ///    authorization decision. In this case you can use [`TpeResponse::reauthorize`] to provide
-    ///    the missing parts of the request and reach a concrete decision.
+    ///   authorization decision. In this case you can use [`TpeResponse::reauthorize`] to provide
+    ///   the missing parts of the request and reach a concrete decision.
     pub fn decision(&self) -> Option<Decision> {
         self.0.decision()
     }
