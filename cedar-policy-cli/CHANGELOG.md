@@ -5,6 +5,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.12.0
+
 ### Added
 
 - `cedar license` subcommand printing the project license and bundled third-party attributions.

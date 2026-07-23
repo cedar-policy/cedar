@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Cedar Language Version: TBD
 
+## [0.6.0] - Coming soon
+
+Cedar Language Version: 4.5
+
 ### Added
 
 - `CompiledSchema` type that precomputes symbolic entities once per schema and produces
