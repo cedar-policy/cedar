@@ -56,9 +56,9 @@ pub fn qualified_name(id: &str, path: &[&str]) -> models::Name {
 /// ```ignore
 /// entity_uid("User", "alice") => EntityUid { ty: Name("User"), eid: "alice" }
 /// ```
-pub fn entity_uid(ty: &str, eid: &str) -> models::EntityUid {
+pub fn entity_uid(ty: models::Name, eid: &str) -> models::EntityUid {
     models::EntityUid {
-        ty: Some(name(ty)),
+        ty: Some(ty),
         eid: eid.to_string(),
     }
 }
@@ -181,7 +181,7 @@ pub fn lit_str(s: &str) -> models::Expr {
 pub fn lit_euid(ty: &str, eid: &str) -> models::Expr {
     models::Expr {
         expr_kind: Some(models::expr::ExprKind::Lit(models::expr::Literal {
-            lit: Some(models::expr::literal::Lit::Euid(entity_uid(ty, eid))),
+            lit: Some(models::expr::literal::Lit::Euid(entity_uid(name(ty), eid))),
         })),
     }
 }
@@ -199,18 +199,6 @@ pub fn not(expr: models::Expr) -> models::Expr {
         expr_kind: Some(models::expr::ExprKind::UApp(Box::new(
             models::expr::UnaryApp {
                 op: models::expr::unary_app::Op::Not.into(),
-                expr: Some(Box::new(expr)),
-            },
-        ))),
-    }
-}
-
-/// Unary negation: `-expr`.
-pub fn neg(expr: models::Expr) -> models::Expr {
-    models::Expr {
-        expr_kind: Some(models::expr::ExprKind::UApp(Box::new(
-            models::expr::UnaryApp {
-                op: models::expr::unary_app::Op::Neg.into(),
                 expr: Some(Box::new(expr)),
             },
         ))),
@@ -310,7 +298,7 @@ pub fn entity(
     attrs: impl IntoIterator<Item = (&'static str, models::Expr)>,
 ) -> models::Entity {
     models::Entity {
-        uid: Some(entity_uid(ty, eid)),
+        uid: Some(entity_uid(name(ty), eid)),
         attrs: attrs.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         ancestors: vec![],
         tags: HashMap::new(),
@@ -326,7 +314,7 @@ pub fn entity_full(
     tags: impl IntoIterator<Item = (&'static str, models::Expr)>,
 ) -> models::Entity {
     models::Entity {
-        uid: Some(entity_uid(ty, eid)),
+        uid: Some(entity_uid(name(ty), eid)),
         attrs: attrs.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         ancestors: ancestors.into_iter().collect(),
         tags: tags.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
@@ -390,7 +378,7 @@ pub fn action_decl(
     context: impl IntoIterator<Item = (&'static str, models::AttributeType)>,
 ) -> models::ActionDecl {
     models::ActionDecl {
-        name: Some(entity_uid(action_entity.0, action_entity.1)),
+        name: Some(entity_uid(name(action_entity.0), action_entity.1)),
         descendants: vec![],
         principal_types: principal_types.into_iter().map(name).collect(),
         resource_types: resource_types.into_iter().map(name).collect(),

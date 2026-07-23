@@ -592,15 +592,25 @@ mod encode_test {
 
     /// Build `n` levels of `like` wrapping.
     fn deep_like(n: usize) -> models::Expr {
+        use models::expr::{like, ExprKind, Like};
         // `like` takes an expr child, so we can nest: like(like(...))
         // But `like` returns bool... use if to re-wrap.
         // Simpler: just nest the expr child of Like.
         let mut e = lit_str("hello");
         for _ in 0..n {
             e = models::Expr {
-                expr_kind: Some(models::expr::ExprKind::Like(Box::new(models::expr::Like {
+                expr_kind: Some(ExprKind::Like(Box::new(Like {
                     expr: Some(Box::new(e)),
-                    pattern: vec![],
+                    pattern: vec![
+                        like::PatternElem {
+                            data: Some(like::pattern_elem::Data::Wildcard(
+                                like::pattern_elem::Wildcard::Unit.into(),
+                            )),
+                        },
+                        like::PatternElem {
+                            data: Some(like::pattern_elem::Data::C("x".to_string())),
+                        },
+                    ],
                 }))),
             };
         }
@@ -708,6 +718,46 @@ mod encode_test {
         }
     }
 
+    #[test]
+    fn depth_lit_euid_at_limit() {
+        // A lit_euid leaf adds 3 extra levels: (Literal(EntityUid(Name(..))))
+        // The leaf Expr is at depth 1 + 2*n, so the Name is at 1 + 2*n + 3.
+        // Max n where 1 + 2*n + 3 <= MAX_ENCODE_DEPTH: n = (MAX_ENCODE_DEPTH - 4) / 2
+        let max_euid_nesting = MAX_ENCODE_DEPTH / 2 - 2;
+
+        let mut ok = lit_euid("User", "alice");
+        for _ in 0..max_euid_nesting {
+            ok = not(ok);
+        }
+        assert_encode_check("lit_euid_ok", &ok, true, true);
+
+        let mut bad = lit_euid("User", "alice");
+        for _ in 0..=max_euid_nesting {
+            bad = not(bad);
+        }
+        assert_encode_check("lit_euid_bad", &bad, false, true);
+    }
+
+    #[test]
+    fn depth_ext_fn_name_without_args() {
+        // An ExtApp with no args but fn_name present should still be caught.
+        let target_depth = MAX_ENCODE_DEPTH - 1;
+        let nesting = (target_depth - 1) / 2;
+        let ext_no_args = models::Expr {
+            expr_kind: Some(models::expr::ExprKind::ExtApp(
+                models::expr::ExtensionFunctionApp {
+                    fn_name: Some(name("decimal")),
+                    args: vec![],
+                },
+            )),
+        };
+        let mut e = ext_no_args;
+        for _ in 0..nesting {
+            e = not(e);
+        }
+        assert_encode_check("ext_fn_name_no_args", &e, false, true);
+    }
+
     // ================================================================
     // Full API encode path tests
     // ================================================================
@@ -762,9 +812,9 @@ mod encode_test {
     fn encode_request_with_deep_context_fails() {
         let deep_expr = deep_unary(MAX_NESTING + 1);
         let req = models::Request {
-            principal: Some(entity_uid("User", "alice")),
-            action: Some(entity_uid("Action", "read")),
-            resource: Some(entity_uid("Doc", "readme")),
+            principal: Some(entity_uid(name("User"), "alice")),
+            action: Some(entity_uid(name("Action"), "read")),
+            resource: Some(entity_uid(qualified_name("Doc", &["MyApp"]), "readme")),
             context: [("deep".to_string(), deep_expr)].into_iter().collect(),
         };
         assert_matches!(req.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
@@ -773,9 +823,9 @@ mod encode_test {
     #[test]
     fn encode_request_shallow_context_succeeds() {
         let req = models::Request {
-            principal: Some(entity_uid("User", "alice")),
-            action: Some(entity_uid("Action", "read")),
-            resource: Some(entity_uid("Doc", "readme")),
+            principal: Some(entity_uid(name("User"), "alice")),
+            action: Some(entity_uid(name("Action"), "read")),
+            resource: Some(entity_uid(qualified_name("Doc", &["MyApp"]), "readme")),
             context: [("flag".to_string(), lit_bool(true))].into_iter().collect(),
         };
         assert!(req.check_for_encode().is_ok());
@@ -953,6 +1003,58 @@ mod encode_test {
         assert_matches!(bad.check_for_encode(), Err(EncodeError::MaxDepthExceeded));
         // Just over the limit, we can still decode
         let bytes = prost::Message::encode_to_vec(&bad);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
+    }
+
+    #[test]
+    fn encode_schema_entity_type_leaf_at_limit() {
+        // Entity/Ext leaf types contain a Name message at depth + 1.
+        // Through Schema → entity attributes: starting depth is 6.
+        // Set nesting of n gives the leaf Type at depth 6 + n.
+        // The Name inside Entity/Ext is at 6 + n + 1.
+        // Max n where 6 + n + 1 <= MAX_ENCODE_DEPTH: n = MAX_ENCODE_DEPTH - 7
+        let max_set_depth = MAX_ENCODE_DEPTH - 7;
+
+        // Build Set(Set(...Entity...)) with entity_type leaf
+        let mut ok_ty = entity_type("User");
+        for _ in 0..max_set_depth {
+            ok_ty = set_type(ok_ty);
+        }
+        let ok_schema = schema([entity_decl("Foo", [("a", required(ok_ty))])]);
+        assert!(ok_schema.check_for_encode().is_ok());
+
+        let mut bad_ty = entity_type("User");
+        for _ in 0..=max_set_depth {
+            bad_ty = set_type(bad_ty);
+        }
+        let bad_schema = schema([entity_decl("Foo", [("a", required(bad_ty))])]);
+        assert_matches!(
+            bad_schema.check_for_encode(),
+            Err(EncodeError::MaxDepthExceeded)
+        );
+        // Just over the limit, prost can still decode
+        let bytes = prost::Message::encode_to_vec(&bad_schema);
+        assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
+
+        // Same test with extension_type leaf
+        let mut ok_ext = extension_type("decimal");
+        for _ in 0..max_set_depth {
+            ok_ext = set_type(ok_ext);
+        }
+        let ok_schema = schema([entity_decl("Bar", [("b", required(ok_ext))])]);
+        assert!(ok_schema.check_for_encode().is_ok());
+
+        let mut bad_ext = extension_type("decimal");
+        for _ in 0..=max_set_depth {
+            bad_ext = set_type(bad_ext);
+        }
+        let bad_schema = schema([entity_decl("Bar", [("b", required(bad_ext))])]);
+        assert_matches!(
+            bad_schema.check_for_encode(),
+            Err(EncodeError::MaxDepthExceeded)
+        );
+        // Just over the limit, prost can still decode
+        let bytes = prost::Message::encode_to_vec(&bad_schema);
         assert!(<models::Schema as prost::Message>::decode(&bytes[..]).is_ok());
     }
 

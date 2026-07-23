@@ -194,10 +194,7 @@ pub(crate) fn encode_with_buf<M: prost::Message + EncodeCheck + for<'a> From<&'a
 /// (e.g., expression depth exceeds [`MAX_ENCODE_DEPTH`]).
 pub(crate) fn encode_to_vec<M: prost::Message + EncodeCheck + for<'a> From<&'a T>, T>(
     thing: &T,
-) -> Result<Vec<u8>, EncodeError>
-where
-    for<'a> M: From<&'a T>,
-{
+) -> Result<Vec<u8>, EncodeError> {
     let model = M::from(thing);
     model.check_for_encode()?;
     Ok(model.encode_to_vec())
@@ -315,6 +312,10 @@ impl TryValidate for api::EntityNamespace {
 use super::models;
 
 impl EncodeCheck for models::Expr {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "many variants in expr and more readable that way"
+    )]
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
         // Iterative depth-first traversal measuring protobuf recursion depth.
         let mut stack: Vec<(&Self, usize)> = vec![(self, init)];
@@ -331,7 +332,16 @@ impl EncodeCheck for models::Expr {
                 // wrapper message (BinaryApp, UnaryApp, If, etc.) costs another 1 level.
                 let child_depth = depth + 2;
                 match kind {
-                    ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) => {}
+                    ExprKind::Lit(lit) => {
+                        // A literal EUid adds 3: (Literal (EntityUuid (Name ...))
+                        if let Some(models::expr::literal::Lit::Euid(_)) = lit.lit {
+                            let euid_name_depth = depth + 3;
+                            if euid_name_depth > MAX_ENCODE_DEPTH {
+                                return Err(EncodeError::MaxDepthExceeded);
+                            }
+                        }
+                    }
+                    ExprKind::Var(_) | ExprKind::Slot(_) => {}
                     ExprKind::If(if_expr) => {
                         if let Some(ref e) = if_expr.test_expr {
                             stack.push((e, child_depth));
@@ -376,6 +386,13 @@ impl EncodeCheck for models::Expr {
                         for arg in &ext.args {
                             stack.push((arg, child_depth));
                         }
+                        // a `fn_name` adds 2 : (ExtApp(Name(..)).
+                        if ext.fn_name.is_some() {
+                            let name_depth = depth + 2;
+                            if name_depth > MAX_ENCODE_DEPTH {
+                                return Err(EncodeError::MaxDepthExceeded);
+                            }
+                        }
                     }
                     ExprKind::GetAttr(get) => {
                         if let Some(ref e) = get.expr {
@@ -391,10 +408,24 @@ impl EncodeCheck for models::Expr {
                         if let Some(ref e) = like.expr {
                             stack.push((e, child_depth));
                         }
+                        // PatternElem adds 2 (Like(Vec<PatternElem>(..))
+                        if !like.pattern.is_empty() {
+                            let pattern_depth = depth + 2;
+                            if pattern_depth > MAX_ENCODE_DEPTH {
+                                return Err(EncodeError::MaxDepthExceeded);
+                            }
+                        }
                     }
                     ExprKind::Is(is) => {
                         if let Some(ref e) = is.expr {
                             stack.push((e, child_depth));
+                        }
+                        // `entity_type` adds 2 (Is (Name (..)))
+                        if is.entity_type.is_some() {
+                            let name_depth = depth + 2;
+                            if name_depth > MAX_ENCODE_DEPTH {
+                                return Err(EncodeError::MaxDepthExceeded);
+                            }
                         }
                     }
                     ExprKind::Set(set) => {
@@ -532,7 +563,14 @@ fn check_type_depth_inner(root: &models::Type, starting_depth: usize) -> Result<
         if let Some(ref data) = ty.data {
             use models::r#type::Data;
             match data {
-                Data::Prim(_) | Data::Entity(_) | Data::Ext(_) => {}
+                Data::Prim(_) => {}
+                Data::Entity(_) | Data::Ext(_) => {
+                    // Entity/Ext adds 1: (Name(..))
+                    let name_depth = depth + 1;
+                    if name_depth > MAX_ENCODE_DEPTH {
+                        return Err(EncodeError::MaxDepthExceeded);
+                    }
+                }
                 Data::SetElem(inner_type) => {
                     // set_elem is directly a Type field: +1 prost level
                     stack.push((inner_type, depth + 1));
