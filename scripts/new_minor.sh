@@ -6,6 +6,8 @@
 # of core, symcc, and cli are performed together.
 #
 # Must be run from the root directory of the cedar repository.
+#
+# Requires: jq and cargo release.
 
 set -euo pipefail
 
