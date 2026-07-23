@@ -38,3 +38,8 @@ variadic-is-in-range = []
 
 [lints]
 workspace = true
+
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "## \\[Unreleased\\]\n\nCedar Language Version: TBD", replace = "## [Unreleased]\n\nCedar Language Version: TBD\n\n## [{{version}}] - Coming soon\n\nCedar Language Version: $$CEDAR_LANGUAGE_VERSION$$", exactly = 1 },
+]

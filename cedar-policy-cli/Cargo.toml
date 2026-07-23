@@ -53,3 +53,9 @@ dist = true
 
 [lints]
 workspace = true
+
+
+[package.metadata.release]
+pre-release-replacements = [
+    { file = "CHANGELOG.md", search = "## Unreleased", replace = "## Unreleased\n\n## {{version}}", exactly = 1 },
+]
