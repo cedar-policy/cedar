@@ -12,6 +12,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 ## [Unreleased]
 
+Cedar Language Version: TBD
+
+## [4.12.0] - Coming soon
+
+Cedar Language Version: 4.5
+
 ### Fixed
 
 - Fixed `schema_to_json_with_resolved_types` to support converting schemas that use the `Action` entity type as an attribute type.
