@@ -1,0 +1,114 @@
+[
+    {
+        "uid": {
+            "type": "Photo",
+            "id": "vacation.jpg"
+        },
+        "attrs": {
+            "owner": {
+                "__entity": {
+                    "type": "User",
+                    "id": "alice"
+                }
+            },
+            "viewers": [
+                {
+                    "__entity": {
+                        "type": "User",
+                        "id": "bob"
+                    }
+                },
+                {
+                    "__entity": {
+                        "type": "User",
+                        "id": "carol"
+                    }
+                }
+            ],
+            "tags_list": [
+                "vacation",
+                "beach",
+                "sunset"
+            ],
+            "scores": [
+                10,
+                20,
+                30
+            ],
+            "flags": [
+                true,
+                false,
+                true
+            ],
+            "empty_set": [],
+            "nested": [
+                [
+                    1,
+                    2
+                ],
+                [
+                    3,
+                    4
+                ]
+            ]
+        },
+        "parents": [
+            {
+                "type": "Album",
+                "id": "summer"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "Album",
+            "id": "summer"
+        },
+        "attrs": {
+            "owner": {
+                "__entity": {
+                    "type": "Account",
+                    "id": "alice"
+                }
+            },
+            "shared_with": [
+                {
+                    "__entity": {
+                        "type": "User",
+                        "id": "bob"
+                    }
+                }
+            ],
+            "admins": [
+                {
+                    "__entity": {
+                        "type": "User",
+                        "id": "alice"
+                    }
+                },
+                {
+                    "__entity": {
+                        "type": "User",
+                        "id": "carol"
+                    }
+                }
+            ]
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Account",
+            "id": "alice"
+        },
+        "attrs": {
+            "primary_user": {
+                "__entity": {
+                    "type": "User",
+                    "id": "alice"
+                }
+            }
+        },
+        "parents": []
+    }
+]

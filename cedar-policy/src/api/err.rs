@@ -57,6 +57,43 @@ pub mod entities_errors {
     pub use cedar_policy_core::entities::err::{Duplicate, EntitiesError, TransitiveClosureError};
 }
 
+/// Errors related to parsing entities from Cedar syntax
+#[cfg(feature = "cedar-entity-syntax")]
+pub mod cedar_entities_errors {
+    pub use cedar_policy_core::entities::cedar_syntax::err::{
+        ConversionError, ConversionErrors, ParseError, ParseErrors,
+    };
+}
+
+/// Top-level error type for parsing entity data from the Cedar syntax
+#[cfg(feature = "cedar-entity-syntax")]
+#[derive(Debug, Diagnostic, Error)]
+#[non_exhaustive]
+pub enum CedarEntitiesError {
+    /// Syntax error during parsing
+    #[error("error parsing Cedar entity data syntax")]
+    #[diagnostic(transparent)]
+    Syntax(#[from] cedar_policy_core::entities::cedar_syntax::err::ParseErrors),
+
+    /// Error during AST → Entities conversion
+    #[error("error converting Cedar entity data")]
+    #[diagnostic(transparent)]
+    Conversion(#[from] cedar_policy_core::entities::cedar_syntax::err::ConversionErrors),
+
+    /// Error constructing the Entities collection (duplicates, schema conformance, etc.)
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Entities(#[from] cedar_policy_core::entities::err::EntitiesError),
+}
+
+/// Error type for formatting entities to Cedar syntax
+#[cfg(feature = "cedar-entity-syntax")]
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct CedarEntitiesFormatError(
+    pub cedar_policy_core::entities::cedar_syntax::fmt::FormatError,
+);
+
 /// Errors related to serializing/deserializing entities or contexts to/from JSON
 pub mod entities_json_errors {
     pub use cedar_policy_core::entities::json::err::{

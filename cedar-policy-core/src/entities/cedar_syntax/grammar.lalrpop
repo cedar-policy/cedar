@@ -1,0 +1,283 @@
+//
+// Copyright Cedar Contributors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      https://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+use std::sync::Arc;
+use smol_str::SmolStr;
+use crate::parser::{Node, Loc, unescape::to_unescaped_string};
+use crate::ast::{Annotations, AnyId};
+use crate::entities::cedar_syntax::ast::*;
+use crate::entities::cedar_syntax::err::UserError;
+
+use lalrpop_util::ParseError;
+
+/// `errors` collects generated errors.
+///
+/// `src` is the (full) original source being parsed, which the source locations l,r index into.
+grammar<'err, 's>(errors: &'err mut Vec<crate::entities::cedar_syntax::err::RawErrorRecovery<'input>>, src: &'s Arc<str>, keep_src: bool);
+
+extern {
+    type Error = UserError;
+}
+
+match {
+    // Whitespace and comments
+    r"\s+" => { }, // The default whitespace skipping is disabled when an `ignore pattern` is specified
+    r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
+
+    // keywords
+    "namespace" => NAMESPACE,
+    "instance" => INSTANCE,
+    "in" => IN,
+    "tags" => TAGS,
+    "true" => TRUE,
+    "false" => FALSE,
+
+    // Data tokens
+    r"[_a-zA-Z][_a-zA-Z0-9]*" => IDENTIFIER,
+    r"[0-9]+" => NUMBER,
+    r#""(\\.|[^"\\])*""# => STRINGLIT,
+
+    // Punctuation
+    ",", ";", ":", "::", "{", "}", "[", "]",
+    "=", "@", "(", ")", "-",
+}
+
+// Entities := {Namespace}
+
+pub Entities: EntityDataAst = {
+    <ns: Namespace*> => ns,
+}
+
+// Namespace := 'namespace' Path '{' {InstanceDecl} '}'
+
+Namespace: Annotated<EntityNamespace> = {
+    <ns: Annotated<NamedNamespace>> => ns,
+    // Bare instance declarations (no namespace block)
+    <l:@L> <inst: Annotated<InstanceDecl>> <r:@R> => Annotated {
+        data: EntityNamespace {
+            name: None,
+            instances: vec![inst],
+        },
+        annotations: Annotations::new(),
+    },
+}
+
+NamedNamespace: EntityNamespace = {
+    <l:@L> NAMESPACE <p: NamespacePath> "{" <insts: Annotated<InstanceDecl>*> "}" <r:@R>
+    => EntityNamespace {
+        name: Some(p),
+        instances: insts,
+    },
+}
+
+// InstanceDecl := 'instance' EntityRef ['in' EntityRefOrRefs] ['='? Record] ['tags' Record] ';'
+
+InstanceDecl: Node<EntityInstance> = {
+    <l:@L> INSTANCE <eref: EntityRef>
+        <parents: (IN <EntityRefOrRefs>)?>
+        <attrs: ("="? <Record>)?>
+        <tags_rec: (TAGS <Record>)?>
+    ";" <r:@R>
+    => Node::with_source_loc(EntityInstance {
+        entity_ref: eref,
+        parents: parents.unwrap_or_default(),
+        attrs: attrs,
+        tags: tags_rec,
+    }, Loc::new(l..r, Arc::clone(src))),
+}
+
+// EntityRef := Ident {'::' Ident} '::' STR
+
+// An entity reference is: Ident (:: Ident)* :: STRINGLIT
+// The last `:: STR` is the entity ID separator; everything before is the type path.
+// We parse it as a sequence of `:: Ident` followed by `:: STR` to avoid
+// ambiguity with the Path production.
+EntityRef: Node<EntityReference> = {
+    <l:@L> <first: Ident> <rest: ("::" <Ident>)*> "::" <id: STR> <r:@R> => {
+        let mut type_path = vec![first];
+        type_path.extend(rest);
+        Node::with_source_loc(
+            EntityReference { type_path, id: id.node },
+            Loc::new(l..r, Arc::clone(src))
+        )
+    },
+}
+
+EntityRefOrRefs: Vec<Node<EntityReference>> = {
+    <e: EntityRef> => vec![e],
+    "[" <es: Comma<EntityRef>> "]" => es,
+}
+
+// Value := NUMBER | '-' NUMBER | STR | TRUE | FALSE | EntityRef | '[' ... ']' | '{' ... '}' | FnName '(' ... ')'
+
+Value: Node<EntityValue> = {
+    <l:@L> <n: NUMBER> <r:@R> =>? {
+        match n.parse::<i64>() {
+            Ok(v) => Ok(Node::with_source_loc(EntityValue::Long(v), Loc::new(l..r, Arc::clone(src)))),
+            Err(_) => Err(ParseError::User {
+                error: UserError::IntegerOverflow(
+                    SmolStr::from(n),
+                    Node::with_source_loc((), Loc::new(l..r, Arc::clone(src))),
+                ),
+            }),
+        }
+    },
+    <l:@L> "-" <n: NUMBER> <r:@R> =>? {
+        match format!("-{}", n).parse::<i64>() {
+            Ok(v) => Ok(Node::with_source_loc(EntityValue::Long(v), Loc::new(l..r, Arc::clone(src)))),
+            Err(_) => Err(ParseError::User {
+                error: UserError::IntegerOverflow(
+                    SmolStr::from(format!("-{}", n)),
+                    Node::with_source_loc((), Loc::new(l..r, Arc::clone(src))),
+                ),
+            }),
+        }
+    },
+    <l:@L> <s: STR> <r:@R>
+        => Node::with_source_loc(EntityValue::String(s.node), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TRUE <r:@R>
+        => Node::with_source_loc(EntityValue::Bool(true), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> FALSE <r:@R>
+        => Node::with_source_loc(EntityValue::Bool(false), Loc::new(l..r, Arc::clone(src))),
+    // Entity ref in value position: Type::"id"
+    <l:@L> <eref: EntityRef> <r:@R>
+        => Node::with_source_loc(EntityValue::EntityRef(eref), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> "[" <vs: Comma<Value>> "]" <r:@R>
+        => Node::with_source_loc(EntityValue::Set(vs), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> "{" <kvs: Comma<KeyValue>> "}" <r:@R>
+        => Node::with_source_loc(EntityValue::Record(kvs), Loc::new(l..r, Arc::clone(src))),
+    // Extension function call: fn_name(args)
+    <l:@L> <name: FnName> "(" <args: Comma<Value>> ")" <r:@R>
+        => Node::with_source_loc(EntityValue::ExtensionCall { fn_name: name.node, args }, Loc::new(l..r, Arc::clone(src))),
+}
+
+// A function name is an identifier path NOT followed by `::` STR (that would be an entity ref).
+// Since entity refs are parsed separately, a path followed by `(` is unambiguously a function call.
+FnName: Node<Vec<Node<SmolStr>>> = {
+    <l:@L> <first: Ident> <rest: ("::" <Ident>)*> <r:@R> => {
+        let mut segments = vec![first];
+        segments.extend(rest);
+        Node::with_source_loc(segments, Loc::new(l..r, Arc::clone(src)))
+    },
+}
+
+// Record := '{' [KeyValue {',' KeyValue} [',']] '}'
+
+Record: Node<Vec<(Node<SmolStr>, Node<EntityValue>)>> = {
+    <l:@L> "{" <kvs: Comma<KeyValue>> "}" <r:@R>
+    => Node::with_source_loc(kvs, Loc::new(l..r, Arc::clone(src))),
+}
+
+KeyValue: (Node<SmolStr>, Node<EntityValue>) = {
+    <k: Key> ":" <v: Value> => (k, v),
+}
+
+Key: Node<SmolStr> = {
+    <l:@L> <id: IDENTIFIER> <r:@R>
+        => Node::with_source_loc(SmolStr::from(id), Loc::new(l..r, Arc::clone(src))),
+    // Keywords can also be used as keys
+    <l:@L> NAMESPACE <r:@R>
+        => Node::with_source_loc(SmolStr::from("namespace"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> INSTANCE <r:@R>
+        => Node::with_source_loc(SmolStr::from("instance"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> IN <r:@R>
+        => Node::with_source_loc(SmolStr::from("in"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TAGS <r:@R>
+        => Node::with_source_loc(SmolStr::from("tags"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TRUE <r:@R>
+        => Node::with_source_loc(SmolStr::from("true"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> FALSE <r:@R>
+        => Node::with_source_loc(SmolStr::from("false"), Loc::new(l..r, Arc::clone(src))),
+    <s: STR> => s,
+}
+
+// NamespacePath := Ident {'::' Ident}
+// Ident := IDENTIFIER | keywords
+NamespacePath: Node<Vec<Node<SmolStr>>> = {
+    <l:@L> <first: Ident> <rest: ("::" <Ident>)*> <r:@R> => {
+        let mut segments = vec![first];
+        segments.extend(rest);
+        Node::with_source_loc(segments, Loc::new(l..r, Arc::clone(src)))
+    },
+}
+
+// An identifier (non-keyword) or a keyword used as an identifier in type/path position
+Ident: Node<SmolStr> = {
+    <l:@L> <i: IDENTIFIER> <r:@R>
+        => Node::with_source_loc(SmolStr::from(i), Loc::new(l..r, Arc::clone(src))),
+    // Keywords that can appear as type names in paths
+    <l:@L> NAMESPACE <r:@R>
+        => Node::with_source_loc(SmolStr::from("namespace"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> INSTANCE <r:@R>
+        => Node::with_source_loc(SmolStr::from("instance"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> IN <r:@R>
+        => Node::with_source_loc(SmolStr::from("in"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TAGS <r:@R>
+        => Node::with_source_loc(SmolStr::from("tags"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TRUE <r:@R>
+        => Node::with_source_loc(SmolStr::from("true"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> FALSE <r:@R>
+        => Node::with_source_loc(SmolStr::from("false"), Loc::new(l..r, Arc::clone(src))),
+}
+
+// AnyIdent includes all identifiers and keywords — used for annotation keys
+AnyIdent: Node<AnyId> = {
+    <l:@L> <i: IDENTIFIER> <r:@R>
+        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> NAMESPACE <r:@R>
+        => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> INSTANCE <r:@R>
+        => Node::with_source_loc("instance".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> IN <r:@R>
+        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TAGS <r:@R>
+        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> TRUE <r:@R>
+        => Node::with_source_loc("true".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> FALSE <r:@R>
+        => Node::with_source_loc("false".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+}
+
+Comma<E>: Vec<E> = {
+    => vec![],
+    <v: (<E> ",")*> <e: E> ","? => {
+        let mut v = v;
+        v.push(e);
+        v
+    },
+}
+
+STR: Node<SmolStr> = {
+    <l:@L> <s:STRINGLIT> <r:@R> =>? {
+        #[allow(clippy::string_slice, reason = "STRINGLIT token has at least two characters")]
+        to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
+            error: UserError::StringEscape(Node::with_source_loc(e, Loc::new(l..r, Arc::clone(src)))),
+        }), |v| Ok(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src)))))
+    },
+}
+
+// Annotations := {'@' AnyIdent ['(' String ')']}
+
+Annotation: Node<(Node<AnyId>, Option<Node<SmolStr>>)> = {
+    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R>
+        => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src))),
+}
+
+Annotated<E>: Annotated<E> = {
+    <annotations: Annotation*> <e:E> =>? {
+        deduplicate_annotations(e, annotations).map_err(|e| ParseError::User { error: e })
+    },
+}

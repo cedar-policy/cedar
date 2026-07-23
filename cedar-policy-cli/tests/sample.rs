@@ -23,16 +23,34 @@ use std::path::{Path, PathBuf};
 
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
+#[cfg(feature = "cedar-entity-syntax")]
+use cedar_policy_cli::EntitiesFormat;
 use cedar_policy_cli::{
     authorize, check_parse, evaluate, link, run_tests, validate, Arguments, AuthorizeArgs,
-    CedarExitCode, CheckParseArgs, EvaluateArgs, LinkArgs, OptionalPoliciesArgs,
-    OptionalSchemaArgs, PoliciesArgs, PolicyFormat, RequestArgs, RunTestsArgs, SchemaArgs,
-    SchemaFormat, ValidateArgs,
+    CedarExitCode, CheckParseArgs, EntitiesArgs, EvaluateArgs, LinkArgs, OptionalEntitiesArgs,
+    OptionalPoliciesArgs, OptionalSchemaArgs, PoliciesArgs, PolicyFormat, RequestArgs,
+    RunTestsArgs, SchemaArgs, SchemaFormat, ValidateArgs,
 };
 
 use assert_cmd::cargo;
 use predicates::prelude::*;
 use rstest::rstest;
+
+fn make_entities_args(entities_file: PathBuf) -> EntitiesArgs {
+    EntitiesArgs {
+        entities_file,
+        #[cfg(feature = "cedar-entity-syntax")]
+        entities_format: EntitiesFormat::default(),
+    }
+}
+
+fn make_optional_entities_args(entities_file: Option<PathBuf>) -> OptionalEntitiesArgs {
+    OptionalEntitiesArgs {
+        entities_file,
+        #[cfg(feature = "cedar-entity-syntax")]
+        entities_format: EntitiesFormat::default(),
+    }
+}
 
 #[track_caller]
 fn run_check_parse_test(
@@ -52,7 +70,7 @@ fn run_check_parse_test(
             schema_file: Some(schema_file.into()),
             schema_format: SchemaFormat::Cedar,
         },
-        entities_file: entities_file.map(Into::into),
+        entities: make_optional_entities_args(entities_file.map(Into::into)),
     };
     let output = check_parse(&cmd);
     assert_eq!(output, expected_exit_code, "{cmd:#?}");
@@ -106,7 +124,7 @@ fn run_authorize_test_with_linked_policies(
             schema_file: None,
             schema_format: SchemaFormat::default(),
         },
-        entities_file: entities_file.into(),
+        entities: make_entities_args(PathBuf::from(entities_file.into())),
         verbose: true,
         timing: false,
     };
@@ -167,7 +185,7 @@ fn run_authorize_test_context(
             schema_file: None,
             schema_format: SchemaFormat::default(),
         },
-        entities_file: entities_file.into(),
+        entities: make_entities_args(PathBuf::from(entities_file.into())),
         verbose: true,
         timing: false,
     };
@@ -200,7 +218,7 @@ fn run_authorize_test_json(
             schema_file: None,
             schema_format: SchemaFormat::default(),
         },
-        entities_file: entities_file.into(),
+        entities: make_entities_args(PathBuf::from(entities_file.into())),
         verbose: true,
         timing: false,
     };
@@ -819,7 +837,7 @@ fn test_evaluate_samples(
             schema_file: None,
             schema_format: SchemaFormat::default(),
         },
-        entities_file: Some(entities_file.into()),
+        entities: make_optional_entities_args(Some(PathBuf::from(entities_file.into()))),
         request: RequestArgs {
             principal: None,
             action: None,

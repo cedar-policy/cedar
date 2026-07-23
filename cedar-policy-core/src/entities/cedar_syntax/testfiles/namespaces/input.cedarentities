@@ -1,0 +1,34 @@
+namespace PhotoApp {
+    instance User::"alice" = {
+        "name": "Alice"
+    };
+    instance User::"bob" in Group::"admins" = {
+        "name": "Bob"
+    };
+    instance Group::"admins";
+    instance Photo::"sunset.jpg" in Album::"vacation" = {
+        "owner": User::"alice"
+    };
+    instance Album::"vacation";
+}
+
+namespace Auth::IAM {
+    instance Role::"admin" = {
+        "level": 10,
+        "description": "Full access"
+    };
+    instance Role::"viewer" = {
+        "level": 1,
+        "description": "Read-only"
+    };
+    instance Policy::"allow_all" = {
+        "role": Role::"admin",
+        "target": PhotoApp::Album::"vacation"
+    };
+}
+
+// Unnamespaced entity referencing namespaced ones
+instance GlobalConfig::"main" = {
+    "default_role": Auth::IAM::Role::"viewer",
+    "app_owner": PhotoApp::User::"alice"
+};

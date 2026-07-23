@@ -5337,6 +5337,26 @@ mod schema_based_parsing_tests {
     }
 }
 
+#[cfg(all(test, feature = "cedar-entity-syntax"))]
+mod test_cedar_entities_schema_validation {
+    use super::*;
+
+    #[test]
+    fn rejects_entity_not_conforming_to_schema() {
+        let (schema, _) =
+            Schema::from_cedarschema_str("entity User { name: String, age: Long };").unwrap();
+
+        // Entity has wrong attribute type: age is a string instead of Long
+        let input = r#"instance User::"alice" { name: "Alice", age: "thirty" };"#;
+        let err = Entities::from_cedar_str(input, Some(&schema))
+            .expect_err("should reject entity that doesn't conform to schema");
+
+        assert!(
+            matches!(err, CedarEntitiesError::Entities(_)),
+            "expected CedarEntitiesError::Entities, got: {err:?}"
+        );
+    }
+}
 #[cfg(not(feature = "partial-validate"))]
 #[test]
 fn partial_schema_unsupported() {
@@ -12351,5 +12371,56 @@ mod tolerant_ast_tests {
         let ast_policy = ast::Policy::from(static_policy);
         let policy = Policy::from_ast(ast_policy);
         let _ = policy.action_constraint();
+    }
+}
+
+#[cfg(all(test, feature = "cedar-entity-syntax"))]
+mod test_cedar_entities_roundtrip {
+    use super::{Entities, EntityUid, EvalResult};
+    use std::str::FromStr;
+
+    /// Round-tripping through `to_cedar_string()` / `from_cedar_str()` must
+    /// preserve a reference to a top-level (unnamespaced) entity type held by
+    /// an entity inside a namespace. The formatter emits the top-level type as
+    /// a bare name inside the `namespace {}` block and the parser must resolve
+    /// it back to the root namespace rather than qualifying it with the
+    /// enclosing namespace.
+    #[test]
+    fn roundtrip_namespaced_ref_to_toplevel_type_public_api() {
+        let json = r#"[
+            {"uid":{"type":"GlobalThing","id":"g"},"attrs":{},"parents":[]},
+            {"uid":{"type":"NS::Bar","id":"1"},
+             "attrs":{"ref":{"__entity":{"type":"GlobalThing","id":"g"}}},
+             "parents":[]}
+        ]"#;
+        let original = Entities::from_json_str(json, None).expect("JSON parse should succeed");
+
+        let cedar_text = original
+            .to_cedar_string()
+            .expect("to_cedar_string should succeed");
+        let reparsed =
+            Entities::from_cedar_str(&cedar_text, None).expect("from_cedar_str should succeed");
+
+        // The `ref` attribute must still point at the top-level
+        // `GlobalThing::"g"`, not `NS::GlobalThing::"g"`.
+        let bar_uid = EntityUid::from_str(r#"NS::Bar::"1""#).unwrap();
+        let expected_ref = EntityUid::from_str(r#"GlobalThing::"g""#).unwrap();
+        let reparsed_ref = reparsed
+            .get(&bar_uid)
+            .expect(r#"NS::Bar::"1" missing after round-trip"#)
+            .attr("ref")
+            .expect("ref attribute missing")
+            .expect("ref attribute should be a value");
+        assert_eq!(
+            reparsed_ref,
+            EvalResult::EntityUid(expected_ref),
+            "round-trip changed the reference target\n\nCedar text:\n{cedar_text}"
+        );
+
+        // Deep equality verifies all attribute values, not just UIDs.
+        assert!(
+            original.deep_eq(&reparsed),
+            "public-API round-trip is not deep-equal\n\nCedar text:\n{cedar_text}"
+        );
     }
 }
