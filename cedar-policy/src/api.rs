@@ -881,9 +881,10 @@ impl Entities {
     ///
     /// ## Errors
     /// - [`CedarEntitiesError::Syntax`] if the input has syntax errors
-    /// - [`CedarEntitiesError::Conversion`] if extension functions are unknown
-    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities
-    /// - [`EntitiesError::InvalidEntity`] if `schema` is provided and entities do not conform
+    /// - [`CedarEntitiesError::Conversion`] if extension functions are unknown or
+    ///   attribute evaluation fails
+    /// - [`CedarEntitiesError::Entities`] if there are duplicate entities or if
+    ///   entities do not conform to the provided schema
     #[cfg(feature = "cedar-entity-syntax")]
     pub fn from_cedar_str(src: &str, schema: Option<&Schema>) -> Result<Self, CedarEntitiesError> {
         use cedar_policy_core::entities::cedar_syntax;
@@ -6448,69 +6449,4 @@ pub fn compute_entity_manifest(
     pset: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
     entity_manifest::compute_entity_manifest(&validator.0, &pset.ast).map_err(Into::into)
-}
-
-/// Public-API regression tests confirming code-review finding #1
-/// (see `.research/rfc104-code-review/findings.md`). These exercise the
-/// user-facing `Entities::to_cedar_string()` / `Entities::from_cedar_str()`
-/// round-trip and assert the DESIRED behavior, so they FAIL against the current
-/// code (confirming the bug) and will PASS once the fix lands.
-#[cfg(all(test, feature = "cedar-entity-syntax"))]
-mod test_cedar_entities_roundtrip {
-    use super::{Entities, EntityUid, EvalResult};
-    use std::str::FromStr;
-
-    /// Finding #1 (HIGH): round-tripping through the public API must preserve a
-    /// reference to a top-level (unnamespaced) entity type held by an entity that
-    /// lives inside a namespace. The formatter emits the top-level type as a bare
-    /// name inside the `namespace {}` block and the parser re-qualifies it against
-    /// the enclosing namespace, silently changing `GlobalThing::"g"` into
-    /// `NS::GlobalThing::"g"`.
-    ///
-    /// The source is JSON so the reference is genuinely top-level entering the
-    /// pipeline. NOTE: we must compare with `deep_eq` (or inspect the attribute
-    /// directly) — `Entities`/`Entity` `PartialEq` compares only UIDs, so `==`
-    /// does NOT detect the changed attribute value.
-    ///
-    /// EXPECTED: PASSES once formatter/parser namespace handling is symmetric.
-    /// FAILS today.
-    #[test]
-    fn roundtrip_namespaced_ref_to_toplevel_type_public_api() {
-        let json = r#"[
-            {"uid":{"type":"GlobalThing","id":"g"},"attrs":{},"parents":[]},
-            {"uid":{"type":"NS::Bar","id":"1"},
-             "attrs":{"ref":{"__entity":{"type":"GlobalThing","id":"g"}}},
-             "parents":[]}
-        ]"#;
-        let original = Entities::from_json_str(json, None).expect("JSON parse should succeed");
-
-        let cedar_text = original
-            .to_cedar_string()
-            .expect("to_cedar_string should succeed");
-        let reparsed =
-            Entities::from_cedar_str(&cedar_text, None).expect("from_cedar_str should succeed");
-
-        // Primary, concrete assertion: the `ref` attribute must still point at the
-        // top-level `GlobalThing::"g"`, not `NS::GlobalThing::"g"`.
-        let bar_uid = EntityUid::from_str(r#"NS::Bar::"1""#).unwrap();
-        let expected_ref = EntityUid::from_str(r#"GlobalThing::"g""#).unwrap();
-        let reparsed_ref = reparsed
-            .get(&bar_uid)
-            .expect(r#"NS::Bar::"1" missing after round-trip"#)
-            .attr("ref")
-            .expect("ref attribute missing")
-            .expect("ref attribute should be a value");
-        assert_eq!(
-            reparsed_ref,
-            EvalResult::EntityUid(expected_ref),
-            "round-trip changed the reference target (finding #1)\n\nCedar text:\n{cedar_text}"
-        );
-
-        // Belt-and-suspenders: deep equality (compares attribute values, unlike
-        // `==` which only compares UIDs).
-        assert!(
-            original.deep_eq(&reparsed),
-            "public-API round-trip is not deep-equal (finding #1)\n\nCedar text:\n{cedar_text}"
-        );
-    }
 }

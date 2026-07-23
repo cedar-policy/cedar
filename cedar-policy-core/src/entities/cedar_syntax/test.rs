@@ -1000,7 +1000,7 @@ mod roundtrip_tests {
 
         assert_eq!(
             orig_ref, reparsed_ref,
-            "round-trip changed the reference target (finding #1)\n\nCedar text:\n{cedar_text}"
+            "round-trip changed the reference target\n\nCedar text:\n{cedar_text}"
         );
     }
 

@@ -34,7 +34,7 @@ extern {
 
 match {
     // Whitespace and comments
-    r"\s*" => { }, // The default whitespace skipping is disabled when an `ignore pattern` is specified
+    r"\s+" => { }, // The default whitespace skipping is disabled when an `ignore pattern` is specified
     r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
 
     // keywords
