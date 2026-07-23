@@ -30,8 +30,15 @@ cedar_policy_version=$(crate_version cedar-policy)
 #         assert_eq!(get_sdk_version().to_string(), "<CEDAR_POLICY_CRATE_VERSION>");
 #     }
 # ```
+# sed does not fail when the regex matches nothing, so guard with grep first
+# to catch a stale regex instead of silently leaving the placeholder behind.
+sdk_version_re='(get_sdk_version\(\)\.to_string\(\), ")[^"]*(")'
+if ! grep -qE "${sdk_version_re}" cedar-policy/src/test/test.rs; then
+    echo "error: could not find SDK version assertion in cedar-policy/src/test/test.rs" >&2
+    exit 1
+fi
 sed -i -E \
-    "s|(get_sdk_version\(\)\.to_string\(\), \")[^\"]*(\")|\1${cedar_policy_version}\2|" \
+    's|'"${sdk_version_re}"'|\1'"${cedar_policy_version}"'\2|' \
     cedar-policy/src/test/test.rs
 
 # Record the current Cedar language version.
