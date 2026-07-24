@@ -36,6 +36,7 @@ use crate::validator::{
     RawName, ValidationError, ValidationMode,
 };
 
+use super::super::EnvMemo;
 use super::test_utils::{
     assert_exactly_one_diagnostic, assert_policy_typecheck_fails, expr_id_placeholder, get_loc,
 };
@@ -48,12 +49,14 @@ fn assert_typechecks_strict(
     expected_type: Type,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
+    let no_memo = EnvMemo::default();
     let typechecker = SingleEnvTypechecker {
         schema: &schema,
         extensions: ExtensionSchemas::all_available(),
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
+        memo: &no_memo,
     };
     let mut errs = Vec::new();
     let answer =
@@ -75,12 +78,14 @@ fn assert_strict_type_error(
     expected_error: ValidationError,
 ) {
     let schema = schema.try_into().expect("Failed to construct schema.");
+    let no_memo = EnvMemo::default();
     let typechecker = SingleEnvTypechecker {
         schema: &schema,
         extensions: ExtensionSchemas::all_available(),
         mode: ValidationMode::Strict,
         policy_id: &expr_id_placeholder(),
         request_env,
+        memo: &no_memo,
     };
     let mut errs = Vec::new();
     let answer =
@@ -168,12 +173,14 @@ where
 fn strict_typecheck_catches_regular_type_error() {
     with_simple_schema_and_request(|s, q| {
         let schema = s.try_into().expect("Failed to construct schema.");
+        let no_memo = EnvMemo::default();
         let typechecker = SingleEnvTypechecker {
             schema: &schema,
             extensions: ExtensionSchemas::all_available(),
             mode: ValidationMode::Strict,
             policy_id: &expr_id_placeholder(),
             request_env: &q,
+            memo: &no_memo,
         };
         let mut errs = Vec::new();
         typechecker.expect_type(
