@@ -74,11 +74,6 @@ fn reify_template_link(
         );
     }
 
-    let link_id = ast::PolicyID::from_string(
-        v.link_id
-            .as_ref()
-            .ok_or_else(|| ProtobufConversionError::missing("link_id"))?,
-    );
     ast::Template::link(template.clone(), link_id, values).map_err(|e| {
         ProtobufConversionError::InvalidValue(format!("failed to convert to policy: {e}"))
     })
@@ -504,7 +499,7 @@ impl TryFrom<models::PolicySet> for ast::PolicySet {
                 // The id of the policy is policy id, the underlying template id is template_id
                 template_to_links_map
                     .entry(template_id)
-                    .or_insert_with(LinkedHashSet::new)
+                    .or_default()
                     .insert(policy.id().clone());
                 links.insert(policy.id().clone(), policy);
             } else {
@@ -512,7 +507,7 @@ impl TryFrom<models::PolicySet> for ast::PolicySet {
                 // The policy and the template id are the same, it's template_id
                 template_to_links_map
                     .entry(template_id.clone())
-                    .or_insert_with(LinkedHashSet::new)
+                    .or_default()
                     .insert(template_id.clone());
                 links.insert(template_id, policy);
             }

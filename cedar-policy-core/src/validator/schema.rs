@@ -1261,6 +1261,7 @@ impl ValidatorSchema {
     /// - `entity_types` does not declare actions and `action_ids` declares only actions,
     /// - enum entities do not appear as descendants,
     /// - RFC 70 shadowing rules are satisfied.
+    ///
     /// Additionally, this recomputes the transitive closure computation for entity types
     /// and actions.
     ///
