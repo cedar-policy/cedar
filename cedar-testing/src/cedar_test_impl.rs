@@ -358,7 +358,7 @@ impl CedarTestImplementation for RustEngine {
             req.build()
         });
         let response = TestValidationResult {
-            errors: res.map(|r| vec![r.to_string()]).unwrap_or_default(),
+            errors: res.err().map(|e| vec![e.to_string()]).unwrap_or_default(),
             timing_info: HashMap::from([("validate_request".into(), Micros(dur.as_micros()))]),
         };
         TestResult::Success(response)
@@ -370,5 +370,73 @@ impl CedarTestImplementation for RustEngine {
 
     fn validation_comparison_mode(&self) -> ValidationComparisonMode {
         ValidationComparisonMode::AgreeOnAll
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cedar_policy::{Context, EntityUid};
+    use std::str::FromStr;
+
+    fn test_schema() -> Schema {
+        Schema::from_cedarschema_str(
+            r#"
+            entity User;
+            entity Photo;
+            action View appliesTo {
+                principal: User,
+                resource: Photo,
+            };
+        "#,
+        )
+        .expect("schema should parse")
+        .0
+    }
+
+    #[test]
+    fn validate_request_valid_reports_passed() {
+        let schema = test_schema();
+        let request = Request::new(
+            EntityUid::from_str(r#"User::"alice""#).unwrap(),
+            EntityUid::from_str(r#"Action::"View""#).unwrap(),
+            EntityUid::from_str(r#"Photo::"vacation""#).unwrap(),
+            Context::empty(),
+            None,
+        )
+        .expect("request should be constructable");
+
+        let result = RustEngine::new()
+            .validate_request(&schema, &request)
+            .expect("validate_request should return Success");
+
+        assert!(
+            result.validation_passed(),
+            "expected a schema-valid request to pass validation, got errors: {:?}",
+            result.errors
+        );
+    }
+
+    #[test]
+    fn validate_request_invalid_reports_failed() {
+        let schema = test_schema();
+        // Use an entity type not declared in the schema so validation fails.
+        let request = Request::new(
+            EntityUid::from_str(r#"Admin::"bob""#).unwrap(),
+            EntityUid::from_str(r#"Action::"View""#).unwrap(),
+            EntityUid::from_str(r#"Photo::"vacation""#).unwrap(),
+            Context::empty(),
+            None,
+        )
+        .expect("request should be constructable");
+
+        let result = RustEngine::new()
+            .validate_request(&schema, &request)
+            .expect("validate_request should return Success");
+
+        assert!(
+            !result.validation_passed(),
+            "expected a schema-invalid request to fail validation, but no errors were reported"
+        );
     }
 }
