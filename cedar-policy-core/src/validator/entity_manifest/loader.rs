@@ -347,7 +347,7 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
 
     for (k, v2) in attrs2 {
         match attrs1.entry(k) {
-            hash_map::Entry::Occupied(occupied) => {
+            btree_map::Entry::Occupied(occupied) => {
                 let (k, v1) = occupied.remove_entry();
                 match (v1, v2) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => {
@@ -368,7 +368,7 @@ fn merge_entities(e1: Entity, e2: Entity) -> Entity {
                     }
                 };
             }
-            hash_map::Entry::Vacant(vacant) => {
+            btree_map::Entry::Vacant(vacant) => {
                 vacant.insert(v2);
             }
         }

@@ -170,6 +170,7 @@ impl Residual {
 
 impl TryFrom<Residual> for Value {
     type Error = ();
+    /// INVARIANT: TPE evaluator assumes this function cannot error if `value` matches `Residual::Concrete { .. }`
     fn try_from(value: Residual) -> std::result::Result<Self, Self::Error> {
         match value {
             Residual::Concrete { value, .. } => Ok(value),
