@@ -476,29 +476,33 @@ impl Evaluator<'_> {
                 }
             }
             ResidualKind::Record(m) => {
-                let record = m
+                let record: BTreeMap<_, _> = m
                     .as_ref()
                     .iter()
-                    .map(|(a, e)| (a.clone(), self.interpret(e)));
-                if let Ok(m) = record
-                    .clone()
-                    .map(|(a, r)| Ok((a, Value::try_from(r)?)))
-                    .collect::<std::result::Result<BTreeMap<_, _>, ()>>()
+                    .map(|(a, e)| (a.clone(), self.interpret(e)))
+                    .collect();
+                if record
+                    .iter()
+                    .all(|(_, r)| matches!(r, Residual::Concrete { .. }))
                 {
+                    let m = record
+                        .clone()
+                        .into_iter()
+                        .map(|(a, r)| {
+                            #[expect(
+                                clippy::unwrap_used,
+                                reason = "`if` condition guarantees that all attributes are concrete, so `Value::try_from` cannot error"
+                            )]
+                            (a, Value::try_from(r).unwrap())
+                        }).collect::<BTreeMap<_, _>>();
                     mk_concrete(Value {
                         value: ValueKind::Record(Arc::new(m)),
                         loc: None,
                     })
+                } else if record.iter().any(|(_, r)| matches!(r, Residual::Error(_))) {
+                    mk_error()
                 } else {
-                    let mut m = BTreeMap::new();
-                    for (a, r) in record {
-                        if matches!(r, Residual::Error(_)) {
-                            return mk_error();
-                        } else {
-                            m.insert(a, r);
-                        }
-                    }
-                    mk_residual(ResidualKind::Record(Arc::new(m)))
+                    mk_residual(ResidualKind::Record(Arc::new(record)))
                 }
             }
         }

@@ -31,7 +31,7 @@ use itertools::Itertools;
 use miette::Diagnostic;
 use serde::{de::Deserializer, ser::Serializer, Deserialize, Serialize};
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
@@ -721,17 +721,17 @@ impl Entity {
         self,
     ) -> (
         EntityUID,
-        HashMap<SmolStr, PartialValue>,
+        BTreeMap<SmolStr, PartialValue>,
         HashSet<EntityUID>,
         HashSet<EntityUID>,
-        HashMap<SmolStr, PartialValue>,
+        BTreeMap<SmolStr, PartialValue>,
     ) {
         (
             self.uid,
-            self.attrs.into_iter().collect(),
+            self.attrs,
             self.indirect_ancestors,
             self.parents,
-            self.tags.into_iter().collect(),
+            self.tags,
         )
     }
 

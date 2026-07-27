@@ -107,20 +107,20 @@ pub struct PartialEntity {
 impl TryFrom<Entity> for PartialEntity {
     type Error = PartialValueToValueError;
     fn try_from(value: Entity) -> Result<Self, Self::Error> {
-        let uid = value.uid().clone();
-        let attrs = value
-            .attrs()
-            .map(|(a, v)| Ok((a.clone(), Value::try_from(v.clone())?)))
+        let (uid, attrs, ancestors, mut parents, tags) = value.into_inner();
+        parents.extend(ancestors);
+        let attrs = attrs
+            .into_iter()
+            .map(|(a, v)| Ok((a, Value::try_from(v)?)))
             .collect::<Result<BTreeMap<_, _>, PartialValueToValueError>>()?;
-        let ancestors = value.ancestors().cloned().collect();
-        let tags = value
-            .tags()
-            .map(|(a, v)| Ok((a.clone(), Value::try_from(v.clone())?)))
+        let tags = tags
+            .into_iter()
+            .map(|(a, v)| Ok((a, Value::try_from(v)?)))
             .collect::<Result<BTreeMap<_, _>, PartialValueToValueError>>()?;
         Ok(Self {
             uid,
             attrs: Some(attrs),
-            ancestors: Some(ancestors),
+            ancestors: Some(parents),
             tags: Some(tags),
         })
     }
