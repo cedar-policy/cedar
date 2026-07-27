@@ -486,7 +486,6 @@ impl Evaluator<'_> {
                     .all(|(_, r)| matches!(r, Residual::Concrete { .. }))
                 {
                     let m = record
-                        .clone()
                         .into_iter()
                         .map(|(a, r)| {
                             #[expect(
