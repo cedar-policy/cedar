@@ -435,12 +435,12 @@ impl Evaluator<'_> {
                 let args: Vec<_> = args.iter().map(|a| self.interpret(a)).collect();
                 // If the arguments are all concrete values, we proceed to evaluate the function call
                 if args.iter().all(Residual::is_concrete) {
-                    let vals : Vec<_> = args.iter().map(|a|{
+                    let vals : Vec<_> = args.into_iter().map(|a|{
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`if` condition guarantees that all set elements are concrete, so `Value::try_from` cannot error"
                         )]
-                        Value::try_from(a.clone()).unwrap()
+                        Value::try_from(a).unwrap()
                     }).collect();
                     // Attempt to look up the extension function and apply it
                     // Failed lookup or application errors both lead to
@@ -463,12 +463,12 @@ impl Evaluator<'_> {
             ResidualKind::Set(es) => {
                 let es: Vec<_> = es.iter().map(|e| self.interpret(e)).collect();
                 if es.iter().all(Residual::is_concrete) {
-                    let vals = es.iter().map(|a|{
+                    let vals = es.into_iter().map(|a|{
                         #[expect(
                             clippy::unwrap_used,
                             reason = "`if` condition guarantees that all set elements are concrete, so `Value::try_from` cannot error"
                         )]
-                        Value::try_from(a.clone()).unwrap()
+                        Value::try_from(a).unwrap()
                     });
                     mk_concrete(Value::set(vals, None))
                 } else if es.iter().any(Residual::is_error) {
@@ -1316,8 +1316,6 @@ mod tests {
         let schema = parse_schema(
             r#"entity E { s?: String }; entity User { b: Bool }; action get appliesTo {principal: E, resource: User, context: {x: String}};"#,
         );
-        // `User::""` has known attributes while `E::"e"` omits `attrs`, marking
-        // them unknown.
         let entities = PartialEntities::from_json_value(
             serde_json::json!([
                 {
