@@ -96,6 +96,7 @@ pub fn is_authorized_batched(
     let initial_evaluator = Evaluator {
         request: &request,
         entities: &entities,
+        schema,
         extensions: Extensions::all_available(),
     };
     let mut residuals: Vec<ResidualPolicy> = policy_residual_map(&request, ps, schema)?
@@ -145,6 +146,7 @@ pub fn is_authorized_batched(
         let evaluator = Evaluator {
             request: &request,
             entities: &entities,
+            schema,
             extensions: Extensions::all_available(),
         };
 
