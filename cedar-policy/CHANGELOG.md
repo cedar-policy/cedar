@@ -36,6 +36,10 @@ Cedar Language Version: TBD
 - For the experimental `tpe` feature, fixed `TpeResponse::policy_set` to return the residual policies, matching `TpeResponse::policies` as documented. Previously it returned the original policies (#2540).
 - For the experimental `tpe` feature, partial entity validation now accept action entities with unknown components. The `UnknownActionComponent` is now never returned and is deleted.
 
+### Added
+
+- For the experimental `tpe` feature, TPE now reduces `has`, `hasTag`, `in` and `==` applied to non-erroring but unknown expressions when the schema provides enough information to determine the concrete value of the operation.
+
 ## [4.12.0] - 2026-07-28
 
 Cedar Language Version: 4.5
