@@ -1363,6 +1363,7 @@ mod tests {
             interpret_typed_str_to_str(r#"E::"1" has s && E::"1".s == context.x"#),
             @"false"
         );
+        // Residual `resource.b` means we can't eliminate `error` expression even though it's unreachable
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(resource.b && E::"1" has s) && E::"1".s == context.x"#),
             @"((resource.b) && false) && (error())"
@@ -2015,6 +2016,12 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"undefined".hasTag("s") && E::"undefined".getTag("s") == "bar" "#),
             @r#"E::"undefined".hasTag("s")"#
+        );
+
+        // Residual on the left prevents eliminating `error()` expression even through it's unreachable
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"none_tags".hasTag("tag") && User::"none_tags".getTag("tag") == "foo" && User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
+            @r#"(((User::"none_tags".hasTag("tag")) && ((User::"none_tags".getTag("tag")) == "foo")) && false) && (error())"#
         );
     }
 
