@@ -1312,6 +1312,74 @@ mod tests {
     }
 
     #[test]
+    fn test_has_get_optional_attr() {
+        let schema = parse_schema(
+            r#"entity E { s?: String }; entity User { b: Bool }; action get appliesTo {principal: E, resource: User, context: {x: String}};"#,
+        );
+        // `User::""` has known attributes while `E::"e"` omits `attrs`, marking
+        // them unknown.
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "0" },
+                    "attrs": { "s": "foo" },
+                },
+                {
+                    "uid": { "type": "E", "id": "1" },
+                    "attrs": { },
+                },
+                {
+                    "uid": { "type": "E", "id": "2" },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("User"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal has s && principal.s == context.x"#),
+            @"(principal has s) && ((principal.s) == (context.x))"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"0" has s && E::"0".s == context.x"#),
+            @r#""foo" == (context.x)"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(resource.b && E::"0" has s) && E::"0".s == context.x"#),
+            @r#"(resource.b) && ("foo" == (context.x))"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"1" has s && E::"1".s == context.x"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(resource.b && E::"1" has s) && E::"1".s == context.x"#),
+            @"((resource.b) && false) && (error())"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"2" has s && E::"2".s == context.x"#),
+            @r#"(E::"2" has s) && ((E::"2".s) == (context.x))"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"3" has s && E::"3".s == context.x"#),
+            @r#"(E::"3" has s) && ((E::"3".s) == (context.x))"#
+        );
+    }
+
+    #[test]
     fn test_set() {
         let eval = Evaluator {
             request: &concrete_user_req(),
