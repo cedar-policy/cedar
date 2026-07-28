@@ -64,7 +64,7 @@ jobs:
           else
             cp "target/${TARGET}/dist/cedar" "$STAGE/"
           fi
-          cp LICENSE NOTICE THIRD_PARTY_LICENSES.txt \
+          cp LICENSE NOTICE cedar-policy-cli/THIRD_PARTY_LICENSES.txt \
              cedar-policy-cli/README.md cedar-policy-cli/CHANGELOG.md \
              "$STAGE/"
           if [[ "$TARGET" == *windows* ]]; then
