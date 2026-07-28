@@ -4629,51 +4629,10 @@ mod test {
                        {
                            "kind": "when",
                            "body": {
-                               "&&": {
-                                   "left": {
-                                       "&&": {
-                                           "left": {
-                                               "has": {
-                                                   "left": {
-                                                       "Var": "principal",
-                                                   },
-                                                   "attr": "a"
-                                               }
-                                           },
-                                           "right": {
-                                               "has": {
-                                                   "left": {
-                                                       ".": {
-                                                           "left": {
-                                                               "Var": "principal",
-                                                           },
-                                                           "attr": "a",
-                                                       },
-                                                   },
-                                                   "attr": "b"
-                                               }
-                                           },
-                                       }
-                                   },
-                                   "right": {
-                                       "has": {
-                                           "left": {
-                                               ".": {
-                                                   "left": {
-                                                       ".": {
-                                                           "left": {
-                                                               "Var": "principal",
-                                                           },
-                                                           "attr": "a"
-                                                       }
-                                                   },
-                                                   "attr": "b",
-                                               }
-                                           },
-                                           "attr": "c",
-                                       }
-                                   },
-                               },
+                               "has": {
+                                   "left": { "Var": "principal" },
+                                   "attr": ["a", "b", "c"]
+                               }
                            },
                        }
                    ]

@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- During conversion from Cedar to JSON, extended `has` form is preserved instead of being desugared, resulting in smaller JSON policies (#2490).
+
 ## [4.12.0] - Coming soon
 
 Cedar Language Version: 4.5

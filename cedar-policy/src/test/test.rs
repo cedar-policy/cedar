@@ -8353,10 +8353,10 @@ mod policy_manipulation_functions_tests {
             r#"permit(principal, action, resource) when { User::"Bob" has attr };"#,
             mapping.clone(),
         );
-        // Since there's no extended has in AST, the result of the substitution has the desugared has
+        // Extended `has` is preserved through the EST roundtrip
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice" has attr.andNested };"#,
-            r#"permit(principal, action, resource) when { (User::"Bob" has attr) && ((User::"Bob".attr) has andNested) };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" has attr.andNested };"#,
             mapping.clone(),
         );
         // But staying in the EST doesn't result in desugaring
@@ -9359,15 +9359,21 @@ mod to_json {
     use crate::Policy;
 
     #[test]
-    fn extended_has_not_in_to_json() {
+    fn extended_has_in_to_json() {
         let policy_cedar =
             r#"permit(principal, action, resource) when { context has user.profile };"#;
         let policy = Policy::parse(None, policy_cedar).unwrap();
         let json = policy.to_json().unwrap();
         let json_str = json.to_string();
-        // Should not contain array form of extended has
-        assert!(!json_str.contains(r#""attr":["#));
-        assert!(!json_str.contains(r#"["user","profile","email"]"#));
+        assert!(
+            json_str.contains(r#""attr":["user","profile"]"#),
+            "expected extended has array form, got: {json_str}"
+        );
+        // Round-trips back to the same policy text
+        assert_eq!(
+            Policy::from_json(None, json).unwrap().to_string(),
+            policy.to_string()
+        );
     }
 }
 
