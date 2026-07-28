@@ -22,7 +22,10 @@ pub fn license() -> CedarExitCode {
          See https://www.apache.org/licenses/LICENSE-2.0 for the full text.\n\n\
          Third-party dependency licenses follow:\n"
     );
-    print!("{}", include_str!("../../../THIRD_PARTY_LICENSES.txt"));
+    // This is a symlink to the workspace-root `THIRD_PARTY_LICENSES.txt`. It
+    // must live inside the package directory so that `cargo package` includes
+    // it in the published tarball.
+    print!("{}", include_str!("../../THIRD_PARTY_LICENSES.txt"));
     CedarExitCode::Success
 }
 
