@@ -14,6 +14,9 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Fixed
+- In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
+
 ## [4.12.0] - Coming soon
 
 Cedar Language Version: 4.5
