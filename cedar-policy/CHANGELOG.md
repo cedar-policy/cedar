@@ -17,6 +17,10 @@ Cedar Language Version: TBD
 ### Fixed
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
 
+### Added
+
+- For the experimental `tpe` feature, TPE now reduces `has`, `hasTag`, `in` and `==` applied to non-erroring but unknown expressions when the schema provides enough information to determine the concrete value of the operation.
+
 ## [4.12.0] - 2026-07-28
 
 Cedar Language Version: 4.5

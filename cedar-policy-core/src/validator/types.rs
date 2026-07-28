@@ -372,7 +372,7 @@ impl Type {
                     // common, are disjoint types.
                     // Entity types least-upper-bounds that have entity types in
                     // common, are not disjoint types.
-                    lub1.is_disjoint(&lub2)
+                    lub1.is_disjoint(lub2)
                 } else {
                     false // conservatively false, not promising disjointness; see notes on this function
                 }
@@ -461,6 +461,49 @@ impl Type {
             // `AnyEntity` is handled by the open-attribute match case.
             // No other types may have attributes.
             _ => false,
+        }
+    }
+
+    /// Get `self` as a specific entity type (or set of types in permissive
+    /// validation). Returns `None` for non-entity types and for `AnyEntity`.
+    pub(crate) fn as_entity_lub(&self) -> Option<&EntityLUB> {
+        match &self {
+            Type::Entity(entity_kind) => entity_kind.as_entity_lub(),
+            _ => None,
+        }
+    }
+
+    /// Get `self` as a specific entity type, or, if `self` is a set, then the
+    /// element type as an entity type.  Returns `None` if `self` is neither an
+    /// entity or set of entity, and for `AnyEntity`.
+    pub(crate) fn as_set_or_entity_lub(&self) -> Option<&EntityLUB> {
+        match self {
+            Type::Entity(_) => self.as_entity_lub(),
+            Type::Set {
+                element_type: Some(element_type),
+            } => element_type.as_entity_lub(),
+            _ => None,
+        }
+    }
+
+    /// Could a value of type `ty` have any tags, according to `schema`?
+    ///
+    /// Returns `false` only when `ty` is an entity type without tags declared
+    /// in the schema.
+    #[cfg(feature = "tpe")]
+    pub(crate) fn may_have_tags(schema: &ValidatorSchema, ty: &Type) -> bool {
+        match ty {
+            Type::Entity(EntityKind::Entity(entity_lub)) => {
+                entity_lub.lub_elements.iter().any(|entity| {
+                    schema
+                        .get_entity_type(entity)
+                        .is_some_and(|entity_type| entity_type.tag_type().is_some())
+                })
+            }
+            // Non-entity types cannot have tags, but `hasTag` is only
+            // well-typed on entities, so this case is not expected. The safe
+            // behavior is to assume they might have tags.
+            _ => true,
         }
     }
 
@@ -1096,10 +1139,10 @@ pub enum EntityKind {
 }
 
 impl EntityKind {
-    pub(crate) fn as_entity_lub(&self) -> Option<EntityLUB> {
+    pub(crate) fn as_entity_lub(&self) -> Option<&EntityLUB> {
         match self {
             EntityKind::AnyEntity => None,
-            EntityKind::Entity(lub) => Some(lub.clone()),
+            EntityKind::Entity(lub) => Some(lub),
         }
     }
 

@@ -89,6 +89,7 @@ pub fn is_authorized<'a>(
     let evaluator = Evaluator {
         request,
         entities,
+        schema,
         extensions: Extensions::all_available(),
     };
     let residuals = policy_residual_map(request, ps, schema)?
