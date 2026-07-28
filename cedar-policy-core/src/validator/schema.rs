@@ -1196,7 +1196,7 @@ impl ValidatorSchema {
         for ty in self.leaf_types().unique() {
             if let Type::Entity(EntityKind::Entity(lub)) = ty {
                 for e in lub.iter() {
-                    if !self.entity_types.contains_key(e) {
+                    if !self.is_known_entity_type(e) {
                         undeclared.push(e.clone());
                     }
                 }
@@ -1749,7 +1749,7 @@ pub(crate) mod test {
     };
 
     use crate::validator::json_schema;
-    use crate::validator::types::Type;
+    use crate::validator::types::{AttributeType, Type};
 
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
@@ -2370,6 +2370,31 @@ pub(crate) mod test {
             schema.try_validate(),
             Err(SchemaError::ActionEntityTypeDeclared(_))
         );
+    }
+
+    /// `check_references_wf` should accept entity attributes that reference Action entity types
+    #[test]
+    fn try_validate_accepts_action_entity_type_reference_in_attribute() {
+        let user_type = EntityType::from_normalized_str("User").unwrap();
+        let action_type = EntityType::from_normalized_str("Foo::Action").unwrap();
+
+        // User entity type has an attribute of type Entity that references Foo::Action
+        let attr_type =
+            AttributeType::required_attribute(Arc::new(Type::named_entity_reference(action_type)));
+        let schema = ValidatorSchema::new(
+            [ValidatorEntityType::new_standard(
+                user_type,
+                [],
+                Attributes::with_attributes([("last_action".into(), attr_type)]),
+                OpenTag::ClosedAttributes,
+                None,
+                None,
+            )],
+            [],
+        );
+
+        // Should succeed — Action entity types are valid references
+        assert_matches!(schema.try_validate(), Ok(_));
     }
 
     /// Regression test: enum entity types reachable only via transitive

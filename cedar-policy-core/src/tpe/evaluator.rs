@@ -357,33 +357,6 @@ impl Evaluator<'_> {
                     (_, _) => binapp_residual(arg1, arg2),
                 }
             }
-            ResidualKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
-                // If the arguments are all concrete values, we proceed to
-                // evaluate the function call
-                if let Ok(vals) = args
-                    .iter()
-                    .map(|a| Value::try_from(a.clone()))
-                    .collect::<std::result::Result<Vec<_>, _>>()
-                {
-                    // Attempt to look up the extension function and apply it
-                    // Failed lookup or application errors both lead to
-                    // `Residual::Error` of appropriate types
-                    if let Ok(ext_fn) = self.extensions.func(fn_name) {
-                        if let Ok(PartialValue::Value(value)) = ext_fn.call(&vals) {
-                            return mk_concrete(normalize_ext_value(value));
-                        }
-                    }
-                    mk_error()
-                } else if args.iter().any(|r| matches!(r, Residual::Error(_))) {
-                    mk_error()
-                } else {
-                    mk_residual(ResidualKind::ExtensionFunctionApp {
-                        fn_name: fn_name.clone(),
-                        args: Arc::new(args),
-                    })
-                }
-            }
             ResidualKind::GetAttr { expr, attr } => {
                 let expr = self.interpret(expr);
                 match &expr {
@@ -458,18 +431,47 @@ impl Evaluator<'_> {
                     Residual::Error(_) => mk_error(),
                 }
             }
-            ResidualKind::Set(es) => {
-                let es = es.iter().map(|a| self.interpret(a)).collect::<Vec<_>>();
-                if let Ok(vals) = es
-                    .iter()
-                    .map(|a| Value::try_from(a.clone()))
-                    .collect::<std::result::Result<Vec<_>, _>>()
-                {
-                    mk_concrete(Value {
-                        value: ValueKind::Set(Set::new(vals)),
-                        loc: None,
+            ResidualKind::ExtensionFunctionApp { fn_name, args } => {
+                let args: Vec<_> = args.iter().map(|a| self.interpret(a)).collect();
+                // If the arguments are all concrete values, we proceed to evaluate the function call
+                if args.iter().all(Residual::is_concrete) {
+                    let vals : Vec<_> = args.into_iter().map(|a|{
+                        #[expect(
+                            clippy::unwrap_used,
+                            reason = "`if` condition guarantees that all set elements are concrete, so `Value::try_from` cannot error"
+                        )]
+                        Value::try_from(a).unwrap()
+                    }).collect();
+                    // Attempt to look up the extension function and apply it
+                    // Failed lookup or application errors both lead to
+                    // `Residual::Error` of appropriate types
+                    if let Ok(ext_fn) = self.extensions.func(fn_name) {
+                        if let Ok(PartialValue::Value(value)) = ext_fn.call(&vals) {
+                            return mk_concrete(normalize_ext_value(value));
+                        }
+                    }
+                    mk_error()
+                } else if args.iter().any(Residual::is_error) {
+                    mk_error()
+                } else {
+                    mk_residual(ResidualKind::ExtensionFunctionApp {
+                        fn_name: fn_name.clone(),
+                        args: Arc::new(args),
                     })
-                } else if es.iter().any(|r| matches!(r, Residual::Error(_))) {
+                }
+            }
+            ResidualKind::Set(es) => {
+                let es: Vec<_> = es.iter().map(|e| self.interpret(e)).collect();
+                if es.iter().all(Residual::is_concrete) {
+                    let vals = es.into_iter().map(|a|{
+                        #[expect(
+                            clippy::unwrap_used,
+                            reason = "`if` condition guarantees that all set elements are concrete, so `Value::try_from` cannot error"
+                        )]
+                        Value::try_from(a).unwrap()
+                    });
+                    mk_concrete(Value::set(vals, None))
+                } else if es.iter().any(Residual::is_error) {
                     mk_error()
                 } else {
                     mk_residual(ResidualKind::Set(Arc::new(es)))
@@ -477,28 +479,21 @@ impl Evaluator<'_> {
             }
             ResidualKind::Record(m) => {
                 let record: BTreeMap<_, _> = m
-                    .as_ref()
                     .iter()
                     .map(|(a, e)| (a.clone(), self.interpret(e)))
                     .collect();
-                if record
-                    .iter()
-                    .all(|(_, r)| matches!(r, Residual::Concrete { .. }))
-                {
+                if record.iter().all(|(_, r)| r.is_concrete()) {
                     let m = record
                         .into_iter()
                         .map(|(a, r)| {
                             #[expect(
                                 clippy::unwrap_used,
-                                reason = "`if` condition guarantees that all attributes are concrete, so `Value::try_from` cannot error"
+                                reason = "`if` condition guarantees that all attribute values are concrete, so `Value::try_from` cannot error"
                             )]
                             (a, Value::try_from(r).unwrap())
-                        }).collect::<BTreeMap<_, _>>();
-                    mk_concrete(Value {
-                        value: ValueKind::Record(Arc::new(m)),
-                        loc: None,
-                    })
-                } else if record.iter().any(|(_, r)| matches!(r, Residual::Error(_))) {
+                        });
+                    mk_concrete(Value::record(m, None))
+                } else if record.iter().any(|(_, r)| r.is_error()) {
                     mk_error()
                 } else {
                     mk_residual(ResidualKind::Record(Arc::new(record)))
@@ -1317,6 +1312,73 @@ mod tests {
     }
 
     #[test]
+    fn test_has_get_optional_attr() {
+        let schema = parse_schema(
+            r#"entity E { s?: String }; entity User { b: Bool }; action get appliesTo {principal: E, resource: User, context: {x: String}};"#,
+        );
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "E", "id": "0" },
+                    "attrs": { "s": "foo" },
+                },
+                {
+                    "uid": { "type": "E", "id": "1" },
+                    "attrs": { },
+                },
+                {
+                    "uid": { "type": "E", "id": "2" },
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("User"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal has s && principal.s == context.x"#),
+            @"(principal has s) && ((principal.s) == (context.x))"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"0" has s && E::"0".s == context.x"#),
+            @r#""foo" == (context.x)"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(resource.b && E::"0" has s) && E::"0".s == context.x"#),
+            @r#"(resource.b) && ("foo" == (context.x))"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"1" has s && E::"1".s == context.x"#),
+            @"false"
+        );
+        // Residual `resource.b` means we can't eliminate `error` expression even though it's unreachable
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(resource.b && E::"1" has s) && E::"1".s == context.x"#),
+            @"((resource.b) && false) && (error())"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"2" has s && E::"2".s == context.x"#),
+            @r#"(E::"2" has s) && ((E::"2".s) == (context.x))"#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"E::"3" has s && E::"3".s == context.x"#),
+            @r#"(E::"3" has s) && ((E::"3".s) == (context.x))"#
+        );
+    }
+
+    #[test]
     fn test_set() {
         let eval = Evaluator {
             request: &concrete_user_req(),
@@ -1954,6 +2016,12 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"undefined".hasTag("s") && E::"undefined".getTag("s") == "bar" "#),
             @r#"E::"undefined".hasTag("s")"#
+        );
+
+        // Residual on the left prevents eliminating `error()` expression even through it's unreachable
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"User::"none_tags".hasTag("tag") && User::"none_tags".getTag("tag") == "foo" && User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
+            @r#"(((User::"none_tags".hasTag("tag")) && ((User::"none_tags".getTag("tag")) == "foo")) && false) && (error())"#
         );
     }
 
