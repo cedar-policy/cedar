@@ -96,6 +96,7 @@ pub fn is_authorized_batched(
     let initial_evaluator = Evaluator {
         request: &request,
         entities: &entities,
+        schema,
         extensions: Extensions::all_available(),
     };
     let mut residuals = residual_policies(&request, ps, schema, &initial_evaluator)?;
@@ -140,6 +141,7 @@ pub fn is_authorized_batched(
         let evaluator = Evaluator {
             request: &request,
             entities: &entities,
+            schema,
             extensions: Extensions::all_available(),
         };
 
