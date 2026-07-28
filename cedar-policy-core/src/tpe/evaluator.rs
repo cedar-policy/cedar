@@ -24,6 +24,8 @@ use crate::{
     extensions::Extensions,
 };
 
+use crate::validator::types::Type;
+use crate::validator::ValidatorSchema;
 use crate::{
     tpe::entities::PartialEntities,
     tpe::request::PartialRequest,
@@ -35,6 +37,7 @@ use crate::{
 pub struct Evaluator<'e> {
     pub(crate) request: &'e PartialRequest,
     pub(crate) entities: &'e PartialEntities,
+    pub(crate) schema: &'e ValidatorSchema,
     pub(crate) extensions: &'e Extensions<'e>,
 }
 
@@ -209,19 +212,20 @@ impl Evaluator<'_> {
             }
             ResidualKind::Is { expr, entity_type } => {
                 let expr = self.interpret(expr);
+                if let Some(expr_ety) = expr
+                    .ty()
+                    .as_entity_lub()
+                    .and_then(|ety| ety.get_single_entity())
+                {
+                    if !expr.can_error_assuming_well_formed() {
+                        return mk_concrete((expr_ety == entity_type).into());
+                    }
+                }
                 match &expr {
                     Residual::Concrete { value, .. } => match value.get_as_entity() {
                         Ok(uid) => mk_concrete((uid.entity_type() == entity_type).into()),
                         Err(_) => mk_error(), // <error> is <entity_type> => <error>
                     },
-                    Residual::Partial {
-                        kind: ResidualKind::Var(Var::Principal),
-                        ..
-                    } => mk_concrete((entity_type == self.request.principal_type()).into()),
-                    Residual::Partial {
-                        kind: ResidualKind::Var(Var::Resource),
-                        ..
-                    } => mk_concrete((entity_type == self.request.resource_type()).into()),
                     Residual::Partial { .. } => mk_residual(ResidualKind::Is {
                         expr: Arc::new(expr),
                         entity_type: entity_type.clone(),
@@ -246,6 +250,26 @@ impl Evaluator<'_> {
             ResidualKind::BinaryApp { op, arg1, arg2 } => {
                 let arg1 = self.interpret(arg1);
                 let arg2 = self.interpret(arg2);
+                let must_be_false = match op {
+                    BinaryOp::HasTag => !Type::may_have_tags(self.schema, arg1.ty()),
+                    BinaryOp::Eq => Type::are_types_disjoint(arg1.ty(), arg2.ty()),
+                    BinaryOp::In => {
+                        match (arg1.ty().as_entity_lub(), arg2.ty().as_set_or_entity_lub()) {
+                            // `in` must be false if `arg1` cannot have an ancestor with type of `arg2`
+                            (Some(lhs_lub), Some(rhs_lub)) => {
+                                !self.schema.any_descendent_of(lhs_lub, rhs_lub)
+                            }
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                };
+                if must_be_false
+                    && !arg1.can_error_assuming_well_formed()
+                    && !arg2.can_error_assuming_well_formed()
+                {
+                    return mk_concrete(false.into());
+                }
                 let binapp_residual = |arg1, arg2| {
                     mk_residual(ResidualKind::BinaryApp {
                         op: *op,
@@ -391,6 +415,14 @@ impl Evaluator<'_> {
             }
             ResidualKind::HasAttr { expr, attr } => {
                 let expr = self.interpret(expr);
+                if !Type::may_have_attr(self.schema, expr.ty(), attr)
+                    && !expr.can_error_assuming_well_formed()
+                {
+                    // The residual can't error and cannot have `attr`, so `has` is always `false`.
+                    // We can't have an analogous reduction to `true` because the concrete semantics
+                    // for `has` is `false` when the entity isn't present.
+                    return mk_concrete(false.into());
+                }
                 match &expr {
                     Residual::Concrete { value, .. } => {
                         if let Ok(r) = value.get_as_record() {
@@ -666,6 +698,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -709,6 +742,7 @@ mod tests {
             )
             .unwrap(),
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -732,6 +766,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -804,6 +839,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -876,6 +912,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -888,8 +925,12 @@ mod tests {
             @"2"
         );
         assert_snapshot!(
+            interpret_typed_str_to_str(r#"if (resource == Document::"C") then Document::"A" else Document::"B""#),
+            @r#"if (resource == Document::"C") then Document::"A" else Document::"B""#
+        );
+        assert_snapshot!(
             interpret_typed_str_to_str(r#"if (resource == User::"alice") then Document::"A" else Document::"B""#),
-            @r#"if resource == User::"alice" then Document::"B" else Document::"B""#
+            @r#"Document::"B""#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(&r#"if (9223372036854775807 * 2) == 0 then resource else Document::"A""#),
@@ -929,6 +970,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -956,6 +998,14 @@ mod tests {
         assert_snapshot!(
             interpret_typed_str_to_str("principal.baz is Document"),
             @"principal.baz is Document"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if principal == User::"alice" then User::"bob" else User::"jane") is Document"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"(if principal == User::"alice" then User::"bob" else User::"jane") is User"#),
+            @"true"
         );
         assert_snapshot!(
             interpret_typed_str_to_str("User::\"alice\" is User"),
@@ -987,6 +1037,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1029,6 +1080,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1083,6 +1135,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1137,6 +1190,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1204,6 +1258,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1264,6 +1319,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1281,7 +1337,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal has other"#),
-            @"principal has other"
+            @"false"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"f" has s"#),
@@ -1341,6 +1397,7 @@ mod tests {
             request: &req,
             entities: &entities,
             extensions: Extensions::all_available(),
+            schema: &schema,
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
         assert_snapshot!(
@@ -1375,10 +1432,57 @@ mod tests {
     }
 
     #[test]
+    fn test_schema_informed_has_reduction() {
+        let schema = parse_schema(
+            r#"
+            entity User;
+            entity Doc { b: Bool };
+            action get appliesTo { principal: User, resource: Doc, context: {} };
+            "#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"Doc"#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([ { "uid": { "type": "Doc", "id": "mine" } },]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            schema: &schema,
+            extensions: Extensions::all_available(),
+        };
+        let interp = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(interp(r#"principal has a"#), @"false");
+        assert_snapshot!(interp(r#"principal has a && principal.a"#), @"false");
+        assert_snapshot!(interp(r#"context has a"#), @"false");
+        assert_snapshot!(interp(r#"{} has a"#), @"false");
+        assert_snapshot!(interp(r#"{a: principal} has b"#), @"false");
+        assert_snapshot!(interp(r#"(if principal == User::"alice" then {a: 1} else {a: 2}) has b"#), @"false");
+        assert_snapshot!(interp(r#"(if principal == User::"alice" then User::"bob" else User::"jane") has a"#), @"false");
+
+        // The schema guarantees that `resource` has the attribute, but the entity might not exist,
+        // so we can't reduce to true.
+        assert_snapshot!(interp(r#"resource has b"#), @"resource has b");
+        // Here the partial entities tell us that `Doc::"mine"` does exist, so
+        // we could reduce to `true` in a reasonable future extension.
+        assert_snapshot!(interp(r#"Doc::"mine" has b"#), @r#"Doc::"mine" has b"#);
+    }
+
+    #[test]
     fn test_set() {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
 
@@ -1406,6 +1510,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -1462,6 +1567,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1567,6 +1673,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1604,6 +1711,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -1637,6 +1745,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1654,7 +1763,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal == E::"""#),
-            @r#"principal == E::"""#
+            @"false"
         );
 
         assert_snapshot!(
@@ -1686,6 +1795,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1715,6 +1825,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &PartialEntities::new(),
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1764,6 +1875,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1844,6 +1956,44 @@ mod tests {
     }
 
     #[test]
+    fn test_binary_app_in_unrelated_types() {
+        let schema = parse_schema(
+            r#"
+            entity Org;
+            entity User in Org;
+            entity Unrelated;
+            action get appliesTo {
+                principal: User,
+                resource: Unrelated,
+            };"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid("Unrelated"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            schema: &schema,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal in resource"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal in [resource]"#),
+            @"false"
+        );
+    }
+
+    #[test]
     fn test_binary_app_in_empty_set() {
         let schema = parse_schema(
             r#"entity E in E; entity User in E; action get appliesTo {principal: User, resource: E, context: {empty: Set<E>}};"#,
@@ -1874,6 +2024,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1933,6 +2084,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1967,6 +2119,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -1995,23 +2148,23 @@ mod tests {
             @r#"User::"undefined".hasTag("s") && (User::"undefined".getTag("s") == "bar")"#
         );
 
-        // `E` entities can't have tags, but `hasTag` is still well-typed. These could all reduce to
-        // `false`, but only the explicit empty tag case does atm.
+        // `E` declares no tags in the schema, so `hasTag` on any `E` operand reduces to `false`
+        // regardless of whether concrete tag data is present.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"empty_tags".hasTag("s") && E::"empty_tags".getTag("s") == "bar" "#),
             @"false"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"none_tags".hasTag("s") && E::"none_tags".getTag("s") == "bar" "#),
-            @r#"E::"none_tags".hasTag("s")"#
+            @"false"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"undefined_tags".hasTag("s") && E::"undefined_tags".getTag("s") == "bar" "#),
-            @r#"E::"undefined_tags".hasTag("s")"#
+            @"false"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"undefined".hasTag("s") && E::"undefined".getTag("s") == "bar" "#),
-            @r#"E::"undefined".hasTag("s")"#
+            @"false"
         );
 
         // Residual on the left prevents eliminating `error()` expression even through it's unreachable
@@ -2027,6 +2180,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -2076,6 +2230,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -2119,6 +2274,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
@@ -2147,6 +2303,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -2173,6 +2330,7 @@ mod tests {
         let eval = Evaluator {
             request: &concrete_user_req(),
             entities: &PartialEntities::new(),
+            schema: &schema(),
             extensions: Extensions::all_available(),
         };
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema());
@@ -2237,6 +2395,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
 
@@ -2280,6 +2439,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
 
@@ -2323,6 +2483,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
 
@@ -2368,6 +2529,7 @@ mod tests {
         let eval = Evaluator {
             request: &req,
             entities: &entities,
+            schema: &schema,
             extensions: Extensions::all_available(),
         };
 
