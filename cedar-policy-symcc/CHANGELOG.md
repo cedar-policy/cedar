@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Cedar Language Version: TBD
 
-## [0.6.0] - Coming soon
+## [0.6.0] - 2026-07-28
 
 Cedar Language Version: 4.5
 
