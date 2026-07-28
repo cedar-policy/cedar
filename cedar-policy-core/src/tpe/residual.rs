@@ -170,7 +170,7 @@ impl Residual {
 
 impl TryFrom<Residual> for Value {
     type Error = ();
-    /// INVARIANT: TPE evaluator assumes this function cannot error if `value` matches `Residual::Concrete { .. }`
+    /// INVARIANT: TPE evaluator assumes this function cannot error if `value.is_concrete()`
     fn try_from(value: Residual) -> std::result::Result<Self, Self::Error> {
         match value {
             Residual::Concrete { value, .. } => Ok(value),
@@ -476,6 +476,16 @@ impl Residual {
     /// If a residual is an error
     pub fn is_error(&self) -> bool {
         matches!(self, Residual::Error { .. })
+    }
+
+    /// If a residual is a concrete value
+    pub fn is_concrete(&self) -> bool {
+        matches!(self, Residual::Concrete { .. })
+    }
+
+    /// If a residual is still partially unknown
+    pub fn is_partial(&self) -> bool {
+        matches!(self, Residual::Partial { .. })
     }
 }
 
