@@ -795,6 +795,29 @@ mod encode_test {
     }
 
     #[test]
+    fn encode_policyset_link_depth_check() {
+        // A PolicySet with links should pass the depth check since links are
+        // structurally shallow (Policy → EntityUid → Name = 3 levels).
+        let policy_set = models::PolicySet {
+            templates: vec![],
+            links: vec![models::Policy {
+                template_id: "t1".to_string(),
+                link_id: Some("link1".to_string()),
+                is_template_link: true,
+                principal_euid: Some(entity_uid(name("User"), "alice")),
+                resource_euid: Some(entity_uid(qualified_name("Doc", &["MyApp"]), "readme")),
+            }],
+        };
+        assert!(policy_set.check_for_encode().is_ok());
+
+        // Checking at max depth - 1 results in error
+        assert_matches!(
+            policy_set.check_for_encode_from_depth(MAX_ENCODE_DEPTH - 1),
+            Err(EncodeError::MaxDepthExceeded)
+        );
+    }
+
+    #[test]
     fn encode_entities_with_deep_attr_fails() {
         let deep_expr = deep_unary(MAX_NESTING + 1);
         let ent = entity("User", "alice", [("deep_attr", deep_expr)]);

@@ -485,6 +485,23 @@ impl EncodeCheck for models::PolicySet {
             // List: +1 for entering the list
             template.check_for_encode_from_depth(init + 1)?;
         }
+        for link in &self.links {
+            // List: +1 for entering the list.
+            // Check is not really necessary today, but in place for any future changes
+            // to links.
+            link.check_for_encode_from_depth(init + 1)?;
+        }
+        Ok(())
+    }
+}
+
+impl EncodeCheck for models::Policy {
+    fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
+        let euid_depth = init + 1; // entering EntityUid message
+        let name_depth = euid_depth + 1; // entering Name inside EntityUid
+        if name_depth > MAX_ENCODE_DEPTH {
+            return Err(EncodeError::MaxDepthExceeded);
+        }
         Ok(())
     }
 }
