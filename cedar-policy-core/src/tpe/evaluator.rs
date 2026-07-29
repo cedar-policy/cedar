@@ -1436,6 +1436,52 @@ mod tests {
     }
 
     #[test]
+    fn test_schema_informed_has_reduction() {
+        let schema = parse_schema(
+            r#"
+            entity User;
+            entity Doc { b: Bool };
+            action get appliesTo { principal: User, resource: Doc, context: {} };
+            "#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("User"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"Doc"#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([ { "uid": { "type": "Doc", "id": "mine" } },]),
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            schema: &schema,
+            extensions: Extensions::all_available(),
+        };
+        let interp = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(interp(r#"principal has a"#), @"false");
+        assert_snapshot!(interp(r#"principal has a && principal.a"#), @"false");
+        assert_snapshot!(interp(r#"context has a"#), @"false");
+        assert_snapshot!(interp(r#"{} has a"#), @"false");
+        assert_snapshot!(interp(r#"{a: principal} has b"#), @"false");
+        assert_snapshot!(interp(r#"(if principal == User::"alice" then {a: 1} else {a: 2}) has b"#), @"false");
+        assert_snapshot!(interp(r#"(if principal == User::"alice" then User::"bob" else User::"jane") has a"#), @"false");
+
+        // The schema guarantees that `resource` has the attribute, but the entity might not exist,
+        // so we can't reduce to true.
+        assert_snapshot!(interp(r#"resource has b"#), @"resource has b");
+        // Here the partial entities tell us that `Doc::"mine"` does exist, so
+        // we could reduce to `true` in a reasonable future extension.
+        assert_snapshot!(interp(r#"Doc::"mine" has b"#), @r#"Doc::"mine" has b"#);
+    }
+
+    #[test]
     fn test_set() {
         let eval = Evaluator {
             request: &concrete_user_req(),
@@ -2130,37 +2176,6 @@ mod tests {
             interpret_typed_str_to_str(r#"User::"none_tags".hasTag("tag") && User::"none_tags".getTag("tag") == "foo" && User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
             @r#"(((User::"none_tags".hasTag("tag")) && ((User::"none_tags".getTag("tag")) == "foo")) && false) && (error())"#
         );
-    }
-
-    #[test]
-    fn test_schema_informed_has_reduction() {
-        let schema = parse_schema(
-            r#"
-            entity User, Doc;
-            action get appliesTo { principal: User, resource: Doc, context: {} };
-            "#,
-        );
-        let req = PartialRequest::new(
-            parse_partial_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
-            parse_partial_euid(r#"Doc::"d""#),
-            None,
-            &schema,
-        )
-        .unwrap();
-        let eval = Evaluator {
-            request: &req,
-            entities: &PartialEntities::new(),
-            schema: &schema,
-            extensions: Extensions::all_available(),
-        };
-        let interp = |e| interpret_typed_str_to_str(&eval, e, &schema);
-
-        assert_snapshot!(interp(r#"principal has a"#), @"false");
-        assert_snapshot!(interp(r#"context has a"#), @"false");
-        assert_snapshot!(interp(r#"{} has a"#), @"false");
-        assert_snapshot!(interp(r#"(if principal == User::"alice" then {a: 1} else {a: 2}) has b"#), @"false");
-        assert_snapshot!(interp(r#"(if principal == User::"alice" then User::"bob" else User::"jane") has a"#), @"false");
     }
 
     #[test]
