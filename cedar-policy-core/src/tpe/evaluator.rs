@@ -419,12 +419,12 @@ impl Evaluator<'_> {
                 match &expr {
                     Residual::Concrete { value, .. } => {
                         // Walk the attribute chain with short-circuit
-                        let mut current_val = value.clone();
+                        let mut current_val = value;
                         for (i, attr) in attrs.iter().enumerate() {
                             if let Ok(r) = current_val.get_as_record() {
                                 if let Some(next_val) = r.as_ref().get(attr) {
                                     if i < attrs.len() - 1 {
-                                        current_val = next_val.clone();
+                                        current_val = next_val;
                                     } else {
                                         return mk_concrete(true.into());
                                     }
@@ -436,7 +436,7 @@ impl Evaluator<'_> {
                                     Some(entity_attrs) => {
                                         if let Some(next_val) = entity_attrs.get(attr) {
                                             if i < attrs.len() - 1 {
-                                                current_val = next_val.clone();
+                                                current_val = next_val;
                                             } else {
                                                 return mk_concrete(true.into());
                                             }
@@ -1288,7 +1288,11 @@ mod tests {
     #[test]
     fn test_has_attr() {
         let schema = parse_schema(
-            r#"entity E { s: String }; entity User { s: String }; action get appliesTo {principal: E, resource: User};"#,
+            r#"entity E { s: String };
+            entity Hat { size: Long, origin: Country };
+            entity Country { name: String };
+            entity User { s: String, hat: Hat };
+            action get appliesTo {principal: E, resource: User};"#,
         );
         // `User::""` has known attributes while `E::"e"` omits `attrs`, marking
         // them unknown.
@@ -1296,7 +1300,11 @@ mod tests {
             serde_json::json!([
                 {
                     "uid": { "type": "User", "id": "" },
-                    "attrs": { "s": "bar" },
+                    "attrs": { "s": "bar", "hat": { "__entity": { "type": "Hat", "id": "cap" } }  },
+                },
+                {
+                    "uid": { "type": "Hat", "id": "cap" },
+                    "attrs": { "size": 10, "origin": { "__entity": { "type": "Country", "id": "italy" } } }
                 },
                 {
                     "uid": { "type": "E", "id": "e" },
@@ -1336,6 +1344,18 @@ mod tests {
             @"principal has other"
         );
         assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has tomato.country"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin.name"#),
+            @r#"User::"" has hat.origin.name"#
+        );
+        assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"f" has s"#),
             @r#"E::"f" has s"#
         );
@@ -1352,7 +1372,18 @@ mod tests {
             interpret_typed_str_to_str(r#"{s: 0} has t"#),
             @"false"
         );
-
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: {t: {u: 0}}, r: 1} has s.t.u"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: {t: {u: 0}}, r: 1} has r"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: {t: {u: 0}}, r: 1} has s.u.t"#),
+            @"false"
+        );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then E::"alice" else E::"bob") has s"#),
             @"error()"

@@ -1164,7 +1164,17 @@ fn extended_has_nested_typechecks() {
           }
         };
 
-        entity User {};
+        entity Name {
+            first: String,
+            last: String,
+        };
+
+        entity User {
+            identity: {
+                name: Name,
+                confirmed: Bool,
+            }
+        };
 
         action "access" appliesTo {
           principal: User,
@@ -1181,7 +1191,21 @@ fn extended_has_nested_typechecks() {
     let (schema, _) =
         ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
 
-    // Deep extended has on resource
+    // Deep extended has on principal, record and identity
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        principal has identity.name.first &&
+        principal has identity.name.last &&
+        principal.identity.name.first == "X"
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Deep extended has on resource, records only
     let policy = parse_policy(
         None,
         r#"

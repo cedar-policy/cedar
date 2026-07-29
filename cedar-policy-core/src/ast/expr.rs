@@ -136,7 +136,8 @@ pub enum ExprKind<T = ()> {
         /// Attribute or field to check for
         attr: SmolStr,
     },
-    /// Extended has: does the given `expr` have the given `attrs`?
+    /// Does the given `expr` have the given sequence of nested `attrs`?
+    // This form may merge with HasAttr once we have high confidence we're not introducing regressions
     HasAttrExt {
         /// Expression to test. Must evaluate to either Entity or Record type
         expr: Arc<Expr<T>>,
@@ -192,12 +193,12 @@ impl<T> ExprKind<T> {
             ExprKind::BinaryApp { .. } => 8,
             ExprKind::ExtensionFunctionApp { .. } => 9,
             ExprKind::GetAttr { .. } => 10,
-            ExprKind::HasAttr { .. } => 11,
-            ExprKind::Like { .. } => 12,
-            ExprKind::Set(_) => 13,
-            ExprKind::Record(_) => 14,
-            ExprKind::Is { .. } => 15,
-            ExprKind::HasAttrExt { .. } => 16,
+            ExprKind::HasAttrExt { .. } => 11,
+            ExprKind::HasAttr { .. } => 12,
+            ExprKind::Like { .. } => 13,
+            ExprKind::Set(_) => 14,
+            ExprKind::Record(_) => 15,
+            ExprKind::Is { .. } => 16,
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => 16,
         }
