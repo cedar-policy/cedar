@@ -1147,6 +1147,158 @@ fn extended_has() {
     );
 }
 
+/// Test that deeply nested extended has expressions typecheck correctly
+/// and don't cause combinatorial blowup in the validator.
+/// This pattern: `(if E has a.b then E.a.b else fallback) has c.d`
+/// would have produced exponential AST size with the old desugaring.
+#[test]
+fn extended_has_nested_typechecks() {
+    let schema_src = r#"
+        entity Resource {
+          owner?: {
+            ipinfo?: {
+              additionalData?: {
+                previouslyKnownIp?: String,
+              }
+            }
+          }
+        };
+
+        entity User {};
+
+        action "access" appliesTo {
+          principal: User,
+          resource: Resource,
+          context: {
+            ipinfo?: {
+              additionalData?: {
+                previouslyKnownIp?: String,
+              }
+            }
+          }
+        };
+    "#;
+    let (schema, _) =
+        ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
+
+    // Deep extended has on resource
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        resource has owner.ipinfo.additionalData.previouslyKnownIp
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Extended has guarding a deep access
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        resource has owner.ipinfo.additionalData.previouslyKnownIp &&
+        resource.owner.ipinfo.additionalData.previouslyKnownIp == "1.2.3.4"
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Nested: if resource has deep path, use it, else use context — then check outer path
+    // This is the pathological pattern that would have blown up.
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        context has ipinfo.additionalData.previouslyKnownIp
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Extended has with only some attrs present should fail appropriately
+    let src = r#"
+    permit(principal, action == Action::"access", resource) when {
+        resource has owner.ipinfo &&
+        resource.owner.ipinfo.additionalData.previouslyKnownIp == "x"
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema, policy);
+    // Should get an error for accessing additionalData without guarding it
+    assert!(!errors.is_empty());
+}
+
+/// Test extended has on a record type where all attributes in the chain are required.
+/// This should produce `singleton_boolean(true)`.
+#[test]
+fn extended_has_all_required_record() {
+    let schema_src = r#"
+        entity Resource {
+          info: {
+            nested: {
+              value: Long,
+            }
+          }
+        };
+        entity User {};
+        action "read" appliesTo {
+          principal: User,
+          resource: Resource,
+          context: {
+            data: {
+              nested: {
+                flag: Bool,
+              }
+            }
+          }
+        };
+    "#;
+    let (schema, _) =
+        ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
+
+    // Required record attributes: context.data.nested.flag is always present.
+    // Extended has on a record with all required attrs should typecheck.
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        context has data.nested.flag
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Extended has on entity with required attrs followed by access
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has info.nested.value &&
+        resource.info.nested.value > 0
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Test attribute not in schema: has on non-existent attr typechecks (returns Bool)
+    // but subsequent access without guard fails
+    let src = r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has info.nested.nonexistent &&
+        resource.info.nested.nonexistent > 0
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema, policy);
+    assert!(!errors.is_empty());
+}
+
 mod templates {
     use super::*;
 

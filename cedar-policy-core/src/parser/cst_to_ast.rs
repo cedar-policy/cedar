@@ -5242,11 +5242,19 @@ mod tests {
         );
 
         assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
-            assert!(e.eq_shape(&parse_expr(r#"(context has a) && (context.a has b)"#).unwrap()));
+            assert_matches!(e.expr_kind(), ast::ExprKind::HasAttrExt { expr, attrs } => {
+                assert_matches!(expr.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
+                assert_eq!(attrs.head.as_str(), "a");
+                assert_eq!(attrs.tail, vec![smol_str::SmolStr::from("b")]);
+            });
         });
 
         assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
-            assert!(e.eq_shape(&parse_expr(r#"((context has a) && (context.a has b)) && (context.a.b has c)"#).unwrap()));
+            assert_matches!(e.expr_kind(), ast::ExprKind::HasAttrExt { expr, attrs } => {
+                assert_matches!(expr.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
+                assert_eq!(attrs.head.as_str(), "a");
+                assert_eq!(attrs.tail, vec![smol_str::SmolStr::from("b"), smol_str::SmolStr::from("c")]);
+            });
         });
 
         let policy = r#"permit(principal, action, resource) when {
@@ -5468,6 +5476,43 @@ mod tests {
                     "invalid RHS of a `has` operation: {b: 1}.a",
                 ).help(help_msg).exactly_one_underline(r#"{b:1}"#).build());
             }
+        );
+    }
+
+    /// Test that extended has with many attributes produces a single compact AST node
+    /// rather than an exponentially large desugared tree.
+    #[test]
+    fn extended_has_compact_ast() {
+        // A 5-attribute extended has should produce a single HasAttrExt node
+        let expr = parse_expr(r#"context has a.b.c.d.e"#).unwrap();
+        assert_matches!(expr.expr_kind(), ast::ExprKind::HasAttrExt { expr: inner, attrs } => {
+            assert_matches!(inner.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
+            assert_eq!(attrs.len(), 5);
+        });
+
+        // The subexpression count should be 2 (context var + the HasAttrExt itself)
+        assert_eq!(expr.subexpressions().count(), 2);
+
+        // Previously, this would desugar to And(And(And(And(has,has),has),has),has)
+        // which is 5 has + 4 getattr + 4 and = 13 internal nodes + the context var repeated many times.
+        // Verify a deeply nested case stays compact
+        let deep = parse_expr(r#"principal has a.b.c.d.e.f.g.h.i.j"#).unwrap();
+        assert_matches!(deep.expr_kind(), ast::ExprKind::HasAttrExt { attrs, .. } => {
+            assert_eq!(attrs.len(), 10);
+        });
+        // Still just 2 subexpressions: the var and the HasAttrExt
+        assert_eq!(deep.subexpressions().count(), 2);
+
+        // Nested extended has in an if-then-else: verify no cross-product blowup
+        let nested =
+            parse_expr(r#"(if principal has a.b.c then principal.a.b.c else context) has x.y.z"#)
+                .unwrap();
+        // Structure: HasAttrExt(If(HasAttrExt(Var), GetAttr(GetAttr(GetAttr(Var))), Var), [x,y,z])
+        // Total subexpressions should be small
+        let count = nested.subexpressions().count();
+        assert!(
+            count < 12,
+            "Nested extended has should have compact AST, got {count} subexpressions"
         );
     }
 

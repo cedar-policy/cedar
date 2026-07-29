@@ -22,6 +22,7 @@ use crate::{
     },
     parser::Loc,
 };
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
 /// A visitor trait for traversing Cedar Policy Abstract Syntax Trees (ASTs).
@@ -71,6 +72,7 @@ pub trait ExprVisitor {
             }
             ExprKind::GetAttr { expr, attr } => self.visit_get_attr(expr, attr, loc),
             ExprKind::HasAttr { expr, attr } => self.visit_has_attr(expr, attr, loc),
+            ExprKind::HasAttrExt { expr, attrs } => self.visit_extended_has_attr(expr, attrs, loc),
             ExprKind::Like { expr, pattern } => self.visit_like(expr, pattern, loc),
             ExprKind::Is { expr, entity_type } => self.visit_is(expr, entity_type, loc),
             ExprKind::Set(elements) => self.visit_set(elements, loc),
@@ -200,6 +202,18 @@ pub trait ExprVisitor {
         &mut self,
         expr: &Arc<Expr>,
         _attr: &SmolStr,
+        _loc: Option<&Loc>,
+    ) -> Option<Self::Output> {
+        self.visit_expr(expr)
+    }
+
+    /// Visits an extended attribute existence check (e.g., `expr has attr1.attr2`).
+    ///
+    /// Recursively visits the target expression.
+    fn visit_extended_has_attr(
+        &mut self,
+        expr: &Arc<Expr>,
+        _attrs: &NonEmpty<SmolStr>,
         _loc: Option<&Loc>,
     ) -> Option<Self::Output> {
         self.visit_expr(expr)

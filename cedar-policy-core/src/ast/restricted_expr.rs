@@ -515,11 +515,13 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
             expr: expr.clone(),
         }
         .into()),
-        ExprKind::HasAttr { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
-            feature: "'has'".into(),
-            expr: expr.clone(),
+        ExprKind::HasAttr { .. } | ExprKind::HasAttrExt { .. } => {
+            Err(restricted_expr_errors::InvalidRestrictedExpressionError {
+                feature: "'has'".into(),
+                expr: expr.clone(),
+            }
+            .into())
         }
-        .into()),
         ExprKind::Like { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "'like'".into(),
             expr: expr.clone(),

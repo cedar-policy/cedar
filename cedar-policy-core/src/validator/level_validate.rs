@@ -79,6 +79,7 @@ impl Validator {
             policy_id: p.id(),
             max_level: max_deref_level.into(),
             level_checking_errors: HashSet::new(),
+            schema: &self.schema,
         };
         for (req_env, policy_check) in type_annotated_asts {
             match policy_check {
@@ -101,6 +102,9 @@ struct LevelChecker<'a> {
     policy_id: &'a PolicyID,
     max_level: EntityDerefLevel,
     level_checking_errors: HashSet<ValidationError>,
+    /// Schema reference needed for computing entity dereference levels
+    /// within `HasAttrExt` nodes (which don't have intermediate type annotations).
+    schema: &'a ValidatorSchema,
 }
 
 impl LevelChecker<'_> {
@@ -312,6 +316,82 @@ impl LevelChecker<'_> {
                     );
                 }
             },
+            ExprKind::HasAttrExt { expr, attrs } => {
+                // For extended has, the semantics is like a chain of has_attr/get_attr.
+                // `expr has a.b.c` checks:
+                //   expr has a       (dereferences expr)
+                //   expr.a has b     (dereferences expr.a)
+                //   expr.a.b has c   (dereferences expr.a.b)
+                // Each entity dereference contributes to the level.
+                // The first check is equivalent to `HasAttr { expr, attr: a }`.
+                // Subsequent checks dereference deeper entities.
+
+                // Check the root expression level (same as for HasAttr/GetAttr)
+                match expr.data() {
+                    Some(Type::Entity(EntityKind::Entity { .. })) => {
+                        let deref_target_lvl =
+                            self.check_entity_deref_target_level(expr, Vec::new(), env);
+                        if deref_target_lvl >= self.max_level {
+                            self.level_checking_errors.insert(
+                                ValidationError::maximum_level_exceeded(
+                                    e.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    self.max_level,
+                                    deref_target_lvl.increment(),
+                                ),
+                            );
+                        }
+
+                        // Now check deeper dereferences in the attribute chain.
+                        // Walk the chain: after accessing each attribute, if the
+                        // result is an entity, accessing the NEXT attribute requires
+                        // an additional entity dereference.
+                        let mut accumulated_level = deref_target_lvl.increment();
+                        let mut current_type = expr.data().clone();
+
+                        for attr in attrs.iter().take(attrs.len().saturating_sub(1)) {
+                            if let Some(ref ty) = current_type {
+                                if let Some(attr_ty) =
+                                    Type::lookup_attribute_type(self.schema, ty, attr)
+                                {
+                                    let next_type = attr_ty.attr_type.as_ref().clone();
+                                    if matches!(next_type, Type::Entity(EntityKind::Entity { .. }))
+                                    {
+                                        // Accessing the next attr requires dereferencing this entity
+                                        accumulated_level = accumulated_level.increment();
+                                        if accumulated_level > self.max_level {
+                                            self.level_checking_errors.insert(
+                                                ValidationError::maximum_level_exceeded(
+                                                    e.source_loc().cloned(),
+                                                    self.policy_id.clone(),
+                                                    self.max_level,
+                                                    accumulated_level,
+                                                ),
+                                            );
+                                        }
+                                    }
+                                    current_type = Some(next_type);
+                                } else {
+                                    break;
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    Some(Type::Record { .. }) => {
+                        self.check_expr_level(expr, env);
+                    }
+                    _ => {
+                        self.level_checking_errors.insert(
+                            ValidationError::internal_invariant_violation(
+                                e.source_loc().cloned(),
+                                self.policy_id.clone(),
+                            ),
+                        );
+                    }
+                }
+            }
             ExprKind::Like { expr, .. } => {
                 self.check_expr_level(expr, env);
             }

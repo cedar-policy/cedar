@@ -404,6 +404,11 @@ impl EncodeCheck for models::Expr {
                             stack.push((e, child_depth));
                         }
                     }
+                    ExprKind::HasAttrExt(has) => {
+                        if let Some(ref e) = has.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
                     ExprKind::Like(like) => {
                         if let Some(ref e) = like.expr {
                             stack.push((e, child_depth));

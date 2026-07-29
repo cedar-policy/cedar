@@ -414,6 +414,58 @@ impl Evaluator<'_> {
                     Residual::Error(_) => mk_error(),
                 }
             }
+            ResidualKind::HasAttrExt { expr, attrs } => {
+                let expr = self.interpret(expr);
+                match &expr {
+                    Residual::Concrete { value, .. } => {
+                        // Walk the attribute chain with short-circuit
+                        let mut current_val = value.clone();
+                        for (i, attr) in attrs.iter().enumerate() {
+                            if let Ok(r) = current_val.get_as_record() {
+                                if let Some(next_val) = r.as_ref().get(attr) {
+                                    if i < attrs.len() - 1 {
+                                        current_val = next_val.clone();
+                                    } else {
+                                        return mk_concrete(true.into());
+                                    }
+                                } else {
+                                    return mk_concrete(false.into());
+                                }
+                            } else if let Ok(uid) = current_val.get_as_entity() {
+                                match self.entities.get_attrs(uid) {
+                                    Some(entity_attrs) => {
+                                        if let Some(next_val) = entity_attrs.get(attr) {
+                                            if i < attrs.len() - 1 {
+                                                current_val = next_val.clone();
+                                            } else {
+                                                return mk_concrete(true.into());
+                                            }
+                                        } else {
+                                            return mk_concrete(false.into());
+                                        }
+                                    }
+                                    None => {
+                                        // Entity not in store, leave as residual
+                                        return mk_residual(ResidualKind::HasAttrExt {
+                                            expr: Arc::new(expr),
+                                            attrs: attrs.clone(),
+                                        });
+                                    }
+                                }
+                            } else {
+                                return mk_error();
+                            }
+                        }
+                        // All attrs checked successfully (shouldn't reach here for NonEmpty)
+                        mk_concrete(true.into())
+                    }
+                    Residual::Partial { .. } => mk_residual(ResidualKind::HasAttrExt {
+                        expr: Arc::new(expr),
+                        attrs: attrs.clone(),
+                    }),
+                    Residual::Error(_) => mk_error(),
+                }
+            }
             ResidualKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
                 match arg {

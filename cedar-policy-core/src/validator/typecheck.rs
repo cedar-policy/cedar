@@ -966,6 +966,134 @@ impl<'a> SingleEnvTypechecker<'a> {
                 })
             }
 
+            ExprKind::HasAttrExt { expr, attrs } => {
+                // Extended has applies to an entity or a record, similar to HasAttr.
+                // `expr has attr1.attr2...attrN` checks that the chain of attributes exists.
+                // It generates capabilities for all intermediate attribute accesses.
+                let actual = self.expect_one_of_types(
+                    prior_capability,
+                    expr,
+                    &[Type::any_entity_reference(), Type::any_record()],
+                    type_errors,
+                    |actual| match actual {
+                        Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                        Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
+                );
+                actual.then_typecheck(|typ_expr_actual, _| {
+                    match typ_expr_actual.data() {
+                        Some(typ_actual) => {
+                            // First, build up the list of (expr_path, attr) pairs for capabilities
+                            // and validate types along the way.
+                            let mut capability_pairs: Vec<(Expr, smol_str::SmolStr)> = Vec::new();
+                            let mut current_type = typ_actual.clone();
+                            let mut current_expr_path: Expr = expr.as_ref().clone();
+                            let mut all_found = true;
+
+                            for (i, attr) in attrs.iter().enumerate() {
+                                let is_last = i == attrs.len() - 1;
+                                match Type::lookup_attribute_type(self.schema, &current_type, attr)
+                                {
+                                    Some(attr_ty) => {
+                                        capability_pairs
+                                            .push((current_expr_path.clone(), attr.clone()));
+
+                                        if !is_last {
+                                            current_expr_path =
+                                                Expr::get_attr(current_expr_path, attr.clone());
+                                            current_type = attr_ty.attr_type.as_ref().clone();
+                                        }
+                                    }
+                                    None => {
+                                        // Attribute not found in schema. Check if it may exist.
+                                        if Type::may_have_attr(self.schema, &current_type, attr) {
+                                            capability_pairs
+                                                .push((current_expr_path.clone(), attr.clone()));
+                                        }
+                                        all_found = false;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            // Build CapabilitySet from the collected pairs using owned expressions
+                            let mut capabilities = CapabilitySet::new();
+                            for (cap_expr, cap_attr) in capability_pairs {
+                                capabilities = capabilities.union(&CapabilitySet::singleton(
+                                    Capability::new_attribute_owned(cap_expr, cap_attr),
+                                ));
+                            }
+
+                            if !all_found {
+                                // Some attribute in the chain was not found
+                                return TypecheckAnswer::success_with_capability(
+                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                        .with_same_source_loc(e)
+                                        .extended_has_attr(typ_expr_actual, attrs.clone()),
+                                    capabilities,
+                                );
+                            }
+
+                            // All attributes were found in the schema. Determine
+                            // if the result is definitely true (all required) or
+                            // possibly false.
+                            let all_required = attrs.iter().enumerate().all(|(i, attr)| {
+                                let mut check_type = typ_actual.clone();
+                                for prev_attr in attrs.iter().take(i) {
+                                    match Type::lookup_attribute_type(
+                                        self.schema,
+                                        &check_type,
+                                        prev_attr,
+                                    ) {
+                                        Some(attr_ty) => {
+                                            check_type = attr_ty.attr_type.as_ref().clone();
+                                        }
+                                        None => return false,
+                                    }
+                                }
+                                matches!(
+                                    Type::lookup_attribute_type(self.schema, &check_type, attr),
+                                    Some(AttributeType {
+                                        is_required: true,
+                                        ..
+                                    })
+                                )
+                            });
+
+                            let is_record_type = matches!(typ_actual, Type::Record { .. });
+                            let in_prior_capability = attrs.iter().enumerate().all(|(i, attr)| {
+                                let mut check_expr: Expr = expr.as_ref().clone();
+                                for prev_attr in attrs.iter().take(i) {
+                                    check_expr = Expr::get_attr(check_expr, prev_attr.clone());
+                                }
+                                prior_capability
+                                    .contains(&Capability::new_attribute(&check_expr, attr.clone()))
+                            });
+
+                            let type_of_has =
+                                if all_required && (is_record_type || in_prior_capability) {
+                                    Type::singleton_boolean(true)
+                                } else {
+                                    Type::primitive_boolean()
+                                };
+
+                            TypecheckAnswer::success_with_capability(
+                                ExprBuilder::with_data(Some(type_of_has))
+                                    .with_same_source_loc(e)
+                                    .extended_has_attr(typ_expr_actual, attrs.clone()),
+                                capabilities,
+                            )
+                        }
+                        None => TypecheckAnswer::fail(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(e)
+                                .extended_has_attr(typ_expr_actual, attrs.clone()),
+                        ),
+                    }
+                })
+            }
+
             ExprKind::Like { expr, pattern } => {
                 // `like` applies to a string
                 let actual = self.expect_type(

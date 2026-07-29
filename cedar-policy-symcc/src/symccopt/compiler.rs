@@ -1002,6 +1002,55 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res = compile_has_attr(res1.map_term(option_get), attr, &env.entities)?;
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
+        ExprKind::HasAttrExt { expr, attrs } => {
+            // For the optimized compiler, desugar extended has into a chain.
+            // Compile as: has_attr(expr, head) && has_attr(get_attr(expr, head), tail[0]) && ...
+            // We compile the sub-expression once and reuse its term.
+            let res1 = compile(expr, env)?;
+            let res1_term = res1.term.clone();
+
+            // First: check if head attr exists
+            let first_has =
+                compile_has_attr(res1.map_term(option_get), &attrs.head, &env.entities)?;
+            let mut result = first_has.map_term(|term| if_some(res1_term.clone(), term));
+
+            if attrs.tail.is_empty() {
+                return Ok(result);
+            }
+
+            // To get the value of the first attr for the next check, recompile
+            // the expression (this is suboptimal but correct)
+            let res_again = compile(expr, env)?;
+            let res_again_term = res_again.term.clone();
+            let first_get = compile_get_attr(res_again, &attrs.head, &env.entities)?;
+            let mut current_term = if_some(res_again_term, first_get.term);
+
+            for attr in &attrs.tail {
+                // Build has_attr for current path
+                let has_res = compile_has_attr(
+                    CompileResult {
+                        term: option_get(current_term.clone()),
+                        footprint: Footprint::empty(),
+                    },
+                    attr,
+                    &env.entities,
+                )?;
+                let has_result = has_res.map_term(|term| if_some(current_term.clone(), term));
+                result = compile_and(result, Ok(has_result))?;
+
+                // Build get_attr for current path (for next iteration)
+                let get_res = compile_get_attr(
+                    CompileResult {
+                        term: option_get(current_term.clone()),
+                        footprint: Footprint::empty(),
+                    },
+                    attr,
+                    &env.entities,
+                )?;
+                current_term = if_some(current_term, get_res.term);
+            }
+            Ok(result)
+        }
         ExprKind::GetAttr { expr, attr } => {
             // subtlety:
             // similar to the comment above in the `BinaryApp` case

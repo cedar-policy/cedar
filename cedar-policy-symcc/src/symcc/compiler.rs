@@ -721,6 +721,33 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 compile_has_attr(option_get(t), attr, &env.entities)?,
             ))
         }
+        ExprKind::HasAttrExt { expr, attrs } => {
+            // Compile extended has as a chain of has_attr checks with short-circuit
+            // For `expr has a.b.c`:
+            //   has_attr(expr, a) && has_attr(get_attr(expr, a), b) && has_attr(get_attr(get_attr(expr, a), b), c)
+            let t = compile(expr, env)?;
+            let base = if_some(
+                t.clone(),
+                compile_has_attr(option_get(t.clone()), &attrs.head, &env.entities)?,
+            );
+            let mut result = base;
+            let mut current = if_some(
+                t.clone(),
+                compile_get_attr(option_get(t), &attrs.head, &env.entities)?,
+            );
+            for attr in &attrs.tail {
+                let has = if_some(
+                    current.clone(),
+                    compile_has_attr(option_get(current.clone()), attr, &env.entities)?,
+                );
+                result = compile_and(result, Ok(has))?;
+                current = if_some(
+                    current.clone(),
+                    compile_get_attr(option_get(current), attr, &env.entities)?,
+                );
+            }
+            Ok(result)
+        }
         ExprKind::GetAttr { expr, attr } => {
             let t = compile(expr, env)?;
             Ok(if_some(

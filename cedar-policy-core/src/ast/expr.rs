@@ -28,6 +28,7 @@ use crate::{
 };
 use educe::Educe;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
@@ -135,6 +136,13 @@ pub enum ExprKind<T = ()> {
         /// Attribute or field to check for
         attr: SmolStr,
     },
+    /// Extended has: does the given `expr` have the given `attrs`?
+    HasAttrExt {
+        /// Expression to test. Must evaluate to either Entity or Record type
+        expr: Arc<Expr<T>>,
+        /// List of attribute to check for sequentially
+        attrs: NonEmpty<SmolStr>,
+    },
     /// Regex-like string matching similar to IAM's `StringLike` operator.
     Like {
         /// Expression to test. Must evaluate to String type
@@ -189,6 +197,7 @@ impl<T> ExprKind<T> {
             ExprKind::Set(_) => 13,
             ExprKind::Record(_) => 14,
             ExprKind::Is { .. } => 15,
+            ExprKind::HasAttrExt { .. } => 16,
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => 16,
         }
@@ -421,6 +430,7 @@ impl<T> Expr<T> {
                 ..
             } => None,
             ExprKind::HasAttr { .. } => Some(Type::Bool),
+            ExprKind::HasAttrExt { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
@@ -483,6 +493,10 @@ impl<T> Expr<T> {
             }
             ExprKind::HasAttr { expr, attr } => {
                 Ok(builder.has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
+            }
+            ExprKind::HasAttrExt { expr, attrs } => {
+                Ok(builder
+                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attrs))
             }
             ExprKind::Like { expr, pattern } => {
                 Ok(builder.like(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, pattern))
@@ -737,6 +751,14 @@ impl Expr {
         ExprBuilder::new().has_attr(expr, attr)
     }
 
+    /// Create an `Expr` which tests for the existence of a given
+    /// sequence of attributes on a given `Entity` or record.
+    ///
+    /// `expr` must evaluate to either Entity or Record type
+    pub fn extended_has_attr(expr: Expr, attrs: NonEmpty<SmolStr>) -> Self {
+        ExprBuilder::new().extended_has_attr(expr, attrs)
+    }
+
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type
@@ -847,6 +869,10 @@ impl Expr {
             ExprKind::HasAttr { expr, attr } => Ok(Expr::has_attr(
                 expr.substitute_general::<T>(definitions)?,
                 attr.clone(),
+            )),
+            ExprKind::HasAttrExt { expr, attrs } => Ok(Expr::extended_has_attr(
+                expr.substitute_general::<T>(definitions)?,
+                attrs.clone(),
             )),
             ExprKind::Like { expr, pattern } => Ok(Expr::like(
                 expr.substitute_general::<T>(definitions)?,
@@ -1375,6 +1401,19 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         self.with_expr_kind(ExprKind::Is { expr, entity_type })
     }
 
+    /// Create an extended has expression directly in the AST without desugaring.
+    fn extended_has_attr_arc(self, expr: Arc<Expr<T>>, attrs: NonEmpty<SmolStr>) -> Expr<T> {
+        // If there's only one attribute, create a simple HasAttr node
+        if attrs.tail.is_empty() {
+            self.with_expr_kind(ExprKind::HasAttr {
+                expr,
+                attr: attrs.head,
+            })
+        } else {
+            self.with_expr_kind(ExprKind::HasAttrExt { expr, attrs })
+        }
+    }
+
     /// Don't support AST Error nodes - return the error right back
     #[cfg(feature = "tolerant-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
@@ -1625,6 +1664,13 @@ impl<T> Expr<T> {
                     entity_type: entity_type1,
                 },
             ) => entity_type == entity_type1 && expr.eq_shape(expr1),
+            (
+                HasAttrExt { expr, attrs },
+                HasAttrExt {
+                    expr: expr1,
+                    attrs: attrs1,
+                },
+            ) => attrs == attrs1 && expr.eq_shape(expr1),
             _ => false,
         }
     }
@@ -1682,6 +1728,10 @@ impl<T> Expr<T> {
             ExprKind::HasAttr { expr, attr } => {
                 expr.hash_shape(state);
                 attr.hash(state);
+            }
+            ExprKind::HasAttrExt { expr, attrs } => {
+                expr.hash_shape(state);
+                attrs.hash(state);
             }
             ExprKind::Like { expr, pattern } => {
                 expr.hash_shape(state);
@@ -2077,6 +2127,30 @@ mod test {
         // `\`'s escaped form is `\\`
         let e = Expr::has_attr(Expr::val("a"), r"\".into());
         assert_eq!(format!("{e}"), r#""a" has "\\""#);
+    }
+
+    #[test]
+    fn extended_has_display() {
+        use nonempty::nonempty;
+        // Extended has with 2 attributes
+        let e =
+            Expr::extended_has_attr(Expr::var(Var::Principal), nonempty!["a".into(), "b".into()]);
+        assert_eq!(format!("{e}"), "principal has a.b");
+        // Extended has with 3 attributes
+        let e = Expr::extended_has_attr(
+            Expr::var(Var::Context),
+            nonempty!["user".into(), "profile".into(), "email".into()],
+        );
+        assert_eq!(format!("{e}"), "context has user.profile.email");
+        // Extended has preserves structure through display roundtrip
+        let e = Expr::extended_has_attr(
+            Expr::var(Var::Resource),
+            nonempty!["owner".into(), "ipinfo".into(), "additionalData".into()],
+        );
+        let displayed = format!("{e}");
+        assert_eq!(displayed, "resource has owner.ipinfo.additionalData");
+        let reparsed = displayed.parse::<Expr>().unwrap();
+        assert!(e.eq_shape(&reparsed));
     }
 
     #[test]
