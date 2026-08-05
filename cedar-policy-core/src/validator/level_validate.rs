@@ -317,78 +317,83 @@ impl LevelChecker<'_> {
                 }
             },
             ExprKind::HasAttrExt { expr, attrs } => {
-                // For extended has, the semantics is like a chain of has_attr/get_attr.
-                // `expr has a.b.c` checks:
-                //   expr has a       (dereferences expr)
-                //   expr.a has b     (dereferences expr.a)
-                //   expr.a.b has c   (dereferences expr.a.b)
-                // Each entity dereference contributes to the level.
-                // The first check is equivalent to `HasAttr { expr, attr: a }`.
-                // Subsequent checks dereference deeper entities.
-
-                // Check the root expression level (same as for HasAttr/GetAttr)
                 match expr.data() {
-                    Some(Type::Entity(EntityKind::Entity { .. })) => {
-                        let deref_target_lvl =
-                            self.check_entity_deref_target_level(expr, Vec::new(), env);
-                        if deref_target_lvl >= self.max_level {
+                    Some(ty @ Type::Entity(EntityKind::Entity { .. })) => {
+                        let chain_cost =
+                            self.ext_has_attr_chain_cost(ty, attrs.iter().map(SmolStr::as_str));
+
+                        // If chain cost alone too high, return
+                        if self.max_level.level <= chain_cost {
                             self.level_checking_errors.insert(
                                 ValidationError::maximum_level_exceeded(
                                     e.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     self.max_level,
-                                    deref_target_lvl.increment(),
+                                    (chain_cost + 1).into(),
                                 ),
                             );
-                        }
-
-                        // Now check deeper dereferences in the attribute chain.
-                        // Walk the chain: after accessing each attribute, if the
-                        // result is an entity, accessing the NEXT attribute requires
-                        // an additional entity dereference.
-                        let mut accumulated_level = deref_target_lvl.increment();
-                        let mut current_type = expr.data().clone();
-
-                        for attr in attrs.iter().take(attrs.len().saturating_sub(1)) {
-                            if let Some(ref ty) = current_type {
-                                if let Some(attr_ty) =
-                                    Type::lookup_attribute_type(self.schema, ty, attr)
-                                {
-                                    let next_type = attr_ty.attr_type.as_ref().clone();
-                                    if matches!(next_type, Type::Entity(EntityKind::Entity { .. }))
-                                    {
-                                        // Accessing the next attr requires dereferencing this entity
-                                        accumulated_level = accumulated_level.increment();
-                                        if accumulated_level > self.max_level {
-                                            self.level_checking_errors.insert(
-                                                ValidationError::maximum_level_exceeded(
-                                                    e.source_loc().cloned(),
-                                                    self.policy_id.clone(),
-                                                    self.max_level,
-                                                    accumulated_level,
-                                                ),
-                                            );
-                                        }
-                                    }
-                                    current_type = Some(next_type);
-                                } else {
-                                    break;
-                                }
-                            } else {
-                                break;
+                        } else {
+                            // If expression budget to high given chain cost, return
+                            let base_budget = self.max_level.level - chain_cost - 1;
+                            let deref_target_lvl =
+                                self.check_entity_deref_target_level(expr, Vec::new(), env);
+                            if deref_target_lvl.level > base_budget {
+                                self.level_checking_errors.insert(
+                                    ValidationError::maximum_level_exceeded(
+                                        e.source_loc().cloned(),
+                                        self.policy_id.clone(),
+                                        self.max_level,
+                                        (deref_target_lvl.level + chain_cost + 1).into(),
+                                    ),
+                                );
                             }
                         }
                     }
-                    Some(Type::Record { .. }) => {
-                        self.check_expr_level(expr, env);
+                    Some(ty @ Type::Record { .. }) => {
+                        // Record base: chain may traverse through entities.
+                        let chain_cost =
+                            self.ext_has_attr_chain_cost(ty, attrs.iter().map(SmolStr::as_str));
+
+                        // Check: max_level > chain_cost
+                        if self.max_level.level <= chain_cost {
+                            self.level_checking_errors.insert(
+                                ValidationError::maximum_level_exceeded(
+                                    e.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    self.max_level,
+                                    (chain_cost + 1).into(),
+                                ),
+                            );
+                        } else {
+                            // Check: base expression passes general level check
+                            self.check_expr_level(expr, env);
+
+                            // Check: base expression entity access along path to
+                            // first entity dereference in the chain.
+                            if let Some(path) = self.ext_has_attr_first_entity_path(
+                                ty,
+                                attrs.iter().map(SmolStr::as_str),
+                            ) {
+                                let base_budget = self.max_level.level - chain_cost;
+                                let deref_target_lvl =
+                                    self.check_entity_deref_target_level(expr, path, env);
+                                if deref_target_lvl.level > base_budget {
+                                    self.level_checking_errors.insert(
+                                        ValidationError::maximum_level_exceeded(
+                                            e.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                            self.max_level,
+                                            (deref_target_lvl.level + chain_cost).into(),
+                                        ),
+                                    );
+                                }
+                            }
+                        }
                     }
                     _ => {
-                        self.level_checking_errors.insert(
-                            ValidationError::internal_invariant_violation(
-                                e.source_loc().cloned(),
-                                self.policy_id.clone(),
-                            ),
-                        );
+                        // Other types: just check the base expression level.
+                        // Accessing an attr on them would be an error
+                        self.check_expr_level(expr, env);
                     }
                 }
             }
@@ -415,6 +420,72 @@ impl LevelChecker<'_> {
                         e.source_loc().cloned(),
                         self.policy_id.clone(),
                     ));
+            }
+        }
+    }
+
+    /// Compute the number of entity-typed hops in `attrs` chain starting
+    /// from a given type.
+    /// Last attribute in the chain is not counted towards cost because has
+    /// operator does not need to dereference it.
+    fn ext_has_attr_chain_cost<'b>(
+        &self,
+        start_ty: &Type,
+        attrs: impl Iterator<Item = &'b str>,
+    ) -> u32 {
+        let attrs: Vec<&str> = attrs.collect();
+        if attrs.len() <= 1 {
+            return 0;
+        }
+        let mut cost: u32 = 0;
+        let mut current_type = start_ty.clone();
+        for attr in attrs.iter().take(attrs.len() - 1) {
+            if let Some(attr_ty) = Type::lookup_attribute_type(self.schema, &current_type, attr) {
+                let next_type = attr_ty.attr_type.as_ref().clone();
+                if matches!(next_type, Type::Entity(EntityKind::Entity { .. })) {
+                    cost += 1;
+                }
+                current_type = next_type;
+            } else {
+                break;
+            }
+        }
+        cost
+    }
+
+    /// Find the path from a record/entity base to the first entity value that
+    /// the extended `has` chain will dereference through the schema.
+    /// Returns `None` if no entity is encountered before the last attribute (since
+    /// the last attr is only tested for presence, not dereferenced).
+    fn ext_has_attr_first_entity_path<'b>(
+        &self,
+        start_ty: &Type,
+        attrs: impl Iterator<Item = &'b str>,
+    ) -> Option<Vec<SmolStr>> {
+        let attrs: Vec<&str> = attrs.collect();
+        self.ext_has_attr_first_entity_path_inner(start_ty, &attrs)
+    }
+
+    fn ext_has_attr_first_entity_path_inner(
+        &self,
+        ty: &Type,
+        attrs: &[&str],
+    ) -> Option<Vec<SmolStr>> {
+        match attrs {
+            [] | [_] => None,
+            [a, rest @ ..] => {
+                let attr_ty = Type::lookup_attribute_type(self.schema, ty, a);
+                match attr_ty.as_ref().map(|at| at.attr_type.as_ref()) {
+                    Some(Type::Entity(EntityKind::Entity { .. })) => Some(vec![SmolStr::from(*a)]),
+                    Some(next) => {
+                        self.ext_has_attr_first_entity_path_inner(next, rest)
+                            .map(|mut path| {
+                                path.insert(0, SmolStr::from(*a));
+                                path
+                            })
+                    }
+                    None => None,
+                }
             }
         }
     }
@@ -1114,6 +1185,97 @@ mod levels_validation_tests {
             r#"permit(principal, action, resource) when { if true then true else principal.bool };"#,
             [],
             0,
+        );
+    }
+
+    #[test]
+    fn ext_has_entity_base_chain_cost() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user };"#,
+            ["principal has user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.bool };"#,
+            ["principal has user.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user };"#,
+            ["principal has user.user"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user.bool };"#,
+            ["principal has user.user.bool"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user.user };"#,
+            ["principal has user.user.user"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has bool };"#,
+            ["principal has bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has nested.user };"#,
+            ["principal has nested.user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has nested.user.bool };"#,
+            ["principal has nested.user.bool"],
+            2,
+        );
+    }
+
+    #[test]
+    fn ext_has_record_base_chain_cost() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user.bool };"#,
+            ["context has user.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user.user };"#,
+            ["context has user.user"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has nested.user };"#,
+            ["context has nested.user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user.user.bool };"#,
+            ["context has user.user.bool"],
+            3,
+        );
+    }
+
+    #[test]
+    fn ext_has_with_deep_base() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user has user.bool };"#,
+            ["principal.user has user.bool"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user.user has bool };"#,
+            ["principal.user.user has bool"],
+            3,
+        );
+    }
+
+    #[test]
+    fn ext_has_record_base_entity_path() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: resource}.foo has user.bool };"#,
+            ["{foo: principal, bar: resource}.foo has user.bool"],
+            2,
         );
     }
 }
