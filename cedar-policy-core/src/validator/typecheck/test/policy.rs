@@ -1310,8 +1310,9 @@ fn extended_has_all_required_record() {
     .unwrap();
     assert_policy_typechecks(schema.clone(), policy);
 
-    // Test attribute not in schema: has on non-existent attr typechecks (returns Bool)
-    // but subsequent access without guard fails
+    // Test attribute not in schema on closed type: has on non-existent attr
+    // returns singleton(false), so && short-circuits without checking RHS.
+    // The policy typechecks (the when clause is always false).
     let src = r#"
     permit(principal, action == Action::"read", resource) when {
         resource has info.nested.nonexistent &&
@@ -1319,8 +1320,75 @@ fn extended_has_all_required_record() {
     };
     "#;
     let policy = parse_policy(None, src).unwrap();
-    let errors = assert_policy_typecheck_fails(schema, policy);
+    assert_policy_typechecks(schema, policy);
+}
+
+#[test]
+fn extended_has_unknown_intermediate_attr() {
+    use crate::validator::json_schema;
+    let schema: ValidatorSchema = json_schema::Fragment::from_json_value(serde_json::json!(
+        {
+            "": {
+                "entityTypes": {
+                    "Resource": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "owner": { "type": "Entity", "name": "User" }
+                            },
+                            "additionalAttributes": false
+                        }
+                    },
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "name": { "type": "String" }
+                            },
+                            "additionalAttributes": false
+                        }
+                    }
+                },
+                "actions": {
+                    "read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"]
+                        }
+                    }
+                }
+            }
+        }
+    ))
+    .unwrap()
+    .try_into()
+    .unwrap();
+
+    // Non-last attr `bogus` does not exist on closed entity User —
+    // this should be a type error.
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has owner.bogus.name
+    };
+    "#,
+    )
+    .unwrap();
+    let errors = assert_policy_typecheck_fails(schema.clone(), policy);
     assert!(!errors.is_empty());
+
+    // Last attr unknown on a closed type is fine (just returns Bool = false)
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has owner.unknown
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema, policy);
 }
 
 mod templates {
