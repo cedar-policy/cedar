@@ -218,6 +218,7 @@ pub struct EntityUIDImpl {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     #[educe(PartialOrd(ignore))]
+    #[educe(Ord(ignore))]
     loc: Option<Loc>,
 }
 
