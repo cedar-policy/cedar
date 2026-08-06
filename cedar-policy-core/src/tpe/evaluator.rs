@@ -418,7 +418,7 @@ impl Evaluator<'_> {
                 if !Type::may_have_attr(self.schema, expr.ty(), attr)
                     && !expr.can_error_assuming_well_formed()
                 {
-                    // The residual can't error and cannot have `attr`, so `has` is alway `false`.
+                    // The residual can't error and cannot have `attr`, so `has` is always `false`.
                     // We can't have an analogous reduction to `true` because the concrete semantics
                     // for `has` is `false` when the entity isn't present.
                     return mk_concrete(false.into());
