@@ -478,11 +478,10 @@ impl Type {
     /// entity or set of entity, and for `AnyEntity`.
     pub(crate) fn as_set_or_entity_lub(&self) -> Option<&EntityLUB> {
         match self {
-            Type::Entity(_) => self.as_entity_lub(),
             Type::Set {
                 element_type: Some(element_type),
             } => element_type.as_entity_lub(),
-            _ => None,
+            _ => self.as_entity_lub(),
         }
     }
 
