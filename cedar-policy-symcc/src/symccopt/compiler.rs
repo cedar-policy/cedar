@@ -1005,16 +1005,23 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
         ExprKind::HasAttrExt { expr, attrs } => {
             // For the optimized compiler, desugar extended has into a chain.
             // Compile as: has_attr(expr, head) && has_attr(get_attr(expr, head), tail[0]) && ...
-            // We compile the sub-expression once and reuse its term.
+            // If an intermediate has_attr is statically false (attribute absent from
+            // the type), short-circuit: the whole chain is false.
+            // We only call compile_get_attr for non-last attributes (it's needed to
+            // build `current_term` for the next step; the last attr has no next step).
             let res1 = compile(expr, env)?;
             let res1_term = res1.term.clone();
 
             // First: check if head attr exists
             let first_has =
                 compile_has_attr(res1.map_term(option_get), &attrs.head, &env.entities)?;
+            let statically_false = matches!(
+                &first_has.term,
+                Term::Some(inner) if matches!(&**inner, Term::Prim(TermPrim::Bool(false)))
+            );
             let mut result = first_has.map_term(|term| if_some(res1_term.clone(), term));
 
-            if attrs.tail.is_empty() {
+            if attrs.tail.is_empty() || statically_false {
                 return Ok(result);
             }
 
@@ -1025,7 +1032,8 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let first_get = compile_get_attr(res_again, &attrs.head, &env.entities)?;
             let mut current_term = if_some(res_again_term, first_get.term);
 
-            for attr in &attrs.tail {
+            let last_idx = attrs.tail.len() - 1;
+            for (i, attr) in attrs.tail.iter().enumerate() {
                 // Build has_attr for current path
                 let has_res = compile_has_attr(
                     CompileResult {
@@ -1035,8 +1043,16 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
                     attr,
                     &env.entities,
                 )?;
+                let statically_false = matches!(
+                    &has_res.term,
+                    Term::Some(inner) if matches!(&**inner, Term::Prim(TermPrim::Bool(false)))
+                );
                 let has_result = has_res.map_term(|term| if_some(current_term.clone(), term));
                 result = compile_and(result, Ok(has_result))?;
+
+                if statically_false || i == last_idx {
+                    return Ok(result);
+                }
 
                 // Build get_attr for current path (for next iteration)
                 let get_res = compile_get_attr(

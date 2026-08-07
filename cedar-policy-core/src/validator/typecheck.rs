@@ -967,9 +967,6 @@ impl<'a> SingleEnvTypechecker<'a> {
             }
 
             ExprKind::HasAttrExt { expr, attrs } => {
-                // `has` with a chain of attributes applies to an entity or a record.
-                // `expr has a.b.c` checks that `expr` has `a`, `expr.a` has `b`,
-                // and `expr.a.b` has `c`, with short-circuit semantics.
                 let actual = self.expect_one_of_types(
                     prior_capability,
                     expr,
@@ -982,174 +979,100 @@ impl<'a> SingleEnvTypechecker<'a> {
                     },
                 );
                 actual.then_typecheck(|typ_expr_actual, _| {
-                    match typ_expr_actual.data() {
-                        Some(typ_actual) => {
-                            // Walk the attribute chain, accumulating capabilities.
-                            // Each step generates a capability for the (expr_path, attr) pair,
-                            // enabling safe access to that attribute after the `has` guard.
-                            let mut capability_pairs: Vec<(Expr, smol_str::SmolStr)> = Vec::new();
-                            let mut current_type = typ_actual.clone();
-                            let mut current_expr_path: Expr = expr.as_ref().clone();
-                            let mut all_found = true;
-
-                            for (i, attr) in attrs.iter().enumerate() {
-                                let is_last = i == attrs.len() - 1;
-                                match Type::lookup_attribute_type(self.schema, &current_type, attr)
-                                {
-                                    Some(attr_ty) => {
-                                        capability_pairs
-                                            .push((current_expr_path.clone(), attr.clone()));
-
-                                        if !is_last {
-                                            current_expr_path =
-                                                Expr::get_attr(current_expr_path, attr.clone());
-                                            current_type = attr_ty.attr_type.as_ref().clone();
-                                        }
-                                    }
-                                    None => {
-                                        // For a non-last attribute on a closed type,
-                                        // the intermediate access is ill-typed: the
-                                        // attribute definitely doesn't exist, so
-                                        // `getAttr` at this position would always fail.
-                                        if !is_last
-                                            && !Type::may_have_attr(
-                                                self.schema,
-                                                &current_type,
-                                                attr,
-                                            )
-                                        {
-                                            type_errors.push(
-                                                ValidationError::unsafe_attribute_access(
-                                                    e.source_loc().cloned(),
-                                                    self.policy_id.clone(),
-                                                    AttributeAccess::from_expr(
-                                                        self.request_env,
-                                                        &typ_expr_actual,
-                                                        attr.clone(),
-                                                    ),
-                                                    None,
-                                                    false,
-                                                ),
-                                            );
-                                            return TypecheckAnswer::fail(
-                                                ExprBuilder::with_data(Some(
-                                                    Type::primitive_boolean(),
-                                                ))
-                                                .with_same_source_loc(e)
-                                                .extended_has_attr(typ_expr_actual, attrs.clone()),
-                                            );
-                                        }
-                                        // For the last attribute, or when the type is open
-                                        // (may have additional attributes), this is fine:
-                                        // the `has` may evaluate to false at runtime.
-                                        if Type::may_have_attr(self.schema, &current_type, attr) {
-                                            capability_pairs
-                                                .push((current_expr_path.clone(), attr.clone()));
-                                            all_found = false;
-                                        } else {
-                                            // Last attr on a closed type that definitely
-                                            // doesn't have it: always evaluates to false.
-                                            // Consistent with single-attr HasAttr behavior.
-                                            let mut capabilities = CapabilitySet::new();
-                                            for (cap_expr, cap_attr) in capability_pairs {
-                                                capabilities =
-                                                    capabilities.union(&CapabilitySet::singleton(
-                                                        Capability::new_attribute_owned(
-                                                            cap_expr, cap_attr,
-                                                        ),
-                                                    ));
-                                            }
-                                            return TypecheckAnswer::success_with_capability(
-                                                ExprBuilder::with_data(Some(
-                                                    Type::singleton_boolean(false),
-                                                ))
-                                                .with_same_source_loc(e)
-                                                .extended_has_attr(typ_expr_actual, attrs.clone()),
-                                                capabilities,
-                                            );
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-
-                            let mut capabilities = CapabilitySet::new();
-                            for (cap_expr, cap_attr) in capability_pairs {
-                                capabilities = capabilities.union(&CapabilitySet::singleton(
-                                    Capability::new_attribute_owned(cap_expr, cap_attr),
-                                ));
-                            }
-
-                            if !all_found {
-                                // An attribute was not in the schema but the type
-                                // may have additional attributes. The `has` could
-                                // evaluate to `true` or `false` at runtime.
-                                return TypecheckAnswer::success_with_capability(
-                                    ExprBuilder::with_data(Some(Type::primitive_boolean()))
-                                        .with_same_source_loc(e)
-                                        .extended_has_attr(typ_expr_actual, attrs.clone()),
-                                    capabilities,
-                                );
-                            }
-
-                            // All attributes were found in the schema.
-                            // As with single-attribute `has`, we can determine that
-                            // the result is definitely `true` when every attribute
-                            // in the chain is required and the base is a record
-                            // (which always exists) or covered by a prior capability.
-                            let all_required = attrs.iter().enumerate().all(|(i, attr)| {
-                                let mut check_type = typ_actual.clone();
-                                for prev_attr in attrs.iter().take(i) {
-                                    match Type::lookup_attribute_type(
-                                        self.schema,
-                                        &check_type,
-                                        prev_attr,
-                                    ) {
-                                        Some(attr_ty) => {
-                                            check_type = attr_ty.attr_type.as_ref().clone();
-                                        }
-                                        None => return false,
-                                    }
-                                }
-                                matches!(
-                                    Type::lookup_attribute_type(self.schema, &check_type, attr),
-                                    Some(AttributeType {
-                                        is_required: true,
-                                        ..
-                                    })
-                                )
-                            });
-
-                            let is_record_type = matches!(typ_actual, Type::Record { .. });
-                            let in_prior_capability = attrs.iter().enumerate().all(|(i, attr)| {
-                                let mut check_expr: Expr = expr.as_ref().clone();
-                                for prev_attr in attrs.iter().take(i) {
-                                    check_expr = Expr::get_attr(check_expr, prev_attr.clone());
-                                }
-                                prior_capability
-                                    .contains(&Capability::new_attribute(&check_expr, attr.clone()))
-                            });
-
-                            let type_of_has =
-                                if all_required && (is_record_type || in_prior_capability) {
-                                    Type::singleton_boolean(true)
-                                } else {
-                                    Type::primitive_boolean()
-                                };
-
-                            TypecheckAnswer::success_with_capability(
-                                ExprBuilder::with_data(Some(type_of_has))
-                                    .with_same_source_loc(e)
-                                    .extended_has_attr(typ_expr_actual, attrs.clone()),
-                                capabilities,
-                            )
-                        }
-                        None => TypecheckAnswer::fail(
+                    if typ_expr_actual.data().is_none() {
+                        return TypecheckAnswer::fail(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(e)
                                 .extended_has_attr(typ_expr_actual, attrs.clone()),
-                        ),
+                        );
                     }
+
+                    // This is an iterative implementation of `typeOfExtHasAttr` that
+                    // behaves similarly as desugaring to a chain of has, get and &&.
+                    let mut cur_typ_expr = typ_expr_actual.clone();
+                    let mut cur_expr = expr.as_ref().clone();
+                    let mut cur_cap = prior_capability.clone();
+                    let mut steps = Vec::with_capacity(attrs.len());
+
+                    for (index, attr) in attrs.iter().enumerate() {
+                        let Some((has_type, has_capability)) = self.type_of_has_attr_for_ext(
+                            &cur_cap,
+                            &cur_typ_expr,
+                            &cur_expr,
+                            attr,
+                            type_errors,
+                        ) else {
+                            return TypecheckAnswer::fail(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(e)
+                                    .extended_has_attr(typ_expr_actual, attrs.clone()),
+                            );
+                        };
+
+                        let is_last = index + 1 == attrs.len();
+                        let short_circuits = has_type == BoolType::False;
+                        steps.push((has_type, has_capability.clone()));
+                        if is_last || short_circuits {
+                            break;
+                        }
+
+                        // Check this `get` using the capability earned by the current
+                        // `has`, then pass the same capabilities to the next step.
+                        let next_cap = cur_cap.union(&has_capability);
+                        let Some(next_type) = self.type_of_get_attr_for_ext(
+                            &next_cap,
+                            &cur_typ_expr,
+                            &cur_expr,
+                            attr,
+                            type_errors,
+                        ) else {
+                            return TypecheckAnswer::fail(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(e)
+                                    .extended_has_attr(typ_expr_actual, attrs.clone()),
+                            );
+                        };
+
+                        cur_cap = next_cap;
+                        cur_typ_expr = ExprBuilder::with_data(Some(next_type))
+                            .with_same_source_loc(e)
+                            .get_attr(cur_typ_expr, attr.clone());
+                        cur_expr = ExprBuilder::new()
+                            .with_same_source_loc(e)
+                            .get_attr(cur_expr, attr.clone());
+                    }
+
+                    let Some((mut result_type, mut result_capability)) = steps.pop() else {
+                        return TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(e)
+                                .extended_has_attr(typ_expr_actual, attrs.clone()),
+                        );
+                    };
+
+                    // Combine from right to left exactly like `typeOfAnd`. In
+                    // particular, a false suffix clears every prefix capability.
+                    while let Some((has_type, has_capability)) = steps.pop() {
+                        match result_type {
+                            BoolType::False => {
+                                result_capability = CapabilitySet::new();
+                            }
+                            BoolType::True => {
+                                result_type = has_type;
+                                result_capability = has_capability.union(&result_capability);
+                            }
+                            BoolType::AnyBool => {
+                                result_capability = has_capability.union(&result_capability);
+                            }
+                        }
+                    }
+
+                    TypecheckAnswer::success_with_capability(
+                        ExprBuilder::with_data(Some(Type::Bool(result_type)))
+                            .with_same_source_loc(e)
+                            .extended_has_attr(typ_expr_actual, attrs.clone()),
+                        result_capability,
+                    )
                 })
             }
 
@@ -1325,6 +1248,109 @@ impl<'a> SingleEnvTypechecker<'a> {
             }
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => TypecheckAnswer::ErrorAstNode,
+        }
+    }
+
+    /// Typecheck one `has` step in an extended attribute chain.
+    fn type_of_has_attr_for_ext<'b>(
+        &self,
+        prior_capability: &CapabilitySet<'b>,
+        typed_expr: &Expr<Option<Type>>,
+        expr: &Expr,
+        attr: &smol_str::SmolStr,
+        type_errors: &mut Vec<ValidationError>,
+    ) -> Option<(BoolType, CapabilitySet<'b>)> {
+        let actual_type = typed_expr.data().as_ref()?;
+        let known_to_exist = match actual_type {
+            Type::Record { .. } => true,
+            Type::Entity(_) => false,
+            actual_type => {
+                let help = match actual_type {
+                    Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                    Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
+                    _ => None,
+                };
+                type_errors.push(ValidationError::expected_one_of_types(
+                    expr.source_loc().cloned(),
+                    self.policy_id.clone(),
+                    vec![Type::any_entity_reference(), Type::any_record()],
+                    actual_type.clone(),
+                    help,
+                ));
+                return None;
+            }
+        };
+
+        match Type::lookup_attribute_type(self.schema, actual_type, attr) {
+            Some(attr_type) => {
+                let already_known =
+                    prior_capability.contains(&Capability::new_attribute(expr, attr.clone()));
+                if already_known || (attr_type.is_required && known_to_exist) {
+                    Some((BoolType::True, CapabilitySet::new()))
+                } else {
+                    Some((
+                        BoolType::AnyBool,
+                        CapabilitySet::singleton(Capability::new_attribute_owned(
+                            expr.clone(),
+                            attr.clone(),
+                        )),
+                    ))
+                }
+            }
+            None if Type::may_have_attr(self.schema, actual_type, attr) => {
+                Some((BoolType::AnyBool, CapabilitySet::new()))
+            }
+            None => Some((BoolType::False, CapabilitySet::new())),
+        }
+    }
+
+    /// Typecheck the `getAttr` between two `has` steps in an extended chain.
+    /// The caller supplies the capabilities earned by the current `has`.
+    fn type_of_get_attr_for_ext(
+        &self,
+        prior_capability: &CapabilitySet<'_>,
+        typed_expr: &Expr<Option<Type>>,
+        expr: &Expr,
+        attr: &smol_str::SmolStr,
+        type_errors: &mut Vec<ValidationError>,
+    ) -> Option<Type> {
+        let actual_type = typed_expr.data().as_ref()?;
+        let attr_type = Type::lookup_attribute_type(self.schema, actual_type, attr);
+        match attr_type {
+            Some(attr_type)
+                if attr_type.is_required
+                    || prior_capability
+                        .contains(&Capability::new_attribute(expr, attr.clone())) =>
+            {
+                Some(attr_type.attr_type.as_ref().clone())
+            }
+            Some(attr_type) => {
+                type_errors.push(ValidationError::unsafe_optional_attribute_access(
+                    expr.source_loc().cloned(),
+                    self.policy_id.clone(),
+                    AttributeAccess::from_expr(self.request_env, typed_expr, attr.clone()),
+                ));
+                let _ = attr_type;
+                None
+            }
+            None if self.mode.is_partial()
+                && Type::may_have_attr(self.schema, actual_type, attr) =>
+            {
+                Some(Type::Never)
+            }
+            None => {
+                let all_attrs = actual_type.all_attributes(self.schema);
+                let borrowed = all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                let suggestion = fuzzy_search(attr, &borrowed);
+                type_errors.push(ValidationError::unsafe_attribute_access(
+                    expr.source_loc().cloned(),
+                    self.policy_id.clone(),
+                    AttributeAccess::from_expr(self.request_env, typed_expr, attr.clone()),
+                    suggestion,
+                    Type::may_have_attr(self.schema, actual_type, attr),
+                ));
+                None
+            }
         }
     }
 

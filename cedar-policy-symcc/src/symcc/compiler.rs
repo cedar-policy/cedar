@@ -722,25 +722,33 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
             ))
         }
         ExprKind::HasAttrExt { expr, attrs } => {
-            // Compile extended has as a chain of has_attr checks with short-circuit
+            // Compile extended has as a chain of has_attr checks with short-circuit.
             // For `expr has a.b.c`:
-            //   has_attr(expr, a) && has_attr(get_attr(expr, a), b) && has_attr(get_attr(get_attr(expr, a), b), c)
+            //   has_attr(expr, a) && has_attr(get_attr(expr, a), b) && ...
+            // If an intermediate has_attr is statically false (attribute absent from
+            // the type), short-circuit: the whole chain is false.
+            // We only call compile_get_attr for non-last attributes (it's needed to
+            // build `current` for the next step; the last attr has no next step).
             let t = compile(expr, env)?;
-            let base = if_some(
-                t.clone(),
-                compile_has_attr(option_get(t.clone()), &attrs.head, &env.entities)?,
-            );
-            let mut result = base;
+            let has_raw = compile_has_attr(option_get(t.clone()), &attrs.head, &env.entities)?;
+            let statically_false = matches!(has_raw, Term::Prim(TermPrim::Bool(false)));
+            let mut result = if_some(t.clone(), has_raw);
+            if statically_false || attrs.tail.is_empty() {
+                return Ok(result);
+            }
             let mut current = if_some(
                 t.clone(),
                 compile_get_attr(option_get(t), &attrs.head, &env.entities)?,
             );
-            for attr in &attrs.tail {
-                let has = if_some(
-                    current.clone(),
-                    compile_has_attr(option_get(current.clone()), attr, &env.entities)?,
-                );
+            let last_idx = attrs.tail.len() - 1;
+            for (i, attr) in attrs.tail.iter().enumerate() {
+                let has_raw = compile_has_attr(option_get(current.clone()), attr, &env.entities)?;
+                let statically_false = matches!(has_raw, Term::Prim(TermPrim::Bool(false)));
+                let has = if_some(current.clone(), has_raw);
                 result = compile_and(result, Ok(has))?;
+                if statically_false || i == last_idx {
+                    return Ok(result);
+                }
                 current = if_some(
                     current.clone(),
                     compile_get_attr(option_get(current), attr, &env.entities)?,

@@ -1365,7 +1365,7 @@ fn extended_has_unknown_intermediate_attr() {
     .unwrap();
 
     // Non-last attr `bogus` does not exist on closed entity User —
-    // this should be a type error.
+    // the `has` chain short-circuits to `false`
     let policy = parse_policy(
         None,
         r#"
@@ -1375,8 +1375,7 @@ fn extended_has_unknown_intermediate_attr() {
     "#,
     )
     .unwrap();
-    let errors = assert_policy_typecheck_fails(schema.clone(), policy);
-    assert!(!errors.is_empty());
+    assert_policy_typechecks(schema.clone(), policy);
 
     // Last attr unknown on a closed type is fine (just returns Bool = false)
     let policy = parse_policy(

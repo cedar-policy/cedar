@@ -143,6 +143,114 @@ fn slot_has_typechecks() {
 }
 
 #[test]
+fn extended_has_precise_boolean_types() {
+    assert_typechecks_empty_schema(
+        &"{ a: { b: true } } has a.b".parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks_empty_schema(
+        &"{ a: {} } has a.missing".parse().unwrap(),
+        &Type::singleton_boolean(false),
+    );
+}
+
+#[test]
+fn extended_has_rejects_primitive_intermediate() {
+    let errors = assert_typecheck_fails_empty_schema(
+        &"{ a: 1 } has a.b".parse().unwrap(),
+        &Type::primitive_boolean(),
+    );
+    assert_eq!(errors.len(), 1);
+}
+
+#[test]
+fn extended_has_optional_chain_propagates_capabilities() {
+    let schema_src = r#"
+        entity A {
+            x?: {
+                y?: {
+                    z?: Long,
+                }
+            }
+        };
+    "#;
+    let (schema, _) =
+        crate::validator::ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none())
+            .unwrap();
+    let typechecker =
+        crate::validator::typecheck::Typechecker::new(&schema, ValidationMode::Strict);
+    let expr: Expr = r#"A::"a" has x.y.z"#.parse().unwrap();
+    let policy_id = expr_id_placeholder();
+    let mut errors = std::collections::HashSet::new();
+
+    match typechecker.typecheck_expr(&expr, &policy_id, &mut errors) {
+        crate::validator::typecheck::TypecheckAnswer::TypecheckSuccess {
+            expr_type,
+            expr_capability,
+        } => {
+            assert_eq!(expr_type.data(), &Some(Type::primitive_boolean()));
+            let base: Expr = r#"A::"a""#.parse().unwrap();
+            let x = Expr::get_attr(base.clone(), "x".into());
+            let xy = Expr::get_attr(x.clone(), "y".into());
+            assert!(
+                expr_capability.contains(&crate::validator::types::Capability::new_attribute(
+                    &base,
+                    "x".into()
+                ))
+            );
+            assert!(
+                expr_capability.contains(&crate::validator::types::Capability::new_attribute(
+                    &x,
+                    "y".into()
+                ))
+            );
+            assert!(
+                expr_capability.contains(&crate::validator::types::Capability::new_attribute(
+                    &xy,
+                    "z".into()
+                ))
+            );
+        }
+        answer => panic!("expected successful typechecking, got {answer:?}"),
+    }
+    assert!(errors.is_empty());
+}
+
+#[test]
+fn extended_has_false_suffix_clears_prefix_capabilities() {
+    let schema_src = r#"
+        entity A {
+            x: {
+                present: Long,
+            }
+        };
+    "#;
+    let (schema, _) =
+        crate::validator::ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none())
+            .unwrap();
+    let typechecker =
+        crate::validator::typecheck::Typechecker::new(&schema, ValidationMode::Strict);
+    let expr: Expr = r#"A::"a" has x.missing"#.parse().unwrap();
+    let policy_id = expr_id_placeholder();
+    let mut errors = std::collections::HashSet::new();
+
+    match typechecker.typecheck_expr(&expr, &policy_id, &mut errors) {
+        crate::validator::typecheck::TypecheckAnswer::TypecheckSuccess {
+            expr_type,
+            expr_capability,
+        } => {
+            assert_eq!(expr_type.data(), &Some(Type::singleton_boolean(false)));
+            assert_eq!(
+                expr_capability,
+                crate::validator::types::CapabilitySet::new()
+            );
+        }
+        answer => panic!("expected successful typechecking, got {answer:?}"),
+    }
+    assert!(errors.is_empty());
+}
+
+#[test]
 fn set_typechecks() {
     assert_typechecks_empty_schema(
         &Expr::set([Expr::val(true)]),
