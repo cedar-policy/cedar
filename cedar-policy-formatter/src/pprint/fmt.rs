@@ -105,6 +105,7 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
 }
 
 pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
+    // `pretty-expressive::nest` accepts only unsigned indentation offsets.
     if config.indent_width < 0 {
         return Err(miette!("indent width must be non-negative"));
     }

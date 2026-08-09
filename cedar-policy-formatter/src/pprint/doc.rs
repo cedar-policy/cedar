@@ -723,6 +723,10 @@ impl Doc for Node<Option<Primary>> {
                             ))
                         })?
                         .0;
+                    // `pretty-expressive` emits indentation with the newline,
+                    // unlike `pretty`, which looked ahead to the next document.
+                    // Keep the closing newline outside the nested record body
+                    // so `}` returns to the parent indentation level.
                     RcDoc::line()
                         .append(inits)
                         .nest(context.config.indent_width)

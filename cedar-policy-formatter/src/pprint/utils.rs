@@ -57,6 +57,9 @@ pub fn get_trailing_comment_doc_from_str<'src>(
     next_doc: RcDoc<'src>,
 ) -> RcDoc<'src> {
     if !trailing_comment.is_empty() {
+        // `full` forbids later tokens on the comment line. The deferred
+        // hardline then ends the comment at the caller's indentation level,
+        // rather than at any temporary nest surrounding the commented token.
         RcDoc::space()
             .append(RcDoc::text(trailing_comment))
             .full()
