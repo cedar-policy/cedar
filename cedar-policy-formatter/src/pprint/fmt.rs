@@ -146,6 +146,19 @@ mod tests {
     use std::fs;
 
     use super::*;
+    use crate::pprint::token::Token;
+
+    fn string_tokens(source: &str) -> Vec<String> {
+        get_token_stream(source)
+            .expect("valid Cedar source should tokenize")
+            .0
+            .into_iter()
+            .filter_map(|wrapped| match wrapped.token {
+                Token::Str(text) => Some(text.to_string()),
+                _ => None,
+            })
+            .collect()
+    }
 
     #[test]
     fn test_soundness_check() {
@@ -188,6 +201,21 @@ mod tests {
         permit (principal, action, resource)
         when { "b"};"#;
         soundness_check(p2, &parse_policyset(p1).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn test_preserve_multiline_string_source() {
+        let source = include_str!("../../tests/blank_lines.cedar");
+        let config = Config {
+            line_width: 80,
+            indent_width: 2,
+        };
+
+        let original_strings = string_tokens(source);
+        assert!(original_strings.iter().any(|text| text.contains('\n')));
+
+        let formatted = policies_str_to_pretty(source, &config).unwrap();
+        assert_eq!(string_tokens(&formatted), original_strings);
     }
 
     #[test]
