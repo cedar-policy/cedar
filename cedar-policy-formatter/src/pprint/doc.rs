@@ -265,35 +265,70 @@ impl Doc for Node<Option<And>> {
     }
 }
 
+/// Return whether this additive expression is a member chain containing a
+/// function call, without any surrounding arithmetic or unary operator.
+fn is_member_call_expression(expression: &Node<Option<Add>>) -> bool {
+    let Some(addition) = expression.as_inner() else {
+        return false;
+    };
+    if !addition.extended.is_empty() {
+        return false;
+    }
+    let Some(multiplication) = addition.initial.as_inner() else {
+        return false;
+    };
+    if !multiplication.extended.is_empty() {
+        return false;
+    }
+    let Some(unary) = multiplication.initial.as_inner() else {
+        return false;
+    };
+    if unary.op.is_some() {
+        return false;
+    }
+    let Some(member) = unary.item.as_inner() else {
+        return false;
+    };
+    member
+        .access
+        .iter()
+        .any(|access| matches!(access.as_inner(), Some(MemAccess::Call(_))))
+}
+
 impl Doc for Node<Option<Relation>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
-            Relation::Common { initial, extended } => {
-                match extended.as_slice() {
-                    [] => initial.to_doc(context),
-                    [(op, n)] =>
-                    // do not group due to the limitation of current design
-                    {
-                        Some(
-                            initial
-                                .to_doc(context)?
-                                .append(RcDoc::space())
-                                .append(add_comment(
-                                    RcDoc::as_string(op),
-                                    get_comment_after_end(
-                                        initial.loc.as_ref().map(|loc| loc.span),
-                                        &mut context.tokens,
-                                    )?,
-                                    RcDoc::nil(),
-                                ))
-                                .append(RcDoc::space())
-                                .append(n.to_doc(context)),
-                        )
-                    }
-                    _ => None,
+            Relation::Common { initial, extended } => match extended.as_slice() {
+                [] => initial.to_doc(context),
+                [(op, rhs)] => {
+                    // A comparison break is useful when it keeps two call
+                    // expressions intact. Offering it for every relation can
+                    // instead flatten records or long access chains merely to
+                    // place a short scalar operand on its own line.
+                    let after_operator =
+                        if is_member_call_expression(initial) && is_member_call_expression(rhs) {
+                            RcDoc::line().group().nest(context.config.indent_width)
+                        } else {
+                            RcDoc::space()
+                        };
+                    Some(
+                        initial
+                            .to_doc(context)?
+                            .append(RcDoc::space())
+                            .append(add_comment(
+                                RcDoc::as_string(op),
+                                get_comment_after_end(
+                                    initial.loc.as_ref().map(|loc| loc.span),
+                                    &mut context.tokens,
+                                )?,
+                                after_operator,
+                            ))
+                            .append(rhs.to_doc(context)),
+                    )
                 }
-            }
+                _ => None,
+            },
             Relation::Has { target, field } => Some(
                 target
                     .to_doc(context)?

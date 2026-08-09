@@ -219,6 +219,120 @@ mod tests {
     }
 
     #[test]
+    fn test_comparison_break_cost_boundaries() {
+        const SOURCE: &str = r#"permit (principal, action, resource)
+when {
+  duration("6h") <= context.now.datetime.offset(context.now.localTimeOffset).toTime()
+};
+"#;
+        const MEMBER_BROKEN: &str = r#"permit (principal, action, resource)
+when
+{
+  duration("6h") <= context.now
+    .datetime
+    .offset
+    (
+      context.now.localTimeOffset
+    )
+    .toTime
+    ()
+};
+"#;
+        const COMPARISON_BROKEN: &str = r#"permit (principal, action, resource)
+when
+{
+  duration("6h") <=
+    context.now.datetime.offset(context.now.localTimeOffset).toTime()
+};
+"#;
+        const FLAT: &str = r#"permit (principal, action, resource)
+when
+{
+  duration("6h") <= context.now.datetime.offset(context.now.localTimeOffset).toTime()
+};
+"#;
+
+        for (line_width, expected) in [
+            (68, MEMBER_BROKEN),
+            (69, COMPARISON_BROKEN),
+            (84, COMPARISON_BROKEN),
+            (85, FLAT),
+        ] {
+            let config = Config {
+                line_width,
+                indent_width: 2,
+            };
+            let formatted = policies_str_to_pretty(SOURCE, &config).unwrap();
+            assert_eq!(
+                formatted, expected,
+                "unexpected layout at width {line_width}"
+            );
+            assert_eq!(
+                policies_str_to_pretty(&formatted, &config).unwrap(),
+                expected,
+                "layout is not idempotent at width {line_width}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_comparison_breaks_before_either_operand_shape() {
+        const SOURCE: &str = r#"permit (principal, action, resource)
+when {
+  duration("6h") <= context.now.datetime.offset(context.now.localTimeOffset).toTime() &&
+  context.now.datetime.offset(context.now.localTimeOffset).toTime() <= duration("21h")
+};
+"#;
+        const EXPECTED: &str = r#"permit (principal, action, resource)
+when
+{
+  duration("6h") <=
+    context.now.datetime.offset(context.now.localTimeOffset).toTime() &&
+  context.now.datetime.offset(context.now.localTimeOffset).toTime() <=
+    duration("21h")
+};
+"#;
+        let config = Config {
+            line_width: 80,
+            indent_width: 2,
+        };
+
+        let formatted = policies_str_to_pretty(SOURCE, &config).unwrap();
+        assert_eq!(formatted, EXPECTED);
+        assert_eq!(
+            policies_str_to_pretty(&formatted, &config).unwrap(),
+            EXPECTED
+        );
+    }
+
+    #[test]
+    fn test_comparison_break_with_operator_comment() {
+        const SOURCE: &str = r#"permit(principal, action, resource) when {
+  duration("6h") <= // keep the rhs separate
+  duration("7h")
+};
+"#;
+        const EXPECTED: &str = r#"permit (principal, action, resource)
+when
+{
+  duration("6h") <= // keep the rhs separate
+  duration("7h")
+};
+"#;
+        let config = Config {
+            line_width: 80,
+            indent_width: 2,
+        };
+
+        let formatted = policies_str_to_pretty(SOURCE, &config).unwrap();
+        assert_eq!(formatted, EXPECTED);
+        assert_eq!(
+            policies_str_to_pretty(&formatted, &config).unwrap(),
+            EXPECTED
+        );
+    }
+
+    #[test]
     fn test_add_trailing_newline() {
         // The formatter should add a trailing newline.
         // This behavior isn't tested by the snapshots below because `insta`
