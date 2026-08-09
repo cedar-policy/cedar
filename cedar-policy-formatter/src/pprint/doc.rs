@@ -17,8 +17,8 @@
 use super::utils::*;
 use super::Context;
 
+use super::pretty::RcDoc;
 use cedar_policy_core::parser::{cst::*, Node};
-use pretty::RcDoc;
 
 use super::token::Comment;
 
@@ -480,7 +480,7 @@ impl Doc for Node<Option<Unary>> {
                                     ))
                                 })
                                 .collect::<Option<Vec<RcDoc<'_>>>>()?,
-                            RcDoc::nil(),
+                            &RcDoc::nil(),
                         )
                         .append(e.item.as_inner()?.to_doc(context)?),
                     )
@@ -500,7 +500,7 @@ impl Doc for Member {
                 .append(
                     RcDoc::intersperse(
                         self.access.iter().map(|ac| ac.to_doc(context)),
-                        RcDoc::line_(),
+                        &RcDoc::line_(),
                     )
                     .nest(context.config.indent_width),
                 )
@@ -723,7 +723,11 @@ impl Doc for Node<Option<Primary>> {
                             ))
                         })?
                         .0;
-                    RcDoc::line().append(inits).append(RcDoc::line()).group()
+                    RcDoc::line()
+                        .append(inits)
+                        .nest(context.config.indent_width)
+                        .append(RcDoc::line())
+                        .group()
                 },
                 add_comment(
                     RcDoc::text("{"),
@@ -738,7 +742,7 @@ impl Doc for Node<Option<Primary>> {
                     get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
                     RcDoc::nil(),
                 ),
-                context.config.indent_width,
+                0,
             )),
             Primary::Slot(slot) => slot.to_doc(context),
         }
@@ -888,7 +892,7 @@ impl Doc for Node<Option<Policy>> {
 
         let anno_doc = RcDoc::intersperse(
             policy.annotations.iter().map(|a| a.to_doc(context)),
-            RcDoc::nil(),
+            &RcDoc::nil(),
         );
         let eff_leading_comment = get_leading_comment_at_start(
             policy.effect.loc.as_ref().map(|loc| loc.span),
@@ -955,7 +959,7 @@ impl Doc for Node<Option<Policy>> {
         };
         let conds = &policy.conds;
         let cond_doc =
-            RcDoc::intersperse(conds.iter().map(|c| c.to_doc(context)), RcDoc::hardline());
+            RcDoc::intersperse(conds.iter().map(|c| c.to_doc(context)), &RcDoc::hardline());
         Some(
             anno_doc
                 .append(

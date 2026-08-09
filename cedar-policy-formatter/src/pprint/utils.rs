@@ -16,11 +16,10 @@
 
 use std::borrow::Borrow;
 
-use itertools::Itertools;
-use pretty::RcDoc;
-
 use crate::token::regex_constants;
+use itertools::Itertools;
 
+use super::pretty::RcDoc;
 use super::token::{Comment, WrappedToken};
 
 // Add brackets
@@ -44,12 +43,10 @@ pub fn get_leading_comment_doc_from_str<'src>(leading_comment: &[&'src str]) -> 
     }
 }
 
-/// Convert multiline text into an `RcDoc`. Both `RcDoc::as_string` and
-/// `RcDoc::text` allow newlines in the text (although the official
-/// documentation says they don't), but the resulting text will maintain its
-/// original indentation instead of the new "pretty" indentation.
+/// Convert multiline text into an `RcDoc`, preserving the original indentation
+/// of each line instead of applying the surrounding formatter indentation.
 fn create_multiline_doc<'src>(text: &[&'src str]) -> RcDoc<'src> {
-    RcDoc::intersperse(text.iter().map(|c| RcDoc::text(*c)), RcDoc::hardline())
+    RcDoc::intersperse(text.iter().map(|c| RcDoc::text(*c)), &RcDoc::hardline())
 }
 
 /// Convert a trailing comment to an `RcDoc`, adding a trailing newline.
@@ -62,7 +59,8 @@ pub fn get_trailing_comment_doc_from_str<'src>(
     if !trailing_comment.is_empty() {
         RcDoc::space()
             .append(RcDoc::text(trailing_comment))
-            .append(RcDoc::hardline())
+            .full()
+            .append(RcDoc::trailing_hardline())
     } else {
         next_doc
     }

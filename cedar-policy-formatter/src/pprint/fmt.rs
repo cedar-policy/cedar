@@ -30,14 +30,11 @@ use super::config::{self, Config};
 use super::doc::*;
 
 fn tree_to_pretty<T: Doc>(t: &T, context: &mut config::Context<'_, '_>) -> Result<String> {
-    let mut w = Vec::new();
     let config = context.config;
     let doc = t.to_doc(context);
     doc.ok_or_else(|| miette!("failed to produce doc"))?
-        .render(config.line_width, &mut w)
-        .map_err(|err| miette!(format!("failed to render doc: {err}")))?;
-    String::from_utf8(w)
-        .map_err(|err| miette!(format!("failed to convert rendered doc to string: {err}")))
+        .render(config.line_width)
+        .map_err(|err| miette!(format!("failed to render doc: {err}")))
 }
 
 fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
@@ -108,6 +105,9 @@ fn soundness_check(ps: &str, ast: &PolicySet) -> Result<()> {
 }
 
 pub fn policies_str_to_pretty(ps: &str, config: &Config) -> Result<String> {
+    if config.indent_width < 0 {
+        return Err(miette!("indent width must be non-negative"));
+    }
     let cst = parse_policies(ps).wrap_err("cannot parse input policies")?;
     let ast = cst.to_policyset().wrap_err("cannot parse input policies")?;
     let (tokens, end_of_file_comment) =
@@ -240,6 +240,20 @@ mod tests {
         assert_eq!(policies_str_to_pretty(p3, &config).unwrap(), formatted_p);
         assert_eq!(policies_str_to_pretty(p4, &config).unwrap(), formatted_p);
         assert_eq!(policies_str_to_pretty(p5, &config).unwrap(), formatted_p);
+    }
+
+    #[test]
+    fn test_reject_negative_indent_width() {
+        let config = Config {
+            line_width: 80,
+            indent_width: -1,
+        };
+
+        let error = policies_str_to_pretty("permit (principal, action, resource);", &config)
+            .expect_err("negative indentation should be rejected");
+        assert!(error
+            .to_string()
+            .contains("indent width must be non-negative"));
     }
 
     #[test]

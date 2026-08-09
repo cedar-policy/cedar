@@ -20,5 +20,6 @@ mod config;
 pub use config::*;
 mod doc;
 pub mod lexer;
+mod pretty;
 pub mod token;
 mod utils;

@@ -10,7 +10,8 @@ input_file: cedar-policy-formatter/tests/blank_lines.cedar
 permit (
   principal == User::"alice",
   action,
-  resource in Folder::"Name
+  resource in
+    Folder::"Name
 
 	
 with a newline"
@@ -37,7 +38,9 @@ permit (
   resource is Photo in Album::"vacation"
 )
 when
-{ (User::"alice" is User) && (User::"alice" in Group::"
+{
+  (User::"alice" is User) &&
+  (User::"alice" in Group::"
 
 
 
@@ -46,4 +49,5 @@ when
 
 
 
-friends") };
+friends")
+};
