@@ -316,7 +316,7 @@ impl LevelChecker<'_> {
                     );
                 }
             },
-            ExprKind::HasAttrExt { expr, attrs } => {
+            ExprKind::ExtHasAttr { expr, attrs } => {
                 match expr.data() {
                     Some(ty @ Type::Entity(EntityKind::Entity { .. })) => {
                         let chain_cost =

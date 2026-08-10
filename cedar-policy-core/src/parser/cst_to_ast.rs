@@ -5242,7 +5242,7 @@ mod tests {
         );
 
         assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
-            assert_matches!(e.expr_kind(), ast::ExprKind::HasAttrExt { expr, attrs } => {
+            assert_matches!(e.expr_kind(), ast::ExprKind::ExtHasAttr { expr, attrs } => {
                 assert_matches!(expr.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
                 assert_eq!(attrs.head.as_str(), "a");
                 assert_eq!(attrs.tail, vec![smol_str::SmolStr::from("b")]);
@@ -5250,7 +5250,7 @@ mod tests {
         });
 
         assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
-            assert_matches!(e.expr_kind(), ast::ExprKind::HasAttrExt { expr, attrs } => {
+            assert_matches!(e.expr_kind(), ast::ExprKind::ExtHasAttr { expr, attrs } => {
                 assert_matches!(expr.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
                 assert_eq!(attrs.head.as_str(), "a");
                 assert_eq!(attrs.tail, vec![smol_str::SmolStr::from("b"), smol_str::SmolStr::from("c")]);
@@ -5485,7 +5485,7 @@ mod tests {
     fn extended_has_compact_ast() {
         // A 5-attribute extended has should produce a single HasAttrExt node
         let expr = parse_expr(r#"context has a.b.c.d.e"#).unwrap();
-        assert_matches!(expr.expr_kind(), ast::ExprKind::HasAttrExt { expr: inner, attrs } => {
+        assert_matches!(expr.expr_kind(), ast::ExprKind::ExtHasAttr { expr: inner, attrs } => {
             assert_matches!(inner.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
             assert_eq!(attrs.len(), 5);
         });
@@ -5497,7 +5497,7 @@ mod tests {
         // which is 5 has + 4 getattr + 4 and = 13 internal nodes + the context var repeated many times.
         // Verify a deeply nested case stays compact
         let deep = parse_expr(r#"principal has a.b.c.d.e.f.g.h.i.j"#).unwrap();
-        assert_matches!(deep.expr_kind(), ast::ExprKind::HasAttrExt { attrs, .. } => {
+        assert_matches!(deep.expr_kind(), ast::ExprKind::ExtHasAttr { attrs, .. } => {
             assert_eq!(attrs.len(), 10);
         });
         // Still just 2 subexpressions: the var and the HasAttrExt

@@ -358,7 +358,7 @@ impl TryFrom<models::Expr> for ast::Expr {
                 ast::Expr::has_attr(ast::Expr::try_from(arg)?, msg.attr.into())
             }
 
-            models::expr::ExprKind::HasAttrExt(msg) => {
+            models::expr::ExprKind::ExtHasAttr(msg) => {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
@@ -491,8 +491,8 @@ impl From<&ast::Expr> for models::Expr {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
             }
-            ast::ExprKind::HasAttrExt { expr, attrs } => {
-                models::expr::ExprKind::HasAttrExt(Box::new(models::expr::HasAttrExt {
+            ast::ExprKind::ExtHasAttr { expr, attrs } => {
+                models::expr::ExprKind::ExtHasAttr(Box::new(models::expr::ExtHasAttr {
                     attrs: attrs.iter().map(|a| a.to_string()).collect(),
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
@@ -1326,6 +1326,17 @@ mod test {
                         models::expr::HasAttr {
                             expr: None,
                             attr: "a".to_string(),
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::ExtHasAttr(Box::new(
+                        models::expr::ExtHasAttr {
+                            expr: None,
+                            attrs: vec!["a".to_string(), "b".to_string()],
                         },
                     ))),
                 },

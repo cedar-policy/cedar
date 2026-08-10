@@ -681,7 +681,7 @@ fn entity_manifest_from_expr(
         ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
             .get_or_has_attr(attr)
             .empty_paths()),
-        ExprKind::HasAttrExt { expr, attrs } => {
+        ExprKind::ExtHasAttr { expr, attrs } => {
             // For extended has, we need to traverse the attribute chain
             let mut result = entity_manifest_from_expr(expr)?;
             for attr in attrs.iter() {

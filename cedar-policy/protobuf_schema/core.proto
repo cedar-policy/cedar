@@ -172,7 +172,7 @@ message Expr {
         Is is = 13;
         Set set = 14;
         Record record = 15;
-        HasAttrExt hasAttrExt = 16;
+        ExtHasAttr extHasAttr = 16;
     }
 
     message Literal {
@@ -254,7 +254,7 @@ message Expr {
         string attr = 2;
     }
 
-    message HasAttrExt {
+    message ExtHasAttr {
         Expr expr = 1;
         repeated string attrs = 2;
     }

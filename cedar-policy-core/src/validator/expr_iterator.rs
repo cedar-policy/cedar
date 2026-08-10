@@ -108,7 +108,7 @@ fn text_in_expr(e: &Expr) -> impl IntoIterator<Item = TextKind<'_>> {
         }
         ExprKind::GetAttr { attr, .. } => vec![TextKind::Identifier(e.source_loc(), attr)],
         ExprKind::HasAttr { attr, .. } => vec![TextKind::Identifier(e.source_loc(), attr)],
-        ExprKind::HasAttrExt { attrs, .. } => attrs
+        ExprKind::ExtHasAttr { attrs, .. } => attrs
             .iter()
             .map(|attr| TextKind::Identifier(e.source_loc(), attr))
             .collect(),

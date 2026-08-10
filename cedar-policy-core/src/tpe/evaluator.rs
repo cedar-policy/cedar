@@ -414,7 +414,7 @@ impl Evaluator<'_> {
                     Residual::Error(_) => mk_error(),
                 }
             }
-            ResidualKind::HasAttrExt { expr, attrs } => {
+            ResidualKind::ExtHasAttr { expr, attrs } => {
                 let expr = self.interpret(expr);
                 match &expr {
                     Residual::Concrete { value, .. } => {
@@ -446,7 +446,7 @@ impl Evaluator<'_> {
                                     }
                                     None => {
                                         // Entity not in store, leave as residual
-                                        return mk_residual(ResidualKind::HasAttrExt {
+                                        return mk_residual(ResidualKind::ExtHasAttr {
                                             expr: Arc::new(expr),
                                             attrs: attrs.clone(),
                                         });
@@ -459,7 +459,7 @@ impl Evaluator<'_> {
                         // All attrs checked successfully (shouldn't reach here for NonEmpty)
                         mk_concrete(true.into())
                     }
-                    Residual::Partial { .. } => mk_residual(ResidualKind::HasAttrExt {
+                    Residual::Partial { .. } => mk_residual(ResidualKind::ExtHasAttr {
                         expr: Arc::new(expr),
                         attrs: attrs.clone(),
                     }),

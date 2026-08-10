@@ -138,7 +138,7 @@ pub enum ExprKind<T = ()> {
     },
     /// Does the given `expr` have the given sequence of nested `attrs`?
     // This form may merge with HasAttr once we have high confidence we're not introducing regressions
-    HasAttrExt {
+    ExtHasAttr {
         /// Expression to test. Must evaluate to either Entity or Record type
         expr: Arc<Expr<T>>,
         /// List of attribute to check for sequentially
@@ -193,7 +193,7 @@ impl<T> ExprKind<T> {
             ExprKind::BinaryApp { .. } => 8,
             ExprKind::ExtensionFunctionApp { .. } => 9,
             ExprKind::GetAttr { .. } => 10,
-            ExprKind::HasAttrExt { .. } => 11,
+            ExprKind::ExtHasAttr { .. } => 11,
             ExprKind::HasAttr { .. } => 12,
             ExprKind::Like { .. } => 13,
             ExprKind::Set(_) => 14,
@@ -431,7 +431,7 @@ impl<T> Expr<T> {
                 ..
             } => None,
             ExprKind::HasAttr { .. } => Some(Type::Bool),
-            ExprKind::HasAttrExt { .. } => Some(Type::Bool),
+            ExprKind::ExtHasAttr { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
@@ -495,7 +495,7 @@ impl<T> Expr<T> {
             ExprKind::HasAttr { expr, attr } => {
                 Ok(builder.has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
             }
-            ExprKind::HasAttrExt { expr, attrs } => {
+            ExprKind::ExtHasAttr { expr, attrs } => {
                 Ok(builder
                     .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attrs))
             }
@@ -871,7 +871,7 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 attr.clone(),
             )),
-            ExprKind::HasAttrExt { expr, attrs } => Ok(Expr::extended_has_attr(
+            ExprKind::ExtHasAttr { expr, attrs } => Ok(Expr::extended_has_attr(
                 expr.substitute_general::<T>(definitions)?,
                 attrs.clone(),
             )),
@@ -915,6 +915,7 @@ impl Expr {
     /// The invariants being checked are:
     /// - The name of the function in a function call is a known extension.
     /// - If the function call must be a "method style" call, then its arguments are non-empty
+    /// - extended has only uses valid identifiers in the attributes
     ///
     ///
     /// Other invariants guaranteed for the AST (a parseable expression) are maintained
@@ -925,18 +926,39 @@ impl Expr {
     /// guarantee this.
     pub fn try_validate(self) -> Result<Self, ExprValidationError> {
         for sub in self.subexpressions() {
-            if let ExprKind::ExtensionFunctionApp { fn_name, args } = sub.expr_kind() {
-                // Invariant: fn_name must be a known extension function
-                let ext_fn = Extensions::all_available().func(fn_name).map_err(|_| {
-                    ExprValidationError(format!("unknown extension function `{fn_name}`"))
-                })?;
-                // Invariant: if fn_name is MethodStyle then args must be non-empty
-                if ext_fn.style() == CallStyle::MethodStyle && args.is_empty() {
-                    return Err(ExprValidationError(format!(
-                        "method-style extension function `{fn_name}` requires a receiver argument"
-                    )));
+            match sub.expr_kind() {
+                ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                    // Invariant: fn_name must be a known extension function
+                    let ext_fn = Extensions::all_available().func(fn_name).map_err(|_| {
+                        ExprValidationError(format!("unknown extension function `{fn_name}`"))
+                    })?;
+                    // Invariant: if fn_name is MethodStyle then args must be non-empty
+                    if ext_fn.style() == CallStyle::MethodStyle && args.is_empty() {
+                        return Err(ExprValidationError(format!(
+                            "method-style extension function `{fn_name}` requires a receiver argument"
+                        )));
+                    }
+                    // **NOT** an invariant of parsed ASTs: arity is correct.
                 }
-                // **NOT** an invariant of parsed ASTs: arity is correct.
+                ExprKind::ExtHasAttr { attrs, .. } => {
+                    // Invariant: ExtHasAttr requires at least 2 attributes, each
+                    // being a valid identifier (the parser enforces dotted paths
+                    // consist of identifiers)
+                    if attrs.len() < 2 {
+                        return Err(ExprValidationError(format!(
+                            "ExtHasAttr requires at least 2 attributes, got {}",
+                            attrs.len()
+                        )));
+                    }
+                    for attr in attrs {
+                        if !is_normalized_ident(attr) {
+                            return Err(ExprValidationError(format!(
+                                "ExtHasAttr attribute `{attr}` is not a valid identifier"
+                            )));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         Ok(self)
@@ -1411,7 +1433,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
                 attr: attrs.head,
             })
         } else {
-            self.with_expr_kind(ExprKind::HasAttrExt { expr, attrs })
+            self.with_expr_kind(ExprKind::ExtHasAttr { expr, attrs })
         }
     }
 
@@ -1666,8 +1688,8 @@ impl<T> Expr<T> {
                 },
             ) => entity_type == entity_type1 && expr.eq_shape(expr1),
             (
-                HasAttrExt { expr, attrs },
-                HasAttrExt {
+                ExtHasAttr { expr, attrs },
+                ExtHasAttr {
                     expr: expr1,
                     attrs: attrs1,
                 },
@@ -1730,7 +1752,7 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 attr.hash(state);
             }
-            ExprKind::HasAttrExt { expr, attrs } => {
+            ExprKind::ExtHasAttr { expr, attrs } => {
                 expr.hash_shape(state);
                 attrs.hash(state);
             }

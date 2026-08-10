@@ -966,7 +966,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 })
             }
 
-            ExprKind::HasAttrExt { expr, attrs } => {
+            ExprKind::ExtHasAttr { expr, attrs } => {
                 let actual = self.expect_one_of_types(
                     prior_capability,
                     expr,

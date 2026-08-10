@@ -515,7 +515,7 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
             expr: expr.clone(),
         }
         .into()),
-        ExprKind::HasAttr { .. } | ExprKind::HasAttrExt { .. } => {
+        ExprKind::HasAttr { .. } | ExprKind::ExtHasAttr { .. } => {
             Err(restricted_expr_errors::InvalidRestrictedExpressionError {
                 feature: "'has'".into(),
                 expr: expr.clone(),

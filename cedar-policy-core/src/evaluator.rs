@@ -715,7 +715,7 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(Expr::has_attr(r, attr.clone()).into()),
                 },
             },
-            ExprKind::HasAttrExt { expr, attrs } => self.eval_extended_has_attr(expr, attrs, slots),
+            ExprKind::ExtHasAttr { expr, attrs } => self.eval_extended_has_attr(expr, attrs, slots),
             ExprKind::Like { expr, pattern } => {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {

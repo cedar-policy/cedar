@@ -721,7 +721,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 compile_has_attr(option_get(t), attr, &env.entities)?,
             ))
         }
-        ExprKind::HasAttrExt { expr, attrs } => {
+        ExprKind::ExtHasAttr { expr, attrs } => {
             // Compile extended has as a chain of has_attr checks with short-circuit.
             // For `expr has a.b.c`:
             //   has_attr(expr, a) && has_attr(get_attr(expr, a), b) && ...

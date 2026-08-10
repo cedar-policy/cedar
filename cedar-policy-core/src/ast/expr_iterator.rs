@@ -69,7 +69,7 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             }
             ExprKind::GetAttr { expr, attr: _ }
             | ExprKind::HasAttr { expr, attr: _ }
-            | ExprKind::HasAttrExt { expr, attrs: _ }
+            | ExprKind::ExtHasAttr { expr, attrs: _ }
             | ExprKind::Like { expr, pattern: _ }
             | ExprKind::Is {
                 expr,

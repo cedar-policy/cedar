@@ -358,7 +358,7 @@ impl TryFrom<Expr> for ValueKind {
             ExprKind::BinaryApp { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::ExtensionFunctionApp { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::GetAttr { .. } => Err(NotValue::NotValue { loc }),
-            ExprKind::HasAttr { .. } | ExprKind::HasAttrExt { .. } => {
+            ExprKind::HasAttr { .. } | ExprKind::ExtHasAttr { .. } => {
                 Err(NotValue::NotValue { loc })
             }
             ExprKind::Like { .. } => Err(NotValue::NotValue { loc }),

@@ -360,7 +360,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
                 attr: attrs.head,
             })
         } else {
-            self.with_expr_kind(ExprKind::HasAttrExt { expr, attrs })
+            self.with_expr_kind(ExprKind::ExtHasAttr { expr, attrs })
         }
     }
 

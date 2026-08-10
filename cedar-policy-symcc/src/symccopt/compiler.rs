@@ -1002,7 +1002,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res = compile_has_attr(res1.map_term(option_get), attr, &env.entities)?;
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
-        ExprKind::HasAttrExt { expr, attrs } => {
+        ExprKind::ExtHasAttr { expr, attrs } => {
             // For the optimized compiler, desugar extended has into a chain.
             // Compile as: has_attr(expr, head) && has_attr(get_attr(expr, head), tail[0]) && ...
             // If an intermediate has_attr is statically false (attribute absent from

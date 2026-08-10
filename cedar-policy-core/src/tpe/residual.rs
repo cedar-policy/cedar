@@ -149,7 +149,7 @@ impl Residual {
                 // <entityUID>.<attr> possibly errors during reauthorization if <entityUID> does not exist in the entity store
                 ResidualKind::GetAttr { .. } => true,
 
-                ResidualKind::HasAttr { expr, .. } | ResidualKind::HasAttrExt { expr, .. } => {
+                ResidualKind::HasAttr { expr, .. } | ResidualKind::ExtHasAttr { expr, .. } => {
                     expr.can_error_assuming_well_formed()
                 }
 
@@ -241,7 +241,7 @@ impl Residual {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 attr: attr.clone(),
             },
-            ast::ExprKind::HasAttrExt { expr, attrs } => ResidualKind::HasAttrExt {
+            ast::ExprKind::ExtHasAttr { expr, attrs } => ResidualKind::ExtHasAttr {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 attrs: attrs.clone(),
             },
@@ -369,7 +369,7 @@ pub enum ResidualKind {
         attr: SmolStr,
     },
     /// Extended has: does the given `expr` have the given `attrs`?
-    HasAttrExt {
+    ExtHasAttr {
         /// Expression to test. Must evaluate to either Entity or Record type
         expr: Arc<Residual>,
         /// Attributes or fields to check for
@@ -438,7 +438,7 @@ impl ResidualKind {
             }
             ResidualKind::GetAttr { expr, .. }
             | ResidualKind::HasAttr { expr, .. }
-            | ResidualKind::HasAttrExt { expr, .. }
+            | ResidualKind::ExtHasAttr { expr, .. }
             | ResidualKind::Like { expr, .. }
             | ResidualKind::Is { expr, .. } => expr.all_literal_uids(),
             ResidualKind::Set(elements) => {
@@ -531,7 +531,7 @@ impl From<Residual> for Expr {
                     ResidualKind::HasAttr { expr, attr } => {
                         builder.has_attr(expr.as_ref().clone().into(), attr)
                     }
-                    ResidualKind::HasAttrExt { expr, attrs } => {
+                    ResidualKind::ExtHasAttr { expr, attrs } => {
                         builder.extended_has_attr(expr.as_ref().clone().into(), attrs)
                     }
                     ResidualKind::If {
