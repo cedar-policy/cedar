@@ -200,7 +200,7 @@ impl<T> ExprKind<T> {
             ExprKind::Record(_) => 15,
             ExprKind::Is { .. } => 16,
             #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => 16,
+            ExprKind::Error { .. } => 17,
         }
     }
 }
@@ -941,19 +941,10 @@ impl Expr {
                     // **NOT** an invariant of parsed ASTs: arity is correct.
                 }
                 ExprKind::ExtHasAttr { attrs, .. } => {
-                    // Invariant: ExtHasAttr requires at least 2 attributes, each
-                    // being a valid identifier (the parser enforces dotted paths
-                    // consist of identifiers)
-                    if attrs.len() < 2 {
-                        return Err(ExprValidationError(format!(
-                            "ExtHasAttr requires at least 2 attributes, got {}",
-                            attrs.len()
-                        )));
-                    }
                     for attr in attrs {
                         if !is_normalized_ident(attr) {
                             return Err(ExprValidationError(format!(
-                                "ExtHasAttr attribute `{attr}` is not a valid identifier"
+                                "extended has attribute `{attr}` is not a valid identifier"
                             )));
                         }
                     }
@@ -2550,6 +2541,8 @@ mod test {
 
 #[cfg(test)]
 mod validate_test {
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     fn ext_call(name: &str, args: Vec<Expr>) -> Expr {
@@ -2587,5 +2580,31 @@ mod validate_test {
             err.to_string().contains("requires a receiver argument"),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn extended_has_with_invalid_ids_rejected() {
+        let exprs = vec![
+            Expr::extended_has_attr(
+                Expr::var(Var::Principal),
+                nonempty::nonempty!["".into(), "a".into()], // principal has "".a
+            ),
+            Expr::extended_has_attr(
+                Expr::var(Var::Principal),
+                nonempty::nonempty!["a".into(), "".into()], // principal has a.""
+            ),
+            Expr::extended_has_attr(
+                Expr::var(Var::Principal),
+                nonempty::nonempty!["true".into(), "a".into()], // principal has true.a
+            ),
+        ];
+        for e in exprs {
+            let e = e.try_validate();
+            assert_matches!(e, Err(ExprValidationError(..)));
+            assert!(e
+                .unwrap_err()
+                .to_string()
+                .starts_with("invalid expression: extended has attribute"))
+        }
     }
 }
