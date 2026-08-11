@@ -1390,6 +1390,76 @@ mod tests {
         );
     }
 
+    /// Test extended has attr in TPE specifically for entity-chain traversal
+    /// and residual production when entities are partially known.
+    #[test]
+    fn test_ext_has_attr_entity_chain() {
+        let schema = parse_schema(
+            r#"entity E { s: String };
+            entity Hat { size: Long, origin: Country };
+            entity Country { name: String };
+            entity User { s: String, hat: Hat };
+            action get appliesTo {principal: E, resource: User};"#,
+        );
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "" },
+                    "attrs": { "s": "bar", "hat": { "__entity": { "type": "Hat", "id": "cap" } } },
+                },
+                {
+                    "uid": { "type": "Hat", "id": "cap" },
+                    "attrs": { "size": 10, "origin": { "__entity": { "type": "Country", "id": "italy" } } }
+                },
+                {
+                    "uid": { "type": "Country", "id": "italy" },
+                    "attrs": { "name": "Italy" }
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"User::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin.name"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.size"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin.missing"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.missing.name"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has missing.anything"#),
+            @"false"
+        );
+        assert_snapshot!(
+          interpret_typed_str_to_str(r#"Hat::"other" has origin.name"#),
+          @r#"Hat::"other" has origin.name"#
+        );
+    }
+
     #[test]
     fn test_has_get_optional_attr() {
         let schema = parse_schema(

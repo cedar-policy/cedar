@@ -323,7 +323,7 @@ impl LevelChecker<'_> {
                             self.ext_has_attr_chain_cost(ty, attrs.iter().map(SmolStr::as_str));
 
                         // If chain cost alone too high, return
-                        if self.max_level.level <= chain_cost {
+                        if chain_cost >= self.max_level.level {
                             self.level_checking_errors.insert(
                                 ValidationError::maximum_level_exceeded(
                                     e.source_loc().cloned(),
@@ -354,14 +354,15 @@ impl LevelChecker<'_> {
                         let chain_cost =
                             self.ext_has_attr_chain_cost(ty, attrs.iter().map(SmolStr::as_str));
 
-                        // Check: max_level > chain_cost
-                        if self.max_level.level <= chain_cost {
+                        // Rrecord base doesn't need an extra level for the initial dereference
+                        // unlike entity base)
+                        if chain_cost > self.max_level.level {
                             self.level_checking_errors.insert(
                                 ValidationError::maximum_level_exceeded(
                                     e.source_loc().cloned(),
                                     self.policy_id.clone(),
                                     self.max_level,
-                                    (chain_cost + 1).into(),
+                                    chain_cost.into(),
                                 ),
                             );
                         } else {
@@ -1237,22 +1238,50 @@ mod levels_validation_tests {
         assert_requires_level(
             r#"permit(principal, action, resource) when { context has user.bool };"#,
             ["context has user.bool"],
-            2,
+            1,
         );
         assert_requires_level(
             r#"permit(principal, action, resource) when { context has user.user };"#,
             ["context has user.user"],
-            2,
+            1,
         );
         assert_requires_level(
             r#"permit(principal, action, resource) when { context has nested.user };"#,
             ["context has nested.user"],
-            1,
+            0,
         );
         assert_requires_level(
             r#"permit(principal, action, resource) when { context has user.user.bool };"#,
             ["context has user.user.bool"],
-            3,
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: resource} has foo.user };"#,
+            ["{foo: principal, bar: resource} has foo.user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource)
+            when {
+                {foo: principal, bar: resource} has foo &&
+                {foo: principal, bar: resource}.foo has user
+             };"#,
+            ["{foo: principal, bar: resource}.foo has user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: resource} has missing.user };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource)
+            when {
+              {foo: principal, bar: resource} has missing &&
+              {foo: principal, bar: resource}.missing has user
+            };"#,
+            [],
+            0,
         );
     }
 

@@ -1003,38 +1003,43 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
         ExprKind::ExtHasAttr { expr, attrs } => {
-            // For the optimized compiler, desugar extended has into a chain.
-            // Compile as: has_attr(expr, head) && has_attr(get_attr(expr, head), tail[0]) && ...
-            // If an intermediate has_attr is statically false (attribute absent from
-            // the type), short-circuit: the whole chain is false.
-            // We only call compile_get_attr for non-last attributes (it's needed to
-            // build `current_term` for the next step; the last attr has no next step).
+            // Same term as unoptimized compiler. Footprint only from the base expression.
+            // intermediate get_attr calls don't contribute entity-typed sub-expressions.
             let res1 = compile(expr, env)?;
             let res1_term = res1.term.clone();
+            let res1_footprint = res1.footprint;
 
-            // First: check if head attr exists
-            let first_has =
-                compile_has_attr(res1.map_term(option_get), &attrs.head, &env.entities)?;
+            let has_raw = compile_has_attr(
+                CompileResult {
+                    term: option_get(res1_term.clone()),
+                    footprint: Footprint::empty(),
+                },
+                &attrs.head,
+                &env.entities,
+            )?;
             let statically_false = matches!(
-                &first_has.term,
+                &has_raw.term,
                 Term::Some(inner) if matches!(&**inner, Term::Prim(TermPrim::Bool(false)))
             );
-            let mut result = first_has.map_term(|term| if_some(res1_term.clone(), term));
+            let mut result = has_raw.map_term(|term| if_some(res1_term.clone(), term));
 
-            if attrs.tail.is_empty() || statically_false {
+            if statically_false || attrs.tail.is_empty() {
+                result.footprint = res1_footprint;
                 return Ok(result);
             }
 
-            // To get the value of the first attr for the next check, recompile
-            // the expression (this is suboptimal but correct)
-            let res_again = compile(expr, env)?;
-            let res_again_term = res_again.term.clone();
-            let first_get = compile_get_attr(res_again, &attrs.head, &env.entities)?;
-            let mut current_term = if_some(res_again_term, first_get.term);
+            let first_get = compile_get_attr(
+                CompileResult {
+                    term: option_get(res1_term.clone()),
+                    footprint: Footprint::empty(),
+                },
+                &attrs.head,
+                &env.entities,
+            )?;
+            let mut current_term = if_some(res1_term, first_get.term);
 
             let last_idx = attrs.tail.len() - 1;
             for (i, attr) in attrs.tail.iter().enumerate() {
-                // Build has_attr for current path
                 let has_res = compile_has_attr(
                     CompileResult {
                         term: option_get(current_term.clone()),
@@ -1051,10 +1056,10 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
                 result = compile_and(result, Ok(has_result))?;
 
                 if statically_false || i == last_idx {
+                    result.footprint = res1_footprint;
                     return Ok(result);
                 }
 
-                // Build get_attr for current path (for next iteration)
                 let get_res = compile_get_attr(
                     CompileResult {
                         term: option_get(current_term.clone()),
@@ -1065,6 +1070,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
                 )?;
                 current_term = if_some(current_term, get_res.term);
             }
+            result.footprint = res1_footprint;
             Ok(result)
         }
         ExprKind::GetAttr { expr, attr } => {

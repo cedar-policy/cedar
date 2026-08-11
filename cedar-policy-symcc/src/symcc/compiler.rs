@@ -736,23 +736,25 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
             if statically_false || attrs.tail.is_empty() {
                 return Ok(result);
             }
-            let mut current = if_some(
+            let mut current_term = if_some(
                 t.clone(),
                 compile_get_attr(option_get(t), &attrs.head, &env.entities)?,
             );
             let last_idx = attrs.tail.len() - 1;
             for (i, attr) in attrs.tail.iter().enumerate() {
-                let has_raw = compile_has_attr(option_get(current.clone()), attr, &env.entities)?;
+                let has_raw =
+                    compile_has_attr(option_get(current_term.clone()), attr, &env.entities)?;
                 let statically_false = matches!(has_raw, Term::Prim(TermPrim::Bool(false)));
-                let has = if_some(current.clone(), has_raw);
+                let has = if_some(current_term.clone(), has_raw);
                 result = compile_and(result, Ok(has))?;
+
                 if statically_false || i == last_idx {
                     return Ok(result);
                 }
-                current = if_some(
-                    current.clone(),
-                    compile_get_attr(option_get(current), attr, &env.entities)?,
-                );
+
+                let get_res =
+                    compile_get_attr(option_get(current_term.clone()), attr, &env.entities)?;
+                current_term = if_some(current_term, get_res);
             }
             Ok(result)
         }

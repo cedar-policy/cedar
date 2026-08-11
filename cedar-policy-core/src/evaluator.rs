@@ -869,8 +869,6 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    /// We don't use the `source_loc()` on `expr` because that's only the loc
-
     /// Evaluate an extended has attribute expression.
     /// `expr has attr1.attr2.attr3` evaluates as:
     /// `expr has attr1 && expr.attr1 has attr2 && expr.attr1.attr2 has attr3`
@@ -954,6 +952,7 @@ impl<'e> Evaluator<'e> {
         Ok(true.into())
     }
 
+    /// We don't use the `source_loc()` on `expr` because that's only the loc
     /// for the LHS of the GetAttr. `source_loc` argument should be the loc for
     /// the entire GetAttr expression
     fn get_attr(
@@ -6476,7 +6475,6 @@ pub(crate) mod test {
         });
     }
 
-    /// Test extended has on entities (not just records).
     #[test]
     fn interpret_extended_has_entities() {
         use crate::ast::{Entity, EntityUID, RestrictedExpr};
@@ -6546,22 +6544,11 @@ pub(crate) mod test {
         });
     }
 
-    /// Test that nested extended has expressions (which would have caused
-    /// exponential size blowup in the desugared representation) now work
-    /// efficiently as native AST nodes.
-    ///
-    /// The expression `(if X has a.b then X.a.b else Y) has c.d` would have
-    /// previously expanded the `has a.b` into `X has a && X.a has b`, then
-    /// the outer `has c.d` would apply to the entire if-then-else, causing
-    /// each branch to be duplicated. With N levels of nesting this produced
-    /// O(3^N) AST nodes. Now each `has a.b.c` is a single `HasAttrExt` node.
     #[test]
     fn interpret_nested_extended_has_no_blowup() {
         let es = Entities::new();
         let eval = Evaluator::new(empty_request(), &es, Extensions::none());
 
-        // Basic nested: (if record has a.b then record.a.b else fallback) has c.d
-        // This tests that extended has works on the result of an if-then-else.
         let nested = parse_expr(
             r#"(if {a: {b: {c: {d: 42}}}} has a.b then {a: {b: {c: {d: 42}}}}.a.b else {c: {d: 0}}) has c.d"#
         ).unwrap();
@@ -6569,7 +6556,6 @@ pub(crate) mod test {
             assert_eq!(v, Value::from(true));
         });
 
-        // Same but the first `has` returns false, taking the else branch
         let nested_else =
             parse_expr(r#"(if {a: {x: 1}} has a.b then {a: {x: 1}}.a.b else {c: {d: 0}}) has c.d"#)
                 .unwrap();
@@ -6577,18 +6563,12 @@ pub(crate) mod test {
             assert_eq!(v, Value::from(true));
         });
 
-        // Nested extended has returning false on outer check
-        // The then branch returns {c: 1} which is a record but {c:1} doesn't have d
-        // so `has c.d` should return false (c exists but c's value is not a record that has d)
         let nested_false = parse_expr(
             r#"(if {a: {b: {c: 1}}} has a.b then {a: {b: {c: 1}}}.a.b else {x: 1}) has c.d"#,
         )
         .unwrap();
-        // This is actually a type error because {c:1}.c == 1 which is not record/entity.
-        // Extended has short-circuits on missing attrs but not on type mismatches.
         assert_matches!(eval.interpret_inline_policy(&nested_false), Err(_));
 
-        // Correct version: check for an attribute that doesn't exist at top level
         let nested_false2 = parse_expr(
             r#"(if {a: {b: {c: 1}}} has a.b then {a: {b: {c: 1}}}.a.b else {x: 1}) has z.w"#,
         )
@@ -6597,8 +6577,6 @@ pub(crate) mod test {
             assert_eq!(v, Value::from(false));
         });
 
-        // Deeply nested: multiple levels of extended has in conditions
-        // (if R has owner.ipinfo then R.owner.ipinfo else ctx) has additionalData.previouslyKnownIp
         let deep = parse_expr(
             r#"(if {owner: {ipinfo: {additionalData: {previouslyKnownIp: "1.2.3.4"}}}} has owner.ipinfo
                 then {owner: {ipinfo: {additionalData: {previouslyKnownIp: "1.2.3.4"}}}}.owner.ipinfo
@@ -6608,25 +6586,17 @@ pub(crate) mod test {
             assert_eq!(v, Value::from(true));
         });
 
-        // Verify AST size is linear, not exponential.
-        // With the old desugaring of `has a.b.c.d.e`, a 5-attr chain would produce
-        // multiple And/HasAttr/GetAttr nodes. Now it's a single HasAttrExt node.
         let big_chain = parse_expr(r#"{a: {b: {c: {d: {e: 1}}}}} has a.b.c.d.e"#).unwrap();
-        // Count total subexpressions - should be small (the record literal + HasAttrExt)
         let subexpr_count = big_chain.subexpressions().count();
-        // With desugaring, 5-attr extended has would produce ~15+ nodes (5 has + 4 getattr + 4 and).
-        // Now it should be much smaller: the record + HasAttrExt = ~7 nodes (record + 5 nested record lits + the hasattrext)
         assert!(
             subexpr_count < 15,
             "Expected fewer than 15 subexpressions for native HasAttrExt, got {subexpr_count}"
         );
 
-        // Two nested extended has: verify they compose without blowup
         let double_nested = parse_expr(
             r#"(if {x: {y: {z: {w: 1}}}} has x.y.z then {x: {y: {z: {w: 1}}}}.x.y.z else {w: 0}) has w"#
         ).unwrap();
         let double_subexpr_count = double_nested.subexpressions().count();
-        // Should still be manageable (two record lits + if/then/else + get_attr chain + has)
         assert!(
             double_subexpr_count < 25,
             "Expected fewer than 25 subexpressions for nested HasAttrExt, got {double_subexpr_count}"
