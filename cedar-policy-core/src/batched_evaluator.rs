@@ -32,6 +32,7 @@ use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
+use crate::tpe::value::PartialRecord;
 use crate::validator::ValidatorSchema;
 use crate::{ast::PolicySet, extensions::Extensions};
 
@@ -68,9 +69,13 @@ fn concrete_request_to_partial(
         EntityUIDEntry::Unknown { .. } => return Err(PartialRequestError {}.into()),
     };
 
-    // Convert context
+    // Convert context. An untyped context is a request error, not a missing
+    // context.
     let context = match &request.context {
-        Some(crate::ast::Context::Value(attrs)) => Some(attrs.clone()),
+        Some(crate::ast::Context::Value(attrs)) => Some(
+            PartialRecord::concrete_context_for_action(attrs, &action, schema)
+                .map_err(|_| PartialRequestError {})?,
+        ),
         Some(crate::ast::Context::RestrictedResidual(_)) => {
             return Err(PartialRequestError {}.into())
         }
@@ -129,16 +134,14 @@ pub fn is_authorized_batched(
             match e_option {
                 Some(e) => {
                     entities.add_entities(
-                        iter::once((id, PartialEntity::try_from(e)?)),
+                        iter::once((id, PartialEntity::from_entity(e, schema)?)),
                         schema,
                         TCComputation::AssumeAlreadyComputed,
                     )?;
                 }
                 None => {
-                    entities.add_entity_trusted(
-                        id.clone(),
-                        PartialEntity::try_from(Entity::with_uid(id))?,
-                    )?;
+                    let pe = PartialEntity::from_entity(Entity::with_uid(id.clone()), schema)?;
+                    entities.add_entity_trusted(id, pe)?;
                 }
             }
         }

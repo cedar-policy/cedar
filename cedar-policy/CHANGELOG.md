@@ -21,6 +21,10 @@ Cedar Language Version: TBD
 
 - For the experimental `tpe` feature, TPE now reduces `has`, `hasTag`, `in` and `==` applied to non-erroring but unknown expressions when the schema provides enough information to determine the concrete value of the operation.
 
+### Changed
+- (Breaking) For the experimental `tpe` feature, `PartialEntity::new` and partial request contexts now type-check the supplied attributes, tags, and context against the schema, returning a validation error for non-conforming values (e.g. a `String` for a `Bool` attribute). Context errors now surface as this validation error rather than the previous `ContextContainsUnknowns` path.
+- (Breaking) For the experimental `tpe` feature, a supplied entity attribute/tag map is now open: a declared attribute omitted from the map is treated as unknown (yielding a residual) rather than absent. Previously an omitted attribute was treated as definitely absent, so `has` reduced to `false` and access errored.
+
 ## [4.12.0] - 2026-07-28
 
 Cedar Language Version: 4.5

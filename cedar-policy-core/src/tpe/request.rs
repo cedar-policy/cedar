@@ -20,6 +20,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use crate::ast::{EntityUIDEntry, RequestSchema};
 use crate::entities::conformance::err::InvalidEnumEntityError;
+use crate::entities::conformance::{TypecheckError, ValidateEuidError};
+use crate::entities::SchemaType;
+use crate::tpe::entities::typecheck_partial_value;
 use crate::tpe::err::{
     ExistingPrincipalError, ExistingResourceError, InconsistentActionError,
     InconsistentPrincipalEidError, InconsistentPrincipalTypeError, InconsistentResourceEidError,
@@ -27,12 +30,14 @@ use crate::tpe::err::{
     IncorrectResourceEntityTypeError, NoMatchingReqEnvError, RequestBuilderError,
     RequestConsistencyError,
 };
+use crate::tpe::value::{PartialRecord, PartialValue};
 use crate::validator::request_validation_errors::{
-    UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
+    InvalidContextError, UndeclaredActionError, UndeclaredPrincipalTypeError,
+    UndeclaredResourceTypeError,
 };
 use crate::validator::{
-    types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityTypeKind,
-    ValidatorSchema,
+    types::{RequestEnv, Type},
+    CoreSchema, RequestValidationError, ValidationMode, ValidatorEntityTypeKind, ValidatorSchema,
 };
 use crate::{
     ast::{Context, Eid, EntityType, EntityUID, Request, Value},
@@ -243,8 +248,20 @@ pub struct PartialRequest {
     resource: PartialEntityUID,
 
     /// Context associated with the request.
-    /// `None` means that variable will result in a residual for partial evaluation.
-    context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    /// `None` means the entire context is unknown and will result in a residual.
+    /// `Some(record)` allows per-field partial knowledge via `PartialRecord`.
+    context: Option<PartialRecord>,
+}
+
+/// Build an [`InvalidContextError`] for a context that cannot be represented
+/// against `action`'s declared context type — e.g. one supplying an attribute
+/// the context type does not declare, which therefore has no type.
+pub fn invalid_context_error(context: Context, action: &EntityUID) -> RequestValidationError {
+    InvalidContextError {
+        context,
+        action: Arc::new(action.clone()),
+    }
+    .into()
 }
 
 impl PartialRequest {
@@ -253,7 +270,7 @@ impl PartialRequest {
         principal: PartialEntityUID,
         action: EntityUID,
         resource: PartialEntityUID,
-        context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+        context: Option<PartialRecord>,
         schema: &ValidatorSchema,
     ) -> Result<Self, RequestValidationError> {
         let req = Self {
@@ -296,12 +313,8 @@ impl PartialRequest {
             self.resource
                 .validate(schema)
                 .map_err(|e| e.into_resource_error())?;
-            if let Some(m) = &self.context {
-                schema.validate_context(
-                    &Context::Value(m.clone()),
-                    &self.action,
-                    Extensions::all_available(),
-                )?;
+            if let Some(context) = &self.context {
+                self.validate_context(context, action_id.context_type(), schema)?;
             }
             Ok(())
         } else {
@@ -310,6 +323,47 @@ impl PartialRequest {
             }
             .into())
         }
+    }
+
+    /// Validate a partial context against the action's declared context type.
+    fn validate_context(
+        &self,
+        context: &PartialRecord,
+        expected_ty: &Type,
+        schema: &ValidatorSchema,
+    ) -> Result<(), RequestValidationError> {
+        let schema_ty =
+            SchemaType::try_from(expected_ty.clone()).map_err(|_| self.invalid_context_error())?;
+        typecheck_partial_value(
+            &PartialValue::Record(context.clone()),
+            &schema_ty,
+            Extensions::all_available(),
+        )
+        .map_err(|_| self.invalid_context_error())?;
+
+        // Validate entity UIDs in the known parts of the context
+        context
+            .validate_euids(&CoreSchema::new(schema))
+            .map_err(|e| match e {
+                ValidateEuidError::InvalidEnumEntity(e) => {
+                    RequestValidationError::InvalidEnumEntity(e)
+                }
+                ValidateEuidError::UndeclaredAction(e) => UndeclaredActionError {
+                    action: Arc::new(e.uid),
+                }
+                .into(),
+            })?;
+        Ok(())
+    }
+
+    /// Build an [`InvalidContextError`] naming this request's action.
+    fn invalid_context_error(&self) -> RequestValidationError {
+        // TODO: error can't hold partial values, replacing with empty map fro now
+        InvalidContextError {
+            context: Context::Value(Arc::new(BTreeMap::new())),
+            action: Arc::new(self.action.clone()),
+        }
+        .into()
     }
 
     /// Check consistency between a [`PartialRequest`] and a [`Request`]
@@ -338,8 +392,8 @@ impl PartialRequest {
 
         match &request.context {
             Some(Context::Value(c)) => {
-                if let Some(m) = &self.context {
-                    if c != m {
+                if let Some(ctx) = &self.context {
+                    if !ctx.check_consistency(c.as_ref()) {
                         return Err(RequestConsistencyError::InconsistentContext);
                     }
                 }
@@ -379,9 +433,19 @@ impl PartialRequest {
         &self.action
     }
 
-    /// Get the `context` attributes
-    pub fn context_attrs(&self) -> Option<&Arc<BTreeMap<SmolStr, Value>>> {
+    /// Get the `context`
+    pub fn context(&self) -> Option<&PartialRecord> {
         self.context.as_ref()
+    }
+
+    /// Get the `context` as a concrete attribute map, if every field it lists
+    /// has a known value. Returns `None` if any is unknown.
+    ///
+    /// This reports what the context states and does not consult the schema, so it cannot tell that
+    /// a declared field is missing from the map. Callers needing that check should use
+    /// [`PartialRecord::try_into_concrete_map`] with the action's context type.
+    pub fn concrete_context_assuming_complete(&self) -> Option<BTreeMap<SmolStr, Value>> {
+        self.context()?.into_concrete_map_assuming_complete()
     }
 }
 
@@ -411,7 +475,8 @@ impl<'s> RequestBuilder<'s> {
     }
 
     /// Attempt to get a concrete [`Request`]
-    /// Return `None` if there are still missing components
+    /// Return `None` if there are still missing components, including any
+    /// context attribute whose value or existence is still unknown
     pub fn get_request(&self) -> Option<Request> {
         let PartialRequest {
             principal,
@@ -419,19 +484,17 @@ impl<'s> RequestBuilder<'s> {
             resource,
             context,
         } = &self.partial_request;
-        match (
-            EntityUID::try_from(principal.clone()),
-            EntityUID::try_from(resource.clone()),
-            context,
-        ) {
-            (Ok(principal), Ok(resource), Some(context)) => Some(Request::new_unchecked(
-                principal.into(),
-                action.clone().into(),
-                resource.into(),
-                Some(Context::Value(context.clone())),
-            )),
-            _ => None,
-        }
+        let context_ty =
+            SchemaType::try_from(self.schema.get_action_id(action)?.context_type().clone()).ok()?;
+        let context = context.as_ref()?.try_into_concrete_map(&context_ty)?;
+        let principal = EntityUID::try_from(principal.clone()).ok()?;
+        let resource = EntityUID::try_from(resource.clone()).ok()?;
+        Some(Request::new_unchecked(
+            principal.into(),
+            action.clone().into(),
+            resource.into(),
+            Some(Context::Value(Arc::new(context))),
+        ))
     }
 
     /// Attempt to add `principal`
@@ -463,7 +526,19 @@ impl<'s> RequestBuilder<'s> {
                         Extensions::all_available(),
                     )
                     .map_err(RequestBuilderError::Validation)?;
-                self.partial_request.context = Some(v.clone());
+                self.partial_request.context = Some(
+                    PartialRecord::concrete_context_for_action(
+                        v.as_ref(),
+                        &self.partial_request.action,
+                        &self.schema,
+                    )
+                    .map_err(|_| {
+                        RequestBuilderError::Validation(invalid_context_error(
+                            candidate.clone(),
+                            &self.partial_request.action,
+                        ))
+                    })?,
+                );
                 Ok(())
             }
         } else {
@@ -477,11 +552,10 @@ mod invalid_requests {
     use std::{collections::BTreeMap, sync::Arc};
 
     use crate::{
-        ast::Value,
+        ast::{EntityUID, Value},
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessage, ExpectedErrorMessageBuilder},
-        tpe::request::PartialRequest,
-        tpe::test_utils::parse_partial_euid,
+        tpe::{request::PartialRequest, test_utils::parse_partial_euid, value::PartialRecord},
         validator::ValidatorSchema,
     };
 
@@ -518,12 +592,18 @@ mod invalid_requests {
         context: Option<Arc<BTreeMap<smol_str::SmolStr, Value>>>,
         msg: &ExpectedErrorMessage<'_>,
     ) {
+        let action: EntityUID = action.parse().unwrap();
+        let schema = schema();
         let err = PartialRequest::new(
             parse_partial_euid(principal),
-            action.parse().unwrap(),
+            action.clone(),
             parse_partial_euid(resource),
-            context,
-            &schema(),
+            // An undeclared action has no context type, so conversion can fail
+            // here; let `PartialRequest::new`'s validation report it.
+            context.and_then(|c| {
+                PartialRecord::concrete_context_for_action(c.as_ref(), &action, &schema).ok()
+            }),
+            &schema,
         )
         .expect_err("should fail to validate");
         expect_err("", &miette::Report::new(err), msg);
@@ -647,10 +727,8 @@ mod invalid_requests {
             r#"Action::"a""#,
             "B",
             Some(Arc::new(BTreeMap::from_iter([("".into(), 1.into())]))),
-            &ExpectedErrorMessageBuilder::error(
-                r#"context `{"": 1}` is not valid for `Action::"a"`"#,
-            )
-            .build(),
+            &ExpectedErrorMessageBuilder::error(r#"context `{}` is not valid for `Action::"a"`"#)
+                .build(),
         );
     }
 }
@@ -660,10 +738,10 @@ mod inconsistent_requests {
     use std::{collections::BTreeMap, sync::Arc};
 
     use crate::{
-        ast::{Context, EntityUIDEntry, Request, Value},
+        ast::{Context, EntityUID, EntityUIDEntry, Request, Value},
         extensions::Extensions,
         test_utils::{expect_err, ExpectedErrorMessageBuilder},
-        tpe::{request::PartialRequest, test_utils::parse_partial_euid},
+        tpe::{request::PartialRequest, test_utils::parse_partial_euid, value::PartialRecord},
         validator::ValidatorSchema,
     };
 
@@ -695,12 +773,21 @@ mod inconsistent_requests {
     /// concrete resource `B::"r"`, and context `{foo: 0}`.
     #[track_caller]
     fn request() -> PartialRequest {
+        let Ok(Context::Value(context)) = Context::from_json_value(serde_json::json!({ "foo": 0 }))
+        else {
+            panic!("expected concrete context")
+        };
+        let schema = schema();
+        let action: EntityUID = r#"Action::"a""#.parse().unwrap();
         PartialRequest::new(
             parse_partial_euid(r#"A::"p""#),
-            r#"Action::"a""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid(r#"B::"r""#),
-            Some(Arc::new(BTreeMap::from_iter([("foo".into(), 0.into())]))),
-            &schema(),
+            Some(
+                PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema)
+                    .unwrap(),
+            ),
+            &schema,
         )
         .unwrap()
     }
@@ -982,5 +1069,114 @@ mod request_builder_tests {
         );
         // and we're done
         assert_matches!(builder.get_request(), Some(_));
+    }
+}
+
+#[cfg(test)]
+mod partial_context_euids {
+    use crate::ast::EntityUID;
+    use crate::extensions::Extensions;
+    use crate::tpe::request::PartialRequest;
+    use crate::tpe::test_utils::parse_partial_euid;
+    use crate::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+    use crate::validator::ValidatorSchema;
+    use cool_asserts::assert_matches;
+
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity Color enum ["red", "blue"];
+            entity User;
+            entity Doc;
+            action Read appliesTo { principal: User, resource: Doc,
+                                    context: { c: Color, nested: { c: Color } } };
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    fn bad_color() -> PartialAttribute {
+        let euid: EntityUID = r#"Color::"green""#.parse().unwrap();
+        PartialAttribute::Value(PartialValue::Lit(euid.into()))
+    }
+
+    fn validate(context: PartialRecord) -> Result<(), String> {
+        let action: EntityUID = r#"Action::"Read""#.parse().unwrap();
+        PartialRequest::new(
+            parse_partial_euid(r#"User::"a""#),
+            action,
+            parse_partial_euid(r#"Doc::"d""#),
+            Some(context),
+            &schema(),
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    }
+
+    /// Euids are validated wherever they are known, including under a record
+    /// whose sibling fields are unknown — an unknown field elsewhere must not
+    /// stop the rest of the context being checked.
+    #[test]
+    fn invalid_enum_eid_is_rejected() {
+        assert_matches!(
+            validate(PartialRecord::from_attrs([
+                ("c".into(), bad_color()),
+                ("nested".into(), PartialAttribute::Exists),
+            ])),
+            Err(e) => assert!(e.contains(r#"not declared as a valid eid"#), "{e}")
+        );
+
+        let inner = PartialRecord::from_attrs([("c".into(), bad_color())]);
+        assert_matches!(
+            validate(PartialRecord::from_attrs([
+                ("c".into(), PartialAttribute::Exists),
+                (
+                    "nested".into(),
+                    PartialAttribute::Value(PartialValue::Record(inner))
+                ),
+            ])),
+            Err(e) => assert!(e.contains(r#"not declared as a valid eid"#), "{e}")
+        );
+    }
+
+    /// A type error under a record that isn't fully concrete must be reported,
+    /// not panicked on: the error carries a `RestrictedExpr`, which a partial
+    /// value has no lossless rendering as.
+    #[test]
+    fn type_error_in_non_concrete_record_is_reported() {
+        // Undeclared attr nested under a record, with an unknown sibling so the
+        // record cannot be rendered concretely.
+        let inner = PartialRecord::from_attrs([
+            ("c".into(), PartialAttribute::Exists),
+            (
+                "bogus".into(),
+                PartialAttribute::Value(PartialValue::Lit(1.into())),
+            ),
+        ]);
+        assert_matches!(
+            validate(PartialRecord::from_attrs([
+                ("c".into(), PartialAttribute::Exists),
+                (
+                    "nested".into(),
+                    PartialAttribute::Value(PartialValue::Record(inner))
+                ),
+            ])),
+            Err(e) => assert!(e.contains("is not valid for"), "{e}")
+        );
+
+        // A record value where the schema declares a non-record type.
+        let rec = PartialRecord::from_attrs([(
+            "x".into(),
+            PartialAttribute::Value(PartialValue::Lit(1.into())),
+        )]);
+        assert_matches!(
+            validate(PartialRecord::from_attrs([
+                ("c".into(), PartialAttribute::Value(PartialValue::Record(rec))),
+                ("nested".into(), PartialAttribute::Exists),
+            ])),
+            Err(e) => assert!(e.contains("is not valid for"), "{e}")
+        );
     }
 }

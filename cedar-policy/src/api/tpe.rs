@@ -15,17 +15,19 @@
  */
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
-use cedar_policy_core::ast::{self, Value};
+use cedar_policy_core::ast;
 use cedar_policy_core::authorizer::Decision;
 use cedar_policy_core::batched_evaluator::is_authorized_batched;
 use cedar_policy_core::batched_evaluator::{
     err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
 };
-use cedar_policy_core::evaluator::{EvaluationError, RestrictedEvaluator};
+use cedar_policy_core::evaluator::RestrictedEvaluator;
 use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::tpe;
+use cedar_policy_core::tpe::request::invalid_context_error;
+use cedar_policy_core::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+use cedar_policy_core::validator::types::Type;
 use itertools::Itertools;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -92,11 +94,21 @@ impl PartialRequest {
         schema: &Schema,
     ) -> Result<Self, PartialRequestCreationError> {
         let context = context
-            .map(|c| match c.0 {
-                ast::Context::RestrictedResidual(_) => {
-                    Err(PartialRequestCreationError::ContextContainsUnknowns)
-                }
-                ast::Context::Value(m) => Ok(m),
+            .as_ref()
+            .map(|c| {
+                let ast::Context::Value(concrete_context) = &c.0 else {
+                    return Err(PartialRequestCreationError::ContextContainsUnknowns);
+                };
+                PartialRecord::concrete_context_for_action(
+                    concrete_context,
+                    action.as_ref(),
+                    schema.as_ref(),
+                )
+                .map_err(|_| {
+                    PartialRequestCreationError::Validation(
+                        invalid_context_error(c.0.clone(), action.as_ref()).into(),
+                    )
+                })
             })
             .transpose()?;
         tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
@@ -142,7 +154,7 @@ impl ResourceQueryRequest {
 
     fn context(&self) -> Context {
         #[expect(clippy::unwrap_used, reason = "constructor requires concrete context")]
-        let context_attrs = self.0 .0.context_attrs().unwrap();
+        let context_attrs = self.0 .0.concrete_context_assuming_complete().unwrap();
         #[expect(
             clippy::unwrap_used,
             reason = "building context from BTreeMap iter, so no duplicates are possible"
@@ -213,7 +225,7 @@ impl PrincipalQueryRequest {
 
     fn context(&self) -> Context {
         #[expect(clippy::unwrap_used, reason = "constructor requires concrete context")]
-        let context_attrs = self.0 .0.context_attrs().unwrap();
+        let context_attrs = self.0 .0.concrete_context_assuming_complete().unwrap();
         #[expect(
             clippy::unwrap_used,
             reason = "building context from BTreeMap iter, so no duplicates are possible"
@@ -259,7 +271,7 @@ impl PrincipalQueryRequest {
 pub struct ActionQueryRequest {
     principal: PartialEntityUid,
     resource: PartialEntityUid,
-    context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    context: Option<Context>,
     schema: Schema,
 }
 
@@ -278,14 +290,12 @@ impl ActionQueryRequest {
         context: Option<Context>,
         schema: Schema,
     ) -> Result<Self, PartialRequestCreationError> {
-        let context = context
-            .map(|c| match c.0 {
-                ast::Context::RestrictedResidual(_) => {
-                    Err(PartialRequestCreationError::ContextContainsUnknowns)
-                }
-                ast::Context::Value(m) => Ok(m),
-            })
-            .transpose()?;
+        if context
+            .as_ref()
+            .is_some_and(|c| matches!(&c.0, ast::Context::RestrictedResidual(_)))
+        {
+            return Err(PartialRequestCreationError::ContextContainsUnknowns);
+        }
         Ok(Self {
             principal,
             resource,
@@ -298,11 +308,32 @@ impl ActionQueryRequest {
         &self,
         action: EntityUid,
     ) -> Result<PartialRequest, cedar_policy_core::validator::RequestValidationError> {
+        let context = match self.context.as_ref() {
+            Some(c) => {
+                let ast::Context::Value(concrete_context) = &c.0 else {
+                    return Err(tpe::request::invalid_context_error(
+                        c.0.clone(),
+                        action.as_ref(),
+                    ));
+                };
+                Some(
+                    PartialRecord::concrete_context_for_action(
+                        concrete_context,
+                        action.as_ref(),
+                        self.schema.as_ref(),
+                    )
+                    .map_err(|_| {
+                        tpe::request::invalid_context_error(c.0.clone(), action.as_ref())
+                    })?,
+                )
+            }
+            None => None,
+        };
         tpe::request::PartialRequest::new(
             self.principal.0.clone(),
             action.0,
             self.resource.0.clone(),
-            self.context.clone(),
+            context,
             &self.schema.0,
         )
         .map(PartialRequest)
@@ -324,37 +355,77 @@ impl PartialEntity {
         tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
         schema: &Schema,
     ) -> Result<Self, PartialEntityError> {
+        // Fail up front if the schema doesn't declare this entity type, rather
+        // than letting a missing type surface later as a spurious
+        // "unexpected attribute" error. Actions yield `None` (they declare no
+        // attributes or tags) and are rejected during validation instead.
+        let entity_type = tpe::entities::lookup_entity_type(&schema.0, &uid.0)?;
+        let attr_types = entity_type.map(|et| et.attributes().clone());
+        let tag_type = entity_type.and_then(|et| et.tag_type().cloned());
         Ok(Self(tpe::entities::PartialEntity::new(
-            uid.0,
+            uid.0.clone(),
             attrs
                 .map(|ps| {
-                    ps.into_iter()
-                        .map(|(k, v)| {
-                            Ok((
-                                k,
-                                RestrictedEvaluator::new(Extensions::all_available())
-                                    .interpret(v.0.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
+                    eval_to_partial_record(
+                        ps,
+                        |k| {
+                            attr_types
+                                .as_ref()?
+                                .get_attr(k)
+                                .map(|a| a.attr_type.as_ref().clone())
+                        },
+                        &uid.0,
+                        AttrOrTag::Attr,
+                    )
                 })
                 .transpose()?,
             ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
-            tags.map(|ps| {
-                ps.into_iter()
-                    .map(|(k, v)| {
-                        Ok((
-                            k,
-                            RestrictedEvaluator::new(Extensions::all_available())
-                                .interpret(v.0.as_borrowed())?,
-                        ))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
-            })
-            .transpose()?,
+            tags.map(|ps| eval_to_partial_record(ps, |_| tag_type.clone(), &uid.0, AttrOrTag::Tag))
+                .transpose()?,
             &schema.0,
         )?))
     }
+}
+
+/// Whether [`eval_to_partial_record`] is converting attributes or tags, so an
+/// untyped value is reported against the right part of the schema.
+#[derive(Copy, Clone)]
+enum AttrOrTag {
+    Attr,
+    Tag,
+}
+
+/// Evaluate restricted expressions and wrap each as [`PartialAttribute::Value`],
+/// using `type_for_key` to look up the type for each field.
+///
+/// TPE is type-aware: every value it stores must have a schema type. A `None`
+/// from `type_for_key` therefore means the value cannot be represented, and is
+/// reported as a schema conformance error naming the attribute or tag — the
+/// same error the JSON entity parser produces for such input.
+fn eval_to_partial_record(
+    attrs: BTreeMap<SmolStr, RestrictedExpression>,
+    type_for_key: impl Fn(&SmolStr) -> Option<Type>,
+    uid: &ast::EntityUID,
+    kind: AttrOrTag,
+) -> Result<PartialRecord, PartialEntityError> {
+    let eval = RestrictedEvaluator::new(Extensions::all_available());
+    let untyped = |attr: SmolStr| -> PartialEntityError {
+        PartialEntityError::Entities(match kind {
+            AttrOrTag::Attr => tpe::entities::unexpected_attr(uid, attr),
+            AttrOrTag::Tag => tpe::entities::unexpected_tag(uid, attr),
+        })
+    };
+    let attrs = attrs
+        .into_iter()
+        .map(|(k, v)| {
+            let value = eval.interpret(v.0.as_borrowed())?;
+            let ty = type_for_key(&k).ok_or_else(|| untyped(k.clone()))?;
+            let partial =
+                PartialValue::from_value(value, &ty).map_err(|e| untyped(e.attr_name()))?;
+            Ok((k, PartialAttribute::Value(partial)))
+        })
+        .collect::<Result<Vec<_>, PartialEntityError>>()?;
+    Ok(PartialRecord::from_attrs(attrs))
 }
 
 /// Partial [`Entities`]
@@ -1018,6 +1089,27 @@ mod tpe_tests {
             ),
             Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
         );
+
+        // An entity type the schema doesn't declare is rejected up front as an
+        // unexpected type, rather than surfacing as a spurious "unexpected
+        // attribute" error on its (equally undeclared) attributes.
+        assert_matches!(
+            PartialEntity::new(
+                r#"Undeclared::"foo""#.parse().unwrap(),
+                Some(BTreeMap::from_iter([(
+                    "attr".into(),
+                    RestrictedExpression::new_long(1)
+                )])),
+                None,
+                None,
+                &schema
+            ),
+            Err(PartialEntityError::Entities(EntitiesError::Validation(
+                cedar_policy_core::tpe::err::EntityValidationError::Concrete(
+                    cedar_policy_core::entities::conformance::err::EntitySchemaConformanceError::UnexpectedEntityType(_)
+                )
+            )))
+        );
     }
 
     mod streaming_service {
@@ -1065,6 +1157,8 @@ mod tpe_tests {
             )
             .unwrap();
 
+            // TODO: Once the public API supports explicit `Absent` attributes, add a test that
+            // marking a required field as Absent produces a validation error.
             assert_matches!(
                 PartialEntity::new(
                     r#"Show::"foo""#.parse().unwrap(),
@@ -1075,6 +1169,20 @@ mod tpe_tests {
                             RestrictedExpression::new_bool(false)
                         ),
                     ])),
+                    None,
+                    None,
+                    &schema
+                ),
+                Ok(_)
+            );
+
+            assert_matches!(
+                PartialEntity::new(
+                    r#"Show::"foo""#.parse().unwrap(),
+                    Some(BTreeMap::from_iter([(
+                        "isFree".into(),
+                        RestrictedExpression::new_string("not a bool".into())
+                    ),])),
                     None,
                     None,
                     &schema
@@ -2235,6 +2343,8 @@ when { principal in resource.admins };
         #[test]
         #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_entity() {
+            use cedar_policy_core::{ast::PartialValueToValueError, tpe::err::EntitiesError};
+
             // Create an entity loader that returns a partial entity (contains unknowns)
             struct PartialEntityLoader;
             impl crate::EntityLoader for PartialEntityLoader {
@@ -2286,7 +2396,14 @@ when { principal in resource.admins };
             let mut loader = PartialEntityLoader;
             let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
 
-            assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
+            assert_matches!(
+                result,
+                Err(BatchedEvalError::Entities(
+                    EntitiesError::PartialValueToValue(PartialValueToValueError::ContainsUnknown(
+                        _
+                    ))
+                ))
+            );
         }
 
         #[test]
@@ -3021,44 +3138,42 @@ when { principal in resource.admins };
 
         let (schema, _) = crate::Schema::from_cedarschema_str(
             r#"
-            entity User = { name: String };
-            entity Account = { name: String, assignedTo?: User };
-            action RevealCredentials appliesTo {
+            entity User = { score: Long };
+            entity Document;
+            action Read appliesTo {
                 principal: [User],
-                resource: [Account],
+                resource: [Document],
                 context: { flag: Bool },
             };
             "#,
         )
         .unwrap();
 
+        // Integer overflow: principal.score + 9223372036854775807 will error
         let policies = crate::PolicySet::from_str(
             r#"
             permit(
                 principal is User,
-                action == Action::"RevealCredentials",
-                resource is Account
+                action == Action::"Read",
+                resource is Document
             ) when {
                 context.flag &&
-                resource has assignedTo &&
-                resource.assignedTo == principal
+                principal.score + 9223372036854775807 > 0
             };
             "#,
         )
         .unwrap();
 
-        // Account without assignedTo — TPE will produce an error node for
-        // `resource.assignedTo`
         let entities = crate::Entities::from_json_value(
             serde_json::json!([
                 {
                     "uid": { "type": "User", "id": "u1" },
-                    "attrs": { "name": "alice" },
+                    "attrs": { "score": 1 },
                     "parents": []
                 },
                 {
-                    "uid": { "type": "Account", "id": "a1" },
-                    "attrs": { "name": "shared" },
+                    "uid": { "type": "Document", "id": "d1" },
+                    "attrs": {},
                     "parents": []
                 }
             ]),
@@ -3068,11 +3183,11 @@ when { principal in resource.admins };
 
         let partial_entities = crate::PartialEntities::from_concrete(entities, &schema).unwrap();
 
-        // Context is unknown — forces a residual on `context has flag`
+        // Context is unknown — forces a residual, but the arithmetic overflows
         let request = crate::PartialRequest::new(
             crate::PartialEntityUid::from_concrete(r#"User::"u1""#.parse().unwrap()),
-            r#"Action::"RevealCredentials""#.parse().unwrap(),
-            crate::PartialEntityUid::from_concrete(r#"Account::"a1""#.parse().unwrap()),
+            r#"Action::"Read""#.parse().unwrap(),
+            crate::PartialEntityUid::from_concrete(r#"Document::"d1""#.parse().unwrap()),
             None,
             &schema,
         )
@@ -3112,7 +3227,7 @@ when { principal in resource.admins };
         };
 
         // The expression should contain a ResidualError node (from
-        // `resource.assignedTo` on an entity without that attribute)
+        // integer overflow in principal.score + MAX_LONG)
         assert!(
             expr.has_error(),
             "residual expression should contain an error node"

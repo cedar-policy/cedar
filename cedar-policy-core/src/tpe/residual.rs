@@ -26,7 +26,8 @@ use crate::evaluator::evaluation_errors;
 #[cfg(feature = "tolerant-ast")]
 use crate::tpe::err::ErrorNotSupportedError;
 use crate::tpe::err::{ExprToResidualError, MissingTypeAnnotationError, UnknownNotSupportedError};
-use crate::validator::types::Type;
+use crate::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+use crate::validator::types::{AttributeType, Attributes, Type};
 use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
     expr_builder::ExprBuilder,
@@ -163,6 +164,7 @@ impl Residual {
                 ResidualKind::Record(attrs) => attrs
                     .iter()
                     .any(|(_, e)| e.can_error_assuming_well_formed()),
+                ResidualKind::RecordValue(_) => false,
             },
         }
     }
@@ -387,6 +389,96 @@ pub enum ResidualKind {
     Set(Arc<Vec<Residual>>),
     /// Anonymous record (whose elements may be arbitrary expressions)
     Record(Arc<BTreeMap<SmolStr, Residual>>),
+    /// Partial record value derived from the request data (attrs, tags, or context)
+    RecordValue(RecordValue),
+}
+
+/// A partial record value from the request data (entity attr or tag, or context attr).
+///
+/// Even though this is a "value", it is also "partial", so it may contain unknown attributes.
+/// Attributes with a known state are stored in `known`. This includes attributes with a specific
+/// known _value_, but also attributes which are known to be _absent_, and any attribute we know
+/// _exists_, even if we don't know it's value. Entirely unknown attributes are not explicitly
+/// listed.
+///
+/// For an attribute not listed in `known`, we can learn something about it from the type of the
+/// record. Any required attribute must exist while any optional attribute has unknown existence.
+/// Any attribute the type does not declare cannot exist.
+///
+/// `base` is the expression this value came from (e.g. `Document::"doc".meta` or `context`). It
+/// tells us how to find the concrete value for an attribute when we need it. `base` is a chain of
+/// attribute accesses on top of a variable, entity literal, or a `getTag` expression. While these
+/// expression are not error-free, we only construct a `RecordValue` after we know the expression in
+/// fact does not error.
+#[derive(Debug, Clone)]
+pub struct RecordValue {
+    /// The expression that produces this record value.
+    /// INVARIANT: `base` must be well-typed record type expression.
+    pub(crate) base: Arc<Residual>,
+    /// The attributes whose state is explicitly known.
+    /// INVARIANT: an attribute with a known value is declared by `base`'s record type.
+    pub(crate) known: PartialRecord,
+}
+
+/// The full state of an attribute in a [`RecordValue`], resolved from `known` and the record's type.
+/// Unlike [`PartialAttribute`], this can also be explicitly `Unknown` (existence unknown), when it
+/// is inferred form the type for an optional attribute the record does not list.
+pub(crate) enum AttrState<'a> {
+    /// Known value, together with its type
+    Value(&'a PartialValue, Type),
+    /// Known to exist but with an unknown value
+    Exists,
+    /// May or may not be present
+    Unknown,
+    /// Known to not exist
+    Absent,
+}
+
+impl AttrState<'_> {
+    /// The state of an attribute whose value is not explicit, recovered from its declared type.
+    pub(crate) fn from_declared(declared: Option<&AttributeType>) -> Self {
+        match declared {
+            // Declared as required, so we can assume it must exist.
+            Some(at) if at.is_required => AttrState::Exists,
+            // Declared as optional, so can't assuming anything
+            Some(_) => AttrState::Unknown,
+            // Not declared, so we can assume it doesn't exist
+            None => AttrState::Absent,
+        }
+    }
+}
+
+impl RecordValue {
+    fn attr_types(&self) -> &Attributes {
+        #[expect(
+            clippy::unreachable,
+            reason = "base type must be a record by invariant"
+        )]
+        let Type::Record { attrs, .. } = self.base.ty() else {
+            unreachable!("`RecordValue` base type invariant violation")
+        };
+        attrs
+    }
+
+    /// Resolve an attribute's state, filling attributes not in `known` from the type of the
+    /// containing record.
+    pub(crate) fn attr_state<'a>(&'a self, attr: &SmolStr) -> AttrState<'a> {
+        match self.known.get(attr) {
+            Some(PartialAttribute::Value(v)) => {
+                #[expect(
+                    clippy::unreachable,
+                    reason = "a known value's attribute is declared by invariant"
+                )]
+                let Some(at) = self.attr_types().get_attr(attr) else {
+                    unreachable!("`RecordValue` attribute `{attr}` has no declared type")
+                };
+                AttrState::Value(v, at.attr_type.as_ref().clone())
+            }
+            Some(PartialAttribute::Exists) => AttrState::Exists,
+            Some(PartialAttribute::Absent) => AttrState::Absent,
+            None => AttrState::from_declared(self.attr_types().get_attr(attr)),
+        }
+    }
 }
 
 impl ResidualKind {
@@ -437,6 +529,15 @@ impl ResidualKind {
                 let mut uids = HashSet::new();
                 for value in map.values() {
                     uids.extend(value.all_literal_uids());
+                }
+                uids
+            }
+            ResidualKind::RecordValue(rv) => {
+                let mut uids = rv.base.all_literal_uids();
+                for value in rv.known.values() {
+                    if let PartialAttribute::Value(v) = value {
+                        uids.extend(v.all_literal_uids());
+                    }
                 }
                 uids
             }
@@ -542,6 +643,12 @@ impl From<Residual> for Expr {
                     ResidualKind::Record(map) => builder
                         .record(map.as_ref().clone().into_iter().map(|(k, v)| (k, v.into())))
                         .expect("should succeed"),
+                    ResidualKind::RecordValue(rv) => {
+                        // `Expr` cannot precisely represent a `RecordValue`. `base` is semantically
+                        // equivalent to the original record, so it is a valid transition to `Expr`
+                        // on its own, but it loses precision when some fields are known.
+                        Arc::unwrap_or_clone(rv.base).into()
+                    }
                     ResidualKind::Set(set) => builder.set(
                         set.as_ref()
                             .clone()
