@@ -259,9 +259,8 @@ impl SymEntityData {
     pub(super) fn of_action_type<'a>(
         act_ty: &EntityType,
         act_tys: impl IntoIterator<Item = &'a EntityType>,
-        schema: &ValidatorSchema,
+        actions: &ActionSchemaEntries,
     ) -> Self {
-        let sch = ActionSchemaEntries::of_schema(schema);
         let attrs_udf = Udf(Arc::new(function::Udf {
             arg: entity(act_ty.clone()),
             out: TermType::Record {
@@ -292,7 +291,8 @@ impl SymEntityData {
                 arg: entity(act_ty.clone()),
                 out: TermType::set_of(entity(anc_ty.clone())),
                 table: Arc::new(
-                    sch.iter()
+                    actions
+                        .iter()
                         .filter_map(|(uid, entry)| {
                             Some((
                                 term_of_type(act_ty.clone(), uid.clone())?,
@@ -307,7 +307,7 @@ impl SymEntityData {
                 },
             }))
         };
-        let acts = sch
+        let acts = actions
             .keys()
             .filter(|uid| uid.type_name() == act_ty)
             .map(|uid| SmolStr::new(uid.id()))
@@ -361,10 +361,11 @@ impl SymEntities {
             .iter()
             .map(|act| core_entity_type_into_entity_type(act.uid().entity_type()))
             .collect();
+        let action_schema = ActionSchemaEntries::of_schema(schema);
         let a_data = act_tys.iter().map(|&act_ty| {
             Ok((
                 act_ty.clone(),
-                SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
+                SymEntityData::of_action_type(act_ty, act_tys.iter().copied(), &action_schema),
             ))
         });
         Ok(SymEntities(
@@ -521,7 +522,7 @@ impl EntitySchemaEntry {
 }
 
 // From `Validation/Types.lean`
-struct ActionSchemaEntry {
+pub(crate) struct ActionSchemaEntry {
     ancestors: BTreeSet<EntityUID>,
     // present in the Lean, but not used in SymCC
     // applies_to_principal: BTreeSet<EntityType>,
@@ -531,7 +532,7 @@ struct ActionSchemaEntry {
     // context: Attributes,
 }
 
-struct ActionSchemaEntries(BTreeMap<EntityUID, ActionSchemaEntry>);
+pub(crate) struct ActionSchemaEntries(BTreeMap<EntityUID, ActionSchemaEntry>);
 
 impl Deref for ActionSchemaEntries {
     type Target = BTreeMap<EntityUID, ActionSchemaEntry>;
@@ -542,7 +543,7 @@ impl Deref for ActionSchemaEntries {
 }
 
 impl ActionSchemaEntries {
-    fn of_schema(schema: &ValidatorSchema) -> Self {
+    pub(crate) fn of_schema(schema: &ValidatorSchema) -> Self {
         Self(
             #[expect(
                 clippy::expect_used,

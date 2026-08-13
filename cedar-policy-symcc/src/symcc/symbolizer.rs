@@ -21,7 +21,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use crate::symcc::env::{EntitySchemaEntry, SymEntityData};
+use crate::symcc::env::{ActionSchemaEntries, EntitySchemaEntry, SymEntityData};
 use crate::symcc::function::{self, UnaryFunction};
 use crate::type_abbrevs::core_entity_type_into_entity_type;
 use cedar_policy::entities_errors::EntitiesError;
@@ -396,10 +396,11 @@ impl SymEntities {
             .iter()
             .map(|act| core_entity_type_into_entity_type(act.uid().entity_type()))
             .collect::<BTreeSet<_>>();
+        let action_schema = ActionSchemaEntries::of_schema(schema);
         let actions = act_tys.iter().map(|&act_ty| {
             Ok((
                 act_ty.clone(),
-                SymEntityData::of_action_type(act_ty, act_tys.clone(), schema),
+                SymEntityData::of_action_type(act_ty, act_tys.iter().copied(), &action_schema),
             ))
         });
 
