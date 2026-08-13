@@ -825,11 +825,11 @@ impl TryFrom<Type> for CoreSchemaType {
             } => Ok(CoreSchemaType::Record {
                 attrs: {
                     attrs
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| {
                             let schema_type = v.attr_type.as_ref().clone().try_into()?;
                             Ok((
-                                k,
+                                k.clone(),
                                 match v.is_required {
                                     true => CoreAttributeType::required(schema_type),
                                     false => CoreAttributeType::optional(schema_type),
@@ -1103,16 +1103,6 @@ impl Attributes {
             Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Permissive)
                 .flat_map(|r| r.map(|(k, v)| (k.clone(), v))),
         )
-    }
-}
-
-impl IntoIterator for Attributes {
-    type Item = (SmolStr, AttributeType);
-
-    type IntoIter = <BTreeMap<SmolStr, AttributeType> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.attrs.as_ref().clone().into_iter()
     }
 }
 

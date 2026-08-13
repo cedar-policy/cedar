@@ -223,7 +223,7 @@ impl From<Type> for CedarTypeKind {
             }),
             Type::Record { attrs, .. } => {
                 let m = attrs
-                    .into_iter()
+                    .iter()
                     .map(|kv_pair| (kv_pair.0.clone(), Attribute::from(kv_pair)))
                     .collect::<BTreeMap<_, _>>();
                 let record = Record { attrs: m.into() };
