@@ -533,10 +533,19 @@ impl SExpr {
                             elts_ty,
                         },
                         Term::Set { elts: elts2, .. },
-                    ) => Ok(Term::Set {
-                        elts: Arc::new(elts1.union(&elts2).cloned().collect()),
-                        elts_ty,
-                    }),
+                    ) => {
+                        let (elts, rest) = if elts1.len() > elts2.len() {
+                            (elts1, elts2)
+                        } else {
+                            (elts2, elts1)
+                        };
+                        let mut elts = Arc::unwrap_or_clone(elts);
+                        elts.extend(Arc::unwrap_or_clone(rest).into_iter());
+                        Ok(Term::Set {
+                            elts: Arc::new(elts),
+                            elts_ty,
+                        })
+                    }
 
                     (set1, set2) => Err(DecodeError::SetUnionNonLiterals(set1, set2)),
                 }
