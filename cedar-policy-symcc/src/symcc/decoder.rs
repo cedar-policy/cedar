@@ -942,7 +942,7 @@ pub fn decode_model<'a>(
 #[cfg(test)]
 mod test_decode {
     use std::{
-        collections::BTreeMap,
+        collections::{BTreeMap, BTreeSet},
         num::NonZeroU32,
         str::FromStr,
         sync::{Arc, LazyLock},
@@ -1046,6 +1046,46 @@ mod test_decode {
                 n: NonZeroU32::new(8).unwrap(),
             },
             BitVec::of_u128(NonZeroU32::new(8).unwrap(), 42),
+        );
+    }
+
+    #[test]
+    fn decode_sets() {
+        let expected_ty = TermType::Set {
+            ty: Arc::new(TermType::String),
+        };
+        let mk_set = |strs: &[&'static str]| Term::Set {
+            elts: Arc::new(
+                strs.iter()
+                    .map(|s| SmolStr::new_static(*s).into())
+                    .collect(),
+            ),
+            elts_ty: TermType::String,
+        };
+        assert_decode_var(
+            r#"((define-fun x () (Set String) (set.singleton "0")))"#,
+            "x".into(),
+            expected_ty.clone(),
+            mk_set(&["0"]),
+        );
+        assert_decode_var(
+            r#"((define-fun x () (Set String) (set.union (set.singleton "1") (set.singleton "0"))))"#,
+            "x".into(),
+            expected_ty.clone(),
+            mk_set(&["0", "1"]),
+        );
+        // right spine is emitted by cvc5
+        assert_decode_var(
+            r#"((define-fun x () (Set String) (set.union (set.singleton "2") (set.union (set.singleton "1") (set.singleton "0")))))"#,
+            "x".into(),
+            expected_ty.clone(),
+            mk_set(&["0", "1", "2"]),
+        );
+        assert_decode_var(
+            r#"((define-fun x () (Set String) (set.union (set.union (set.singleton "1") (set.singleton "0")) (set.singleton "2"))))"#,
+            "x".into(),
+            expected_ty.clone(),
+            mk_set(&["0", "1", "2"]),
         );
     }
 
