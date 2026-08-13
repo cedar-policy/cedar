@@ -764,11 +764,11 @@ impl TryFrom<Type> for CoreSchemaType {
             } => Ok(CoreSchemaType::Record {
                 attrs: {
                     attrs
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| {
                             let schema_type = v.attr_type.as_ref().clone().try_into()?;
                             Ok((
-                                k,
+                                k.clone(),
                                 match v.is_required {
                                     true => CoreAttributeType::required(schema_type),
                                     false => CoreAttributeType::optional(schema_type),
@@ -876,12 +876,10 @@ impl EntityLUB {
             clippy::expect_used,
             reason = "Invariant on `lub_elements` guarantees the set is non-empty"
         )]
-        let arbitrary_first = Attributes::with_attributes(
-            lub_element_attributes
-                .next()
-                .expect("Invariant violated: EntityLUB set must be non-empty."),
-        );
-        lub_element_attributes.fold(arbitrary_first, |acc, elem| {
+        let arbitrary_first = lub_element_attributes
+            .next()
+            .expect("Invariant violated: EntityLUB set must be non-empty.");
+        lub_element_attributes.fold(arbitrary_first, move |acc, elem| {
             // Use the permissive version of least upper bound here for two
             // reasons. First, when in permissive mode, the attributes least
             // upper bound can never fail. We could call the main lub function
@@ -890,7 +888,7 @@ impl EntityLUB {
             // element, so that LUB can never fail, and the strict
             // attributes lub is the same as permissive if there is only one
             // attribute.
-            Attributes::permissive_least_upper_bound(&acc, &Attributes::with_attributes(elem))
+            Attributes::permissive_least_upper_bound(&acc, &elem)
         })
     }
 
@@ -1041,16 +1039,6 @@ impl Attributes {
             Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Permissive)
                 .flat_map(|r| r.map(|(k, v)| (k.clone(), v))),
         )
-    }
-}
-
-impl IntoIterator for Attributes {
-    type Item = (SmolStr, AttributeType);
-
-    type IntoIter = <BTreeMap<SmolStr, AttributeType> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.attrs.as_ref().clone().into_iter()
     }
 }
 

@@ -42,7 +42,7 @@ use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
-    types::{Attributes, EntityKind, OpenTag, RequestEnv, Type, TypeIterator, UnlinkedRequestEnv},
+    types::{EntityKind, RequestEnv, Type, TypeIterator, UnlinkedRequestEnv},
     ValidationMode,
 };
 
@@ -770,17 +770,20 @@ impl ValidatorSchema {
                         parents: _,
                         tags,
                     } => {
-                        let (attributes, open_attributes) = {
-                            let attrs_ty = try_jsonschema_type_into_validator_type(
-                                attributes.0,
-                                extensions,
-                                &common_types,
-                            )?;
-                            Self::record_attributes_or_none(attrs_ty).ok_or_else(|| {
-                                ContextOrShapeNotRecordError {
-                                    ctx_or_shape: ContextOrShape::EntityTypeShape(name.clone()),
-                                }
-                            })?
+                        let attrs_ty = try_jsonschema_type_into_validator_type(
+                            attributes.0,
+                            extensions,
+                            &common_types,
+                        )?;
+                        let Type::Record {
+                            attrs,
+                            open_attributes,
+                        } = attrs_ty.ty
+                        else {
+                            return Err(ContextOrShapeNotRecordError {
+                                ctx_or_shape: ContextOrShape::EntityTypeShape(name.clone()),
+                            }
+                            .into());
                         };
                         let tags = tags
                             .map(|tags| {
@@ -797,7 +800,7 @@ impl ValidatorSchema {
                             ValidatorEntityType::new_standard(
                                 name.clone(),
                                 descendants,
-                                attributes,
+                                attrs,
                                 open_attributes,
                                 tags.map(|t| t.ty),
                                 name.loc().cloned(),
@@ -821,17 +824,17 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-                let (context, open_context_attributes) = {
-                    let context_ty = try_jsonschema_type_into_validator_type(
-                        action.context,
-                        extensions,
-                        &common_types,
-                    )?;
-                    Self::record_attributes_or_none(context_ty).ok_or_else(|| {
-                        ContextOrShapeNotRecordError {
-                            ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
-                        }
-                    })?
+                let context = try_jsonschema_type_into_validator_type(
+                    action.context,
+                    extensions,
+                    &common_types,
+                )?
+                .ty;
+                let Type::Record { .. } = context else {
+                    return Err(ContextOrShapeNotRecordError {
+                        ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
+                    }
+                    .into());
                 };
                 Ok((
                     name.clone(),
@@ -839,7 +842,7 @@ impl ValidatorSchema {
                         name,
                         applies_to: action.applies_to,
                         descendants,
-                        context: Type::record_with_attributes(context, open_context_attributes),
+                        context,
                         loc: action.loc,
                     },
                 ))
@@ -954,18 +957,6 @@ impl ValidatorSchema {
         }
 
         Ok(())
-    }
-
-    fn record_attributes_or_none(ty: LocatedType) -> Option<(Attributes, OpenTag)> {
-        if let Type::Record {
-            attrs,
-            open_attributes,
-        } = ty.ty
-        {
-            Some((attrs, open_attributes))
-        } else {
-            None
-        }
     }
 
     /// Check that all entity types appearing inside a type are in the set of
@@ -1748,8 +1739,11 @@ pub(crate) mod test {
         str::FromStr,
     };
 
-    use crate::validator::json_schema;
     use crate::validator::types::{AttributeType, Type};
+    use crate::validator::{
+        json_schema,
+        types::{Attributes, OpenTag},
+    };
 
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
