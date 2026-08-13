@@ -418,11 +418,11 @@ impl Type {
     /// Get all statically known attributes of an entity or record type.
     /// Returns an empty vector if there are no declared attributes or the type
     /// is not an entity or record type.
-    pub fn all_attributes(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    pub fn all_attributes(&self, schema: &ValidatorSchema) -> Attributes {
         match self {
             Type::Entity(e) => e.all_known_attrs(schema),
-            Type::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
-            _ => vec![],
+            Type::Record { attrs, .. } => attrs.clone(),
+            _ => Attributes::with_attributes(None),
         }
     }
 
@@ -1132,24 +1132,18 @@ impl EntityKind {
         }
     }
 
-    /// Get all the attribute names _known to exist_ for this entity.
+    /// Get all the attributes _known to exist_ for this entity.
     ///
-    /// For `AnyEntity`, this will return an empty vec, as there are no
+    /// For `AnyEntity`, this will be empty, as there are no
     /// attribute names we _know_ must exist (even though `AnyEntity` types may
     /// clearly have attributes).
     /// For LUB types, this will return only the attribute names known to exist
     /// in the LUB.
-    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Attributes {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
-            EntityKind::AnyEntity => vec![],
-            EntityKind::Entity(lub) => lub
-                .get_attribute_types(schema)
-                .attrs
-                .as_ref()
-                .keys()
-                .cloned()
-                .collect(),
+            EntityKind::AnyEntity => Attributes::with_attributes(None),
+            EntityKind::Entity(lub) => lub.get_attribute_types(schema),
         }
     }
 
