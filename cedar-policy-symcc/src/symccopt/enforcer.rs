@@ -19,42 +19,41 @@
 
 use std::collections::BTreeSet;
 
+use itertools::Itertools;
+
 use crate::symcc::{self, term::Term};
 
 use super::{CompiledPolicy, CompiledPolicySet};
 
 pub fn enforce_compiled_policy(cp: &CompiledPolicy) -> BTreeSet<Term> {
-    let tr = cp.footprint.iter().flat_map(|term1| {
-        cp.footprint
-            .iter()
-            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cp.symenv.entities))
-    });
+    let tr = cp
+        .footprint
+        .iter()
+        .cartesian_product(&cp.footprint)
+        .map(|(term1, term2)| symcc::enforcer::transitivity(term1, term2, &cp.symenv.entities));
     cp.acyclicity.iter().cloned().chain(tr).collect()
 }
 
 #[expect(dead_code, reason = "exists in the Lean")]
 pub fn enforce_compiled_policyset(cpset: &CompiledPolicySet) -> BTreeSet<Term> {
-    let tr = cpset.footprint.iter().flat_map(|term1| {
-        cpset
-            .footprint
-            .iter()
-            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cpset.symenv.entities))
-    });
+    let tr = cpset
+        .footprint
+        .iter()
+        .cartesian_product(&cpset.footprint)
+        .map(|(term1, term2)| symcc::enforcer::transitivity(term1, term2, &cpset.symenv.entities));
     cpset.acyclicity.iter().cloned().chain(tr).collect()
 }
 
 pub fn enforce_pair_compiled_policy(cp1: &CompiledPolicy, cp2: &CompiledPolicy) -> BTreeSet<Term> {
     assert_eq!(&cp1.symenv, &cp2.symenv);
-    let footprint = cp1.footprint.iter().chain(cp2.footprint.iter()); // since `footprint` is just an iterator, it is cheap to clone
-    let tr = footprint.clone().flat_map(|term1| {
-        footprint
-            .clone()
-            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cp1.symenv.entities))
-    });
-    cp1.acyclicity
+    let footprint: Vec<_> = cp1.footprint.union(&cp2.footprint).collect();
+    let tr = footprint
         .iter()
+        .cartesian_product(&footprint)
+        .map(|(term1, term2)| symcc::enforcer::transitivity(term1, term2, &cp1.symenv.entities));
+    cp1.acyclicity
+        .union(&cp2.acyclicity)
         .cloned()
-        .chain(cp2.acyclicity.iter().cloned())
         .chain(tr)
         .collect()
 }
@@ -64,17 +63,15 @@ pub fn enforce_pair_compiled_policyset(
     cpset2: &CompiledPolicySet,
 ) -> BTreeSet<Term> {
     assert_eq!(&cpset1.symenv, &cpset2.symenv);
-    let footprint = cpset1.footprint.iter().chain(cpset2.footprint.iter()); // since `footprint` is just an iterator, it is cheap to clone
-    let tr = footprint.clone().flat_map(|term1| {
-        footprint
-            .clone()
-            .map(|term2| symcc::enforcer::transitivity(term1, term2, &cpset1.symenv.entities))
-    });
+    let footprint: Vec<_> = cpset1.footprint.union(&cpset2.footprint).collect();
+    let tr = footprint
+        .iter()
+        .cartesian_product(&footprint)
+        .map(|(term1, term2)| symcc::enforcer::transitivity(term1, term2, &cpset1.symenv.entities));
     cpset1
         .acyclicity
-        .iter()
+        .union(&cpset2.acyclicity)
         .cloned()
-        .chain(cpset2.acyclicity.iter().cloned())
         .chain(tr)
         .collect()
 }
