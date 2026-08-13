@@ -784,7 +784,6 @@ impl<'a> SingleEnvTypechecker<'a> {
 
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
                     Some(typ_actual) => {
-                        let all_attrs = typ_actual.all_attributes(self.schema);
                         let attr_ty = Type::lookup_attribute_type(self.schema, typ_actual, attr);
                         let annot_expr = ExprBuilder::with_data(
                             attr_ty
@@ -836,8 +835,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 )
                             }
                             None => {
+                                let all_attrs = typ_actual.all_attributes(self.schema);
                                 let borrowed =
-                                    all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                                    all_attrs.keys().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(ValidationError::unsafe_attribute_access(
                                     e.source_loc().cloned(),
