@@ -1147,10 +1147,6 @@ fn extended_has() {
     );
 }
 
-/// Test that deeply nested extended has expressions typecheck correctly
-/// and don't cause combinatorial blowup in the validator.
-/// This pattern: `(if E has a.b then E.a.b else fallback) has c.d`
-/// would have produced exponential AST size with the old desugaring.
 #[test]
 fn extended_has_nested_typechecks() {
     let schema_src = r#"
@@ -1164,9 +1160,14 @@ fn extended_has_nested_typechecks() {
           }
         };
 
+        type namePrefix = {
+            content: String,
+        };
+
         entity Name {
             first: String,
             last: String,
+            prefix?: namePrefix,
         };
 
         entity User {
@@ -1180,6 +1181,10 @@ fn extended_has_nested_typechecks() {
           principal: User,
           resource: Resource,
           context: {
+            session: {
+                role?: User,
+                expired: Bool,
+            },
             ipinfo?: {
               additionalData?: {
                 previouslyKnownIp?: String,
@@ -1230,13 +1235,32 @@ fn extended_has_nested_typechecks() {
     .unwrap();
     assert_policy_typechecks(schema.clone(), policy);
 
-    // Nested: if resource has deep path, use it, else use context — then check outer path
-    // This is the pathological pattern that would have blown up.
+    // resource has deep path, use it, else use context
     let policy = parse_policy(
         None,
         r#"
     permit(principal, action == Action::"access", resource) when {
         context has ipinfo.additionalData.previouslyKnownIp
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // complex nesting of if extended has
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        (if
+            (if (context has session.role.identity.name) then context.session.role else User::"default")
+            has identity.name.prefix
+        then
+            (if (context has session.role.identity.name) then context.session.role else User::"default")
+            .identity.name.prefix.content
+        else
+            "default")
+            == "prefix"
     };
     "#,
     )
@@ -1256,8 +1280,6 @@ fn extended_has_nested_typechecks() {
     assert!(!errors.is_empty());
 }
 
-/// Test extended has on a record type where all attributes in the chain are required.
-/// This should produce `singleton_boolean(true)`.
 #[test]
 fn extended_has_all_required_record() {
     let schema_src = r#"
@@ -1284,7 +1306,6 @@ fn extended_has_all_required_record() {
     let (schema, _) =
         ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
 
-    // Required record attributes: context.data.nested.flag is always present.
     // Extended has on a record with all required attrs should typecheck.
     let policy = parse_policy(
         None,
@@ -1297,7 +1318,7 @@ fn extended_has_all_required_record() {
     .unwrap();
     assert_policy_typechecks(schema.clone(), policy);
 
-    // Extended has on entity with required attrs followed by access
+    // Extended has on entity with required attrs
     let policy = parse_policy(
         None,
         r#"
@@ -1310,9 +1331,7 @@ fn extended_has_all_required_record() {
     .unwrap();
     assert_policy_typechecks(schema.clone(), policy);
 
-    // Test attribute not in schema on closed type: has on non-existent attr
-    // returns singleton(false), so && short-circuits without checking RHS.
-    // The policy typechecks (the when clause is always false).
+    // Attribute not in schema on closed type
     let src = r#"
     permit(principal, action == Action::"read", resource) when {
         resource has info.nested.nonexistent &&

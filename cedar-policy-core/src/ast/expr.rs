@@ -193,8 +193,8 @@ impl<T> ExprKind<T> {
             ExprKind::BinaryApp { .. } => 8,
             ExprKind::ExtensionFunctionApp { .. } => 9,
             ExprKind::GetAttr { .. } => 10,
-            ExprKind::ExtHasAttr { .. } => 11,
-            ExprKind::HasAttr { .. } => 12,
+            ExprKind::HasAttr { .. } => 11,
+            ExprKind::ExtHasAttr { .. } => 12,
             ExprKind::Like { .. } => 13,
             ExprKind::Set(_) => 14,
             ExprKind::Record(_) => 15,
@@ -1651,6 +1651,13 @@ impl<T> Expr<T> {
                 },
             ) => attr == attr1 && expr.eq_shape(expr1),
             (
+                ExtHasAttr { expr, attrs },
+                ExtHasAttr {
+                    expr: expr1,
+                    attrs: attrs1,
+                },
+            ) => attrs == attrs1 && expr.eq_shape(expr1),
+            (
                 Like { expr, pattern },
                 Like {
                     expr: expr1,
@@ -1678,13 +1685,6 @@ impl<T> Expr<T> {
                     entity_type: entity_type1,
                 },
             ) => entity_type == entity_type1 && expr.eq_shape(expr1),
-            (
-                ExtHasAttr { expr, attrs },
-                ExtHasAttr {
-                    expr: expr1,
-                    attrs: attrs1,
-                },
-            ) => attrs == attrs1 && expr.eq_shape(expr1),
             _ => false,
         }
     }
@@ -1874,6 +1874,13 @@ impl<T> Expr<T> {
                     attr: attr1,
                 },
             ) => attr.cmp(attr1).then_with(|| expr.cmp_shape(expr1)),
+            (
+                ExtHasAttr { expr, attrs },
+                ExtHasAttr {
+                    expr: expr1,
+                    attrs: attrs1,
+                },
+            ) => attrs.cmp(attrs1).then_with(|| expr.cmp_shape(expr1)),
             (
                 Like { expr, pattern },
                 Like {

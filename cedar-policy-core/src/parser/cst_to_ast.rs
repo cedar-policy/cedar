@@ -5241,21 +5241,40 @@ mod tests {
             Ok(_)
         );
 
-        assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
-            assert_matches!(e.expr_kind(), ast::ExprKind::ExtHasAttr { expr, attrs } => {
-                assert_matches!(expr.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
-                assert_eq!(attrs.head.as_str(), "a");
-                assert_eq!(attrs.tail, vec![smol_str::SmolStr::from("b")]);
-            });
-        });
-
-        assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
-            assert_matches!(e.expr_kind(), ast::ExprKind::ExtHasAttr { expr, attrs } => {
-                assert_matches!(expr.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
-                assert_eq!(attrs.head.as_str(), "a");
-                assert_eq!(attrs.tail, vec![smol_str::SmolStr::from("b"), smol_str::SmolStr::from("c")]);
-            });
-        });
+        let success_test_expr = vec![
+            (
+                r#"context has a"#,
+                Expr::has_attr(Expr::var(ast::Var::Context), "a".into()),
+            ),
+            (
+                r#"principal has a.b"#,
+                Expr::extended_has_attr(
+                    Expr::var(ast::Var::Principal),
+                    nonempty!["a".into(), "b".into()],
+                ),
+            ),
+            (
+                r#"resource has a.b.c"#,
+                Expr::extended_has_attr(
+                    Expr::var(ast::Var::Resource),
+                    nonempty!["a".into(), "b".into(), "c".into()],
+                ),
+            ),
+            (
+                r#"resource.x has a.b.c"#,
+                Expr::extended_has_attr(
+                    Expr::get_attr(Expr::var(ast::Var::Resource), "x".into()),
+                    nonempty!["a".into(), "b".into(), "c".into()],
+                ),
+            ),
+        ];
+        for (str_repr, ast_repr) in success_test_expr {
+            let e = assert_parse_expr_succeeds(str_repr);
+            assert!(
+                e.eq_shape(&ast_repr),
+                "{e:?} and {ast_repr:?} should have the same shape."
+            );
+        }
 
         let policy = r#"permit(principal, action, resource) when {
             principal has a.if
@@ -5479,36 +5498,24 @@ mod tests {
         );
     }
 
-    /// Test that extended has with many attributes produces a single compact AST node
-    /// rather than an exponentially large desugared tree.
     #[test]
     fn extended_has_compact_ast() {
-        // A 5-attribute extended has should produce a single HasAttrExt node
         let expr = parse_expr(r#"context has a.b.c.d.e"#).unwrap();
         assert_matches!(expr.expr_kind(), ast::ExprKind::ExtHasAttr { expr: inner, attrs } => {
             assert_matches!(inner.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
             assert_eq!(attrs.len(), 5);
         });
-
-        // The subexpression count should be 2 (context var + the HasAttrExt itself)
         assert_eq!(expr.subexpressions().count(), 2);
 
-        // Previously, this would desugar to And(And(And(And(has,has),has),has),has)
-        // which is 5 has + 4 getattr + 4 and = 13 internal nodes + the context var repeated many times.
-        // Verify a deeply nested case stays compact
         let deep = parse_expr(r#"principal has a.b.c.d.e.f.g.h.i.j"#).unwrap();
         assert_matches!(deep.expr_kind(), ast::ExprKind::ExtHasAttr { attrs, .. } => {
             assert_eq!(attrs.len(), 10);
         });
-        // Still just 2 subexpressions: the var and the HasAttrExt
         assert_eq!(deep.subexpressions().count(), 2);
 
-        // Nested extended has in an if-then-else: verify no cross-product blowup
         let nested =
             parse_expr(r#"(if principal has a.b.c then principal.a.b.c else context) has x.y.z"#)
                 .unwrap();
-        // Structure: HasAttrExt(If(HasAttrExt(Var), GetAttr(GetAttr(GetAttr(Var))), Var), [x,y,z])
-        // Total subexpressions should be small
         let count = nested.subexpressions().count();
         assert!(
             count < 12,

@@ -143,15 +143,23 @@ fn slot_has_typechecks() {
 }
 
 #[test]
-fn extended_has_precise_boolean_types() {
-    assert_typechecks_empty_schema(
-        &"{ a: { b: true } } has a.b".parse().unwrap(),
-        &Type::singleton_boolean(true),
-    );
-    assert_typechecks_empty_schema(
-        &"{ a: {} } has a.missing".parse().unwrap(),
-        &Type::singleton_boolean(false),
-    );
+fn extended_has_precise_boolean_types_empty_schema() {
+    let typechecks_examples = vec![
+        ("{ a: { b: true }} has a", Type::singleton_boolean(true)),
+        ("{ a: { b: true }} has a.b", Type::singleton_boolean(true)),
+        (
+            "{c: { a: { b: true }}} has c.a.b",
+            Type::singleton_boolean(true),
+        ),
+        ("{ a: {}} has a.missing", Type::singleton_boolean(false)),
+        (
+            "{ a: {b: {}}} has a.b.missing",
+            Type::singleton_boolean(false),
+        ),
+    ];
+    for (expr_str, expected) in typechecks_examples {
+        assert_typechecks_empty_schema(&expr_str.parse().unwrap(), &expected);
+    }
 }
 
 #[test]
@@ -161,6 +169,35 @@ fn extended_has_rejects_primitive_intermediate() {
         &Type::primitive_boolean(),
     );
     assert_eq!(errors.len(), 1);
+}
+
+#[test]
+fn extended_has_precise_boolean_types_schema() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        type r = { n : String, sub1: T };
+        entity T { cnt : Long};
+        entity P { x: {y?: r, z: Long}, sub1: {sub2: T, sub3?: P}};
+        action "action" appliesTo { principal: P, resource: T, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    let typechecks_examples = vec![
+        (r#"P::"a" has x"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.z"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.y.n"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.y.n"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.y.sub1"#, Type::primitive_boolean()),
+        (
+            r#"{n: "name", sub1: T::"a"} has sub1.cnt"#,
+            Type::primitive_boolean(),
+        ),
+        (r#"P::"a" has x.y.n"#, Type::primitive_boolean()),
+        (r#"P::"a" has sub1.sub2"#, Type::primitive_boolean()),
+        (r#"T::"a" has x.y"#, Type::singleton_boolean(false)),
+    ];
+    for (expr_str, expected) in typechecks_examples {
+        assert_typechecks(schema.clone(), &expr_str.parse().unwrap(), &expected);
+    }
 }
 
 #[test]

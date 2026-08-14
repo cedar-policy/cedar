@@ -103,7 +103,7 @@ struct LevelChecker<'a> {
     max_level: EntityDerefLevel,
     level_checking_errors: HashSet<ValidationError>,
     /// Schema reference needed for computing entity dereference levels
-    /// within `HasAttrExt` nodes (which don't have intermediate type annotations).
+    /// within `ExtHasAttr` nodes (which don't have intermediate type annotations).
     schema: &'a ValidatorSchema,
 }
 
