@@ -942,7 +942,7 @@ pub fn decode_model<'a>(
 #[cfg(test)]
 mod test_decode {
     use std::{
-        collections::{BTreeMap, BTreeSet},
+        collections::BTreeMap,
         num::NonZeroU32,
         str::FromStr,
         sync::{Arc, LazyLock},
