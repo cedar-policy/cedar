@@ -782,7 +782,7 @@ impl ValidatorSchema {
                         } = attrs_ty.ty
                         else {
                             return Err(ContextOrShapeNotRecordError {
-                                ctx_or_shape: ContextOrShape::EntityTypeShape(name.clone()),
+                                ctx_or_shape: ContextOrShape::EntityTypeShape(name),
                             }
                             .into());
                         };
@@ -833,7 +833,7 @@ impl ValidatorSchema {
                 .ty;
                 let Type::Record { .. } = context else {
                     return Err(ContextOrShapeNotRecordError {
-                        ctx_or_shape: ContextOrShape::ActionContext(name.clone()),
+                        ctx_or_shape: ContextOrShape::ActionContext(name),
                     }
                     .into());
                 };
