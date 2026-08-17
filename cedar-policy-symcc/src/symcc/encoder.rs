@@ -872,4 +872,260 @@ mod unit_tests {
             .await
             .unwrap();
     }
+
+    /// Compiles `expr` against the schema shared with
+    /// `compiler::ext_has_attr_tests` and returns the SMT text the encoder
+    /// emits for it.
+    async fn compile_and_encode(expr: &str) -> String {
+        use crate::symcc::compiler::{
+            compile,
+            ext_has_attr_tests::{parse_expr, sym_env},
+        };
+
+        let symenv = sym_env();
+        let term = compile(&parse_expr(expr), &symenv).unwrap();
+
+        let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
+        encoder.encode_term(&term).await.unwrap();
+
+        String::from_utf8(encoder.script).unwrap()
+    }
+
+    #[tokio::test]
+    async fn ext_has_attr_compiles_to_expected_smt() {
+        insta::assert_snapshot!(compile_and_encode("context has rec.x").await, @"(define-fun t0 () (Option Bool) (some true))");
+    }
+
+    // entity base, optional then present
+    #[tokio::test]
+    async fn ext_has_attr_entity_optional_then_present_smt() {
+        insta::assert_snapshot!(compile_and_encode("principal has thing1.id").await, @r#"
+        ; Thing
+        (declare-datatype E0 (
+          (E0 (eid String))))
+        ; Thing2
+        (declare-datatype E1 (
+          (E1 (eid String))))
+        ; {id, thing2, thing2bis}
+        (declare-datatype R2 (
+          (R2 (R2_a0 String) (R2_a1 E1) (R2_a2 (Option E1)))))
+        ; {name, thing1, thing2, x, xopt}
+        (declare-datatype R3 (
+          (R3 (R3_a0 String) (R3_a1 (Option E0)) (R3_a2 E1) (R3_a3 R2) (R3_a4 (Option R2)))))
+        ; User
+        (declare-datatype E4 (
+          (E4 (eid String))))
+        ; "principal"
+        (declare-const t0 E4)
+        ; attrs[User]
+        (declare-fun f0 (E4) R3)
+        (define-fun t1 () R3 (f0 t0))
+        (define-fun t2 () (Option E0) (R3_a1 t1))
+        (define-fun t3 () (Option E0) (as none (Option E0)))
+        (define-fun t4 () Bool (= t2 t3))
+        (define-fun t5 () Bool (not t4))
+        (define-fun t6 () (Option Bool) (as none (Option Bool)))
+        (define-fun t7 () (Option Bool) (some false))
+        (define-fun t8 () (Option Bool) (ite t4 t6 t7))
+        (define-fun t9 () (Option Bool) (ite t5 t8 t7))
+        "#);
+    }
+
+    // entity base, present then optional
+    #[tokio::test]
+    async fn ext_has_attr_entity_present_then_optional_smt() {
+        insta::assert_snapshot!(compile_and_encode("principal has thing2.opt").await, @r#"
+        ; {id, opt}
+        (declare-datatype R0 (
+          (R0 (R0_a0 String) (R0_a1 (Option (_ BitVec 64))))))
+        ; Thing2
+        (declare-datatype E1 (
+          (E1 (eid String))))
+        ; Thing
+        (declare-datatype E2 (
+          (E2 (eid String))))
+        ; {id, thing2, thing2bis}
+        (declare-datatype R3 (
+          (R3 (R3_a0 String) (R3_a1 E1) (R3_a2 (Option E1)))))
+        ; {name, thing1, thing2, x, xopt}
+        (declare-datatype R4 (
+          (R4 (R4_a0 String) (R4_a1 (Option E2)) (R4_a2 E1) (R4_a3 R3) (R4_a4 (Option R3)))))
+        ; User
+        (declare-datatype E5 (
+          (E5 (eid String))))
+        ; "principal"
+        (declare-const t0 E5)
+        ; attrs[User]
+        (declare-fun f0 (E5) R4)
+        (define-fun t1 () R4 (f0 t0))
+        (define-fun t2 () E1 (R4_a2 t1))
+        ; attrs[Thing2]
+        (declare-fun f1 (E1) R0)
+        (define-fun t3 () R0 (f1 t2))
+        (define-fun t4 () (Option (_ BitVec 64)) (R0_a1 t3))
+        (define-fun t5 () (Option (_ BitVec 64)) (as none (Option (_ BitVec 64))))
+        (define-fun t6 () Bool (= t4 t5))
+        (define-fun t7 () Bool (not t6))
+        (define-fun t8 () (Option Bool) (some t7))
+        "#);
+    }
+
+    // record base, present then optional
+    #[tokio::test]
+    async fn ext_has_attr_record_present_then_optional_smt() {
+        insta::assert_snapshot!(compile_and_encode("principal.x has thing2.opt").await, @r#"
+        ; {id, opt}
+        (declare-datatype R0 (
+          (R0 (R0_a0 String) (R0_a1 (Option (_ BitVec 64))))))
+        ; Thing2
+        (declare-datatype E1 (
+          (E1 (eid String))))
+        ; {id, thing2, thing2bis}
+        (declare-datatype R2 (
+          (R2 (R2_a0 String) (R2_a1 E1) (R2_a2 (Option E1)))))
+        ; Thing
+        (declare-datatype E3 (
+          (E3 (eid String))))
+        ; {name, thing1, thing2, x, xopt}
+        (declare-datatype R4 (
+          (R4 (R4_a0 String) (R4_a1 (Option E3)) (R4_a2 E1) (R4_a3 R2) (R4_a4 (Option R2)))))
+        ; User
+        (declare-datatype E5 (
+          (E5 (eid String))))
+        ; "principal"
+        (declare-const t0 E5)
+        ; attrs[User]
+        (declare-fun f0 (E5) R4)
+        (define-fun t1 () R4 (f0 t0))
+        (define-fun t2 () R2 (R4_a3 t1))
+        (define-fun t3 () E1 (R2_a1 t2))
+        ; attrs[Thing2]
+        (declare-fun f1 (E1) R0)
+        (define-fun t4 () R0 (f1 t3))
+        (define-fun t5 () (Option (_ BitVec 64)) (R0_a1 t4))
+        (define-fun t6 () (Option (_ BitVec 64)) (as none (Option (_ BitVec 64))))
+        (define-fun t7 () Bool (= t5 t6))
+        (define-fun t8 () Bool (not t7))
+        (define-fun t9 () (Option Bool) (some t8))
+        "#);
+    }
+
+    // record base, optional then present
+    #[tokio::test]
+    async fn ext_has_attr_record_optional_then_present_smt() {
+        insta::assert_snapshot!(compile_and_encode("principal.x has thing2bis.id").await, @r#"
+        ; Thing2
+        (declare-datatype E0 (
+          (E0 (eid String))))
+        ; {id, thing2, thing2bis}
+        (declare-datatype R1 (
+          (R1 (R1_a0 String) (R1_a1 E0) (R1_a2 (Option E0)))))
+        ; Thing
+        (declare-datatype E2 (
+          (E2 (eid String))))
+        ; {name, thing1, thing2, x, xopt}
+        (declare-datatype R3 (
+          (R3 (R3_a0 String) (R3_a1 (Option E2)) (R3_a2 E0) (R3_a3 R1) (R3_a4 (Option R1)))))
+        ; User
+        (declare-datatype E4 (
+          (E4 (eid String))))
+        ; "principal"
+        (declare-const t0 E4)
+        ; attrs[User]
+        (declare-fun f0 (E4) R3)
+        (define-fun t1 () R3 (f0 t0))
+        (define-fun t2 () R1 (R3_a3 t1))
+        (define-fun t3 () (Option E0) (R1_a2 t2))
+        (define-fun t4 () (Option E0) (as none (Option E0)))
+        (define-fun t5 () Bool (= t3 t4))
+        (define-fun t6 () Bool (not t5))
+        (define-fun t7 () (Option Bool) (as none (Option Bool)))
+        (define-fun t8 () (Option Bool) (some true))
+        (define-fun t9 () (Option Bool) (ite t5 t7 t8))
+        (define-fun t10 () (Option Bool) (some false))
+        (define-fun t11 () (Option Bool) (ite t6 t9 t10))
+        "#);
+    }
+}
+
+/// Regression test guarding against exponential blowup when compiling
+/// `(if (a has b) then X else Y) has c` where `b`/`c` are long dotted
+/// attribute paths.
+///
+/// Each step of `compile_ext_has_attr`'s has-chain loop, and `compile_and`'s
+/// accumulation of `result`, embeds the previous step's `Term` twice (see
+/// `compiler.rs`). Without `Term` sharing (`Arc`) and the encoder's `terms`
+/// memoization cache, walking/encoding such a term is exponential in the
+/// path length, since a naive walk can't tell that both embedded copies are
+/// the same shared subterm. With sharing + memoization, both the compiled
+/// `Term` and its SMT encoding stay linear in path length.
+#[cfg(test)]
+mod deep_has_chain_regression {
+    use std::str::FromStr;
+
+    use cedar_policy::{RequestEnv, Schema};
+    use cedar_policy_core::ast::Expr;
+
+    use crate::symcc::compiler::compile;
+    use crate::symcc::env::SymEnv;
+
+    use super::Encoder;
+
+    /// Schema with a chain of `depth` nested optional record types
+    /// (`Deep0 { next?: Deep1 }`, ..., `Deep{depth-1} { next?: String }`),
+    /// giving `User.deep` an attribute path of length `depth`.
+    fn deep_chain_schema(depth: usize) -> Schema {
+        let mut src = String::new();
+        for i in 0..depth {
+            let next_ty = if i + 1 < depth {
+                format!("Deep{}", i + 1)
+            } else {
+                "String".to_string()
+            };
+            src += &format!("type Deep{i} = {{ next?: {next_ty} }};\n");
+        }
+        src += "entity User { deep: Deep0 };\n";
+        src += "action View appliesTo { principal: [User], resource: [User] };\n";
+        Schema::from_cedarschema_str(&src)
+            .unwrap_or_else(|e| panic!("{:?}", miette::Report::new(e)))
+            .0
+    }
+
+    fn sym_env(depth: usize) -> SymEnv {
+        SymEnv::new(
+            &deep_chain_schema(depth),
+            &RequestEnv::new(
+                "User".parse().unwrap(),
+                "Action::\"View\"".parse().unwrap(),
+                "User".parse().unwrap(),
+            ),
+        )
+        .expect("Malformed sym env.")
+    }
+
+    async fn compile_encde_at_depth(depth: usize) -> String {
+        let path = format!("deep{}", ".next".repeat(depth));
+        let expr_str =
+            format!("(if (principal has {path}) then principal else principal) has {path}");
+        let expr = Expr::from_str(&expr_str)
+            .unwrap_or_else(|e| panic!("Could not parse expression: {expr_str}: {e}"));
+
+        let symenv = sym_env(depth);
+        let term = compile(&expr, &symenv).expect("expression should compile");
+        let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
+        encoder.encode_term(&term).await.unwrap();
+        String::from_utf8(encoder.script).unwrap()
+    }
+
+    #[tokio::test]
+    async fn nested_has_chain_encodes_linearly_not_exponentially() {
+        let smt_at_2 = compile_encde_at_depth(2).await;
+        let smt_at_3 = compile_encde_at_depth(3).await;
+        let smt_at_4 = compile_encde_at_depth(4).await;
+        let n_2 = smt_at_2.matches("define-fun").count();
+        let n_3 = smt_at_3.matches("define-fun").count();
+        let n_4 = smt_at_4.matches("define-fun").count();
+        // Size increases linearly, not exponentially
+        assert_eq!(n_3 - n_2, n_4 - n_3);
+    }
 }

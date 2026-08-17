@@ -312,6 +312,48 @@ pub fn compile_has_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
     }
 }
 
+pub fn compile_ext_has_attr(
+    t: Term,
+    attrs: &nonempty::NonEmpty<Attr>,
+    es: &SymEntities,
+) -> Result<Term> {
+    let mut current = t;
+    let mut results = Vec::new();
+    let mut attrs_iter = std::iter::once(&attrs.head)
+        .chain(attrs.tail.iter())
+        .peekable();
+
+    while let Some(attr) = attrs_iter.next() {
+        let has = if_some(
+            current.clone(),
+            compile_has_attr(option_get(current.clone()), attr, es)?,
+        );
+        let statically_false = matches!(&has, Term::Some(t) if matches!(t.as_ref(), Term::Prim(TermPrim::Bool(false))));
+        results.push(has);
+
+        if statically_false || attrs_iter.peek().is_none() {
+            break;
+        }
+
+        match compile_get_attr(option_get(current.clone()), attr, es) {
+            Ok(get_res) => current = if_some(current, get_res),
+            Err(CompileError::NoSuchAttribute(_)) => break,
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Iterative implementation needs to construct conjunct in reverse to match recursive Lean
+    let mut results = results.into_iter().rev();
+    let Some(mut result) = results.next() else {
+        // `attrs` is nonempty, so this branch is unreachable through the public API.
+        return Ok(some_of(true.into()));
+    };
+    for has in results {
+        result = compile_and(has, Ok(result))?;
+    }
+    Ok(result)
+}
+
 pub fn compile_get_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
     let attrs = compile_attrs_of(t, es)?;
     match attrs.type_of() {
@@ -730,33 +772,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
             // We only call compile_get_attr for non-last attributes (it's needed to
             // build `current` for the next step; the last attr has no next step).
             let t = compile(expr, env)?;
-            let has_raw = compile_has_attr(option_get(t.clone()), &attrs.head, &env.entities)?;
-            let statically_false = matches!(has_raw, Term::Prim(TermPrim::Bool(false)));
-            let mut result = if_some(t.clone(), has_raw);
-            if statically_false || attrs.tail.is_empty() {
-                return Ok(result);
-            }
-            let mut current_term = if_some(
-                t.clone(),
-                compile_get_attr(option_get(t), &attrs.head, &env.entities)?,
-            );
-            let last_idx = attrs.tail.len() - 1;
-            for (i, attr) in attrs.tail.iter().enumerate() {
-                let has_raw =
-                    compile_has_attr(option_get(current_term.clone()), attr, &env.entities)?;
-                let statically_false = matches!(has_raw, Term::Prim(TermPrim::Bool(false)));
-                let has = if_some(current_term.clone(), has_raw);
-                result = compile_and(result, Ok(has))?;
-
-                if statically_false || i == last_idx {
-                    return Ok(result);
-                }
-
-                let get_res =
-                    compile_get_attr(option_get(current_term.clone()), attr, &env.entities)?;
-                current_term = if_some(current_term, get_res);
-            }
-            Ok(result)
+            compile_ext_has_attr(t, attrs, &env.entities)
         }
         ExprKind::GetAttr { expr, attr } => {
             let t = compile(expr, env)?;
@@ -1524,5 +1540,150 @@ mod datetime_tests {
                 "{expr}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::panic, reason = "unit tests")]
+pub(crate) mod ext_has_attr_tests {
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+
+    use std::str::FromStr;
+
+    use super::*;
+
+    #[track_caller]
+    fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T {
+        panic!("{:?}", miette::Report::new(e))
+    }
+
+    pub(crate) fn schema() -> Schema {
+        let schema = r#"
+            entity Thing;
+            entity Thing2 { id: String, opt?: Long };
+            type Thing3 = { thing2: Thing2, thing2bis?: Thing2, id: String};
+            entity User { x : Thing3, xopt?: Thing3, name: String, thing1?: Thing, thing2: Thing2};
+            action View appliesTo {
+                principal: [User],
+                resource: [Thing],
+                context: { rec: { x: Long, sub: { y: Long }}}
+            };
+        "#;
+        Schema::from_cedarschema_str(schema)
+            .unwrap_or_else(pretty_panic)
+            .0
+    }
+
+    pub(crate) fn request_env() -> RequestEnv {
+        RequestEnv::new(
+            "User".parse().unwrap(),
+            "Action::\"View\"".parse().unwrap(),
+            "Thing".parse().unwrap(),
+        )
+    }
+
+    pub(crate) fn sym_env() -> SymEnv {
+        SymEnv::new(&schema(), &request_env()).expect("Malformed sym env.")
+    }
+
+    pub(crate) fn parse_expr(str: &str) -> Expr {
+        Expr::from_str(str).unwrap_or_else(|e| panic!("Could not parse expression: {str}: {e}"))
+    }
+
+    #[track_caller]
+    fn assert_compiles_to(str: &str, expected: Term) {
+        assert_eq!(
+            compile(&parse_expr(str), &sym_env()).unwrap(),
+            expected,
+            "{str}"
+        );
+    }
+
+    #[test]
+    fn test_ext_has_attr() {
+        assert_compiles_to(
+            "context has rec.x",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+        );
+        assert_compiles_to(
+            "context has rec.sub.y",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+        );
+        assert_compiles_to(
+            "context has rec.nonexistent",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "context has nonexistent.x",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "context has rec.sub.nonexistent",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "context has rec.nonexistent.sub",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "principal has thing2.id",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+        );
+        // Terms that don't compile to true/false
+        // entity base, optional then present
+        assert_matches!(
+            compile(&parse_expr("principal has thing1.id"), &sym_env()).unwrap(),
+            Term::App { .. }
+        );
+        // entity base, present then optional
+        assert_matches!(
+            compile(&parse_expr("principal has thing2.opt"), &sym_env()).unwrap(),
+            Term::Some { .. }
+        );
+        // record base, present then opt
+        assert_matches!(
+            compile(&parse_expr("principal.x has thing2.opt"), &sym_env()).unwrap(),
+            Term::Some { .. }
+        );
+        // record base, opt then present
+        assert_matches!(
+            compile(&parse_expr("principal.x has thing2bis.id"), &sym_env()).unwrap(),
+            Term::App { .. }
+        );
+    }
+
+    #[test]
+    fn test_ext_has_attr_is_right_associated() {
+        let env = sym_env();
+        let expr = parse_expr("principal has xopt.thing2bis.opt");
+        let extended = compile(&expr, &env).unwrap();
+        let explicitly_right_associated = compile(
+            &parse_expr(
+                "principal has xopt && \
+                 (principal.xopt has thing2bis && principal.xopt.thing2bis has opt)",
+            ),
+            &env,
+        )
+        .unwrap();
+        let explicitly_left_associated = compile(
+            &parse_expr(
+                "(principal has xopt && principal.xopt has thing2bis) && \
+                 principal.xopt.thing2bis has opt",
+            ),
+            &env,
+        )
+        .unwrap();
+
+        assert_eq!(extended, explicitly_right_associated);
+        assert_ne!(extended, explicitly_left_associated);
+    }
+
+    #[test]
+    fn test_ext_has_attr_type_error_mid_chain() {
+        assert_matches!(
+            compile(&parse_expr("context has rec.x.z"), &sym_env()),
+            Err(CompileError::TypeError)
+        );
     }
 }
