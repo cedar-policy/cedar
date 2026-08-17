@@ -1048,70 +1048,17 @@ mod unit_tests {
     }
 }
 
-/// Regression test guarding against exponential blowup when compiling
-/// `(if (a has b) then X else Y) has c` where `b`/`c` are long dotted
-/// attribute paths.
-///
-/// Each step of `compile_ext_has_attr`'s has-chain loop, and `compile_and`'s
-/// accumulation of `result`, embeds the previous step's `Term` twice (see
-/// `compiler.rs`). Without `Term` sharing (`Arc`) and the encoder's `terms`
-/// memoization cache, walking/encoding such a term is exponential in the
-/// path length, since a naive walk can't tell that both embedded copies are
-/// the same shared subterm. With sharing + memoization, both the compiled
-/// `Term` and its SMT encoding stay linear in path length.
 #[cfg(test)]
-mod deep_has_chain_regression {
-    use std::str::FromStr;
-
-    use cedar_policy::{RequestEnv, Schema};
-    use cedar_policy_core::ast::Expr;
-
+mod deep_extended_has_chain_tests {
     use crate::symcc::compiler::compile;
-    use crate::symcc::env::SymEnv;
+    use crate::symcc::test_utils::{deep_chain_sym_env, deep_has_chain_expr};
 
     use super::Encoder;
 
-    /// Schema with a chain of `depth` nested optional record types
-    /// (`Deep0 { next?: Deep1 }`, ..., `Deep{depth-1} { next?: String }`),
-    /// giving `User.deep` an attribute path of length `depth`.
-    fn deep_chain_schema(depth: usize) -> Schema {
-        let mut src = String::new();
-        for i in 0..depth {
-            let next_ty = if i + 1 < depth {
-                format!("Deep{}", i + 1)
-            } else {
-                "String".to_string()
-            };
-            src += &format!("type Deep{i} = {{ next?: {next_ty} }};\n");
-        }
-        src += "entity User { deep: Deep0 };\n";
-        src += "action View appliesTo { principal: [User], resource: [User] };\n";
-        Schema::from_cedarschema_str(&src)
-            .unwrap_or_else(|e| panic!("{:?}", miette::Report::new(e)))
-            .0
-    }
-
-    fn sym_env(depth: usize) -> SymEnv {
-        SymEnv::new(
-            &deep_chain_schema(depth),
-            &RequestEnv::new(
-                "User".parse().unwrap(),
-                "Action::\"View\"".parse().unwrap(),
-                "User".parse().unwrap(),
-            ),
-        )
-        .expect("Malformed sym env.")
-    }
-
     async fn compile_encde_at_depth(depth: usize) -> String {
-        let path = format!("deep{}", ".next".repeat(depth));
-        let expr_str =
-            format!("(if (principal has {path}) then principal else principal) has {path}");
-        let expr = Expr::from_str(&expr_str)
-            .unwrap_or_else(|e| panic!("Could not parse expression: {expr_str}: {e}"));
-
-        let symenv = sym_env(depth);
-        let term = compile(&expr, &symenv).expect("expression should compile");
+        let symenv = deep_chain_sym_env(depth);
+        let term =
+            compile(&deep_has_chain_expr(depth), &symenv).expect("expression should compile");
         let mut encoder = Encoder::new(&symenv, Vec::<u8>::new()).unwrap();
         encoder.encode_term(&term).await.unwrap();
         String::from_utf8(encoder.script).unwrap()

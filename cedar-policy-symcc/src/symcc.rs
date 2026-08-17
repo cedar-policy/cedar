@@ -42,6 +42,8 @@ mod symbolizer;
 mod tags;
 pub mod term;
 pub mod term_type;
+#[cfg(test)]
+mod test_utils;
 pub mod type_abbrevs;
 pub mod verifier;
 

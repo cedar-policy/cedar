@@ -1128,7 +1128,7 @@ mod ext_has_attr_tests {
     };
 
     #[test]
-    fn ext_has_attr_is_right_associated_like_unoptimized_compiler() {
+    fn test_ext_has_attr_right_associated() {
         let env = sym_env();
         let expr = parse_expr("principal has xopt.thing2bis.opt");
         let optimized = compile(&expr, &env).unwrap().term;

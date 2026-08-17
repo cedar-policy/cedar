@@ -1551,6 +1551,11 @@ pub(crate) mod ext_has_attr_tests {
 
     use std::str::FromStr;
 
+    use crate::{
+        symcc::test_utils::{deep_chain_sym_env, deep_has_chain_expr},
+        term::TermPrim,
+    };
+
     use super::*;
 
     #[track_caller]
@@ -1684,6 +1689,47 @@ pub(crate) mod ext_has_attr_tests {
         assert_matches!(
             compile(&parse_expr("context has rec.x.z"), &sym_env()),
             Err(CompileError::TypeError)
+        );
+    }
+
+    #[test]
+    fn compiled_term_dag_stays_small() {
+        use std::collections::BTreeSet;
+
+        fn collect_distinct(t: &Term, set: &mut BTreeSet<Term>) {
+            if !set.insert(t.clone()) {
+                return;
+            }
+            match t {
+                Term::Some(t) => collect_distinct(t, set),
+                Term::Set { elts, .. } => elts.iter().for_each(|e| collect_distinct(e, set)),
+                Term::Record(r) => r.values().for_each(|e| collect_distinct(e, set)),
+                Term::App { args, .. } => args.iter().for_each(|a| collect_distinct(a, set)),
+                Term::Prim(_) | Term::None(_) | Term::Var(_) => {}
+            }
+        }
+
+        let distinct: Vec<usize> = (2..=5)
+            .map(|d| {
+                let compiled_chain = compile(&deep_has_chain_expr(d), &deep_chain_sym_env(d))
+                    .expect("expression should compile");
+                let mut set = BTreeSet::new();
+                collect_distinct(&compiled_chain, &mut set);
+                set.len()
+            })
+            .collect();
+
+        let diffs: Vec<i64> = distinct
+            .iter()
+            .zip(distinct.iter().skip(1))
+            .map(|(prev, next)| *next as i64 - *prev as i64)
+            .collect();
+        assert!(
+            diffs
+                .iter()
+                .zip(diffs.iter().skip(1))
+                .all(|(prev, next)| prev == next),
+            "distinct-node count should grow linearly, got distinct={distinct:?} diffs={diffs:?}"
         );
     }
 }

@@ -18,7 +18,7 @@
 //! can SymRequest/SymEntities be interpreted with
 //! an Interpretation.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
 use super::env::{SymEntities, SymEntityData, SymRequest};
@@ -72,136 +72,220 @@ impl Term {
     /// Recursively interprets a term, substituting variables with
     /// their interpretations.
     pub fn interpret(&self, interp: &Interpretation<'_>) -> Term {
+        let mut cache: HashMap<*const Term, Term> = HashMap::new();
+        self.interpret_memoized(interp, &mut cache)
+    }
+
+    /// Memoized worker for [`Term::interpret`].
+    ///
+    /// Keyed on the address of each subterm (not structural equality) so that
+    /// shared subterms in the `Term` DAG collapse to one cache entry without
+    /// paying the exponential cost of structural key comparison.
+    fn interpret_memoized(
+        &self,
+        interp: &Interpretation<'_>,
+        cache: &mut HashMap<*const Term, Term>,
+    ) -> Term {
+        let key: *const Term = self;
+        if let Some(cached) = cache.get(&key) {
+            return cached.clone();
+        }
+        let result = self.interpret_uncached(interp, cache);
+        cache.insert(key, result.clone());
+        result
+    }
+
+    /// Computes the interpretation of `self` without consulting the cache for
+    /// `self` itself, recursing through [`Self::interpret_memoized`] so that
+    /// shared subterms are only interpreted once.
+    fn interpret_uncached(
+        &self,
+        interp: &Interpretation<'_>,
+        cache: &mut HashMap<*const Term, Term>,
+    ) -> Term {
         match self {
             Term::Prim(..) | Term::None(..) => self.clone(),
             Term::Var(var) => interp.interpret_var(var),
-            Term::Some(t) => Term::Some(Arc::new(t.interpret(interp))),
+            Term::Some(t) => Term::Some(Arc::new(t.interpret_memoized(interp, cache))),
 
             Term::Set { elts, elts_ty } => Term::Set {
-                elts: Arc::new(elts.iter().map(|t| t.interpret(interp)).collect()),
+                elts: Arc::new(
+                    elts.iter()
+                        .map(|t| t.interpret_memoized(interp, cache))
+                        .collect(),
+                ),
                 elts_ty: elts_ty.clone(),
             },
 
             Term::Record(rec) => Term::Record(Arc::new(
                 rec.iter()
-                    .map(|(k, v)| (k.clone(), v.interpret(interp)))
+                    .map(|(k, v)| (k.clone(), v.interpret_memoized(interp, cache)))
                     .collect(),
             )),
 
             Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
-                (Op::Not, [arg]) => factory::not(arg.interpret(interp)),
+                (Op::Not, [arg]) => factory::not(arg.interpret_memoized(interp, cache)),
                 (Op::And, [arg1, arg2]) => {
-                    factory::and(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::and(a1, a2)
                 }
 
                 (Op::Or, [arg1, arg2]) => {
-                    factory::or(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::or(a1, a2)
                 }
 
                 (Op::Eq, [arg1, arg2]) => {
-                    factory::eq(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::eq(a1, a2)
                 }
 
-                (Op::Ite, [arg1, arg2, arg3]) => factory::ite(
-                    arg1.interpret(interp),
-                    arg2.interpret(interp),
-                    arg3.interpret(interp),
-                ),
+                (Op::Ite, [arg1, arg2, arg3]) => {
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    let a3 = arg3.interpret_memoized(interp, cache);
+                    factory::ite(a1, a2, a3)
+                }
 
                 (Op::Uuf(uuf), [arg]) => factory::app(
                     UnaryFunction::Udf(Arc::new(interp.interpret_fun(uuf))),
-                    arg.interpret(interp),
+                    arg.interpret_memoized(interp, cache),
                 ),
 
-                (Op::Bvneg, [arg]) => factory::bvneg(arg.interpret(interp)),
+                (Op::Bvneg, [arg]) => factory::bvneg(arg.interpret_memoized(interp, cache)),
 
                 (Op::Bvadd, [arg1, arg2]) => {
-                    factory::bvadd(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvadd(a1, a2)
                 }
 
                 (Op::Bvsub, [arg1, arg2]) => {
-                    factory::bvsub(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsub(a1, a2)
                 }
 
                 (Op::Bvmul, [arg1, arg2]) => {
-                    factory::bvmul(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvmul(a1, a2)
                 }
 
                 (Op::Bvsdiv, [arg1, arg2]) => {
-                    factory::bvsdiv(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsdiv(a1, a2)
                 }
 
                 (Op::Bvsrem, [arg1, arg2]) => {
-                    factory::bvsrem(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsrem(a1, a2)
                 }
 
                 (Op::Bvudiv, [arg1, arg2]) => {
-                    factory::bvudiv(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvudiv(a1, a2)
                 }
 
                 (Op::Bvsmod, [arg1, arg2]) => {
-                    factory::bvsmod(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsmod(a1, a2)
                 }
 
                 (Op::Bvurem, [arg1, arg2]) => {
-                    factory::bvurem(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvurem(a1, a2)
                 }
 
                 (Op::Bvshl, [arg1, arg2]) => {
-                    factory::bvshl(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvshl(a1, a2)
                 }
 
                 (Op::Bvlshr, [arg1, arg2]) => {
-                    factory::bvlshr(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvlshr(a1, a2)
                 }
 
                 (Op::Bvslt, [arg1, arg2]) => {
-                    factory::bvslt(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvslt(a1, a2)
                 }
 
                 (Op::Bvsle, [arg1, arg2]) => {
-                    factory::bvsle(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsle(a1, a2)
                 }
 
                 (Op::Bvult, [arg1, arg2]) => {
-                    factory::bvult(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvult(a1, a2)
                 }
 
                 (Op::Bvule, [arg1, arg2]) => {
-                    factory::bvule(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvule(a1, a2)
                 }
 
-                (Op::Bvnego, [arg]) => factory::bvnego(arg.interpret(interp)),
+                (Op::Bvnego, [arg]) => factory::bvnego(arg.interpret_memoized(interp, cache)),
 
                 (Op::Bvsaddo, [arg1, arg2]) => {
-                    factory::bvsaddo(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsaddo(a1, a2)
                 }
 
                 (Op::Bvsmulo, [arg1, arg2]) => {
-                    factory::bvsmulo(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvsmulo(a1, a2)
                 }
 
                 (Op::Bvssubo, [arg1, arg2]) => {
-                    factory::bvssubo(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::bvssubo(a1, a2)
                 }
 
-                (Op::ZeroExtend(n), [arg]) => factory::zero_extend(*n, arg.interpret(interp)),
+                (Op::ZeroExtend(n), [arg]) => {
+                    factory::zero_extend(*n, arg.interpret_memoized(interp, cache))
+                }
 
                 (Op::SetMember, [arg1, arg2]) => {
-                    factory::set_member(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::set_member(a1, a2)
                 }
 
                 (Op::SetSubset, [arg1, arg2]) => {
-                    factory::set_subset(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::set_subset(a1, a2)
                 }
 
                 (Op::SetInter, [arg1, arg2]) => {
-                    factory::set_inter(arg1.interpret(interp), arg2.interpret(interp))
+                    let a1 = arg1.interpret_memoized(interp, cache);
+                    let a2 = arg2.interpret_memoized(interp, cache);
+                    factory::set_inter(a1, a2)
                 }
 
                 // Factory.option.get' in the Lean version
                 (Op::OptionGet, [arg]) => {
-                    let arg = arg.interpret(interp);
+                    let arg = arg.interpret_memoized(interp, cache);
 
                     if let Term::None(ty) = arg {
                         ty.default_literal(interp.env)
@@ -211,29 +295,28 @@ impl Term {
                 }
 
                 (Op::RecordGet(smol_str), [arg]) => {
-                    factory::record_get(arg.interpret(interp), smol_str)
+                    factory::record_get(arg.interpret_memoized(interp, cache), smol_str)
                 }
 
                 (Op::StringLike(ord_pattern), [arg]) => {
-                    factory::string_like(arg.interpret(interp), ord_pattern.clone())
+                    factory::string_like(arg.interpret_memoized(interp, cache), ord_pattern.clone())
                 }
 
-                (Op::Ext(ext_op), [arg]) => match ext_op {
-                    ExtOp::DecimalVal => factory::ext_decimal_val(arg.interpret(interp)),
-                    ExtOp::IpaddrIsV4 => factory::ext_ipaddr_is_v4(arg.interpret(interp)),
-                    ExtOp::IpaddrAddrV4 => factory::ext_ipaddr_addr_v4(arg.interpret(interp)),
-                    ExtOp::IpaddrPrefixV4 => factory::ext_ipaddr_prefix_v4(arg.interpret(interp)),
-                    ExtOp::IpaddrAddrV6 => factory::ext_ipaddr_addr_v6(arg.interpret(interp)),
-                    ExtOp::IpaddrPrefixV6 => factory::ext_ipaddr_prefix_v6(arg.interpret(interp)),
-                    ExtOp::DatetimeVal => factory::ext_datetime_val(arg.interpret(interp)),
-                    ExtOp::DatetimeOfBitVec => {
-                        factory::ext_datetime_of_bitvec(arg.interpret(interp))
+                (Op::Ext(ext_op), [arg]) => {
+                    let arg = arg.interpret_memoized(interp, cache);
+                    match ext_op {
+                        ExtOp::DecimalVal => factory::ext_decimal_val(arg),
+                        ExtOp::IpaddrIsV4 => factory::ext_ipaddr_is_v4(arg),
+                        ExtOp::IpaddrAddrV4 => factory::ext_ipaddr_addr_v4(arg),
+                        ExtOp::IpaddrPrefixV4 => factory::ext_ipaddr_prefix_v4(arg),
+                        ExtOp::IpaddrAddrV6 => factory::ext_ipaddr_addr_v6(arg),
+                        ExtOp::IpaddrPrefixV6 => factory::ext_ipaddr_prefix_v6(arg),
+                        ExtOp::DatetimeVal => factory::ext_datetime_val(arg),
+                        ExtOp::DatetimeOfBitVec => factory::ext_datetime_of_bitvec(arg),
+                        ExtOp::DurationVal => factory::ext_duration_val(arg),
+                        ExtOp::DurationOfBitVec => factory::ext_duration_of_bitvec(arg),
                     }
-                    ExtOp::DurationVal => factory::ext_duration_val(arg.interpret(interp)),
-                    ExtOp::DurationOfBitVec => {
-                        factory::ext_duration_of_bitvec(arg.interpret(interp))
-                    }
-                },
+                }
 
                 // Otherwise leave the application as it but
                 // interpret the arguments
@@ -244,7 +327,11 @@ impl Term {
                     );
                     Term::App {
                         op: op.clone(),
-                        args: Arc::new(args.iter().map(|t| t.interpret(interp)).collect()),
+                        args: Arc::new(
+                            args.iter()
+                                .map(|t| t.interpret_memoized(interp, cache))
+                                .collect(),
+                        ),
                         ret_ty: ret_ty.clone(),
                     }
                 }
@@ -332,7 +419,13 @@ mod interpret_test {
     use cedar_policy_core::ast::Expr;
 
     use crate::{
-        bitvec::BitVec, symcc::compiler::compile, term::TermPrim, term_type::TermType,
+        bitvec::BitVec,
+        symcc::{
+            compiler::compile,
+            test_utils::{deep_chain_sym_env, deep_has_chain_expr},
+        },
+        term::TermPrim,
+        term_type::TermType,
         type_abbrevs::Width,
     };
 
@@ -568,6 +661,25 @@ mod interpret_test {
                 Width::new(64).unwrap(),
                 1
             )))
+        );
+    }
+
+    #[test]
+    fn interpret_deep_chain_is_tractable() {
+        let depth = 20;
+        let term = compile(&deep_has_chain_expr(depth), &deep_chain_sym_env(depth))
+            .expect("expression should compile");
+        let symenv = deep_chain_sym_env(depth);
+        let interp = Interpretation::default(&symenv);
+
+        // we're just testing this returns here; values don't matter
+        let result = term.interpret(&interp);
+        assert!(
+            matches!(
+                &result,
+                Term::Some(inner) if matches!(inner.as_ref(), Term::Prim(TermPrim::Bool(_)))
+            ),
+            "expected an interpreted boolean, got {result}"
         );
     }
 }
