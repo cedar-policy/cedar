@@ -1881,7 +1881,7 @@ mod tests {
             );
             assert_eq!(
                 complex.to_string(),
-                "if ((principal.age) > 18) then (principal.name) else \"unknown\""
+                "if principal.age > 18 then principal.name else \"unknown\""
             );
 
             // isEmpty

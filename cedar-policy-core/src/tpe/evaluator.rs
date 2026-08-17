@@ -776,7 +776,7 @@ mod tests {
         // "<non-error-free> && false" cannot be fully simplified
         assert_snapshot!(
             interpret_typed_str_to_str("principal.num + 1 == 100 && 41 == 42"),
-            @r#"(((User::"foo".num) + 1) == 100) && false"#
+            @r#"((User::"foo".num + 1) == 100) && false"#
         );
         // "<residual> && <nonbool>" => "<residual> && <error>"
         assert_snapshot!(
@@ -784,17 +784,17 @@ mod tests {
                 builder().get_attr(builder().var(Var::Principal), "foo".into()),
                 builder().val(42),
             )),
-            @r#"(User::"foo".foo) && (error())"#
+            @r#"User::"foo".foo && error()"#
         );
         // The "<residual> && <residual>" case cannot be simplified
         assert_snapshot!(
             interpret_typed_str_to_str("principal.foo && principal.num == 100"),
-            @r#"(User::"foo".foo) && ((User::"foo".num) == 100)"#
+            @r#"User::"foo".foo && (User::"foo".num == 100)"#
         );
         // "<residual> && <error>" cannot be simplified
         assert_snapshot!(
             interpret_typed_str_to_str("principal.foo && (9223372036854775807 * 2 == 0)"),
-            @r#"(User::"foo".foo) && (error())"#
+            @r#"User::"foo".foo && error()"#
         );
         // "<error> && <any>" => "<error>"
         assert_snapshot!(
@@ -848,7 +848,7 @@ mod tests {
         // "<non-error-free> || true" cannot be fully simplified
         assert_snapshot!(
             interpret_typed_str_to_str("principal.num + 1 == 100 || 42 == 42"),
-            @r#"(((User::"foo".num) + 1) == 100) || true"#
+            @r#"((User::"foo".num + 1) == 100) || true"#
         );
         // "<residual> || <nonbool>" => "<residual> || <error>"
         assert_snapshot!(
@@ -856,17 +856,17 @@ mod tests {
                 builder().get_attr(builder().var(Var::Principal), "foo".into()),
                 builder().val(42),
             )),
-            @r#"(User::"foo".foo) || (error())"#
+            @r#"User::"foo".foo || error()"#
         );
         // The "<residual> || <residual>" case cannot be simplified
         assert_snapshot!(
             interpret_typed_str_to_str("principal.foo || principal.num == 100"),
-            @r#"(User::"foo".foo) || ((User::"foo".num) == 100)"#
+            @r#"User::"foo".foo || (User::"foo".num == 100)"#
         );
         // "<residual> || <error>" cannot be simplified
         assert_snapshot!(
             interpret_typed_str_to_str("principal.foo || (9223372036854775807 * 2 == 0)"),
-            @r#"(User::"foo".foo) || (error())"#
+            @r#"User::"foo".foo || error()"#
         );
         // "<error> || <any>" => "<error>"
         assert_snapshot!(
@@ -893,7 +893,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"if (resource == User::"alice") then Document::"A" else Document::"B""#),
-            @r#"if (resource == User::"alice") then Document::"B" else Document::"B""#
+            @r#"if resource == User::"alice" then Document::"B" else Document::"B""#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(&r#"if (9223372036854775807 * 2) == 0 then resource else Document::"A""#),
@@ -955,11 +955,11 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str("principal.baz is E"),
-            @"(principal.baz) is E"
+            @"principal.baz is E"
         );
         assert_snapshot!(
             interpret_typed_str_to_str("principal.baz is Document"),
-            @"(principal.baz) is Document"
+            @"principal.baz is Document"
         );
         assert_snapshot!(
             interpret_typed_str_to_str("User::\"alice\" is User"),
@@ -1005,11 +1005,11 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal.s like "*""#),
-            @r#"(principal.s) like "*""#
+            @r#"principal.s like "*""#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal.s like "b*""#),
-            @r#"(principal.s) like "b*""#
+            @r#"principal.s like "b*""#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then "a" else "b") like "b*""#),
@@ -1058,11 +1058,11 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"!(principal.b)"#),
-            @"!(principal.b)"
+            @"!principal.b"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"!!(principal.b)"#),
-            @"!(!(principal.b))"
+            @"!(!principal.b)"
         );
     }
 
@@ -1104,7 +1104,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.s.isEmpty()"#),
-            @"(resource.s).isEmpty()"
+            @"resource.s.isEmpty()"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then [1] else [2]).isEmpty()"#),
@@ -1217,11 +1217,11 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal.e.e.e.s"#),
-            @r#"((E::"x".e).e).s"#
+            @r#"E::"x".e.e.s"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.e.s"#),
-            @"(resource.e).s"
+            @"resource.e.s"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"loop".e"#),
@@ -1349,15 +1349,15 @@ mod tests {
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal has s && principal.s == context.x"#),
-            @"(principal has s) && ((principal.s) == (context.x))"
+            @"(principal has s) && (principal.s == context.x)"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"0" has s && E::"0".s == context.x"#),
-            @r#""foo" == (context.x)"#
+            @r#""foo" == context.x"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(resource.b && E::"0" has s) && E::"0".s == context.x"#),
-            @r#"(resource.b) && ("foo" == (context.x))"#
+            @r#"resource.b && ("foo" == context.x)"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"1" has s && E::"1".s == context.x"#),
@@ -1366,15 +1366,15 @@ mod tests {
         // Residual `resource.b` means we can't eliminate `error` expression even though it's unreachable
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(resource.b && E::"1" has s) && E::"1".s == context.x"#),
-            @"((resource.b) && false) && (error())"
+            @"resource.b && false && error()"
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"2" has s && E::"2".s == context.x"#),
-            @r#"(E::"2" has s) && ((E::"2".s) == (context.x))"#
+            @r#"(E::"2" has s) && (E::"2".s == context.x)"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"3" has s && E::"3".s == context.x"#),
-            @r#"(E::"3" has s) && ((E::"3".s) == (context.x))"#
+            @r#"(E::"3" has s) && (E::"3".s == context.x)"#
         );
     }
 
@@ -1513,7 +1513,7 @@ mod tests {
         // cases to preserve semantics, should often be possible.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"{e: if principal == User::"alice" then 9223372036854775807*2 else 0, l: 0}.l"#),
-            @r#"{e: if (principal == User::"alice") then (error()) else 0, l: 0}.l"#
+            @r#"{e: if principal == User::"alice" then error() else 0, l: 0}.l"#
         );
         // But it should be possible in other cases
         assert_snapshot!(
@@ -1599,7 +1599,7 @@ mod tests {
         // Mixing a known and an unknown attribute leaves a partial residual.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.metadata.m0.data + resource.metadata.m1.data"#),
-            @r#"42 + (M1::"m1".data)"#
+            @r#"42 + M1::"m1".data"#
         );
     }
 
@@ -1793,7 +1793,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"resource_child" in context.e"#),
-            @r#"E::"resource_child" in (context.e)"#
+            @r#"E::"resource_child" in context.e"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"resource_child" in [context.e]"#),
@@ -1801,7 +1801,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"context.e in E::"resource""#),
-            @r#"(context.e) in E::"resource""#
+            @r#"context.e in E::"resource""#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"undefined" in resource"#),
@@ -1988,15 +1988,15 @@ mod tests {
         // Unknown cases
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal.hasTag("s") && principal.getTag("s") == "bar" "#),
-            @r#"(principal.hasTag("s")) && ((principal.getTag("s")) == "bar")"#
+            @r#"principal.hasTag("s") && (principal.getTag("s") == "bar")"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"none_tags".hasTag("s") && User::"none_tags".getTag("s") == "bar" "#),
-            @r#"(User::"none_tags".hasTag("s")) && ((User::"none_tags".getTag("s")) == "bar")"#
+            @r#"User::"none_tags".hasTag("s") && (User::"none_tags".getTag("s") == "bar")"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"undefined".hasTag("s") && User::"undefined".getTag("s") == "bar" "#),
-            @r#"(User::"undefined".hasTag("s")) && ((User::"undefined".getTag("s")) == "bar")"#
+            @r#"User::"undefined".hasTag("s") && (User::"undefined".getTag("s") == "bar")"#
         );
 
         // `E` entities can't have tags, but `hasTag` is still well-typed. These could all reduce to
@@ -2021,7 +2021,7 @@ mod tests {
         // Residual on the left prevents eliminating `error()` expression even through it's unreachable
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"none_tags".hasTag("tag") && User::"none_tags".getTag("tag") == "foo" && User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
-            @r#"(((User::"none_tags".hasTag("tag")) && ((User::"none_tags".getTag("tag")) == "foo")) && false) && (error())"#
+            @r#"User::"none_tags".hasTag("tag") && (User::"none_tags".getTag("tag") == "foo") && false && error()"#
         );
     }
 
@@ -2037,11 +2037,11 @@ mod tests {
 
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal.hasTag(context.tag) && principal.getTag(context.tag) == "bar" "#),
-            @r#"(principal.hasTag(context.tag)) && ((principal.getTag(context.tag)) == "bar")"#
+            @r#"principal.hasTag(context.tag) && (principal.getTag(context.tag) == "bar")"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"some_tags".hasTag(context.tag) && User::"some_tags".getTag(context.tag) == "bar" "#),
-            @r#"(User::"some_tags".hasTag(context.tag)) && ((User::"some_tags".getTag(context.tag)) == "bar")"#
+            @r#"User::"some_tags".hasTag(context.tag) && (User::"some_tags".getTag(context.tag) == "bar")"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"empty_tags".hasTag(context.tag) && E::"empty_tags".getTag(context.tag) == "bar" "#),
@@ -2086,7 +2086,7 @@ mod tests {
 
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"rec".hasTag("k") && User::"other".hasTag("k") && User::"rec".getTag("k") == User::"other".getTag("k")"#),
-            @r#"(User::"other".hasTag("k")) && ({inner: {n: 1}, s: "bar"} == (User::"other".getTag("k")))"#
+            @r#"User::"other".hasTag("k") && ({inner: {n: 1}, s: "bar"} == User::"other".getTag("k"))"#
         );
     }
 
@@ -2137,11 +2137,11 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"ent".hasTag("unk") && User::"ent".getTag("unk").data == 42"#),
-            @r#"(E::"unk".data) == 42"#
+            @r#"E::"unk".data == 42"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal.hasTag("k") && principal.getTag("k").data == 42"#),
-            @r#"(principal.hasTag("k")) && (((principal.getTag("k")).data) == 42)"#
+            @r#"principal.hasTag("k") && (principal.getTag("k").data == 42)"#
         );
     }
 
@@ -2190,7 +2190,7 @@ mod tests {
         // originated from.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"datetime("6640-02-11")"#),
-            @r#"(datetime("1970-01-01")).offset(duration("147374467200000ms"))"#
+            @r#"datetime("1970-01-01").offset(duration("147374467200000ms"))"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"decimal("0.0")"#),
@@ -2247,7 +2247,7 @@ mod tests {
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.dt"#),
-            @r#"(datetime("1970-01-01")).offset(duration("1790812800000ms"))"#
+            @r#"datetime("1970-01-01").offset(duration("1790812800000ms"))"#
         );
     }
 
@@ -2290,7 +2290,7 @@ mod tests {
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.rec"#),
-            @r#"{dt: (datetime("1970-01-01")).offset(duration("1790812800000ms"))}"#
+            @r#"{dt: datetime("1970-01-01").offset(duration("1790812800000ms"))}"#
         );
     }
 
@@ -2333,7 +2333,7 @@ mod tests {
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.s"#),
-            @r#"[(datetime("1970-01-01")).offset(duration("86400000ms")), (datetime("1970-01-01")).offset(duration("1790812800000ms"))]"#
+            @r#"[datetime("1970-01-01").offset(duration("86400000ms")), datetime("1970-01-01").offset(duration("1790812800000ms"))]"#
         );
     }
 
@@ -2378,7 +2378,7 @@ mod tests {
         let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
         assert_snapshot!(
             interpret_typed_str_to_str(r#"resource.rec"#),
-            @r#"{a: 1, dt: (datetime("1970-01-01")).offset(duration("1790812800000ms")), z: 2}"#
+            @r#"{a: 1, dt: datetime("1970-01-01").offset(duration("1790812800000ms")), z: 2}"#
         );
     }
 }
