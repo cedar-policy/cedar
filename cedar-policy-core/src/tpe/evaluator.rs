@@ -2001,29 +2001,24 @@ mod tests {
     fn test_binary_app_in_action_hierarchy() {
         let schema = parse_schema(
             r#"
-            namespace Groups {
-                action all;
-                action unrelated;
-            }
+            action unrelated;
+            namespace Groups { action all; }
             namespace App {
-                entity User;
-                entity Doc;
+                entity E;
                 action view in [Groups::Action::"all"] appliesTo {
-                    principal: User,
-                    resource: Doc,
-                    context: {},
+                    principal: E,
+                    resource: E,
                 };
                 action edit appliesTo {
-                    principal: User,
-                    resource: Doc,
-                    context: {},
+                    principal: E,
+                    resource: E,
                 };
             }"#,
         );
         let req = PartialRequest::new(
-            parse_partial_euid("App::User"),
+            parse_partial_euid("App::E"),
             r#"App::Action::"view""#.parse().unwrap(),
-            parse_partial_euid("App::Doc"),
+            parse_partial_euid("App::E"),
             None,
             &schema,
         )
@@ -2038,7 +2033,8 @@ mod tests {
 
         // We could reduce to a value in these because the schema includes action ancestors, but
         // calling a constructor other then `PartialEntities::new` will add them and just give us
-        // the concrete evaluation path, so there's no reason to implement that case.
+        // the concrete evaluation path, so there's no reason to implement that case. Here we show
+        // that it's not decidable at the type level because `App::Action` can be in an `Groups::Action`.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"App::Action::"view" in Groups::Action::"all""#),
             @r#"App::Action::"view" in Groups::Action::"all""#
@@ -2047,12 +2043,21 @@ mod tests {
             interpret_typed_str_to_str(r#"App::Action::"edit" in Groups::Action::"all""#),
             @r#"App::Action::"edit" in Groups::Action::"all""#
         );
-        // Reflexive case is reduced to a value since that never needs ancestors.
+        // This is decidable at the type level because `App::Action` is never in `Action`
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"App::Action::"edit" in Action::"unrelated""#),
+            @"false"
+        );
+        // Reflexive case is reduced to a value since it never needs ancestors
         assert_snapshot!(
             interpret_typed_str_to_str(r#"action in action"#),
             @"true"
         );
-        // Comparisons with non-actions also reduce since they're decided using only entity types.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"action in [App::Action::"edit", action]"#),
+            @"true"
+        );
+        // Comparisons with non-actions also reduce
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal in action"#),
             @"false"
