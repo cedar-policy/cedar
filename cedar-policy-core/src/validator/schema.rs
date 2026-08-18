@@ -2446,8 +2446,7 @@ pub(crate) mod test {
         assert_matches!(schema.try_validate(), Ok(_));
     }
 
-    /// Regression test for the `protobuf-decode-bytes-schema` fuzz failure
-    /// (nightly 2026-08-09): a schema like `namespace gz { entity sX tags Action; }` has an
+    /// A schema like `namespace gz { entity sX tags Action; }` has an
     /// uninhabited `Action` tag type with no declared action, so it must be rejected (see
     /// `check_references_wf`).
     #[test]
