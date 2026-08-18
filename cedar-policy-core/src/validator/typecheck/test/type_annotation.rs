@@ -266,7 +266,7 @@ fn non_idempotent() {
 
     assert_matches!(typechecker.typecheck_by_single_request_env(&template, &req_env), PolicyCheck::Success(transformed) => {
         // after typechecking, the policy is transformed into this:
-        assert_eq!(transformed.to_string(), r#"true && ((action in [Action::"action"]) && ((resource is a) && (((true && (if (if (if true then true else true) then (if true then true else true) else (if true then true else true)) then (a::"".hasTag(if true then "" else "")) else (a::"".hasTag(if true then "" else "")))) && (if (a::"".hasTag(if true then "" else "")) then (if (if true then true else true) then (if true then true else true) else (if true then true else true)) else (principal in a::""))) && (a::"".hasTag("")))))"#);
+        assert_eq!(transformed.to_string(), r#"true && ((action in [Action::"action"]) && ((resource is a) && (true && (if if if true then true else true then if true then true else true else if true then true else true then a::"".hasTag(if true then "" else "") else a::"".hasTag(if true then "" else "")) && (if a::"".hasTag(if true then "" else "") then if if true then true else true then if true then true else true else if true then true else true else principal in a::"") && a::"".hasTag(""))))"#);
         // in particular, note that it still contains the `principal in a::""` term
         assert!(transformed.to_string().contains(r#"principal in a::"""#));
 
@@ -279,7 +279,7 @@ fn non_idempotent() {
         );
         assert_matches!(typechecker.typecheck_by_single_request_env(&transformed.template(), &req_env), PolicyCheck::Success(retransformed) => {
             // after re-typechecking, the policy is transformed into this:
-            assert_eq!(retransformed.to_string(), r#"true && (true && (true && (true && ((action in [Action::"action"]) && ((resource is a) && (((true && (if (if (if true then true else true) then (if true then true else true) else (if true then true else true)) then (a::"".hasTag(if true then "" else "")) else (a::"".hasTag(if true then "" else "")))) && (if (a::"".hasTag(if true then "" else "")) then (if (if true then true else true) then (if true then true else true) else (if true then true else true)) else (if (if true then true else true) then (if true then true else true) else (if true then true else true)))) && (a::"".hasTag(""))))))))"#);
+            assert_eq!(retransformed.to_string(), r#"true && (true && (true && (true && ((action in [Action::"action"]) && ((resource is a) && (true && (if if if true then true else true then if true then true else true else if true then true else true then a::"".hasTag(if true then "" else "") else a::"".hasTag(if true then "" else "")) && (if a::"".hasTag(if true then "" else "") then if if true then true else true then if true then true else true else if true then true else true else if if true then true else true then if true then true else true else if true then true else true) && a::"".hasTag("")))))))"#);
             // in particular, note that it no longer contains the `principal in a::""` term
             assert!(!retransformed.to_string().contains(r#"principal in a::"""#));
         });

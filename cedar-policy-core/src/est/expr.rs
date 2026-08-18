@@ -1698,27 +1698,52 @@ impl BoundedDisplay for ExprNoExt {
                 maybe_with_parens(f, right, n)
             }
             ExprNoExt::And { left, right } => {
-                maybe_with_parens(f, left, n)?;
+                // Left-associative, so we can omit parens on left operand if it's another `&&`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::And { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
                 write!(f, " && ")?;
                 maybe_with_parens(f, right, n)
             }
             ExprNoExt::Or { left, right } => {
-                maybe_with_parens(f, left, n)?;
+                // Left-associative, so we can omit parens on left operand if it's another `||`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Or { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
                 write!(f, " || ")?;
                 maybe_with_parens(f, right, n)
             }
             ExprNoExt::Add { left, right } => {
-                maybe_with_parens(f, left, n)?;
+                // Left-associative, so we can omit parens on left operand if it's another `+`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Add { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
                 write!(f, " + ")?;
                 maybe_with_parens(f, right, n)
             }
             ExprNoExt::Sub { left, right } => {
-                maybe_with_parens(f, left, n)?;
+                // Left-associative, so we can omit parens on left operand if it's another `-`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Sub { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
                 write!(f, " - ")?;
                 maybe_with_parens(f, right, n)
             }
             ExprNoExt::Mul { left, right } => {
-                maybe_with_parens(f, left, n)?;
+                // Left-associative, so we can omit parens on left operand if it's another `*`
+                if matches!(left.as_ref(), Expr::ExprNoExt(ExprNoExt::Mul { .. })) {
+                    BoundedDisplay::fmt(left.as_ref(), f, n)
+                } else {
+                    maybe_with_parens(f, left, n)
+                }?;
                 write!(f, " * ")?;
                 maybe_with_parens(f, right, n)
             }
@@ -1810,12 +1835,13 @@ impl BoundedDisplay for ExprNoExt {
                 then_expr,
                 else_expr,
             } => {
+                // All three operands are `Expr` in the grammar, so they never need parens
                 write!(f, "if ")?;
-                maybe_with_parens(f, cond_expr, n)?;
+                BoundedDisplay::fmt(cond_expr.as_ref(), f, n)?;
                 write!(f, " then ")?;
-                maybe_with_parens(f, then_expr, n)?;
+                BoundedDisplay::fmt(then_expr.as_ref(), f, n)?;
                 write!(f, " else ")?;
-                maybe_with_parens(f, else_expr, n)
+                BoundedDisplay::fmt(else_expr.as_ref(), f, n)
             }
             ExprNoExt::Set(v) => {
                 match n {
@@ -1933,7 +1959,17 @@ fn maybe_with_parens(
         Expr::ExprNoExt(ExprNoExt::Record(_)) |
         Expr::ExprNoExt(ExprNoExt::Value(_)) |
         Expr::ExprNoExt(ExprNoExt::Var(_)) |
-        Expr::ExprNoExt(ExprNoExt::Slot(_)) => BoundedDisplay::fmt(expr, f, n),
+        Expr::ExprNoExt(ExprNoExt::Slot(_)) |
+        // Everything below prints at the grammar's `Member := Primary MemAccess*`
+        // which has the tightest associativity.
+        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
+        Expr::ExprNoExt(ExprNoExt::Contains { .. }) |
+        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) |
+        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
+        Expr::ExprNoExt(ExprNoExt::IsEmpty { .. }) |
+        Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |
+        Expr::ExprNoExt(ExprNoExt::HasTag { .. }) |
+        Expr::ExtFuncCall { .. } => BoundedDisplay::fmt(expr, f, n),
 
         // we want parens here because things like parse((!x).y)
         // would be printed into !x.y which has a different meaning
@@ -1953,18 +1989,10 @@ fn maybe_with_parens(
         Expr::ExprNoExt(ExprNoExt::Add { .. }) |
         Expr::ExprNoExt(ExprNoExt::Sub { .. }) |
         Expr::ExprNoExt(ExprNoExt::Mul { .. }) |
-        Expr::ExprNoExt(ExprNoExt::Contains { .. }) |
-        Expr::ExprNoExt(ExprNoExt::ContainsAll { .. }) |
-        Expr::ExprNoExt(ExprNoExt::ContainsAny { .. }) |
-        Expr::ExprNoExt(ExprNoExt::IsEmpty { .. }) |
-        Expr::ExprNoExt(ExprNoExt::GetAttr { .. }) |
         Expr::ExprNoExt(ExprNoExt::HasAttr { .. }) |
-        Expr::ExprNoExt(ExprNoExt::GetTag { .. }) |
-        Expr::ExprNoExt(ExprNoExt::HasTag { .. }) |
         Expr::ExprNoExt(ExprNoExt::Like { .. }) |
         Expr::ExprNoExt(ExprNoExt::Is { .. }) |
-        Expr::ExprNoExt(ExprNoExt::If { .. }) |
-        Expr::ExtFuncCall { .. } => {
+        Expr::ExprNoExt(ExprNoExt::If { .. }) => {
             write!(f, "(")?;
             BoundedDisplay::fmt(expr, f, n)?;
             write!(f, ")")?;
@@ -2115,7 +2143,7 @@ mod test {
             .into_expr::<Builder>();
         assert_eq!(
             format!("{expr}"),
-            r#"if (context has "if") then false else true"#
+            r#"if context has "if" then false else true"#
         );
 
         let expr = parse_expr(r#"context has "has""#)
@@ -2128,7 +2156,7 @@ mod test {
             .into_expr::<Builder>();
         assert_eq!(
             format!("{expr}"),
-            r#"if (context has "foo-baz") then false else true"#
+            r#"if context has "foo-baz" then false else true"#
         );
     }
 
@@ -2558,5 +2586,97 @@ mod test {
             )]),
         });
         assert_eq!(expr.height(), 2);
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::panic, reason = "unit test code")]
+mod paren_omission {
+    use super::*;
+    use crate::parser::text_to_cst;
+    use insta::assert_snapshot;
+
+    #[track_caller]
+    fn render(text: &str) -> String {
+        let cst =
+            text_to_cst::parse_expr(text).unwrap_or_else(|e| panic!("cannot parse {text:?}: {e}"));
+        let est =
+            Expr::try_from(&cst).unwrap_or_else(|e| panic!("cannot build EST for {text:?}: {e}"));
+        let printed = est.to_string();
+        let cst = text_to_cst::parse_expr(&printed)
+            .unwrap_or_else(|e| panic!("printed form {printed:?} does not parse: {e}"));
+        let reparsed = Expr::try_from(&cst)
+            .unwrap_or_else(|e| panic!("printed form {printed:?} is not a valid EST: {e}"));
+        assert_eq!(
+            reparsed, est,
+            "printed form {printed:?} reparsed to a different EST"
+        );
+        printed
+    }
+
+    #[test]
+    fn member_level_operands() {
+        assert_snapshot!(render("(((context.a).b).c).d"), @"context.a.b.c.d");
+        assert_snapshot!(render("(context.a.contains(1)).bar"), @"context.a.contains(1).bar");
+        assert_snapshot!(render(r#"(ip("1.2.3.4")).foo"#), @r#"ip("1.2.3.4").foo"#);
+        assert_snapshot!(render(r#"(context.a["b c"]).d"#), @r#"context.a["b c"].d"#);
+        assert_snapshot!(render("(context.a.b) == (context.c.d)"), @"context.a.b == context.c.d");
+        assert_snapshot!(
+            render("principal is X::Y in (context.a.b)"),
+            @"principal is X::Y in context.a.b"
+        );
+        assert_snapshot!(render("!(context.a.b)"), @"!context.a.b");
+    }
+
+    #[test]
+    fn if_operands() {
+        assert_snapshot!(render("if (context.a == 1) then (2) else (3)"), @"if context.a == 1 then 2 else 3");
+        assert_snapshot!(
+            render("if context.a then (if context.b then 1 else 2) else (if context.c then 3 else 4)"),
+            @"if context.a then if context.b then 1 else 2 else if context.c then 3 else 4"
+        );
+        assert_snapshot!(
+            render("if (if (if true then true else true) then true else true) then 1 else 2"),
+            @"if if if true then true else true then true else true then 1 else 2"
+        );
+    }
+
+    #[test]
+    fn chained_operators() {
+        assert_snapshot!(
+            render("(context.a && context.b) && context.c"),
+            @"context.a && context.b && context.c"
+        );
+        assert_snapshot!(
+            render("(context.a || context.b) || context.c"),
+            @"context.a || context.b || context.c"
+        );
+        assert_snapshot!(render("(1 + 2) + 3"), @"1 + 2 + 3");
+        assert_snapshot!(render("(1 - 2) - 3"), @"1 - 2 - 3");
+        assert_snapshot!(render("(2 * 3) * 4"), @"2 * 3 * 4");
+        assert_snapshot!(render("(1 - 2) + 3"), @"(1 - 2) + 3");
+        assert_snapshot!(
+            render("(context.a && context.b) || context.c"),
+            @"(context.a && context.b) || context.c"
+        );
+    }
+
+    #[test]
+    fn right_operands_keep_parens() {
+        assert_snapshot!(render("1 + (2 + 3)"), @"1 + (2 + 3)");
+        assert_snapshot!(render("1 - (2 - 3)"), @"1 - (2 - 3)");
+        assert_snapshot!(
+            render("context.a && (context.b && context.c)"),
+            @"context.a && (context.b && context.c)"
+        );
+    }
+
+    #[test]
+    fn looser_operands_keep_parens() {
+        assert_snapshot!(render("(!principal).y"), @"(!principal).y");
+        assert_snapshot!(render("(-principal).y"), @"(-(principal)).y");
+        assert_snapshot!(render("(1 == 2) == true"), @"(1 == 2) == true");
+        assert_snapshot!(render("(if true then 1 else 2) + 3"), @"(if true then 1 else 2) + 3");
+        assert_snapshot!(render("(true || false) && true"), @"(true || false) && true");
     }
 }

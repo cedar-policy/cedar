@@ -6411,7 +6411,7 @@ mod issue_611 {
         let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":-9223372036854775808}}}}]}"#;
         let v: serde_json::Value = serde_json::from_str(src).unwrap();
         let p = Policy::from_json(None, v).unwrap();
-        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { (principal.x) == (-9223372036854775808) };");
+        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { principal.x == (-9223372036854775808) };");
     }
 
     #[test]
@@ -6419,7 +6419,7 @@ mod issue_611 {
         let src = r#"{"effect":"permit","principal":{"op":"All"},"action":{"op":"All"},"resource":{"op":"All"},"conditions":[{"kind":"when","body":{"==":{"left":{".":{"left":{"Var":"principal"},"attr":"x"}},"right":{"Value":9223372036854775807}}}}]}"#;
         let v: serde_json::Value = serde_json::from_str(src).unwrap();
         let p = Policy::from_json(None, v).unwrap();
-        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { (principal.x) == 9223372036854775807 };");
+        insta::assert_snapshot!(p, @"permit(principal, action, resource) when { principal.x == 9223372036854775807 };");
     }
 
     #[test]
@@ -8356,7 +8356,7 @@ mod policy_manipulation_functions_tests {
         // Since there's no extended has in AST, the result of the substitution has the desugared has
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice" has attr.andNested };"#,
-            r#"permit(principal, action, resource) when { (User::"Bob" has attr) && ((User::"Bob".attr) has andNested) };"#,
+            r#"permit(principal, action, resource) when { (User::"Bob" has attr) && (User::"Bob".attr has andNested) };"#,
             mapping.clone(),
         );
         // But staying in the EST doesn't result in desugaring

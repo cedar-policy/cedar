@@ -1661,7 +1661,7 @@ fn test_tpe() {
         contains("UNKNOWN")
             .and(contains("permit(principal, action, resource) when { resource.isPublic };"))
             .and(contains("permit(principal, action, resource) when { false };"))
-            .and(contains(r#"permit(principal, action, resource) when { (context.hasMFA) && ((resource.owner) == User::"Alice") };"#))
+            .and(contains(r#"permit(principal, action, resource) when { context.hasMFA && (resource.owner == User::"Alice") };"#))
     };
 
     cargo::cargo_bin_cmd!("cedar")
@@ -1779,7 +1779,7 @@ when {{ resource.isPublic }};"#
         .assert()
         .stdout(
             predicate::str::contains("UNKNOWN").and(predicate::str::contains(
-                r#"permit(principal, action, resource) when { (principal == User::"Alice") && (resource.isPublic) };"#
+                r#"permit(principal, action, resource) when { (principal == User::"Alice") && resource.isPublic };"#
             )),
         )
         .code(4);

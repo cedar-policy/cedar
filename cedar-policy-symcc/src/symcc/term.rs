@@ -358,25 +358,25 @@ mod test {
         let term = Term::from(Ext::parse_datetime("2001-07-07").unwrap());
         insta::with_settings!({ description => format!("{term:?}") }, {
             // TODO: not pretty
-            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("994464000000ms"))"#);
+            insta::assert_snapshot!(term.to_string(), @r#"datetime("1970-01-01").offset(duration("994464000000ms"))"#);
         });
 
         let term = Term::from(Ext::parse_datetime("2010-12-31T11:59:59Z").unwrap());
         insta::with_settings!({ description => format!("{term:?}") }, {
             // TODO: not pretty
-            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293796799000ms"))"#);
+            insta::assert_snapshot!(term.to_string(), @r#"datetime("1970-01-01").offset(duration("1293796799000ms"))"#);
         });
 
         let term = Term::from(Ext::parse_datetime("2010-12-31T11:59:59.777Z").unwrap());
         insta::with_settings!({ description => format!("{term:?}") }, {
             // TODO: not pretty
-            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293796799777ms"))"#);
+            insta::assert_snapshot!(term.to_string(), @r#"datetime("1970-01-01").offset(duration("1293796799777ms"))"#);
         });
 
         let term = Term::from(Ext::parse_datetime("2010-12-31T11:59:59.777+1134").unwrap());
         insta::with_settings!({ description => format!("{term:?}") }, {
             // TODO: not pretty
-            insta::assert_snapshot!(term.to_string(), @r#"(datetime("1970-01-01")).offset(duration("1293755159777ms"))"#);
+            insta::assert_snapshot!(term.to_string(), @r#"datetime("1970-01-01").offset(duration("1293755159777ms"))"#);
         });
 
         let term = Term::Some(Arc::new(factory::set_of(
