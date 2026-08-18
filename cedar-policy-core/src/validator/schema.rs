@@ -1192,11 +1192,20 @@ impl ValidatorSchema {
 
     /// Check that all entity types referenced in attribute/tag/context types are declared
     fn check_references_wf(&self) -> std::result::Result<(), SchemaError> {
+        // Attributes and tags can reference Action entity types. We add an action type for
+        // each action defined in a namespace (the action type lives in the same namespace).
+        // If no action is defined, the Action type is uninhabited, in which case we reject
+        // the schema as not well formed -- consistent with the Cedar schema parsers.
+        let action_entity_types: HashSet<&EntityType> = self
+            .action_ids
+            .keys()
+            .map(|uid| uid.entity_type())
+            .collect();
         let mut undeclared = Vec::new();
         for ty in self.leaf_types().unique() {
             if let Type::Entity(EntityKind::Entity(lub)) = ty {
                 for e in lub.iter() {
-                    if !self.is_known_entity_type(e) {
+                    if !self.entity_types.contains_key(e) && !action_entity_types.contains(e) {
                         undeclared.push(e.clone());
                     }
                 }
@@ -2372,13 +2381,15 @@ pub(crate) mod test {
         );
     }
 
-    /// `check_references_wf` should accept entity attributes that reference Action entity types
+    /// An `Action` reference with no declared action is uninhabited, so `try_validate`
+    /// must reject it (see `check_references_wf`).
     #[test]
-    fn try_validate_accepts_action_entity_type_reference_in_attribute() {
+    fn try_validate_rejects_namespaced_action_attribute_without_action() {
         let user_type = EntityType::from_normalized_str("User").unwrap();
         let action_type = EntityType::from_normalized_str("Foo::Action").unwrap();
 
-        // User entity type has an attribute of type Entity that references Foo::Action
+        // User entity type has an attribute of type Entity that references Foo::Action,
+        // but no action of type Foo::Action is declared.
         let attr_type =
             AttributeType::required_attribute(Arc::new(Type::named_entity_reference(action_type)));
         let schema = ValidatorSchema::new(
@@ -2393,8 +2404,98 @@ pub(crate) mod test {
             [],
         );
 
-        // Should succeed — Action entity types are valid references
+        assert_matches!(
+            schema.try_validate(),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
+    }
+
+    /// Conversely, an `Action` reference is accepted when a matching action is declared
+    /// (the action adds its type to the namespace; see `check_references_wf`).
+    #[test]
+    fn try_validate_accepts_namespaced_action_attribute_with_action() {
+        let user_type = EntityType::from_normalized_str("User").unwrap();
+        let action_type = EntityType::from_normalized_str("Foo::Action").unwrap();
+        let action_uid =
+            EntityUID::from_components(action_type.clone(), crate::ast::Eid::new("a"), None);
+
+        // User has an attribute referencing Foo::Action, and an action of type
+        // Foo::Action is declared.
+        let attr_type = AttributeType::required_attribute(Arc::new(Type::named_entity_reference(
+            action_type,
+        )));
+        let context = Type::record_with_required_attributes([], OpenTag::ClosedAttributes);
+        let schema = ValidatorSchema::new(
+            [ValidatorEntityType::new_standard(
+                user_type,
+                [],
+                Attributes::with_attributes([("last_action".into(), attr_type)]),
+                OpenTag::ClosedAttributes,
+                None,
+                None,
+            )],
+            [ValidatorActionId::new(action_uid, [], [], [], context, None)],
+        );
+
         assert_matches!(schema.try_validate(), Ok(_));
+    }
+
+    /// Regression test for the `protobuf-decode-bytes-schema` fuzz failure
+    /// (nightly 2026-08-09): a schema like `namespace gz { entity sX tags Action; }` has an
+    /// uninhabited `Action` tag type with no declared action, so it must be rejected (see
+    /// `check_references_wf`).
+    #[test]
+    fn try_validate_rejects_bare_action_tag_without_action() {
+        let entity_type = EntityType::from_normalized_str("gz::sX").unwrap();
+        let action_type = EntityType::from_normalized_str("Action").unwrap();
+
+        // Entity has a tag of type Entity that references the bare `Action` type,
+        // but no action is declared anywhere in the schema.
+        let schema = ValidatorSchema::new(
+            [ValidatorEntityType::new_standard(
+                entity_type,
+                [],
+                Attributes::with_attributes([]),
+                OpenTag::ClosedAttributes,
+                Some(Type::named_entity_reference(action_type)),
+                None,
+            )],
+            [],
+        );
+
+        assert_matches!(
+            schema.try_validate(),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
+    }
+
+    /// An attribute referencing a bare `Action` type with no declared action is
+    /// uninhabited, so it must be rejected (see `check_references_wf`).
+    #[test]
+    fn try_validate_rejects_bare_action_attribute_without_action() {
+        let user_type = EntityType::from_normalized_str("User").unwrap();
+        let action_type = EntityType::from_normalized_str("Action").unwrap();
+
+        // User has an attribute referencing the bare `Action` type, but no action
+        // is declared anywhere in the schema.
+        let attr_type =
+            AttributeType::required_attribute(Arc::new(Type::named_entity_reference(action_type)));
+        let schema = ValidatorSchema::new(
+            [ValidatorEntityType::new_standard(
+                user_type,
+                [],
+                Attributes::with_attributes([("last_action".into(), attr_type)]),
+                OpenTag::ClosedAttributes,
+                None,
+                None,
+            )],
+            [],
+        );
+
+        assert_matches!(
+            schema.try_validate(),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
     }
 
     /// Regression test: enum entity types reachable only via transitive
