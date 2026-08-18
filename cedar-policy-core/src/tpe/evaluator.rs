@@ -926,7 +926,7 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"if (resource == Document::"C") then Document::"A" else Document::"B""#),
-            @r#"if (resource == Document::"C") then Document::"A" else Document::"B""#
+            @r#"if resource == Document::"C" then Document::"A" else Document::"B""#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"if (resource == User::"alice") then Document::"A" else Document::"B""#),
@@ -1989,6 +1989,110 @@ mod tests {
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"principal in [resource]"#),
+            @"false"
+        );
+    }
+
+    #[test]
+    fn test_binary_app_in_action_hierarchy() {
+        let schema = parse_schema(
+            r#"
+            namespace Groups {
+                action all;
+                action unrelated;
+            }
+            namespace App {
+                entity User;
+                entity Doc;
+                action view in [Groups::Action::"all"] appliesTo {
+                    principal: User,
+                    resource: Doc,
+                    context: {},
+                };
+                action edit appliesTo {
+                    principal: User,
+                    resource: Doc,
+                    context: {},
+                };
+            }"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("App::User"),
+            r#"App::Action::"view""#.parse().unwrap(),
+            parse_partial_euid("App::Doc"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            schema: &schema,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        // We could reduce to a value in these because the schema includes action ancestors, but
+        // calling a constructor other then `PartialEntities::new` will add them and just give us
+        // the concrete evaluation path, so there's no reason to implement that case.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"App::Action::"view" in Groups::Action::"all""#),
+            @r#"App::Action::"view" in Groups::Action::"all""#
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"App::Action::"edit" in Groups::Action::"all""#),
+            @r#"App::Action::"edit" in Groups::Action::"all""#
+        );
+        // Reflexive case is reduced to a value since that never needs ancestors.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"action in action"#),
+            @"true"
+        );
+        // Comparisons with non-actions also reduce since they're decided using only entity types.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal in action"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"action in resource"#),
+            @"false"
+        );
+    }
+
+    #[test]
+    fn test_action_operand_reductions() {
+        let schema = parse_schema(
+            r#"
+            namespace App {
+                entity User;
+                entity Doc;
+                action view appliesTo { principal: User, resource: Doc, context: {} };
+            }"#,
+        );
+        let req = PartialRequest::new(
+            parse_partial_euid("App::User"),
+            r#"App::Action::"view""#.parse().unwrap(),
+            parse_partial_euid("App::Doc"),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &PartialEntities::new(),
+            schema: &schema,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        // Would be decided from concrete data if we used a `PartialEntity` constructor that accept
+        // a schema, but here we show it reduce without concrete information.
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"action has bogus"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"action.hasTag("t")"#),
             @"false"
         );
     }
