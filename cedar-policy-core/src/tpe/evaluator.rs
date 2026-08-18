@@ -19,7 +19,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    ast::{self, BinaryOp, EntityUID, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, EntityType, EntityUID, PartialValue, Set, Value, ValueKind, Var},
     evaluator::stack_size_check,
     extensions::Extensions,
 };
@@ -212,14 +212,8 @@ impl Evaluator<'_> {
             }
             ResidualKind::Is { expr, entity_type } => {
                 let expr = self.interpret(expr);
-                if let Some(expr_ety) = expr
-                    .ty()
-                    .as_entity_lub()
-                    .and_then(|ety| ety.get_single_entity())
-                {
-                    if !expr.can_error_assuming_well_formed() {
-                        return mk_concrete((expr_ety == entity_type).into());
-                    }
+                if let Some(v) = try_decide_is_residual(&expr, entity_type) {
+                    return mk_concrete(v);
                 }
                 match &expr {
                     Residual::Concrete { value, .. } => match value.get_as_entity() {
@@ -250,25 +244,8 @@ impl Evaluator<'_> {
             ResidualKind::BinaryApp { op, arg1, arg2 } => {
                 let arg1 = self.interpret(arg1);
                 let arg2 = self.interpret(arg2);
-                let must_be_false = match op {
-                    BinaryOp::HasTag => !Type::may_have_tags(self.schema, arg1.ty()),
-                    BinaryOp::Eq => Type::are_types_disjoint(arg1.ty(), arg2.ty()),
-                    BinaryOp::In => {
-                        match (arg1.ty().as_entity_lub(), arg2.ty().as_set_or_entity_lub()) {
-                            // `in` must be false if `arg1` cannot have an ancestor with type of `arg2`
-                            (Some(lhs_lub), Some(rhs_lub)) => {
-                                !self.schema.any_descendent_of(lhs_lub, rhs_lub)
-                            }
-                            _ => false,
-                        }
-                    }
-                    _ => false,
-                };
-                if must_be_false
-                    && !arg1.can_error_assuming_well_formed()
-                    && !arg2.can_error_assuming_well_formed()
-                {
-                    return mk_concrete(false.into());
+                if let Some(v) = try_decide_binary_residual(self.schema, *op, &arg1, &arg2) {
+                    return mk_concrete(v);
                 }
                 let binapp_residual = |arg1, arg2| {
                     mk_residual(ResidualKind::BinaryApp {
@@ -415,13 +392,8 @@ impl Evaluator<'_> {
             }
             ResidualKind::HasAttr { expr, attr } => {
                 let expr = self.interpret(expr);
-                if !Type::may_have_attr(self.schema, expr.ty(), attr)
-                    && !expr.can_error_assuming_well_formed()
-                {
-                    // The residual can't error and cannot have `attr`, so `has` is always `false`.
-                    // We can't have an analogous reduction to `true` because the concrete semantics
-                    // for `has` is `false` when the entity isn't present.
-                    return mk_concrete(false.into());
+                if let Some(v) = try_decide_has_residual(self.schema, &expr, attr) {
+                    return mk_concrete(v);
                 }
                 match &expr {
                     Residual::Concrete { value, .. } => {
@@ -533,6 +505,68 @@ impl Evaluator<'_> {
             }
         }
     }
+}
+
+/// Given an `is` expression applied to a residual, reduce it to a value if
+/// possible, using the residual's type.
+fn try_decide_is_residual(expr: &Residual, entity_type: &EntityType) -> Option<Value> {
+    if expr.can_error_assuming_well_formed() {
+        return None;
+    }
+    let lub = expr.ty().as_entity_lub()?;
+    if !lub.contains_entity_type(entity_type) {
+        // None of the possible entity types so, `is` is `false`.
+        Some(false.into())
+    } else if lub.get_single_entity() == Some(entity_type) {
+        // The only possible entity type, so `is` is `true`.
+        Some(true.into())
+    } else {
+        // Not possible in strict validation
+        None
+    }
+}
+
+/// Given a binary operation applied to residuals, reduce it to a value if
+/// possible, using the residual types and `schema`.
+fn try_decide_binary_residual(
+    schema: &ValidatorSchema,
+    op: BinaryOp,
+    arg1: &Residual,
+    arg2: &Residual,
+) -> Option<Value> {
+    if arg1.can_error_assuming_well_formed() || arg2.can_error_assuming_well_formed() {
+        return None;
+    }
+    let must_be_false = match (op, arg1.ty(), arg2.ty()) {
+        // `in` must be false if `arg1` cannot have an ancestor with the type of `arg2`
+        (BinaryOp::In, ty1, ty2) => match (ty1.as_entity_lub(), ty2.as_set_or_entity_lub()) {
+            (Some(lhs_lub), Some(rhs_lub)) => !schema.any_descendent_of(lhs_lub, rhs_lub),
+            _ => return None,
+        },
+        (BinaryOp::Eq, ty1, ty2) => Type::are_types_disjoint(ty1, ty2),
+        (BinaryOp::HasTag, ty1, Type::String) => {
+            Type::has_declared_entity_types(schema, ty1) && !Type::may_have_tags(schema, ty1)
+        }
+        _ => return None,
+    };
+    must_be_false.then(|| false.into())
+}
+
+/// Given a `has` expression applied to a residual, reduce it to a value if
+/// possible, using only the residual's type and `schema`.
+fn try_decide_has_residual(schema: &ValidatorSchema, expr: &Residual, attr: &str) -> Option<Value> {
+    if expr.can_error_assuming_well_formed() {
+        return None;
+    }
+    if !matches!(expr.ty(), Type::Record { .. } | Type::Entity(_)) {
+        return None;
+    }
+    // The residual can't error and cannot have `attr`, so `has` is always `false`.
+    // We can't have an analogous reduction to `true` because the concrete semantics
+    // for `has` is `false` when the entity isn't present.
+    (Type::has_declared_entity_types(schema, expr.ty())
+        && !Type::may_have_attr(schema, expr.ty(), attr))
+    .then(|| false.into())
 }
 
 /// If the value is an extension value whose type provides a [`canonical_repr`],
@@ -2092,18 +2126,27 @@ mod tests {
             schema: &schema,
             extensions: Extensions::all_available(),
         };
-        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+        let interp = |e| interpret_typed_str_to_str(&eval, e, &schema);
 
-        // Would be decided from concrete data if we used a `PartialEntity` constructor that accept
-        // a schema, but here we show it reduce without concrete information.
-        assert_snapshot!(
-            interpret_typed_str_to_str(r#"action has bogus"#),
-            @"false"
-        );
-        assert_snapshot!(
-            interpret_typed_str_to_str(r#"action.hasTag("t")"#),
-            @"false"
-        );
+        // Action operands are not reduced from the schema, since actions are not
+        // declared as entity types. `PartialEntities::new` has no action
+        // entities either, so these stay residuals.
+        assert_snapshot!(interp(r#"action has bogus"#), @r#"App::Action::"view" has bogus"#);
+        assert_snapshot!(interp(r#"action.hasTag("t")"#), @r#"App::Action::"view".hasTag("t")"#);
+
+        // A schema-aware constructor adds the action entities, so the concrete
+        // path decides them.
+        let entities = PartialEntities::from_json_value(serde_json::json!([]), &schema).unwrap();
+        let eval_with_actions = Evaluator {
+            request: &req,
+            entities: &entities,
+            schema: &schema,
+            extensions: Extensions::all_available(),
+        };
+        let interp_with_actions = |e| interpret_typed_str_to_str(&eval_with_actions, e, &schema);
+
+        assert_snapshot!(interp_with_actions(r#"action has bogus"#), @"false");
+        assert_snapshot!(interp_with_actions(r#"action.hasTag("t")"#), @"false");
     }
 
     #[test]
