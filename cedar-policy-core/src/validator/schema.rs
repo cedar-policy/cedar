@@ -2421,9 +2421,8 @@ pub(crate) mod test {
 
         // User has an attribute referencing Foo::Action, and an action of type
         // Foo::Action is declared.
-        let attr_type = AttributeType::required_attribute(Arc::new(Type::named_entity_reference(
-            action_type,
-        )));
+        let attr_type =
+            AttributeType::required_attribute(Arc::new(Type::named_entity_reference(action_type)));
         let context = Type::record_with_required_attributes([], OpenTag::ClosedAttributes);
         let schema = ValidatorSchema::new(
             [ValidatorEntityType::new_standard(
@@ -2434,7 +2433,14 @@ pub(crate) mod test {
                 None,
                 None,
             )],
-            [ValidatorActionId::new(action_uid, [], [], [], context, None)],
+            [ValidatorActionId::new(
+                action_uid,
+                [],
+                [],
+                [],
+                context,
+                None,
+            )],
         );
 
         assert_matches!(schema.try_validate(), Ok(_));
