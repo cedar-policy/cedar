@@ -485,10 +485,28 @@ impl Type {
         }
     }
 
+    /// Are all entity types that a value of type `ty` could have declared as
+    /// entity types in `schema`? Returns `true` for non-entity types.
+    ///
+    /// This is `false` for action entity types, which are declared as actions
+    /// rather than as entity types, so `may_have_attr` and `may_have_tags`
+    /// report them as having no attributes and no tags.
+    #[cfg(feature = "tpe")]
+    pub(crate) fn has_declared_entity_types(schema: &ValidatorSchema, ty: &Type) -> bool {
+        match ty {
+            Type::Entity(EntityKind::Entity(entity_lub)) => entity_lub
+                .iter()
+                .all(|entity| schema.get_entity_type(entity).is_some()),
+            _ => true,
+        }
+    }
+
     /// Could a value of type `ty` have any tags, according to `schema`?
     ///
-    /// Returns `false` only when `ty` is an entity type without tags declared
-    /// in the schema.
+    /// Returns `false` only when `ty` is an entity type and none of the entity
+    /// types it could be declare tags in the schema. Entity types missing from
+    /// the schema count as declaring no tags, so callers that don't want to
+    /// rely on that should also check [`Type::has_declared_entity_types`].
     #[cfg(feature = "tpe")]
     pub(crate) fn may_have_tags(schema: &ValidatorSchema, ty: &Type) -> bool {
         match ty {
