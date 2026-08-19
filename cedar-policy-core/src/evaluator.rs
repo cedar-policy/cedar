@@ -895,52 +895,63 @@ impl<'e> Evaluator<'e> {
         attrs: &nonempty::NonEmpty<SmolStr>,
     ) -> Result<PartialValue> {
         let mut current_val = &initial_val;
-        for attr in attrs.iter() {
-            match &current_val.value {
-                ValueKind::Record(record) => match record.get(attr) {
-                    Some(next_val) => {
-                        current_val = next_val;
+        let mut iter = attrs.iter().peekable();
+        while let Some(attr) = iter.next() {
+            // like tpe, extract information about "has attr" and something to resolve
+            // get attr if this is not the last iteration.
+            // unlike in tpe, record and entites are not symmetric in their attribute maps,
+            // so it's harder to treat them uniformly
+            let maybe_next_val = match &current_val.value {
+                ValueKind::Record(record) => record.get(attr).map(Either::Left),
+                ValueKind::Lit(Literal::EntityUID(uid)) => match self.entities.entity(uid) {
+                    Dereference::Data(e) => match e.get(attr) {
+                        Some(PartialValue::Value(next_val)) => Some(Either::Left(next_val)),
+                        Some(PartialValue::Residual(res)) => Some(Either::Right(res)),
+                        None => None,
+                    },
+                    Dereference::NoSuchEntity => None, // no entity same as no attr
+                    Dereference::Residual(r) => {
+                        // no information about having the given attr, return residual
+                        // this residual got here before getting the attr, so the residual also
+                        // contains the current attr in the path
+                        let from_here = nonempty::NonEmpty {
+                            head: attr.clone(),
+                            tail: iter.cloned().collect(),
+                        };
+                        return Ok(Expr::extended_has_attr(r, from_here).into());
                     }
-                    None => return Ok(false.into()),
                 },
-                ValueKind::Lit(Literal::EntityUID(uid)) => {
-                    match self.entities.entity(uid) {
-                        Dereference::Data(e) => {
-                            match e.get(attr) {
-                                Some(PartialValue::Value(next_val)) => {
-                                    current_val = next_val;
-                                }
-                                Some(PartialValue::Residual(_)) => {
-                                    // Can't fully evaluate; produce residual
-                                    // We cannot easily reconstruct the partially-evaluated
-                                    // extended_has_attr, so return a residual for the whole thing
-                                    return Ok(Expr::extended_has_attr(
-                                        Expr::from(current_val.clone()),
-                                        attrs.clone(),
-                                    )
-                                    .into());
-                                }
-                                None => return Ok(false.into()),
-                            }
-                        }
-                        Dereference::NoSuchEntity => return Ok(false.into()),
-                        Dereference::Residual(r) => {
-                            return Ok(Expr::extended_has_attr(r, attrs.clone()).into());
-                        }
-                    }
-                }
                 _ => {
                     return Err(err::EvaluationError::type_error(
                         nonempty![
                             Type::Record,
                             Type::entity_type(names::ANY_ENTITY_TYPE.clone())
                         ],
-                        &current_val,
+                        current_val,
                     ));
+                }
+            };
+            let Some(next_val) = maybe_next_val else {
+                return Ok(false.into());
+            };
+            // only use information about deref when not last attr in chain
+            if iter.peek().is_some() {
+                match next_val {
+                    Either::Left(actual) => current_val = actual,
+                    Either::Right(residual) => {
+                        // residual obtained *after* get_attr contains the rest of attr path
+                        #[expect(
+                            clippy::expect_used,
+                            reason = "`iter.peek()` was `Some`, so at least one attr remains"
+                        )]
+                        let from_here = nonempty::NonEmpty::collect(iter.cloned())
+                            .expect("at least one attr remains after the current one");
+                        return Ok(Expr::extended_has_attr(residual.clone(), from_here).into());
+                    }
                 }
             }
         }
-        // Loop exit means we have checked the presence of all attributes
+        // All attributes are present
         Ok(true.into())
     }
 
@@ -1530,6 +1541,65 @@ pub(crate) mod test {
             "spoon".into(),
         );
         assert_eq!(r, Either::Right(expected_residual));
+    }
+
+    /// The last attribute of an extended `has` chain is a presence check only:
+    /// if it is present but its value is a residual, the result is still `true`
+    /// (the value is never dereferenced), matching the spec.
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn extended_has_attr_last_attr_present_but_residual() {
+        use crate::ast::PartialValue;
+        // `parent.child` is a concrete reference to `E::"e"`, whose `foo`
+        // attribute is present but has a residual (unknown) value.
+        let parent_uid = EntityUID::with_eid("parent");
+        let e_uid = EntityUID::with_eid("e");
+        let parent = Entity::new_with_attr_partial_value(
+            parent_uid.clone(),
+            [(
+                "child".into(),
+                PartialValue::from(Value::from(e_uid.clone())),
+            )],
+            HashSet::new(),
+            HashSet::new(),
+            [],
+        );
+        let e = Entity::new_with_attr_partial_value(
+            e_uid.clone(),
+            [(
+                "foo".into(),
+                PartialValue::Residual(Expr::unknown(Unknown::new_untyped("u"))),
+            )],
+            HashSet::new(),
+            HashSet::new(),
+            [],
+        );
+        let entities = Entities::from_entities(
+            vec![parent, e],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        let eval = Evaluator::new(basic_request(), &entities, Extensions::none());
+
+        // `parent has child.foo` -> true: `foo` exists on `E::"e"`, and the last
+        // attribute is only checked for presence (never dereferenced), so the
+        // residual value does not force a residual result.
+        let expr = Expr::extended_has_attr(
+            Expr::val(parent_uid.clone()),
+            nonempty![SmolStr::from("child"), SmolStr::from("foo")],
+        );
+        let r = eval.partial_eval_expr(&expr).unwrap();
+        assert_eq!(r, Either::Left(true.into()));
+
+        // `parent has child.missing` -> false: absent last attribute.
+        let expr = Expr::extended_has_attr(
+            Expr::val(parent_uid),
+            nonempty![SmolStr::from("child"), SmolStr::from("missing")],
+        );
+        let r = eval.partial_eval_expr(&expr).unwrap();
+        assert_eq!(r, Either::Left(false.into()));
     }
 
     #[test]
