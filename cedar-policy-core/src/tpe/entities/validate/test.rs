@@ -459,3 +459,41 @@ fn valid_entity_absent_unexpected_attr() {
 
     assert_matches!(entity.validate(&schema), Ok(()));
 }
+
+#[test]
+fn valid_entity_unknown_unexpected_attr() {
+    let schema = test_schema();
+    // `Unknown` on an undeclared attr is fine: it asserts nothing, so it cannot contradict a
+    // schema that says the attribute must not exist. Only `Value`/`Exists` claim existence.
+    let entity = PartialEntity {
+        uid: "User::\"alice\"".parse().unwrap(),
+        attrs: Some(PartialRecord::from_iter([
+            (
+                "name".into(),
+                PartialAttribute::Value(PartialValue::Lit("Alice".into())),
+            ),
+            ("bogus".into(), PartialAttribute::Unknown),
+        ])),
+        ancestors: Some(HashSet::new()),
+        tags: Some(PartialRecord::new()),
+    };
+
+    assert_matches!(entity.validate(&schema), Ok(()));
+}
+
+#[test]
+fn valid_entity_unknown_tag_when_no_tags_declared() {
+    let schema = test_schema();
+    // As above, for a type declaring no tags: an `Unknown` tag claims no tag is there.
+    let entity = PartialEntity {
+        uid: "Resource::\"r\"".parse().unwrap(),
+        attrs: Some(PartialRecord::new()),
+        ancestors: Some(HashSet::new()),
+        tags: Some(PartialRecord::from_iter([(
+            "bogus".into(),
+            PartialAttribute::Unknown,
+        )])),
+    };
+
+    assert_matches!(entity.validate(&schema), Ok(()));
+}

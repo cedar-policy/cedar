@@ -16,6 +16,8 @@
 
 use std::collections::HashSet;
 
+use smol_str::SmolStr;
+
 use crate::ast::{EntityUID, RestrictedExpr, Value, ValueKind};
 use crate::entities::conformance::err::{AttrOrTag, UndeclaredAction};
 use crate::entities::conformance::typecheck_value_against_schematype;
@@ -73,52 +75,47 @@ impl PartialEntity {
         Ok(())
     }
 
-    /// Validate an action entity. Actions require all components to be known.
+    /// Validate an action entity.
+    ///
+    /// Unlike other entities, an action's attributes, tags, and ancestors come from the schema
+    /// rather than from request data, so they should all be concrete and exactly equal to the data
+    /// in the schema.
     fn validate_action<S: Schema>(&self, core_schema: &S) -> Result<(), EntityValidationError> {
-        let uid = &self.uid;
-
-        if self.attrs.is_none() || self.tags.is_none() {
+        let (Some(attrs), Some(ancestors), Some(tags)) = (&self.attrs, &self.ancestors, &self.tags)
+        else {
             return Err(UnknownActionComponentError {
-                action: uid.clone(),
+                action: (&self.uid).clone(),
             }
             .into());
-        }
-        if let Some((attr, _)) = self.attrs.as_ref().and_then(|attrs| attrs.attrs().next()) {
+        };
+        let Some(action) = core_schema.action(&self.uid) else {
+            return Err(
+                EntitySchemaConformanceError::UndeclaredAction(UndeclaredAction {
+                    uid: self.uid.clone(),
+                })
+                .into(),
+            );
+        };
+        if let Some((attr, _)) = attrs.attrs().next() {
             return Err(EntitySchemaConformanceError::unexpected_entity_attr(
-                uid.clone(),
+                self.uid.clone(),
                 attr.clone(),
             )
             .into());
         }
-        if let Some((tag, _)) = self.tags.as_ref().and_then(|tags| tags.attrs().next()) {
+        if let Some((tag, _)) = tags.attrs().next() {
             return Err(EntitySchemaConformanceError::unexpected_entity_tag(
-                uid.clone(),
+                self.uid.clone(),
                 tag.clone(),
             )
             .into());
         }
-        if let Some(action) = core_schema.action(uid) {
-            if let Some(ancestors) = &self.ancestors {
-                let schema_ancestors: HashSet<EntityUID> = action.ancestors().cloned().collect();
-                if &schema_ancestors != ancestors {
-                    return Err(MismatchedActionAncestorsError {
-                        action: uid.clone(),
-                    }
-                    .into());
-                }
-            } else {
-                return Err(UnknownActionComponentError {
-                    action: uid.clone(),
-                }
-                .into());
+        let schema_ancestors: HashSet<EntityUID> = action.ancestors().cloned().collect();
+        if &schema_ancestors != ancestors {
+            return Err(MismatchedActionAncestorsError {
+                action: self.uid.clone(),
             }
-        } else {
-            return Err(
-                EntitySchemaConformanceError::UndeclaredAction(UndeclaredAction {
-                    uid: uid.clone(),
-                })
-                .into(),
-            );
+            .into());
         }
         Ok(())
     }
@@ -164,9 +161,10 @@ pub(crate) fn typecheck_partial_value(
                             PartialAttribute::Unknown | PartialAttribute::Exists => {}
                         }
                     }
-                    // Any non-absent attribute that is not declared in the schema is unexpected.
+                    // An attribute claimed to exist that the schema does not declare is unexpected.
                     if let Some((k, _)) = rec.attrs().find(|(k, v)| {
-                        !matches!(v, PartialAttribute::Absent) && attrs.get(*k).is_none()
+                        matches!(v, PartialAttribute::Value(_) | PartialAttribute::Exists)
+                            && attrs.get(*k).is_none()
                     }) {
                         return Err(TypeMismatchError::unexpected_attr(
                             expected_ty.clone(),
@@ -212,79 +210,84 @@ pub(crate) fn typecheck_partial_value(
     }
 }
 
-/// Validate a [`PartialRecord`] as entity attributes against the schema.
-///
-/// Mirrors [`EntitySchemaConformanceChecker::validate_entity_attributes`]:
-/// - Checks all required attributes are present (or `Exists`)
-/// - For each `Value` attribute, typechecks against the schema and validates EUIDs
-/// - `Exists` attributes are skipped
+fn validate_partial_attr<S: Schema>(
+    partial_val: &PartialAttribute,
+    expected_ty: &SchemaType,
+    uid: &EntityUID,
+    key: &SmolStr,
+    kind: AttrOrTag,
+    schema: &S,
+) -> Result<(), EntitySchemaConformanceError> {
+    let Some(val) = partial_val.as_value() else {
+        // non-value variant. Calling function checked that it's existence is valid given the
+        // enclosing record type, so there's nothing else to do here.
+        return Ok(());
+    };
+    match typecheck_partial_value(val, expected_ty, Extensions::all_available()) {
+        Ok(()) => {}
+        Err(TypecheckError::TypeMismatch(e)) => {
+            return Err(EntitySchemaConformanceError::type_mismatch(
+                uid.clone(),
+                key.clone(),
+                kind,
+                e,
+            ));
+        }
+        Err(TypecheckError::ExtensionFunctionLookup(e)) => {
+            return Err(EntitySchemaConformanceError::extension_function_lookup(
+                uid.clone(),
+                key.clone(),
+                kind,
+                e,
+            ));
+        }
+    }
+    val.validate_euids(schema)?;
+    Ok(())
+}
+
+/// Validate a `PartialRecord` as entity attributes against the schema.
 fn validate_partial_record_as_attrs<S: Schema>(
     record: &PartialRecord,
     uid: &EntityUID,
     schema_etype: &impl EntityTypeDescription,
     schema: &S,
 ) -> Result<(), EntitySchemaConformanceError> {
-    let extensions = Extensions::all_available();
-
-    // Check required attributes:
-    // - Not in map: unknown whether it exists, skip
-    // - Absent: definitively missing, error
-    // - Exists/Value: exists, satisfied
-    for required_attr in schema_etype.required_attrs() {
-        if matches!(record.attr(&required_attr), PartialAttribute::Absent) {
-            return Err(EntitySchemaConformanceError::missing_entity_attr(
-                uid.clone(),
-                required_attr,
-            ));
-        }
+    if let Some(absent) = schema_etype
+        .required_attrs()
+        .find(|attr| matches!(record.attr(&attr), PartialAttribute::Absent))
+    {
+        return Err(EntitySchemaConformanceError::missing_entity_attr(
+            uid.clone(),
+            absent,
+        ));
     }
 
-    // Validate each attribute
     for (attr, partial_val) in record.attrs() {
-        // Absent means the attr doesn't exist — nothing to validate
-        if matches!(partial_val, PartialAttribute::Absent) {
+        if matches!(
+            partial_val,
+            PartialAttribute::Absent | PartialAttribute::Unknown
+        ) {
+            // `Absent` was already checked against the required attributes, and `Unknown` claims
+            // nothing, so neither can conflict with what the schema declares.
             continue;
         }
 
-        // The attribute exists (Exists or Value) — check it's allowed
-        match schema_etype.attr_type(attr) {
-            None => {
-                if !schema_etype.open_attributes() {
-                    return Err(EntitySchemaConformanceError::unexpected_entity_attr(
-                        uid.clone(),
-                        attr.clone(),
-                    ));
-                }
-            }
-            Some(expected_ty) => {
-                // Typecheck only if the value is present
-                if let PartialAttribute::Value(val) = partial_val {
-                    match typecheck_partial_value(val, &expected_ty, extensions) {
-                        Ok(()) => {}
-                        Err(TypecheckError::TypeMismatch(e)) => {
-                            return Err(EntitySchemaConformanceError::type_mismatch(
-                                uid.clone(),
-                                attr.clone(),
-                                AttrOrTag::Attr,
-                                e,
-                            ));
-                        }
-                        Err(TypecheckError::ExtensionFunctionLookup(e)) => {
-                            return Err(EntitySchemaConformanceError::extension_function_lookup(
-                                uid.clone(),
-                                attr.clone(),
-                                AttrOrTag::Attr,
-                                e,
-                            ));
-                        }
-                    }
-                }
-            }
-        }
+        let Some(expected_ty) = schema_etype.attr_type(attr) else {
+            return Err(EntitySchemaConformanceError::unexpected_entity_attr(
+                uid.clone(),
+                attr.clone(),
+            ));
+        };
 
-        if let PartialAttribute::Value(val) = partial_val {
-            val.validate_euids(schema)?;
-        }
+        validate_partial_attr(
+            partial_val,
+            &expected_ty,
+            uid,
+            attr,
+            AttrOrTag::Attr,
+            schema,
+        )?
     }
     Ok(())
 }
@@ -301,48 +304,24 @@ fn validate_partial_record_as_tags<S: Schema>(
     schema_etype: &impl EntityTypeDescription,
     schema: &S,
 ) -> Result<(), EntitySchemaConformanceError> {
-    let extensions = Extensions::all_available();
-
     match schema_etype.tag_type() {
         None => {
-            // No tags allowed — Value or Exists means the tag exists, error.
-            // Absent means it doesn't exist, fine.
-            for (tag, attr) in record.attrs() {
-                if !matches!(attr, PartialAttribute::Absent) {
-                    return Err(EntitySchemaConformanceError::unexpected_entity_tag(
-                        uid.clone(),
-                        tag.clone(),
-                    ));
-                }
+            // No tags allowed, so a tag claimed to exist is an error
+            if let Some((tag, _)) = record
+                .attrs()
+                .find(|(_, a)| matches!(a, PartialAttribute::Value(_) | PartialAttribute::Exists))
+            {
+                return Err(EntitySchemaConformanceError::unexpected_entity_tag(
+                    uid.clone(),
+                    tag.clone(),
+                ));
             }
         }
+        // Tags share one declared type and have no fixed key set, so any key is allowed and every
+        // value is checked against the same type.
         Some(expected_ty) => {
             for (tag, partial_val) in record.attrs() {
-                let Some(partial_val) = partial_val.as_value() else {
-                    continue;
-                };
-
-                match typecheck_partial_value(partial_val, &expected_ty, extensions) {
-                    Ok(()) => {}
-                    Err(TypecheckError::TypeMismatch(e)) => {
-                        return Err(EntitySchemaConformanceError::type_mismatch(
-                            uid.clone(),
-                            tag.clone(),
-                            AttrOrTag::Tag,
-                            e,
-                        ));
-                    }
-                    Err(TypecheckError::ExtensionFunctionLookup(e)) => {
-                        return Err(EntitySchemaConformanceError::extension_function_lookup(
-                            uid.clone(),
-                            tag.clone(),
-                            AttrOrTag::Tag,
-                            e,
-                        ));
-                    }
-                }
-
-                partial_val.validate_euids(schema)?;
+                validate_partial_attr(partial_val, &expected_ty, uid, tag, AttrOrTag::Tag, schema)?;
             }
         }
     }
