@@ -894,16 +894,12 @@ impl<'e> Evaluator<'e> {
         initial_val: Value,
         attrs: &nonempty::NonEmpty<SmolStr>,
     ) -> Result<PartialValue> {
-        let mut current_val = initial_val;
-        for (i, attr) in attrs.iter().enumerate() {
-            let is_last = i == attrs.len() - 1;
+        let mut current_val = &initial_val;
+        for attr in attrs.iter() {
             match &current_val.value {
                 ValueKind::Record(record) => match record.get(attr) {
                     Some(next_val) => {
-                        if is_last {
-                            return Ok(true.into());
-                        }
-                        current_val = next_val.clone();
+                        current_val = next_val;
                     }
                     None => return Ok(false.into()),
                 },
@@ -912,17 +908,14 @@ impl<'e> Evaluator<'e> {
                         Dereference::Data(e) => {
                             match e.get(attr) {
                                 Some(PartialValue::Value(next_val)) => {
-                                    if is_last {
-                                        return Ok(true.into());
-                                    }
-                                    current_val = next_val.clone();
+                                    current_val = next_val;
                                 }
                                 Some(PartialValue::Residual(_)) => {
                                     // Can't fully evaluate; produce residual
                                     // We cannot easily reconstruct the partially-evaluated
                                     // extended_has_attr, so return a residual for the whole thing
                                     return Ok(Expr::extended_has_attr(
-                                        Expr::from(current_val),
+                                        Expr::from(current_val.clone()),
                                         attrs.clone(),
                                     )
                                     .into());
@@ -947,8 +940,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
         }
-        // NonEmpty guarantees at least one element, so the loop always returns
-        // But the compiler can't prove it, so we need this unreachable
+        // Loop exit means we have checked the presence of all attributes
         Ok(true.into())
     }
 

@@ -764,13 +764,6 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
             ))
         }
         ExprKind::ExtHasAttr { expr, attrs } => {
-            // Compile extended has as a chain of has_attr checks with short-circuit.
-            // For `expr has a.b.c`:
-            //   has_attr(expr, a) && has_attr(get_attr(expr, a), b) && ...
-            // If an intermediate has_attr is statically false (attribute absent from
-            // the type), short-circuit: the whole chain is false.
-            // We only call compile_get_attr for non-last attributes (it's needed to
-            // build `current` for the next step; the last attr has no next step).
             let t = compile(expr, env)?;
             compile_ext_has_attr(t, attrs, &env.entities)
         }

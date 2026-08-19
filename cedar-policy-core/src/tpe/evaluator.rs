@@ -420,32 +420,23 @@ impl Evaluator<'_> {
                     Residual::Concrete { value, .. } => {
                         // Walk the attribute chain with short-circuit
                         let mut current_val = value;
-                        for (i, attr) in attrs.iter().enumerate() {
+                        for attr in attrs.iter() {
                             if let Ok(r) = current_val.get_as_record() {
-                                if let Some(next_val) = r.as_ref().get(attr) {
-                                    if i < attrs.len() - 1 {
-                                        current_val = next_val;
-                                    } else {
-                                        return mk_concrete(true.into());
-                                    }
-                                } else {
+                                let Some(next_val) = r.as_ref().get(attr) else {
                                     return mk_concrete(false.into());
-                                }
+                                };
+                                current_val = next_val;
                             } else if let Ok(uid) = current_val.get_as_entity() {
                                 match self.entities.get_attrs(uid) {
                                     Some(entity_attrs) => {
-                                        if let Some(next_val) = entity_attrs.get(attr) {
-                                            if i < attrs.len() - 1 {
-                                                current_val = next_val;
-                                            } else {
-                                                return mk_concrete(true.into());
-                                            }
-                                        } else {
+                                        let Some(next_val) = entity_attrs.get(attr) else {
                                             return mk_concrete(false.into());
-                                        }
+                                        };
+                                        current_val = next_val;
                                     }
                                     None => {
                                         // Entity not in store, leave as residual
+                                        // TODO: this residual should be reduced more
                                         return mk_residual(ResidualKind::ExtHasAttr {
                                             expr: Arc::new(expr),
                                             attrs: attrs.clone(),
@@ -456,7 +447,7 @@ impl Evaluator<'_> {
                                 return mk_error();
                             }
                         }
-                        // All attrs checked successfully (shouldn't reach here for NonEmpty)
+                        // All attrs checked successfully
                         mk_concrete(true.into())
                     }
                     Residual::Partial { .. } => mk_residual(ResidualKind::ExtHasAttr {

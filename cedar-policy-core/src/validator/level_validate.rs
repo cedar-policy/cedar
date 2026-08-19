@@ -20,6 +20,7 @@ use super::*;
 use crate::ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID};
 use crate::validator::types::{EntityKind, RequestEnv, Type};
 use smol_str::SmolStr;
+use std::sync::Arc;
 use thiserror::Error;
 use typecheck::PolicyCheck;
 
@@ -318,44 +319,13 @@ impl LevelChecker<'_> {
             },
             ExprKind::ExtHasAttr { expr, attrs } => {
                 match expr.data() {
-                    Some(ty @ Type::Entity(EntityKind::Entity { .. })) => {
-                        let chain_cost =
-                            self.ext_has_attr_chain_cost(ty, attrs.iter().map(SmolStr::as_str));
+                    Some(ty @ Type::Entity(EntityKind::Entity { .. }))
+                    | Some(ty @ Type::Record { .. }) => {
+                        let is_record_root = matches!(ty, Type::Record { .. });
+                        let attr_strs: Vec<&str> = attrs.iter().map(SmolStr::as_str).collect();
+                        let chain_cost = self.attr_chain_cost_from_root(ty, &attr_strs);
 
                         // If chain cost alone too high, return
-                        if chain_cost >= self.max_level.level {
-                            self.level_checking_errors.insert(
-                                ValidationError::maximum_level_exceeded(
-                                    e.source_loc().cloned(),
-                                    self.policy_id.clone(),
-                                    self.max_level,
-                                    (chain_cost + 1).into(),
-                                ),
-                            );
-                        } else {
-                            // If expression budget to high given chain cost, return
-                            let base_budget = self.max_level.level - chain_cost - 1;
-                            let deref_target_lvl =
-                                self.check_entity_deref_target_level(expr, Vec::new(), env);
-                            if deref_target_lvl.level > base_budget {
-                                self.level_checking_errors.insert(
-                                    ValidationError::maximum_level_exceeded(
-                                        e.source_loc().cloned(),
-                                        self.policy_id.clone(),
-                                        self.max_level,
-                                        (deref_target_lvl.level + chain_cost + 1).into(),
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                    Some(ty @ Type::Record { .. }) => {
-                        // Record base: chain may traverse through entities.
-                        let chain_cost =
-                            self.ext_has_attr_chain_cost(ty, attrs.iter().map(SmolStr::as_str));
-
-                        // Rrecord base doesn't need an extra level for the initial dereference
-                        // unlike entity base)
                         if chain_cost > self.max_level.level {
                             self.level_checking_errors.insert(
                                 ValidationError::maximum_level_exceeded(
@@ -366,15 +336,21 @@ impl LevelChecker<'_> {
                                 ),
                             );
                         } else {
-                            // Check: base expression passes general level check
-                            self.check_expr_level(expr, env);
+                            // Check: base expression passes general level check in record case
+                            if is_record_root {
+                                self.check_expr_level(expr, env);
+                            }
 
                             // Check: base expression entity access along path to
                             // first entity dereference in the chain.
-                            if let Some(path) = self.ext_has_attr_first_entity_path(
-                                ty,
-                                attrs.iter().map(SmolStr::as_str),
-                            ) {
+                            let maybe_path = if is_record_root {
+                                // path to first entity along attr chain (may not exist)
+                                self.ext_has_attr_first_entity_path(ty, &attr_strs)
+                            } else {
+                                Some(Vec::new()) // path to first entity empty, root is entity
+                            };
+                            if let Some(path) = maybe_path {
+                                // If expression budget to high given chain cost, return
                                 let base_budget = self.max_level.level - chain_cost;
                                 let deref_target_lvl =
                                     self.check_entity_deref_target_level(expr, path, env);
@@ -427,26 +403,30 @@ impl LevelChecker<'_> {
 
     /// Compute the number of entity-typed hops in `attrs` chain starting
     /// from a given type.
+    /// If the root is an entity, then accessing any attribute from it requires
+    /// dereferencing it.
     /// Last attribute in the chain is not counted towards cost because has
     /// operator does not need to dereference it.
-    fn ext_has_attr_chain_cost<'b>(
-        &self,
-        start_ty: &Type,
-        attrs: impl Iterator<Item = &'b str>,
-    ) -> u32 {
-        let attrs: Vec<&str> = attrs.collect();
-        if attrs.len() <= 1 {
+    fn attr_chain_cost_from_root(&self, root: &Type, attrs: &[&str]) -> u32 {
+        if attrs.is_empty() {
             return 0;
         }
-        let mut cost: u32 = 0;
-        let mut current_type = start_ty.clone();
+        // offset by 1 if root is entity, since it need one deref to access attrs
+        let mut cost = matches!(root, Type::Entity(..)) as u32;
+        if attrs.len() == 1 {
+            return cost;
+        }
+        // walk the attribute chain, each attr_type is already an Arc<..>
+        let mut current_type: Arc<Type> = Arc::new(root.clone());
         for attr in attrs.iter().take(attrs.len() - 1) {
             if let Some(attr_ty) = Type::lookup_attribute_type(self.schema, &current_type, attr) {
-                let next_type = attr_ty.attr_type.as_ref().clone();
-                if matches!(next_type, Type::Entity(EntityKind::Entity { .. })) {
+                if matches!(
+                    attr_ty.attr_type.as_ref(),
+                    Type::Entity(EntityKind::Entity { .. })
+                ) {
                     cost += 1;
                 }
-                current_type = next_type;
+                current_type = attr_ty.attr_type;
             } else {
                 break;
             }
@@ -458,20 +438,7 @@ impl LevelChecker<'_> {
     /// the extended `has` chain will dereference through the schema.
     /// Returns `None` if no entity is encountered before the last attribute (since
     /// the last attr is only tested for presence, not dereferenced).
-    fn ext_has_attr_first_entity_path<'b>(
-        &self,
-        start_ty: &Type,
-        attrs: impl Iterator<Item = &'b str>,
-    ) -> Option<Vec<SmolStr>> {
-        let attrs: Vec<&str> = attrs.collect();
-        self.ext_has_attr_first_entity_path_inner(start_ty, &attrs)
-    }
-
-    fn ext_has_attr_first_entity_path_inner(
-        &self,
-        ty: &Type,
-        attrs: &[&str],
-    ) -> Option<Vec<SmolStr>> {
+    fn ext_has_attr_first_entity_path(&self, ty: &Type, attrs: &[&str]) -> Option<Vec<SmolStr>> {
         match attrs {
             [] | [_] => None,
             [a, rest @ ..] => {
@@ -479,7 +446,7 @@ impl LevelChecker<'_> {
                 match attr_ty.as_ref().map(|at| at.attr_type.as_ref()) {
                     Some(Type::Entity(EntityKind::Entity { .. })) => Some(vec![SmolStr::from(*a)]),
                     Some(next) => {
-                        self.ext_has_attr_first_entity_path_inner(next, rest)
+                        self.ext_has_attr_first_entity_path(next, rest)
                             .map(|mut path| {
                                 path.insert(0, SmolStr::from(*a));
                                 path
@@ -497,6 +464,7 @@ mod levels_validation_tests {
     use super::*;
     use crate::parser;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use std::sync::Arc;
 
     fn get_schema() -> ValidatorSchema {
         json_schema::Fragment::from_json_value(serde_json::json!(
@@ -1186,6 +1154,47 @@ mod levels_validation_tests {
             r#"permit(principal, action, resource) when { if true then true else principal.bool };"#,
             [],
             0,
+        );
+    }
+
+    #[test]
+    fn attr_chain_cost_from_root_entity_single_attr() {
+        // This tests chain cost of ext-has-attr with a single attr. This isn't
+        // reachable through the parsing paths wich only produce an extended has for
+        // more than two attributes, but we want to be sure "extended has user" is
+        // consistent with "has user".
+        let schema = get_schema();
+        let policy_id = PolicyID::from_string("test");
+        let checker = LevelChecker {
+            policy_id: &policy_id,
+            max_level: EntityDerefLevel::from(3u32),
+            level_checking_errors: HashSet::new(),
+            schema: &schema,
+        };
+        let entity_ty = Type::entity_lub(["User"]);
+        let record_ty = Type::closed_record_with_required_attributes([(
+            SmolStr::from("user"),
+            Arc::new(entity_ty.clone()),
+        )]);
+        // one attr --> one deref
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&entity_ty, &vec!["user"]),
+            1
+        );
+        // zero attrs -> zero deref --> cost is 0
+        assert_eq!(checker.attr_chain_cost_from_root(&entity_ty, &vec![]), 0);
+        // one attr on record --> zero deref
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&record_ty, &vec!["user"]),
+            0
+        );
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&entity_ty, &vec!["user", "bool"]),
+            2
+        );
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&record_ty, &vec!["user", "bool"]),
+            1
         );
     }
 
