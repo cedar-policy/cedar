@@ -81,6 +81,11 @@ impl Term {
     /// Keyed on the address of each subterm (not structural equality) so that
     /// shared subterms in the `Term` DAG collapse to one cache entry without
     /// paying the exponential cost of structural key comparison.
+    //
+    // The memoization based on pointer is safe under the invariants:
+    // - we only hold &self and not a mutable reference,
+    // - the cache is never shared across calls to the `interpret` caller,
+    // - all cache entries correspond to subterms of term, never temporary values
     fn interpret_memoized(
         &self,
         interp: &Interpretation<'_>,
@@ -106,8 +111,10 @@ impl Term {
         match self {
             Term::Prim(..) | Term::None(..) => self.clone(),
             Term::Var(var) => interp.interpret_var(var),
+            // `t: &Arc<Term>` is borrowed from `self`, not a temporary.
             Term::Some(t) => Term::Some(Arc::new(t.interpret_memoized(interp, cache))),
 
+            // Each `t` yielded by `elts.iter()` borrows from `self`'s `Arc<BTreeSet<Term>>`
             Term::Set { elts, elts_ty } => Term::Set {
                 elts: Arc::new(
                     elts.iter()
@@ -117,12 +124,15 @@ impl Term {
                 elts_ty: elts_ty.clone(),
             },
 
+            // Each value `v` borrows from `self`'s `Arc<BTreeMap<Attr, Term>>`
             Term::Record(rec) => Term::Record(Arc::new(
                 rec.iter()
                     .map(|(k, v)| (k.clone(), v.interpret_memoized(interp, cache)))
                     .collect(),
             )),
 
+            // Every `arg`/`argN` below is an element of `args.as_slice()`, i.e.
+            // a borrow into `self`'s `Arc<Vec<Term>>`.
             Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
                 (Op::Not, [arg]) => factory::not(arg.interpret_memoized(interp, cache)),
                 (Op::And, [arg1, arg2]) => {
@@ -328,6 +338,7 @@ impl Term {
                     Term::App {
                         op: op.clone(),
                         args: Arc::new(
+                            // `t` borrows from `self`'s `args`, not a temporary.
                             args.iter()
                                 .map(|t| t.interpret_memoized(interp, cache))
                                 .collect(),
