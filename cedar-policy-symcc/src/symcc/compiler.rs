@@ -305,8 +305,8 @@ pub fn compile_has_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
     match attrs.type_of() {
         TermType::Record { rty } => match rty.get(a) {
             Some(ty) if ty.is_option_type() => Ok(some_of(is_some(record_get(attrs, a)))),
-            Some(_) => Ok(true.into()),
-            None => Ok(false.into()),
+            Some(_) => Ok(some_of(true.into())),
+            None => Ok(some_of(false.into())),
         },
         _ => Err(CompileError::TypeError),
     }
