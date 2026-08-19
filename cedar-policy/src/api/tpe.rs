@@ -15,17 +15,16 @@
  */
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
-use cedar_policy_core::ast::{self, Value};
+use cedar_policy_core::ast;
 use cedar_policy_core::authorizer::Decision;
 use cedar_policy_core::batched_evaluator::is_authorized_batched;
 use cedar_policy_core::batched_evaluator::{
     err::BatchedEvalError, EntityLoader as EntityLoaderInternal,
 };
-use cedar_policy_core::evaluator::{EvaluationError, RestrictedEvaluator};
-use cedar_policy_core::extensions::Extensions;
 use cedar_policy_core::tpe;
+use cedar_policy_core::tpe::value::PartialRecord;
+use cedar_policy_core::validator::request_validation_errors::InvalidContextError;
 use itertools::Itertools;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -92,11 +91,23 @@ impl PartialRequest {
         schema: &Schema,
     ) -> Result<Self, PartialRequestCreationError> {
         let context = context
-            .map(|c| match c.0 {
+            .map(|c| match &c.0 {
                 ast::Context::RestrictedResidual(_) => {
                     Err(PartialRequestCreationError::ContextContainsUnknowns)
                 }
-                ast::Context::Value(m) => Ok(m),
+                ast::Context::Value(concrete_context) => {
+                    PartialRecord::concrete_context_for_action(
+                        concrete_context,
+                        action.as_ref(),
+                        schema.as_ref(),
+                    )
+                    .map_err(|_| {
+                        RequestValidationError::InvalidContext(
+                            InvalidContextError::new(c.0, action.as_ref().clone()).into(),
+                        )
+                        .into()
+                    })
+                }
             })
             .transpose()?;
         tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
@@ -109,9 +120,14 @@ impl PartialRequest {
 ///
 /// Intended for use with [`PolicySet::query_resource`].
 #[doc = include_str!("../../experimental_warning.md")]
-#[repr(transparent)]
-#[derive(Debug, Clone, RefCast)]
-pub struct ResourceQueryRequest(pub(crate) PartialRequest);
+#[derive(Debug, Clone)]
+pub struct ResourceQueryRequest {
+    request: PartialRequest,
+    /// The context this was constructed with. Retained so that [`Self::to_request`] can hand back
+    /// exactly what the caller supplied, rather than reconstructing it from the partial
+    /// representation.
+    context: Context,
+}
 
 impl ResourceQueryRequest {
     /// Construct a valid [`ResourceQueryRequest`] according to a [`Schema`]
@@ -126,10 +142,10 @@ impl ResourceQueryRequest {
             PartialEntityUid(principal.0.into()),
             action,
             PartialEntityUid::new(resource, None),
-            Some(context),
+            Some(context.clone()),
             schema,
         )
-        .map(Self)
+        .map(|request| Self { request, context })
     }
 
     fn principal(&self) -> EntityUid {
@@ -137,22 +153,7 @@ impl ResourceQueryRequest {
             clippy::unwrap_used,
             reason = "constructor requires concrete principal"
         )]
-        EntityUid(self.0 .0.principal().clone().try_into().unwrap())
-    }
-
-    fn context(&self) -> Context {
-        #[expect(clippy::unwrap_used, reason = "constructor requires concrete context")]
-        let context_attrs = self.0 .0.context_attrs().unwrap();
-        #[expect(
-            clippy::unwrap_used,
-            reason = "building context from BTreeMap iter, so no duplicates are possible"
-        )]
-        Context::from_pairs(
-            context_attrs
-                .iter()
-                .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
-        )
-        .unwrap()
+        EntityUid(self.request.0.principal().clone().try_into().unwrap())
     }
 
     /// Convert this to a [`Request`] by providing the resource [`EntityId`]
@@ -168,12 +169,12 @@ impl ResourceQueryRequest {
     ) -> Result<Request, RequestValidationError> {
         Request::new(
             self.principal(),
-            EntityUid(self.0 .0.action().clone()),
+            EntityUid(self.request.0.action().clone()),
             EntityUid::from_type_name_and_id(
-                EntityTypeName(self.0 .0.resource_type().clone()),
+                EntityTypeName(self.request.0.resource_type().clone()),
                 resource_id,
             ),
-            self.context(),
+            self.context.clone(),
             schema,
         )
     }
@@ -183,9 +184,12 @@ impl ResourceQueryRequest {
 ///
 /// Intended for use with [`PolicySet::query_principal`].
 #[doc = include_str!("../../experimental_warning.md")]
-#[repr(transparent)]
-#[derive(Debug, Clone, RefCast)]
-pub struct PrincipalQueryRequest(pub(crate) PartialRequest);
+#[derive(Debug, Clone)]
+pub struct PrincipalQueryRequest {
+    request: PartialRequest,
+    /// The context this was constructed with
+    context: Context,
+}
 
 impl PrincipalQueryRequest {
     /// Construct a valid [`PrincipalQueryRequest`] according to a [`Schema`]
@@ -200,30 +204,15 @@ impl PrincipalQueryRequest {
             PartialEntityUid::new(principal, None),
             action,
             PartialEntityUid(resource.0.into()),
-            Some(context),
+            Some(context.clone()),
             schema,
         )
-        .map(Self)
+        .map(|request| Self { request, context })
     }
 
     fn resource(&self) -> EntityUid {
         #[expect(clippy::unwrap_used, reason = "constructor requires concrete resource")]
-        EntityUid(self.0 .0.resource().clone().try_into().unwrap())
-    }
-
-    fn context(&self) -> Context {
-        #[expect(clippy::unwrap_used, reason = "constructor requires concrete context")]
-        let context_attrs = self.0 .0.context_attrs().unwrap();
-        #[expect(
-            clippy::unwrap_used,
-            reason = "building context from BTreeMap iter, so no duplicates are possible"
-        )]
-        Context::from_pairs(
-            context_attrs
-                .iter()
-                .map(|(a, v)| (a.to_string(), RestrictedExpression(v.clone().into()))),
-        )
-        .unwrap()
+        EntityUid(self.request.0.resource().clone().try_into().unwrap())
     }
 
     /// Convert this to a [`Request`] by providing the principal [`EntityId`]
@@ -239,12 +228,12 @@ impl PrincipalQueryRequest {
     ) -> Result<Request, RequestValidationError> {
         Request::new(
             EntityUid::from_type_name_and_id(
-                EntityTypeName(self.0 .0.principal_type().clone()),
+                EntityTypeName(self.request.0.principal_type().clone()),
                 principal_id,
             ),
-            EntityUid(self.0 .0.action().clone()),
+            EntityUid(self.request.0.action().clone()),
             self.resource(),
-            self.context(),
+            self.context.clone(),
             schema,
         )
     }
@@ -259,7 +248,7 @@ impl PrincipalQueryRequest {
 pub struct ActionQueryRequest {
     principal: PartialEntityUid,
     resource: PartialEntityUid,
-    context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    context: Option<Context>,
     schema: Schema,
 }
 
@@ -278,14 +267,12 @@ impl ActionQueryRequest {
         context: Option<Context>,
         schema: Schema,
     ) -> Result<Self, PartialRequestCreationError> {
-        let context = context
-            .map(|c| match c.0 {
-                ast::Context::RestrictedResidual(_) => {
-                    Err(PartialRequestCreationError::ContextContainsUnknowns)
-                }
-                ast::Context::Value(m) => Ok(m),
-            })
-            .transpose()?;
+        if context
+            .as_ref()
+            .is_some_and(|c| matches!(&c.0, ast::Context::RestrictedResidual(_)))
+        {
+            return Err(PartialRequestCreationError::ContextContainsUnknowns);
+        }
         Ok(Self {
             principal,
             resource,
@@ -297,15 +284,14 @@ impl ActionQueryRequest {
     fn partial_request(
         &self,
         action: EntityUid,
-    ) -> Result<PartialRequest, cedar_policy_core::validator::RequestValidationError> {
-        tpe::request::PartialRequest::new(
-            self.principal.0.clone(),
-            action.0,
-            self.resource.0.clone(),
+    ) -> Result<PartialRequest, PartialRequestCreationError> {
+        PartialRequest::new(
+            self.principal.clone(),
+            action,
+            self.resource.clone(),
             self.context.clone(),
-            &self.schema.0,
+            &self.schema,
         )
-        .map(PartialRequest)
     }
 }
 
@@ -324,34 +310,13 @@ impl PartialEntity {
         tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
         schema: &Schema,
     ) -> Result<Self, PartialEntityError> {
-        Ok(Self(tpe::entities::PartialEntity::new(
+        let exprs =
+            |m: BTreeMap<SmolStr, RestrictedExpression>| m.into_iter().map(|(k, v)| (k, v.0));
+        Ok(Self(tpe::entities::partial_entity_from_exprs(
             uid.0,
-            attrs
-                .map(|ps| {
-                    ps.into_iter()
-                        .map(|(k, v)| {
-                            Ok((
-                                k,
-                                RestrictedEvaluator::new(Extensions::all_available())
-                                    .interpret(v.0.as_borrowed())?,
-                            ))
-                        })
-                        .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
-                })
-                .transpose()?,
+            attrs.map(exprs),
             ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
-            tags.map(|ps| {
-                ps.into_iter()
-                    .map(|(k, v)| {
-                        Ok((
-                            k,
-                            RestrictedEvaluator::new(Extensions::all_available())
-                                .interpret(v.0.as_borrowed())?,
-                        ))
-                    })
-                    .collect::<Result<BTreeMap<_, _>, EvaluationError>>()
-            })
-            .transpose()?,
+            tags.map(exprs),
             &schema.0,
         )?))
     }
@@ -778,19 +743,19 @@ impl PolicySet {
         schema: &Schema,
     ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
         let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
-        let tpe_response = self.tpe(&request.0, &partial_entities, schema)?;
+        let tpe_response = self.tpe(&request.request, &partial_entities, schema)?;
         let policies = tpe_response.policy_set();
         match tpe_response.decision() {
             Some(Decision::Allow) => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.resource_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.request.0.resource_type())
                 .map(Entity::uid)
                 .collect_vec()
                 .into_iter()),
             Some(Decision::Deny) => Ok(vec![].into_iter()),
             None => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.resource_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.request.0.resource_type())
                 .filter(|entity| {
                     #[expect(
                         clippy::unwrap_used, reason = "`to_request` cannot panic because we do not pass a schema. However, the correctness of the authorization
@@ -824,19 +789,19 @@ impl PolicySet {
         schema: &Schema,
     ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
         let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
-        let tpe_response = self.tpe(&request.0, &partial_entities, schema)?;
+        let tpe_response = self.tpe(&request.request, &partial_entities, schema)?;
         let policies = tpe_response.policy_set();
         match tpe_response.decision() {
             Some(Decision::Allow) => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.principal_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.request.0.principal_type())
                 .map(Entity::uid)
                 .collect_vec()
                 .into_iter()),
             Some(Decision::Deny) => Ok(vec![].into_iter()),
             None => Ok(entities
                 .iter()
-                .filter(|entity| entity.0.uid().entity_type() == request.0.0.principal_type())
+                .filter(|entity| entity.0.uid().entity_type() == request.request.0.principal_type())
                 .filter(|entity| {
                     #[expect(
                         clippy::unwrap_used, reason = "`to_request` cannot panic because we do not pass a schema. However, the correctness of the authorization
@@ -1018,6 +983,27 @@ mod tpe_tests {
             ),
             Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
         );
+
+        // An entity type the schema doesn't declare is rejected up front as an
+        // unexpected type, rather than surfacing as a spurious "unexpected
+        // attribute" error on its (equally undeclared) attributes.
+        assert_matches!(
+            PartialEntity::new(
+                r#"Undeclared::"foo""#.parse().unwrap(),
+                Some(BTreeMap::from_iter([(
+                    "attr".into(),
+                    RestrictedExpression::new_long(1)
+                )])),
+                None,
+                None,
+                &schema
+            ),
+            Err(PartialEntityError::Entities(EntitiesError::Validation(
+                cedar_policy_core::tpe::err::EntityValidationError::Concrete(
+                    cedar_policy_core::entities::conformance::err::EntitySchemaConformanceError::UnexpectedEntityType(_)
+                )
+            )))
+        );
     }
 
     mod streaming_service {
@@ -1065,6 +1051,8 @@ mod tpe_tests {
             )
             .unwrap();
 
+            // TODO: Once the public API supports explicit `Absent` attributes, add a test that
+            // marking a required field as Absent produces a validation error.
             assert_matches!(
                 PartialEntity::new(
                     r#"Show::"foo""#.parse().unwrap(),
@@ -1075,6 +1063,20 @@ mod tpe_tests {
                             RestrictedExpression::new_bool(false)
                         ),
                     ])),
+                    None,
+                    None,
+                    &schema
+                ),
+                Ok(_)
+            );
+
+            assert_matches!(
+                PartialEntity::new(
+                    r#"Show::"foo""#.parse().unwrap(),
+                    Some(BTreeMap::from_iter([(
+                        "isFree".into(),
+                        RestrictedExpression::new_string("not a bool".into())
+                    ),])),
                     None,
                     None,
                     &schema
@@ -2235,6 +2237,8 @@ when { principal in resource.admins };
         #[test]
         #[cfg(feature = "partial-eval")]
         fn test_batched_evaluation_error_partial_entity() {
+            use cedar_policy_core::{ast::PartialValueToValueError, tpe::err::EntitiesError};
+
             // Create an entity loader that returns a partial entity (contains unknowns)
             struct PartialEntityLoader;
             impl crate::EntityLoader for PartialEntityLoader {
@@ -2286,7 +2290,14 @@ when { principal in resource.admins };
             let mut loader = PartialEntityLoader;
             let result = pset.is_authorized_batched(&request, &schema, &mut loader, 10);
 
-            assert_matches!(result, Err(BatchedEvalError::PartialValueToValue(_)));
+            assert_matches!(
+                result,
+                Err(BatchedEvalError::Entities(
+                    EntitiesError::PartialValueToValue(PartialValueToValueError::ContainsUnknown(
+                        _
+                    ))
+                ))
+            );
         }
 
         #[test]
@@ -3021,44 +3032,42 @@ when { principal in resource.admins };
 
         let (schema, _) = crate::Schema::from_cedarschema_str(
             r#"
-            entity User = { name: String };
-            entity Account = { name: String, assignedTo?: User };
-            action RevealCredentials appliesTo {
+            entity User = { score: Long };
+            entity Document;
+            action Read appliesTo {
                 principal: [User],
-                resource: [Account],
+                resource: [Document],
                 context: { flag: Bool },
             };
             "#,
         )
         .unwrap();
 
+        // Integer overflow: principal.score + 9223372036854775807 will error
         let policies = crate::PolicySet::from_str(
             r#"
             permit(
                 principal is User,
-                action == Action::"RevealCredentials",
-                resource is Account
+                action == Action::"Read",
+                resource is Document
             ) when {
                 context.flag &&
-                resource has assignedTo &&
-                resource.assignedTo == principal
+                principal.score + 9223372036854775807 > 0
             };
             "#,
         )
         .unwrap();
 
-        // Account without assignedTo — TPE will produce an error node for
-        // `resource.assignedTo`
         let entities = crate::Entities::from_json_value(
             serde_json::json!([
                 {
                     "uid": { "type": "User", "id": "u1" },
-                    "attrs": { "name": "alice" },
+                    "attrs": { "score": 1 },
                     "parents": []
                 },
                 {
-                    "uid": { "type": "Account", "id": "a1" },
-                    "attrs": { "name": "shared" },
+                    "uid": { "type": "Document", "id": "d1" },
+                    "attrs": {},
                     "parents": []
                 }
             ]),
@@ -3068,11 +3077,11 @@ when { principal in resource.admins };
 
         let partial_entities = crate::PartialEntities::from_concrete(entities, &schema).unwrap();
 
-        // Context is unknown — forces a residual on `context has flag`
+        // Context is unknown — forces a residual, but the arithmetic overflows
         let request = crate::PartialRequest::new(
             crate::PartialEntityUid::from_concrete(r#"User::"u1""#.parse().unwrap()),
-            r#"Action::"RevealCredentials""#.parse().unwrap(),
-            crate::PartialEntityUid::from_concrete(r#"Account::"a1""#.parse().unwrap()),
+            r#"Action::"Read""#.parse().unwrap(),
+            crate::PartialEntityUid::from_concrete(r#"Document::"d1""#.parse().unwrap()),
             None,
             &schema,
         )
@@ -3112,7 +3121,7 @@ when { principal in resource.admins };
         };
 
         // The expression should contain a ResidualError node (from
-        // `resource.assignedTo` on an entity without that attribute)
+        // integer overflow in principal.score + MAX_LONG)
         assert!(
             expr.has_error(),
             "residual expression should contain an error node"

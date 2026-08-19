@@ -82,3 +82,11 @@ pub(crate) fn parse_typed_expr(
     ans.into_typed_expr()
         .expect("expected typechecking to produce a typed expression")
 }
+
+/// Parse a Cedar-schema source string into a `ValidatorSchema`
+#[track_caller]
+pub(crate) fn parse_schema(src: &str) -> ValidatorSchema {
+    ValidatorSchema::from_cedarschema_str(src, crate::extensions::Extensions::all_available())
+        .unwrap()
+        .0
+}
