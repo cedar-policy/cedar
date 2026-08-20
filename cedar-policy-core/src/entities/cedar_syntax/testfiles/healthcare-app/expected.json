@@ -1,0 +1,89 @@
+[
+    {
+        "uid": {
+            "type": "HealthCareApp::User",
+            "id": "Victor"
+        },
+        "attrs": {
+            "displayName": "Victor"
+        },
+        "parents": [
+            {
+                "type": "HealthCareApp::Role",
+                "id": "admin"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "HealthCareApp::Role",
+            "id": "admin"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "HealthCareApp::Appointment",
+            "id": "appointment003"
+        },
+        "attrs": {
+            "provider": {
+                "__entity": {
+                    "type": "HealthCareApp::User",
+                    "id": "DrSeuz"
+                }
+            },
+            "patient": {
+                "__entity": {
+                    "type": "HealthCareApp::User",
+                    "id": "Victor"
+                }
+            }
+        },
+        "parents": [
+            {
+                "type": "HealthCareApp::Patient",
+                "id": "Victor"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "HealthCareApp::Patient",
+            "id": "Victor"
+        },
+        "attrs": {
+            "associatedUser": {
+                "__entity": {
+                    "type": "HealthCareApp::User",
+                    "id": "Victor"
+                }
+            }
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "HealthCareApp::User",
+            "id": "DrSeuz"
+        },
+        "attrs": {
+            "displayName": "Dr. Seuz"
+        },
+        "parents": [
+            {
+                "type": "HealthCareApp::Role",
+                "id": "doctor"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "HealthCareApp::Role",
+            "id": "doctor"
+        },
+        "attrs": {},
+        "parents": []
+    }
+]

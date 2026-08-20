@@ -59,6 +59,7 @@ test-util = []
 partial-validate = []
 partial-eval = []
 entity-manifest = []
+cedar-entity-syntax = []
 wasm = ["serde-wasm-bindgen", "tsify", "wasm-bindgen"]
 experimental = [
     "tpe",
@@ -66,6 +67,7 @@ experimental = [
     "partial-validate",
     "partial-eval",
     "variadic-is-in-range",
+    "cedar-entity-syntax",
 ]
 tpe = []
 variadic-is-in-range = []
