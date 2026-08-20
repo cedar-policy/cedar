@@ -9,12 +9,42 @@ permissions:
 env: 
   CARGO_TERM_COLOR: always
 jobs:
+  get-cedar-java-ref:
+    runs-on: ubuntu-latest
+    steps:
+      # Since this workflow is not triggered by pull request events,
+      # `github.ref_name` is the short ref name of the branch or tag that triggered the workflow run.
+      # For more information see: https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context
+      - name: Get cedar-java branch name
+        shell: bash
+        env:
+          CEDAR_REF_NAME: ${{ github.ref_name }}
+        run: |
+          ref="${CEDAR_REF_NAME}"
+          # A release branch (e.g. `release/4.12.x`) may not have been cut in cedar-java yet.
+          # In that case, fall back to the corresponding pre-release branch
+          # (e.g. `pre-release/4.12.x`).
+          if [[ "${ref}" == release/* ]]; then
+            status=0
+            git ls-remote --exit-code --heads https://github.com/cedar-policy/cedar-java.git "${ref}" > /dev/null || status=$?
+            # `--exit-code` exits with 2 when no matching ref is found. Any other
+            # non-zero status is an error (e.g. the remote could not be reached).
+            if [[ "${status}" -eq 2 ]]; then
+              ref="cedar-release-pinned/${ref#release/}"
+            elif [[ "${status}" -ne 0 ]]; then
+              echo "::error::Failed to list branches in cedar-policy/cedar-java (git ls-remote exited with ${status})"
+              exit "${status}"
+            fi
+          fi
+          echo "branch_name=${ref}" >> "$GITHUB_OUTPUT"
+        id: get_branch_name
+    outputs:
+      branch_name: ${{ steps.get_branch_name.outputs.branch_name }}
+
   build-cedar-java:
+    needs: get-cedar-java-ref
     uses: cedar-policy/cedar-java/.github/workflows/run_cedar_java_reusable.yml@main
     with:
       # The fully-formed ref of the branch or tag that triggered the workflow run.
       cedar_policy_ref: ${{ github.ref }}
-      # Since this workflow is not triggered by pull request events, 
-      # this will be the short ref name of the branch or tag that triggered the workflow run.
-      # For more information see: https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context
-      cedar_java_ref: ${{ github.ref_name }} 
+      cedar_java_ref: ${{ needs.get-cedar-java-ref.outputs.branch_name }}
