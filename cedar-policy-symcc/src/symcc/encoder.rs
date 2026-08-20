@@ -29,7 +29,9 @@
 //!    will translate `Term.some` nodes in the Term language as applications of the
 //!    `val` selector function.
 //!  * `TermType.entity E`: we represent Cedar entities of entity type E as values
-//!    of the SMT algebraic datatype E with a single constructor, `(E (eid String))`.
+//!    of the SMT algebraic datatype E with a single constructor, `(E (E_eid String))`.
+//!    The selector is named `E_eid`, after the entity type, since SMT-LIB requires
+//!    unique selector and constructor names across all datatypes.
 //!    Each entity type E gets an uninterpreted function `f: E → Record_E` that maps
 //!    instances of E to their attributes.  Similarly, each E
 //!    gets N uninterpreted functions `g₁: E → Set E₁, ..., gₙ: E → Set Eₙ` that map
