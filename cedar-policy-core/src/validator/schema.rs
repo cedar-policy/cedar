@@ -1017,7 +1017,10 @@ impl ValidatorSchema {
         self.action_ids.contains_key(action_id)
     }
 
-    /// Return true when the `entity_type` corresponds to a valid entity type.
+    /// Return true when the `entity_type` corresponds to a valid entity type. Note that
+    /// unlike Schema validation which reports an error if the action entity
+    /// type is not inhabited i.e. no action is defined in the corresponding namespace,
+    /// this accepts any action type.
     pub(crate) fn is_known_entity_type(&self, entity_type: &EntityType) -> bool {
         entity_type.is_action() || self.entity_types.contains_key(entity_type)
     }
@@ -1196,6 +1199,11 @@ impl ValidatorSchema {
         // each action defined in a namespace (the action type lives in the same namespace).
         // If no action is defined, the Action type is uninhabited, in which case we reject
         // the schema as not well formed -- consistent with the Cedar schema parsers.
+        //
+        // Note: we cannot use `is_known_entity_type` here because it treats *any*
+        // action-typed name as known (action references in policies are validated
+        // separately, by `validate_action_ids`). Here we need the stricter notion
+        // that an action type is only inhabited when a matching action is declared.
         let action_entity_types: HashSet<&EntityType> = self
             .action_ids
             .keys()

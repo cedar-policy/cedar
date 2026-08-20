@@ -886,6 +886,42 @@ mod test {
         assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
+    /// A policy referencing an action under the bare `Action` type, when the
+    /// only declared action lives under a namespaced `NS::Action` type, must
+    /// report only the `UnrecognizedActionId` error. In particular the bare
+    /// `Action` type must not additionally be flagged as an
+    /// `UnrecognizedEntityType`: action-typed references in policies are
+    /// validated by `validate_action_ids`, not `validate_entity_types`.
+    #[test]
+    fn validate_action_id_wrong_namespace_reports_only_unrecognized_action() {
+        let descriptors = json_schema::Fragment::from_json_str(
+            r#"
+                {
+                    "NS": {
+                        "entityTypes": {},
+                        "actions": { "foo": {} }
+                    }
+                }"#,
+        )
+        .expect("Expected schema parse.");
+        let schema = descriptors.try_into().unwrap();
+
+        let src = r#"permit(principal, action == Action::"foo", resource);"#;
+        let policy = parse_policy_or_template(None, src).unwrap();
+        let validate = Validator::new(schema);
+        let notes: Vec<ValidationError> =
+            Validator::validate_entity_types_and_literals(validate.schema(), &policy).collect();
+
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(
+            matches!(
+                notes.first().unwrap(),
+                ValidationError::UnrecognizedActionId(_)
+            ),
+            "expected only an UnrecognizedActionId error, got {notes:?}"
+        );
+    }
+
     #[test]
     fn validate_namespaced_entity_type_in_schema() {
         let descriptors = json_schema::Fragment::from_json_str(
