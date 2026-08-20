@@ -215,7 +215,7 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                 self.script.comment(&ety.to_string()).await?;
                 self.declare_type(
                     ety_id.clone(),
-                    [format_smolstr!("({ety_id} (eid String))").as_str()],
+                    [format_smolstr!("({ety_id} ({ety_id}_eid String))").as_str()],
                 )
                 .await
             }
