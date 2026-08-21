@@ -1934,8 +1934,6 @@ mod test {
     use smol_str::ToSmolStr;
     use std::collections::{hash_map::DefaultHasher, HashSet};
 
-    use crate::expr_builder::ExprBuilder as _;
-
     use super::*;
 
     pub fn all_vars() -> impl Iterator<Item = Var> {
