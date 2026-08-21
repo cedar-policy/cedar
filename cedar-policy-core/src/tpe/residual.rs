@@ -92,77 +92,53 @@ impl Residual {
         }
     }
 
-    /// Whether this residual can result in a runtime error, assuming that self is well-formed, that is, has been validated against a schema.
-    pub fn can_error_assuming_well_formed(&self) -> bool {
+    /// Whether this residual will never produce a runtime error, assuming that self is well-typed, that is, has been validated against a schema.
+    pub fn error_free_assuming_well_typed(&self) -> bool {
         match self {
-            Residual::Concrete { .. } => false,
-            Residual::Error(_) => true,
+            Residual::Concrete { .. } => true,
+            Residual::Error(_) => false,
             Residual::Partial { kind, .. } => match kind {
                 // Keep the same order of cases here as in tpe::Evaluator::interpret
-                ResidualKind::Var(_) => false,
+                ResidualKind::Var(_) => true,
                 // The general rule here is that an expression can only error if any child expression can error.
                 ResidualKind::And { left, right } => {
-                    left.can_error_assuming_well_formed() || right.can_error_assuming_well_formed()
+                    left.error_free_assuming_well_typed() && right.error_free_assuming_well_typed()
                 }
                 ResidualKind::Or { left, right } => {
-                    left.can_error_assuming_well_formed() || right.can_error_assuming_well_formed()
+                    left.error_free_assuming_well_typed() && right.error_free_assuming_well_typed()
                 }
                 ResidualKind::If {
                     test_expr,
                     then_expr,
                     else_expr,
                 } => {
-                    test_expr.can_error_assuming_well_formed()
-                        || then_expr.can_error_assuming_well_formed()
-                        || else_expr.can_error_assuming_well_formed()
+                    test_expr.error_free_assuming_well_typed()
+                        && then_expr.error_free_assuming_well_typed()
+                        && else_expr.error_free_assuming_well_typed()
                 }
-                ResidualKind::Is { expr, .. } => expr.can_error_assuming_well_formed(),
-                ResidualKind::Like { expr, .. } => expr.can_error_assuming_well_formed(),
+                ResidualKind::Is { expr, .. } => expr.error_free_assuming_well_typed(),
+                ResidualKind::Like { expr, .. } => expr.error_free_assuming_well_typed(),
 
-                ResidualKind::BinaryApp { op, arg1, arg2 } => match op {
-                    // Arithmetic operations could error due to integer overflow
-                    ast::BinaryOp::Add => true,
-                    ast::BinaryOp::Mul => true,
-                    ast::BinaryOp::Sub => true,
-
-                    // <entityUID>.getTag possibly errors during reauthorization if <entityUID> does not exist in the entity store
-                    ast::BinaryOp::GetTag => true,
-
-                    // Other binary operations follow the general rule. They are all enumerated here for clarity, although
-                    // a _ case could be used.
-                    ast::BinaryOp::Contains
-                    | ast::BinaryOp::ContainsAll
-                    | ast::BinaryOp::ContainsAny
-                    | ast::BinaryOp::Eq
-                    | ast::BinaryOp::HasTag
-                    | ast::BinaryOp::In
-                    | ast::BinaryOp::Less
-                    | ast::BinaryOp::LessEq => {
-                        arg1.can_error_assuming_well_formed()
-                            || arg2.can_error_assuming_well_formed()
-                    }
-                },
+                ResidualKind::BinaryApp { op, arg1, arg2 } => {
+                    !op.can_error()
+                        && arg1.error_free_assuming_well_typed()
+                        && arg2.error_free_assuming_well_typed()
+                }
 
                 // Extension function invocations can error at runtime.
-                ResidualKind::ExtensionFunctionApp { .. } => true,
+                ResidualKind::ExtensionFunctionApp { .. } => false,
                 // <entityUID>.<attr> possibly errors during reauthorization if <entityUID> does not exist in the entity store
-                ResidualKind::GetAttr { .. } => true,
+                ResidualKind::GetAttr { .. } => false,
 
-                ResidualKind::HasAttr { expr, .. } => expr.can_error_assuming_well_formed(),
+                ResidualKind::HasAttr { expr, .. } => expr.error_free_assuming_well_typed(),
 
-                ResidualKind::UnaryApp { op, arg } => match op {
-                    // Integer negation can error due to integer overflow
-                    ast::UnaryOp::Neg => true,
-
-                    // General rule for the rest of the unary operations.
-                    ast::UnaryOp::IsEmpty | ast::UnaryOp::Not => {
-                        arg.can_error_assuming_well_formed()
-                    }
-                },
-                ResidualKind::Set(items) => items.iter().any(Self::can_error_assuming_well_formed),
+                ResidualKind::UnaryApp { op, arg } => {
+                    !op.can_error() && arg.error_free_assuming_well_typed()
+                }
+                ResidualKind::Set(items) => items.iter().all(Self::error_free_assuming_well_typed),
                 ResidualKind::Record(attrs) => attrs
                     .iter()
-                    .any(|(_, e)| e.can_error_assuming_well_formed()),
+                    .all(|(_, e)| e.error_free_assuming_well_typed()),
             },
         }
     }
@@ -647,7 +623,7 @@ pub(super) mod test {
     }
 
     #[test]
-    fn test_can_error_assuming_well_formed() {
+    fn test_error_free_assuming_well_typed() {
         // Most common LHS, the policy header
         assert_eq!(
             parse_residual(
@@ -659,23 +635,23 @@ pub(super) mod test {
                 resource in Organization::"foo"
                 "#
             )
-            .can_error_assuming_well_formed(),
-            false
+            .error_free_assuming_well_typed(),
+            true
         );
         assert_eq!(
             parse_residual(r#"User::"jane" in [User::"foo", User::"jane"]"#)
-                .can_error_assuming_well_formed(),
-            false
+                .error_free_assuming_well_typed(),
+            true
         );
         assert_eq!(
             parse_residual(r#"principal has foo || principal.hasTag("foo")"#)
-                .can_error_assuming_well_formed(),
-            false
+                .error_free_assuming_well_typed(),
+            true
         );
         assert_eq!(
             parse_residual(r#"principal == resource && !(principal in Organization::"foo")"#)
-                .can_error_assuming_well_formed(),
-            false
+                .error_free_assuming_well_typed(),
+            true
         );
         assert_eq!(
             parse_residual(
@@ -685,8 +661,8 @@ pub(super) mod test {
                 else principal in Organization::"bar"
                 "#
             )
-            .can_error_assuming_well_formed(),
-            false
+            .error_free_assuming_well_typed(),
+            true
         );
         assert_eq!(
             parse_residual(
@@ -698,28 +674,28 @@ pub(super) mod test {
                 ["a", "b"].containsAny(["a"])
                 "#
             )
-            .can_error_assuming_well_formed(),
+            .error_free_assuming_well_typed(),
+            true
+        );
+        assert_eq!(
+            parse_residual(r#"{a: true, b: false}["a"] && false"#).error_free_assuming_well_typed(),
             false
         );
         assert_eq!(
-            parse_residual(r#"{a: true, b: false}["a"] && false"#).can_error_assuming_well_formed(),
-            true
-        );
-        assert_eq!(
-            parse_residual(r#"User::"jane".str like "jane-*""#).can_error_assuming_well_formed(),
-            true
+            parse_residual(r#"User::"jane".str like "jane-*""#).error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
             parse_residual(
                 r#"if principal.num > 0 then User::"jane".num >= 100 else User::"foo".num == 1"#
             )
-            .can_error_assuming_well_formed(),
-            true
+            .error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
             parse_residual(r#"principal.hasTag("foo") && principal.getTag("foo") == "bar""#)
-                .can_error_assuming_well_formed(),
-            true
+                .error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
             parse_residual(
@@ -730,41 +706,41 @@ pub(super) mod test {
                     principal.set.containsAny(["foo", "bar"])
                 )"#
             )
-            .can_error_assuming_well_formed(),
-            true
+            .error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
-            parse_residual(r#"principal.num + 1 == 100 || true"#).can_error_assuming_well_formed(),
-            true
+            parse_residual(r#"principal.num + 1 == 100 || true"#).error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
             parse_residual(r#"if principal.foo then principal.num - 1 == 100 else true"#)
-                .can_error_assuming_well_formed(),
-            true
+                .error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
             parse_residual(r#"principal.foo && principal.num * 2 == 100"#)
-                .can_error_assuming_well_formed(),
-            true
+                .error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
             parse_residual(r#"principal.foo || -principal.num == 100"#)
-                .can_error_assuming_well_formed(),
-            true
+                .error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
-            parse_residual(r#"principal.num == 1 && principal.period < (if principal.foo then duration("1d") else duration("2d"))"#).can_error_assuming_well_formed(),
-            true
+            parse_residual(r#"principal.num == 1 && principal.period < (if principal.foo then duration("1d") else duration("2d"))"#).error_free_assuming_well_typed(),
+            false
         );
         // in reality, this specific function could most likely never error
         // in the future, we might want to be more precise about exactly what functions could produce errors
         assert_eq!(
-            parse_residual(r#"principal.period.toDays() == 365"#).can_error_assuming_well_formed(),
-            true
+            parse_residual(r#"principal.period.toDays() == 365"#).error_free_assuming_well_typed(),
+            false
         );
         assert_eq!(
-            Residual::Error(Type::Bool(BoolType::AnyBool)).can_error_assuming_well_formed(),
-            true
+            Residual::Error(Type::Bool(BoolType::AnyBool)).error_free_assuming_well_typed(),
+            false
         );
     }
 

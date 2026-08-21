@@ -17,6 +17,10 @@ Cedar Language Version: TBD
 ### Fixed
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
 
+### Changed
+
+- Renamed the `Residual.can_error_assuming_well_formed()` to its negated variant `Residual.error_free_assuming_well_typed()`
+
 ## [4.12.0] - 2026-07-28
 
 Cedar Language Version: 4.5
