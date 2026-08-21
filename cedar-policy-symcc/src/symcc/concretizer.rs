@@ -98,11 +98,15 @@ pub struct Env {
 /// Write an entity's attributes or tags
 fn fmt_attrs_or_tags<'a, E>(
     f: &mut std::fmt::Formatter<'_>,
+    label: Option<&str>,
     values: impl IntoIterator<Item = (&'a str, Result<EvalResult, E>)>,
 ) -> std::fmt::Result {
     let mut values = values.into_iter().peekable();
     if values.peek().is_none() {
         return Ok(());
+    }
+    if let Some(label) = label {
+        write!(f, " {label}")?;
     }
     writeln!(f, " {{")?;
     for (k, v) in values {
@@ -152,9 +156,8 @@ impl std::fmt::Display for Env {
                         write!(f, " in [{}]", ancs.join(", "))?;
                     }
                 }
-                fmt_attrs_or_tags(f, entity.attrs())?;
-                write!(f, " tags")?;
-                fmt_attrs_or_tags(f, entity.tags())?;
+                fmt_attrs_or_tags(f, None, entity.attrs())?;
+                fmt_attrs_or_tags(f, Some("tags"), entity.tags())?;
                 writeln!(f, ",")?;
             }
             write!(f, "]")?;
@@ -566,7 +569,54 @@ mod test {
     }
 
     #[test]
+    fn test_display_env() {
+        assert_snapshot!(display_env(
+            [("a".to_string(), RestrictedExpression::new_long(0))],
+            [("b".to_string(), RestrictedExpression::new_long(1))],
+        ), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice" {
+            a: 0,
+          } tags {
+            b: 1,
+          },
+        ]
+        "#);
+
+        assert_snapshot!(display_env([("a".to_string(), RestrictedExpression::new_long(0))], [],), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice" {
+            a: 0,
+          },
+        ]
+        "#);
+
+        assert_snapshot!(display_env([], [("b".to_string(), RestrictedExpression::new_long(1))],), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice" tags {
+            b: 1,
+          },
+        ]
+        "#);
+
+        assert_snapshot!(display_env([], []), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice",
+        ]
+        "#);
+    }
+
+    #[test]
     fn display_attr_and_tag_names() {
+        // the whole `Env`, for context on the per-name snapshots below
         let display_attr = |attr: &str| {
             display_env([(attr.to_string(), RestrictedExpression::new_long(0))], [])
                 .lines()
