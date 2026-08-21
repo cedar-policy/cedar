@@ -22,9 +22,10 @@ use std::borrow::Borrow;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
-use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, Request};
+use cedar_policy::{Entities, EntityId, EntityTypeName, EntityUid, EvalResult, Request};
 use cedar_policy_core::ast::{
-    Context, Entity, EntityAttrEvaluationError, Expr, ExprVisitor, Literal, Set, Value, ValueKind,
+    is_normalized_ident, Context, Entity, EntityAttrEvaluationError, Expr, ExprVisitor, Literal,
+    Set, Value, ValueKind,
 };
 use cedar_policy_core::entities::{NoEntitiesSchema, TCComputation};
 use cedar_policy_core::extensions::Extensions;
@@ -94,6 +95,35 @@ pub struct Env {
     pub entities: Entities,
 }
 
+/// Write an entity's attributes or tags
+fn fmt_attrs_or_tags<'a, E>(
+    f: &mut std::fmt::Formatter<'_>,
+    label: Option<&str>,
+    values: impl IntoIterator<Item = (&'a str, Result<EvalResult, E>)>,
+) -> std::fmt::Result {
+    let mut values = values.into_iter().peekable();
+    if values.peek().is_none() {
+        return Ok(());
+    }
+    if let Some(label) = label {
+        write!(f, " {label}")?;
+    }
+    writeln!(f, " {{")?;
+    for (k, v) in values {
+        write!(f, "    ")?;
+        if is_normalized_ident(k) {
+            write!(f, "{k}")?;
+        } else {
+            write!(f, "\"{}\"", k.escape_debug())?;
+        }
+        match v {
+            Ok(val) => writeln!(f, ": {val},")?,
+            Err(_) => writeln!(f, ": <unknown>,")?,
+        }
+    }
+    write!(f, "  }}")
+}
+
 impl std::fmt::Display for Env {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let req = &self.request;
@@ -126,30 +156,8 @@ impl std::fmt::Display for Env {
                         write!(f, " in [{}]", ancs.join(", "))?;
                     }
                 }
-                // attrs
-                let attrs: Vec<_> = entity.attrs().collect();
-                if !attrs.is_empty() {
-                    writeln!(f, " {{")?;
-                    for (k, v) in &attrs {
-                        match v {
-                            Ok(val) => writeln!(f, "    {k}: {val},")?,
-                            Err(_) => writeln!(f, "    {k}: <unknown>,")?,
-                        }
-                    }
-                    write!(f, "  }}")?;
-                }
-                // tags
-                let tags: Vec<_> = entity.tags().collect();
-                if !tags.is_empty() {
-                    writeln!(f, " tags {{")?;
-                    for (k, v) in &tags {
-                        match v {
-                            Ok(val) => writeln!(f, "    {k}: {val},")?,
-                            Err(_) => writeln!(f, "    {k}: <unknown>,")?,
-                        }
-                    }
-                    write!(f, "  }}")?;
-                }
+                fmt_attrs_or_tags(f, None, entity.attrs())?;
+                fmt_attrs_or_tags(f, Some("tags"), entity.tags())?;
                 writeln!(f, ",")?;
             }
             write!(f, "]")?;
@@ -530,5 +538,105 @@ impl SymEnv {
             request: self.request.concretize()?,
             entities: self.entities.concretize(&uids)?,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::Env;
+    use cedar_policy::{Context, Entities, Entity, Request, RestrictedExpression};
+    use insta::assert_snapshot;
+
+    fn display_env(
+        attrs: impl IntoIterator<Item = (String, RestrictedExpression)>,
+        tags: impl IntoIterator<Item = (String, RestrictedExpression)>,
+    ) -> String {
+        let entity =
+            Entity::new_with_tags(r#"User::"alice""#.parse().unwrap(), attrs, [], tags).unwrap();
+        let request = Request::new(
+            r#"User::"alice""#.parse().unwrap(),
+            r#"Action::"view""#.parse().unwrap(),
+            r#"Photo::"vacation""#.parse().unwrap(),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+        Env {
+            request,
+            entities: Entities::from_entities([entity], None).unwrap(),
+        }
+        .to_string()
+    }
+
+    #[test]
+    fn test_display_env() {
+        assert_snapshot!(display_env(
+            [("a".to_string(), RestrictedExpression::new_long(0))],
+            [("b".to_string(), RestrictedExpression::new_long(1))],
+        ), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice" {
+            a: 0,
+          } tags {
+            b: 1,
+          },
+        ]
+        "#);
+
+        assert_snapshot!(display_env([("a".to_string(), RestrictedExpression::new_long(0))], [],), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice" {
+            a: 0,
+          },
+        ]
+        "#);
+
+        assert_snapshot!(display_env([], [("b".to_string(), RestrictedExpression::new_long(1))],), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice" tags {
+            b: 1,
+          },
+        ]
+        "#);
+
+        assert_snapshot!(display_env([], []), @r#"
+        principal: User::"alice", action: Action::"view", resource: Photo::"vacation"
+        context: {}
+        entities: [
+          User::"alice",
+        ]
+        "#);
+    }
+
+    #[test]
+    fn display_attr_and_tag_names() {
+        // the whole `Env`, for context on the per-name snapshots below
+        let display_attr = |attr: &str| {
+            display_env([(attr.to_string(), RestrictedExpression::new_long(0))], [])
+                .lines()
+                .find(|l| l.starts_with("    "))
+                .expect("no attr line")
+                .trim()
+                .to_string()
+        };
+        assert_snapshot!(display_attr("plain"), @"plain: 0,");
+        assert_snapshot!(display_attr("new\nline"), @r#""new\nline": 0,"#);
+
+        let display_tag = |tag: &str| {
+            display_env([], [(tag.to_string(), RestrictedExpression::new_long(0))])
+                .lines()
+                .find(|l| l.starts_with("    "))
+                .expect("no tag line")
+                .trim()
+                .to_string()
+        };
+        assert_snapshot!(display_tag("plain"), @"plain: 0,");
+        assert_snapshot!(display_tag("spa ce"), @r#""spa ce": 0,"#);
     }
 }
