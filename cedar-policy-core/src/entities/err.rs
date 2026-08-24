@@ -20,6 +20,10 @@ use miette::Diagnostic;
 use thiserror::Error;
 
 /// Errors in serializing, deserializing, and processing of Entities
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 pub enum EntitiesError {
     /// Error occurring in serialization of entities
@@ -63,11 +67,15 @@ impl From<transitive_closure::TcError<EntityUID>> for EntitiesError {
     }
 }
 
+/// Errors occurring while computing or enforcing transitive closure on the
+/// entity hierarchy.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error(transparent)]
 #[diagnostic(transparent)]
-/// Errors occurring while computing or enforcing transitive closure on the
-/// entity hierarchy.
 pub struct TransitiveClosureError {
     err: Box<transitive_closure::TcError<EntityUID>>,
 }
@@ -85,9 +93,13 @@ impl From<transitive_closure::TcError<EntityUID>> for TransitiveClosureError {
     }
 }
 
+/// Error type for entity sets containing duplicate entity uids
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, PartialEq, Eq, Error, Diagnostic)]
 #[error("duplicate entity entry `{}`", .euid)]
-/// Error type for entity sets containing duplicate entity uids
 pub struct Duplicate {
     /// The [`EntityUID`] that was duplicated
     pub(crate) euid: EntityUID,
