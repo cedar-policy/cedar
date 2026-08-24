@@ -24,14 +24,29 @@ use crate::api::{PolicySet, StringifiedPolicySet};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::wasm_bindgen;
+use tsify::{Ts, Tsify as _};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::{prelude::wasm_bindgen, JsError};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 /// Takes a `PolicySet` represented as string and return the policies
 /// and templates split into vecs and sorted by id.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policySetTextToParts"))]
+///
+/// # Errors
+///
+/// Throws if the answer cannot be serialized to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "policySetTextToParts")]
+pub fn policy_set_text_to_parts_wasm(
+    policyset_str: &str,
+) -> Result<Ts<PolicySetTextToPartsAnswer>, JsError> {
+    Ok(policy_set_text_to_parts(policyset_str).into_ts()?)
+}
+
+/// Takes a `PolicySet` represented as string and return the policies
+/// and templates split into vecs and sorted by id.
 pub fn policy_set_text_to_parts(policyset_str: &str) -> PolicySetTextToPartsAnswer {
     let parsed_ps: Result<PolicySet, _> = PolicySet::from_str(policyset_str);
     match parsed_ps {
@@ -63,7 +78,18 @@ pub fn policy_set_text_to_parts(policyset_str: &str) -> PolicySetTextToPartsAnsw
 }
 
 /// Return the Cedar (textual) representation of a policy.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToText"))]
+///
+/// # Errors
+///
+/// Throws if `policy` does not match the `Policy` type, or if the answer cannot
+/// be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "policyToText")]
+pub fn policy_to_text_wasm(policy: Ts<Policy>) -> Result<Ts<PolicyToTextAnswer>, JsError> {
+    Ok(policy_to_text(policy.to_rust()?).into_ts()?)
+}
+
+/// Return the Cedar (textual) representation of a policy.
 pub fn policy_to_text(policy: Policy) -> PolicyToTextAnswer {
     match policy.parse(None) {
         Ok(policy) => PolicyToTextAnswer::Success {
@@ -76,7 +102,18 @@ pub fn policy_to_text(policy: Policy) -> PolicyToTextAnswer {
 }
 
 /// Return the Cedar (textual) representation of a template.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "templateToText"))]
+///
+/// # Errors
+///
+/// Throws if `template` does not match the `Template` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "templateToText")]
+pub fn template_to_text_wasm(template: Ts<Template>) -> Result<Ts<PolicyToTextAnswer>, JsError> {
+    Ok(template_to_text(template.to_rust()?).into_ts()?)
+}
+
+/// Return the Cedar (textual) representation of a template.
 pub fn template_to_text(template: Template) -> PolicyToTextAnswer {
     match template.parse(None) {
         Ok(template) => PolicyToTextAnswer::Success {
@@ -89,7 +126,18 @@ pub fn template_to_text(template: Template) -> PolicyToTextAnswer {
 }
 
 /// Return the JSON representation of a policy.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "policyToJson"))]
+///
+/// # Errors
+///
+/// Throws if `policy` does not match the `Policy` type, or if the answer cannot
+/// be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "policyToJson")]
+pub fn policy_to_json_wasm(policy: Ts<Policy>) -> Result<Ts<PolicyToJsonAnswer>, JsError> {
+    Ok(policy_to_json(policy.to_rust()?).into_ts()?)
+}
+
+/// Return the JSON representation of a policy.
 pub fn policy_to_json(policy: Policy) -> PolicyToJsonAnswer {
     match policy.parse(None) {
         Ok(policy) => match policy.to_json() {
@@ -105,7 +153,18 @@ pub fn policy_to_json(policy: Policy) -> PolicyToJsonAnswer {
 }
 
 /// Return the JSON representation of a template.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "templateToJson"))]
+///
+/// # Errors
+///
+/// Throws if `template` does not match the `Template` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "templateToJson")]
+pub fn template_to_json_wasm(template: Ts<Template>) -> Result<Ts<PolicyToJsonAnswer>, JsError> {
+    Ok(template_to_json(template.to_rust()?).into_ts()?)
+}
+
+/// Return the JSON representation of a template.
 pub fn template_to_json(template: Template) -> PolicyToJsonAnswer {
     match template.parse(None) {
         Ok(template) => match template.to_json() {
@@ -121,7 +180,18 @@ pub fn template_to_json(template: Template) -> PolicyToJsonAnswer {
 }
 
 /// Return the Cedar (textual) representation of a schema.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "schemaToText"))]
+///
+/// # Errors
+///
+/// Throws if `schema` does not match the `Schema` type, or if the answer cannot
+/// be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "schemaToText")]
+pub fn schema_to_text_wasm(schema: Ts<Schema>) -> Result<Ts<SchemaToTextAnswer>, JsError> {
+    Ok(schema_to_text(schema.to_rust()?).into_ts()?)
+}
+
+/// Return the Cedar (textual) representation of a schema.
 pub fn schema_to_text(schema: Schema) -> SchemaToTextAnswer {
     match schema.parse_schema_fragment() {
         Ok((schema_frag, warnings)) => {
@@ -151,7 +221,18 @@ pub fn schema_to_text(schema: Schema) -> SchemaToTextAnswer {
 }
 
 /// Return the JSON representation of a schema.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "schemaToJson"))]
+///
+/// # Errors
+///
+/// Throws if `schema` does not match the `Schema` type, or if the answer cannot
+/// be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "schemaToJson")]
+pub fn schema_to_json_wasm(schema: Ts<Schema>) -> Result<Ts<SchemaToJsonAnswer>, JsError> {
+    Ok(schema_to_json(schema.to_rust()?).into_ts()?)
+}
+
+/// Return the JSON representation of a schema.
 pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
     match schema.parse_schema_fragment() {
         Ok((schema_frag, warnings)) => match schema_frag.to_json_value() {
@@ -184,10 +265,24 @@ pub fn schema_to_json(schema: Schema) -> SchemaToJsonAnswer {
 /// Entity or `CommonType` classifications using the schema's type definitions.
 /// This is primarily meant to be used when working with schemas programmatically,
 /// for example when creating a schema building UI.
-#[cfg_attr(
-    feature = "wasm",
-    wasm_bindgen(js_name = "schemaToJsonWithResolvedTypes")
-)]
+///
+/// # Errors
+///
+/// Throws if the answer cannot be serialized to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "schemaToJsonWithResolvedTypes")]
+pub fn schema_to_json_with_resolved_types_wasm(
+    schema_str: &str,
+) -> Result<Ts<SchemaToJsonWithResolvedTypesAnswer>, JsError> {
+    Ok(schema_to_json_with_resolved_types(schema_str).into_ts()?)
+}
+
+/// Convert a Cedar schema string to JSON format with resolved types.
+///
+/// This function resolves ambiguous "`EntityOrCommon`" types to their specific
+/// Entity or `CommonType` classifications using the schema's type definitions.
+/// This is primarily meant to be used when working with schemas programmatically,
+/// for example when creating a schema building UI.
 pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithResolvedTypesAnswer {
     match crate::api::schema_str_to_json_with_resolved_types(schema_str) {
         Ok((json_value, warnings)) => SchemaToJsonWithResolvedTypesAnswer::Success {
@@ -208,7 +303,6 @@ pub fn schema_to_json_with_resolved_types(schema_str: &str) -> SchemaToJsonWithR
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PolicyToTextAnswer {
     /// Represents a successful call
     Success {
@@ -228,7 +322,6 @@ pub enum PolicyToTextAnswer {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PolicySetTextToPartsAnswer {
     /// Represents a successful call
     Success {
@@ -249,7 +342,6 @@ pub enum PolicySetTextToPartsAnswer {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PolicyToJsonAnswer {
     /// Represents a successful call
     Success {
@@ -269,7 +361,6 @@ pub enum PolicyToJsonAnswer {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaToTextAnswer {
     /// Represents a successful call
     Success {
@@ -290,7 +381,6 @@ pub enum SchemaToTextAnswer {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaToJsonAnswer {
     /// Represents a successful call
     Success {
@@ -312,7 +402,6 @@ pub enum SchemaToJsonAnswer {
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaToJsonWithResolvedTypesAnswer {
     /// Represents a successful call
     Success {

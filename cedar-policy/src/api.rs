@@ -1467,7 +1467,6 @@ impl From<authorizer::Response> for Response {
 /// Used to select how a policy will be validated.
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[non_exhaustive]
 pub enum ValidationMode {

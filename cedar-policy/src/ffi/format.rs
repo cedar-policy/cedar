@@ -26,13 +26,26 @@ use super::utils::DetailedError;
 use cedar_policy_formatter::{policies_str_to_pretty, Config};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::wasm_bindgen;
+use tsify::{Ts, Tsify as _};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::{prelude::wasm_bindgen, JsError};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 /// Apply the Cedar policy formatter to a policy set in the Cedar policy format
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "formatPolicies"))]
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `FormattingCall` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "formatPolicies")]
+pub fn format_wasm(call: Ts<FormattingCall>) -> Result<Ts<FormattingAnswer>, JsError> {
+    Ok(format(call.to_rust()?).into_ts()?)
+}
+
+/// Apply the Cedar policy formatter to a policy set in the Cedar policy format
 #[expect(
     clippy::needless_pass_by_value,
     reason = "FFI function which conventionally takes owned arguments"
@@ -79,7 +92,6 @@ pub fn format_json_str(json: &str) -> Result<String, serde_json::Error> {
 /// Struct containing the input data for formatting
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct FormattingCall {
@@ -103,7 +115,6 @@ const fn default_indent_width() -> isize {
 /// Result struct for formatting
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum FormattingAnswer {

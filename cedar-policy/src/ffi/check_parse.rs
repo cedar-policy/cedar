@@ -25,13 +25,28 @@
 use super::{utils::DetailedError, Context, Entities, EntityUid, PolicySet, Schema};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::wasm_bindgen;
+use tsify::{Ts, Tsify as _};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::{prelude::wasm_bindgen, JsError};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
 /// Check whether a policy set successfully parses.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "checkParsePolicySet"))]
+///
+/// # Errors
+///
+/// Throws if `policies` does not match the `PolicySet` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParsePolicySet")]
+pub fn check_parse_policy_set_wasm(
+    policies: Ts<PolicySet>,
+) -> Result<Ts<CheckParseAnswer>, JsError> {
+    Ok(check_parse_policy_set(policies.to_rust()?).into_ts()?)
+}
+
+/// Check whether a policy set successfully parses.
 pub fn check_parse_policy_set(policies: PolicySet) -> CheckParseAnswer {
     policies.parse().into()
 }
@@ -64,7 +79,18 @@ pub fn check_parse_policy_set_json_str(json: &str) -> Result<String, serde_json:
 }
 
 /// Check whether a schema successfully parses.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "checkParseSchema"))]
+///
+/// # Errors
+///
+/// Throws if `schema` does not match the `Schema` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParseSchema")]
+pub fn check_parse_schema_wasm(schema: Ts<Schema>) -> Result<Ts<CheckParseAnswer>, JsError> {
+    Ok(check_parse_schema(schema.to_rust()?).into_ts()?)
+}
+
+/// Check whether a schema successfully parses.
 pub fn check_parse_schema(schema: Schema) -> CheckParseAnswer {
     schema.parse().into()
 }
@@ -160,7 +186,20 @@ pub fn check_parse_scope_variables_json(
 }
 
 /// Check whether a set of entities successfully parses.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "checkParseEntities"))]
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `EntitiesParsingCall` type, or if the
+/// answer cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParseEntities")]
+pub fn check_parse_entities_wasm(
+    call: Ts<EntitiesParsingCall>,
+) -> Result<Ts<CheckParseAnswer>, JsError> {
+    Ok(check_parse_entities(call.to_rust()?).into_ts()?)
+}
+
+/// Check whether a set of entities successfully parses.
 pub fn check_parse_entities(call: EntitiesParsingCall) -> CheckParseAnswer {
     let schema = match call.schema.map(|s| s.parse().map(|res| res.0)).transpose() {
         Ok(schema) => schema,
@@ -202,7 +241,20 @@ pub fn check_parse_entities_json_str(json: &str) -> Result<String, serde_json::E
 }
 
 /// Check whether a context successfully parses.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "checkParseContext"))]
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `ContextParsingCall` type, or if the
+/// answer cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParseContext")]
+pub fn check_parse_context_wasm(
+    call: Ts<ContextParsingCall>,
+) -> Result<Ts<CheckParseAnswer>, JsError> {
+    Ok(check_parse_context(call.to_rust()?).into_ts()?)
+}
+
+/// Check whether a context successfully parses.
 pub fn check_parse_context(call: ContextParsingCall) -> CheckParseAnswer {
     let action = match call.action.map(|a| a.parse(Some("action"))).transpose() {
         Ok(action) => action,
@@ -269,7 +321,6 @@ pub fn check_parse_context_json_str(json: &str) -> Result<String, serde_json::Er
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum CheckParseAnswer {
     /// Successfully parsed
     Success,
@@ -305,7 +356,6 @@ impl<T> From<Result<T, Vec<miette::Report>>> for CheckParseAnswer {
 /// Struct containing the input data for [`check_parse_entities()`]
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct EntitiesParsingCall {
@@ -332,7 +382,6 @@ pub struct ScopeVariablesParsingCall {
 /// Struct containing the input data for [`check_parse_context()`]
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ContextParsingCall {

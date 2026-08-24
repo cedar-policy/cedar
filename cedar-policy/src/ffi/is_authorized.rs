@@ -33,7 +33,9 @@ use serde_with::serde_as;
 use std::collections::HashMap;
 use std::collections::HashSet;
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::wasm_bindgen;
+use tsify::{Ts, Tsify as _};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::{prelude::wasm_bindgen, JsError};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -54,7 +56,18 @@ thread_local!(
 );
 
 /// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "isAuthorized"))]
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `AuthorizationCall` type, or if the
+/// answer cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "isAuthorized")]
+pub fn is_authorized_wasm(call: Ts<AuthorizationCall>) -> Result<Ts<AuthorizationAnswer>, JsError> {
+    Ok(is_authorized(call.to_rust()?).into_ts()?)
+}
+
+/// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.parse() {
         WithWarnings {
@@ -106,8 +119,22 @@ pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
 ///
 /// # Errors
 ///
+/// Throws if `policies` does not match the `PolicySet` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "preparsePolicySet")]
+pub fn preparse_policy_set_wasm(
+    pset_id: String,
+    policies: Ts<PolicySet>,
+) -> Result<Ts<CheckParseAnswer>, JsError> {
+    Ok(preparse_policy_set(pset_id, policies.to_rust()?).into_ts()?)
+}
+
+/// Preparse and cache a policy set in thread-local storage
+///
+/// # Errors
+///
 /// Will return `Err` if the input cannot be parsed. Side-effect free on error.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "preparsePolicySet"))]
 pub fn preparse_policy_set(pset_id: String, policies: PolicySet) -> CheckParseAnswer {
     use super::check_parse::CheckParseAnswer;
 
@@ -129,8 +156,22 @@ pub fn preparse_policy_set(pset_id: String, policies: PolicySet) -> CheckParseAn
 ///
 /// # Errors
 ///
+/// Throws if `schema` does not match the `Schema` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "preparseSchema")]
+pub fn preparse_schema_wasm(
+    schema_name: String,
+    schema: Ts<Schema>,
+) -> Result<Ts<CheckParseAnswer>, JsError> {
+    Ok(preparse_schema(schema_name, schema.to_rust()?).into_ts()?)
+}
+
+/// Preparse and cache a schema in thread-local storage
+///
+/// # Errors
+///
 /// Will return `Err` if the input cannot be parsed. Side-effect free on error.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "preparseSchema"))]
 pub fn preparse_schema(schema_name: String, schema: Schema) -> CheckParseAnswer {
     use super::check_parse::CheckParseAnswer;
 
@@ -151,8 +192,23 @@ pub fn preparse_schema(schema_name: String, schema: Schema) -> CheckParseAnswer 
 /// Basic interface for partial evaluation, using [`AuthorizationCall`] and
 /// [`PartialAuthorizationAnswer`] types
 #[doc = include_str!("../../experimental_warning.md")]
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `PartialAuthorizationCall` type, or if
+/// the answer cannot be serialized back to JavaScript.
+#[cfg(all(feature = "wasm", feature = "partial-eval"))]
+#[wasm_bindgen(js_name = "isAuthorizedPartial")]
+pub fn is_authorized_partial_wasm(
+    call: Ts<PartialAuthorizationCall>,
+) -> Result<Ts<PartialAuthorizationAnswer>, JsError> {
+    Ok(is_authorized_partial(call.to_rust()?).into_ts()?)
+}
+
+/// Basic interface for partial evaluation, using [`AuthorizationCall`] and
+/// [`PartialAuthorizationAnswer`] types
+#[doc = include_str!("../../experimental_warning.md")]
 #[cfg(feature = "partial-eval")]
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "isAuthorizedPartial"))]
 pub fn is_authorized_partial(call: PartialAuthorizationCall) -> PartialAuthorizationAnswer {
     match call.parse() {
         WithWarnings {
@@ -217,7 +273,6 @@ pub fn is_authorized_partial_json_str(json: &str) -> Result<String, serde_json::
 /// Interface version of a `Response` that uses the interface version of `Diagnostics`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct Response {
@@ -231,7 +286,6 @@ pub struct Response {
 /// in the `DetailedError` format
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct Diagnostics {
@@ -299,7 +353,6 @@ impl Diagnostics {
 /// Error (or warning) which occurred in a particular policy during authorization
 #[derive(Debug, PartialEq, Eq, Clone, Hash, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct AuthorizationError {
@@ -352,7 +405,6 @@ impl From<cedar_policy_core::authorizer::AuthorizationError> for AuthorizationEr
 #[cfg(feature = "partial-eval")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ResidualResponse {
@@ -461,7 +513,6 @@ impl TryFrom<crate::PartialResponse> for ResidualResponse {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub enum AuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
@@ -492,7 +543,6 @@ pub enum AuthorizationAnswer {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(tag = "type")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub enum PartialAuthorizationAnswer {
     /// Represents a failure to parse or call the authorizer entirely
@@ -521,7 +571,6 @@ pub enum PartialAuthorizationAnswer {
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct AuthorizationCall {
@@ -555,7 +604,6 @@ pub struct AuthorizationCall {
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct StatefulAuthorizationCall {
@@ -590,7 +638,6 @@ pub struct StatefulAuthorizationCall {
 #[serde_as]
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct PartialAuthorizationCall {
@@ -622,9 +669,25 @@ pub struct PartialAuthorizationCall {
 
 /// Stateful authorization using preparsed schemas and policy sets.
 ///
+/// This function works like `isAuthorized` but retrieves schemas and policy sets
+/// from thread-local cache instead of parsing them on each call.
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `StatefulAuthorizationCall` type, or if
+/// the answer cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "statefulIsAuthorized")]
+pub fn stateful_is_authorized_wasm(
+    call: Ts<StatefulAuthorizationCall>,
+) -> Result<Ts<AuthorizationAnswer>, JsError> {
+    Ok(stateful_is_authorized(call.to_rust()?).into_ts()?)
+}
+
+/// Stateful authorization using preparsed schemas and policy sets.
+///
 /// This function works like [`is_authorized`] but retrieves schemas and policy sets
 /// from thread-local cache instead of parsing them on each call.
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "statefulIsAuthorized"))]
 pub fn stateful_is_authorized(call: StatefulAuthorizationCall) -> AuthorizationAnswer {
     match call.parse() {
         WithWarnings {

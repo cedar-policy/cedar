@@ -74,7 +74,6 @@ enum RawCedarValueJson {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum CedarValueJson {
     /// The `__expr` escape has been removed, but is still reserved in order to throw meaningful errors.
     ExprEscape {
@@ -273,7 +272,6 @@ impl JsonRecord {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct TypeAndId {
     /// Entity typename
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
@@ -319,7 +317,6 @@ impl TryFrom<TypeAndId> for EntityUID {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
 pub enum FnAndArgs {
     /// Single-argument function
@@ -971,7 +968,6 @@ impl DeserializationContext for NoStaticContext {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EntityUidJson<Context = NoStaticContext> {
     /// This was removed in 3.0 and is only here for generating nice error messages.
     ExplicitExprEscape {

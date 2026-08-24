@@ -1948,7 +1948,6 @@ impl arbitrary::Arbitrary<'_> for PolicyID {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Effect {
     /// this is a Permit policy
     Permit,
