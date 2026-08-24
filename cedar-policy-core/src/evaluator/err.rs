@@ -412,7 +412,7 @@ pub mod evaluation_errors {
             let mut help_text = if self.available_attrs_or_tags.is_empty() {
                 format!(
                     "`{}` does not have any {}",
-                    &self.entity,
+                    self.entity,
                     if self.was_attr { "attributes" } else { "tags" }
                 )
             } else if self.available_attrs_or_tags.len() == self.total_attrs_or_tags {

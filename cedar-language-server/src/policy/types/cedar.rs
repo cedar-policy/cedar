@@ -314,13 +314,13 @@ fn get_set_methods<T: Into<String>>(element_type_str: T) -> Vec<MethodInfo> {
         MethodInfo::new(
             "containsAll",
             Some(ContainsAllDocumentation.to_documentation_string(None)),
-            vec![("other".to_string(), format!("Set<{}>", &element_type_str))],
+            vec![("other".to_string(), format!("Set<{element_type_str}>"))],
             "bool",
         ),
         MethodInfo::new(
             "containsAny",
             Some(ContainsAnyDocumentation.to_documentation_string(None)),
-            vec![("other".to_string(), format!("Set<{}>", &element_type_str))],
+            vec![("other".to_string(), format!("Set<{element_type_str}>"))],
             "bool",
         ),
         MethodInfo::new(

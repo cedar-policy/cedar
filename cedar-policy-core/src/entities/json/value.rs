@@ -440,7 +440,7 @@ impl CedarValueJson {
             Self::EntityEscape { __entity: entity } => Ok(RestrictedExpr::val(
                 EntityUID::try_from(entity.clone()).map_err(|errs| {
                     let err_msg = serde_json::to_string_pretty(&entity)
-                        .unwrap_or_else(|_| format!("{:?}", &entity));
+                        .unwrap_or_else(|_| format!("{:?}", entity));
                     JsonDeserializationError::parse_escape(EscapeKind::Entity, err_msg, errs)
                 })?,
             )),

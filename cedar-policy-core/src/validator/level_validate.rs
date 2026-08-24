@@ -324,7 +324,7 @@ impl LevelChecker<'_> {
                 }
             }
             ExprKind::Record(attrs) => {
-                for (_, e) in attrs.iter() {
+                for e in attrs.values() {
                     self.check_expr_level(e, env);
                 }
             }
