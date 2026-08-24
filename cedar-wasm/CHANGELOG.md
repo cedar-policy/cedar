@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Upgraded tsify dependency and migrated wasm bindings to use the new `Ts<T>` wrapper pattern, fixing memory leak. (#2534)
+
 ## 4.12.0
 
 ## 4.11.1
