@@ -968,7 +968,7 @@ impl<T: Clone> std::fmt::Display for Expr<T> {
         // To avoid code duplication between pretty-printers for AST Expr and EST Expr,
         // we just convert to EST and use the EST pretty-printer.
         // Note that converting AST->EST is lossless and infallible.
-        write!(f, "{}", &self.clone().into_expr::<crate::est::Builder>())
+        write!(f, "{}", self.clone().into_expr::<crate::est::Builder>())
     }
 }
 

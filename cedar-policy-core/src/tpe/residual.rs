@@ -507,11 +507,7 @@ impl From<Residual> for Expr {
                     ResidualKind::ExtensionFunctionApp { fn_name, args } => builder
                         .call_extension_fn(
                             fn_name,
-                            args.as_ref()
-                                .clone()
-                                .into_iter()
-                                .map(|arg| arg.into())
-                                .collect::<Vec<_>>(),
+                            args.as_ref().clone().into_iter().map(|arg| arg.into()),
                         )
                         .unwrap_infallible(),
                     ResidualKind::GetAttr { expr, attr } => {
@@ -542,13 +538,9 @@ impl From<Residual> for Expr {
                     ResidualKind::Record(map) => builder
                         .record(map.as_ref().clone().into_iter().map(|(k, v)| (k, v.into())))
                         .expect("should succeed"),
-                    ResidualKind::Set(set) => builder.set(
-                        set.as_ref()
-                            .clone()
-                            .into_iter()
-                            .map(|v| v.into())
-                            .collect::<Vec<_>>(),
-                    ),
+                    ResidualKind::Set(set) => {
+                        builder.set(set.as_ref().clone().into_iter().map(|v| v.into()))
+                    }
                     ResidualKind::UnaryApp { op, arg } => {
                         builder.unary_app(op, arg.as_ref().clone().into())
                     }

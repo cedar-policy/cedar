@@ -1246,7 +1246,7 @@ impl ValidatorSchema {
     /// - [`self.entity_types`] does not declare actions,
     /// - [`self.action_ids`] declares only actions.
     fn check_decls_wf(&self) -> std::result::Result<(), SchemaError> {
-        for (et, _) in self.entity_types.iter() {
+        for et in self.entity_types.keys() {
             // An `*::Action` should not be in entity_types, including `Action`.
             if et.is_action() {
                 return Err(SchemaError::ActionEntityTypeDeclared(
@@ -1257,7 +1257,7 @@ impl ValidatorSchema {
         // An action should be an `*::Action`, otherwise it's invalid
         // Not that the rfc_70 shadowing checks in `try_validate` will check that
         // the `Action` entity type is not redeclared.
-        for (at, _) in self.action_ids.iter() {
+        for at in self.action_ids.keys() {
             if !at.is_action() {
                 return Err(SchemaError::InvalidActionType(InvalidActionTypeError {
                     uid: at.clone(),

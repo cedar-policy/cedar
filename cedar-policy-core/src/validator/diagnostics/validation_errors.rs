@@ -392,7 +392,7 @@ impl Diagnostic for UnsafeTagAccess {
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
         Some(Box::new(format!(
             "try testing for the tag's presence with `.hasTag({}) && ..`",
-            &self.tag
+            self.tag
         )))
     }
 }
