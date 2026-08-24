@@ -191,12 +191,12 @@ pub fn preparse_schema(schema_name: String, schema: Schema) -> CheckParseAnswer 
 
 /// Basic interface for partial evaluation, using [`AuthorizationCall`] and
 /// [`PartialAuthorizationAnswer`] types
-#[doc = include_str!("../../experimental_warning.md")]
 ///
 /// # Errors
 ///
 /// Throws if `call` does not match the `PartialAuthorizationCall` type, or if
 /// the answer cannot be serialized back to JavaScript.
+#[doc = include_str!("../../experimental_warning.md")]
 #[cfg(all(feature = "wasm", feature = "partial-eval"))]
 #[wasm_bindgen(js_name = "isAuthorizedPartial")]
 pub fn is_authorized_partial_wasm(
