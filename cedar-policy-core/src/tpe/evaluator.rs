@@ -423,7 +423,7 @@ impl Evaluator<'_> {
                         // attribute is only checked for membership (never
                         // dereferenced), matching the spec's `loop`.
                         let mut current_val = value;
-                        let mut iter = attrs.iter().peekable();
+                        let mut iter = attrs.iter();
                         while let Some(attr) = iter.next() {
                             // Resolve the attributes of the current value, whether
                             // it is a record or a (known) entity.
@@ -454,17 +454,10 @@ impl Evaluator<'_> {
                             } else {
                                 return mk_error();
                             };
-
-                            if !current_attrs.contains_key(attr) {
+                            let Some(next_val) = current_attrs.get(attr) else {
                                 return mk_concrete(false.into());
-                            }
-                            if iter.peek().is_some() {
-                                // Not the last attribute: look up its value and descend.
-                                let Some(next_val) = current_attrs.get(attr) else {
-                                    return mk_concrete(false.into());
-                                };
-                                current_val = next_val;
-                            }
+                            };
+                            current_val = next_val;
                         }
                         // All attributes are present
                         mk_concrete(true.into())

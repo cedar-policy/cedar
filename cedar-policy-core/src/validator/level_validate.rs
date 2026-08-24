@@ -345,7 +345,7 @@ impl LevelChecker<'_> {
                             // first entity dereference in the chain.
                             let maybe_path = if is_record_root {
                                 // path to first entity along attr chain (may not exist)
-                                self.ext_has_attr_first_entity_path(ty, &attr_strs)
+                                self.ext_has_attr_first_entity_path_rev(ty, &attr_strs)
                             } else {
                                 Some(Vec::new()) // path to first entity empty, root is entity
                             };
@@ -438,7 +438,15 @@ impl LevelChecker<'_> {
     /// the extended `has` chain will dereference through the schema.
     /// Returns `None` if no entity is encountered before the last attribute (since
     /// the last attr is only tested for presence, not dereferenced).
-    fn ext_has_attr_first_entity_path(&self, ty: &Type, attrs: &[&str]) -> Option<Vec<SmolStr>> {
+    ///
+    /// The path is returned in reverse, i.e. if [`ty`] is like `{ a: {b : T, c: ...}}` where
+    /// `T` is an entity type, then calling `ext_has_attr_first_entity_path_rev(ty, ["a", "b", "d"])`
+    /// will return `Some(vec!["b", "a"])`.
+    fn ext_has_attr_first_entity_path_rev(
+        &self,
+        ty: &Type,
+        attrs: &[&str],
+    ) -> Option<Vec<SmolStr>> {
         match attrs {
             [] | [_] => None,
             [a, rest @ ..] => {
@@ -446,9 +454,9 @@ impl LevelChecker<'_> {
                 match attr_ty.as_ref().map(|at| at.attr_type.as_ref()) {
                     Some(Type::Entity(EntityKind::Entity { .. })) => Some(vec![SmolStr::from(*a)]),
                     Some(next) => {
-                        self.ext_has_attr_first_entity_path(next, rest)
+                        self.ext_has_attr_first_entity_path_rev(next, rest)
                             .map(|mut path| {
-                                path.insert(0, SmolStr::from(*a));
+                                path.push(SmolStr::from(*a));
                                 path
                             })
                     }
@@ -1313,6 +1321,26 @@ mod levels_validation_tests {
         assert_requires_level(
             r#"permit(principal, action, resource) when { {foo: principal, bar: resource}.foo has user.bool };"#,
             ["{foo: principal, bar: resource}.foo has user.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource)
+            when {
+                {n: {u: principal}} has n &&
+                {n: {u: principal}}.n has u &&
+                {n: {u: principal}}.n.u has bool
+            };"#,
+            ["{n: {u: principal}}.n.u has bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when {{n: {u: principal}} has n.u.bool };"#,
+            ["{n: {u: principal}} has n.u.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when {{n: {u: principal}} has n.u.nested.user.bool };"#,
+            ["{n: {u: principal}} has n.u.nested.user.bool"],
             2,
         );
     }
