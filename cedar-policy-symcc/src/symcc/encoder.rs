@@ -902,10 +902,10 @@ mod unit_tests {
         insta::assert_snapshot!(compile_and_encode("principal has thing1.id").await, @r#"
         ; Thing
         (declare-datatype E0 (
-          (E0 (eid String))))
+          (E0 (E0_eid String))))
         ; Thing2
         (declare-datatype E1 (
-          (E1 (eid String))))
+          (E1 (E1_eid String))))
         ; {id, thing2, thing2bis}
         (declare-datatype R2 (
           (R2 (R2_a0 String) (R2_a1 E1) (R2_a2 (Option E1)))))
@@ -914,7 +914,7 @@ mod unit_tests {
           (R3 (R3_a0 String) (R3_a1 (Option E0)) (R3_a2 E1) (R3_a3 R2) (R3_a4 (Option R2)))))
         ; User
         (declare-datatype E4 (
-          (E4 (eid String))))
+          (E4 (E4_eid String))))
         ; "principal"
         (declare-const t0 E4)
         ; attrs[User]
@@ -940,10 +940,10 @@ mod unit_tests {
           (R0 (R0_a0 String) (R0_a1 (Option (_ BitVec 64))))))
         ; Thing2
         (declare-datatype E1 (
-          (E1 (eid String))))
+          (E1 (E1_eid String))))
         ; Thing
         (declare-datatype E2 (
-          (E2 (eid String))))
+          (E2 (E2_eid String))))
         ; {id, thing2, thing2bis}
         (declare-datatype R3 (
           (R3 (R3_a0 String) (R3_a1 E1) (R3_a2 (Option E1)))))
@@ -952,7 +952,7 @@ mod unit_tests {
           (R4 (R4_a0 String) (R4_a1 (Option E2)) (R4_a2 E1) (R4_a3 R3) (R4_a4 (Option R3)))))
         ; User
         (declare-datatype E5 (
-          (E5 (eid String))))
+          (E5 (E5_eid String))))
         ; "principal"
         (declare-const t0 E5)
         ; attrs[User]
@@ -979,19 +979,19 @@ mod unit_tests {
           (R0 (R0_a0 String) (R0_a1 (Option (_ BitVec 64))))))
         ; Thing2
         (declare-datatype E1 (
-          (E1 (eid String))))
+          (E1 (E1_eid String))))
         ; {id, thing2, thing2bis}
         (declare-datatype R2 (
           (R2 (R2_a0 String) (R2_a1 E1) (R2_a2 (Option E1)))))
         ; Thing
         (declare-datatype E3 (
-          (E3 (eid String))))
+          (E3 (E3_eid String))))
         ; {name, thing1, thing2, x, xopt}
         (declare-datatype R4 (
           (R4 (R4_a0 String) (R4_a1 (Option E3)) (R4_a2 E1) (R4_a3 R2) (R4_a4 (Option R2)))))
         ; User
         (declare-datatype E5 (
-          (E5 (eid String))))
+          (E5 (E5_eid String))))
         ; "principal"
         (declare-const t0 E5)
         ; attrs[User]
@@ -1016,19 +1016,19 @@ mod unit_tests {
         insta::assert_snapshot!(compile_and_encode("principal.x has thing2bis.id").await, @r#"
         ; Thing2
         (declare-datatype E0 (
-          (E0 (eid String))))
+          (E0 (E0_eid String))))
         ; {id, thing2, thing2bis}
         (declare-datatype R1 (
           (R1 (R1_a0 String) (R1_a1 E0) (R1_a2 (Option E0)))))
         ; Thing
         (declare-datatype E2 (
-          (E2 (eid String))))
+          (E2 (E2_eid String))))
         ; {name, thing1, thing2, x, xopt}
         (declare-datatype R3 (
           (R3 (R3_a0 String) (R3_a1 (Option E2)) (R3_a2 E0) (R3_a3 R1) (R3_a4 (Option R1)))))
         ; User
         (declare-datatype E4 (
-          (E4 (eid String))))
+          (E4 (E4_eid String))))
         ; "principal"
         (declare-const t0 E4)
         ; attrs[User]
