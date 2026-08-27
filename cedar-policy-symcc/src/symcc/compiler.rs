@@ -319,9 +319,7 @@ pub fn compile_ext_has_attr(
 ) -> Result<Term> {
     let mut current = t;
     let mut results = Vec::new();
-    let mut attrs_iter = std::iter::once(&attrs.head)
-        .chain(attrs.tail.iter())
-        .peekable();
+    let mut attrs_iter = attrs.iter().peekable();
 
     while let Some(attr) = attrs_iter.next() {
         let has = if_some(

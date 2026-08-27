@@ -1467,15 +1467,6 @@ mod tests {
     /// This mirrors the tests in `UnitTest.TPE.ExtHasAttr` from cedar-lean.
     #[test]
     fn test_ext_has_attr_residual_reduction() {
-        // Schema:
-        //   entity Leaf { value: String };
-        //   entity Middle { info: { "tag": String }, next: Leaf };
-        //   entity Root { child: Middle, data: { "inner": Middle } };
-        //   entity User { profile: { "address": { "city": String } }, manager: Root };
-        //   entity Document;
-        //   action Do appliesTo { principal: [User], resource: [Document],
-        //     context: { "ref": Root, "nested": { "deep": { "leaf": String } },
-        //                "wrap": { "box": { "target": Middle } } } };
         let schema = parse_schema(
             r#"
             entity Leaf { value: String };

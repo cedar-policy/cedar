@@ -1043,6 +1043,8 @@ impl<'a> SingleEnvTypechecker<'a> {
                     }
 
                     let Some((mut result_type, mut result_capability)) = steps.pop() else {
+                        // This shouldn't be reachable, since attrs is nonempty, and
+                        // steps.len() == attrs.len() at this point.
                         return TypecheckAnswer::success(
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(e)
@@ -1324,13 +1326,12 @@ impl<'a> SingleEnvTypechecker<'a> {
             {
                 Some(attr_type.attr_type.as_ref().clone())
             }
-            Some(attr_type) => {
+            Some(_) => {
                 type_errors.push(ValidationError::unsafe_optional_attribute_access(
                     expr.source_loc().cloned(),
                     self.policy_id.clone(),
                     AttributeAccess::from_expr(self.request_env, typed_expr, attr.clone()),
                 ));
-                let _ = attr_type;
                 None
             }
             None if self.mode.is_partial()

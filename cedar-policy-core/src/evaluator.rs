@@ -881,7 +881,7 @@ impl<'e> Evaluator<'e> {
     ) -> Result<PartialValue> {
         match self.partial_interpret(expr, slots)? {
             PartialValue::Value(initial_val) => {
-                self.eval_extended_has_attr_value(initial_val, attrs)
+                self.eval_extended_has_attr_value(&initial_val, attrs)
             }
             PartialValue::Residual(r) => Ok(Expr::extended_has_attr(r, attrs.clone()).into()),
         }
@@ -891,10 +891,10 @@ impl<'e> Evaluator<'e> {
     /// attribute chain with short-circuit semantics.
     fn eval_extended_has_attr_value(
         &self,
-        initial_val: Value,
+        initial_val: &Value,
         attrs: &nonempty::NonEmpty<SmolStr>,
     ) -> Result<PartialValue> {
-        let mut current_val = &initial_val;
+        let mut current_val = initial_val;
         let mut iter = attrs.iter().peekable();
         while let Some(attr) = iter.next() {
             // like tpe, extract information about "has attr" and something to resolve

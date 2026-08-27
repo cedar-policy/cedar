@@ -412,7 +412,11 @@ impl LevelChecker<'_> {
             return 0;
         }
         // offset by 1 if root is entity, since it need one deref to access attrs
-        let mut cost = matches!(root, Type::Entity(..)) as u32;
+        let mut cost = if matches!(root, Type::Entity(..)) {
+            1
+        } else {
+            0
+        };
         if attrs.len() == 1 {
             return cost;
         }
