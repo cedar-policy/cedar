@@ -1558,7 +1558,20 @@ unless
             )
             .unwrap();
             let policies = policy_set();
-            let partial_entities = PartialEntities::from_concrete(entities(), &schema).unwrap();
+            let partial_entities = PartialEntities::from_json_value(
+                serde_json::json!([
+                    {
+                        "uid": { "type": "Subscriber", "id": "Alice" },
+                        "attrs": {
+                            "subscription": { "tier": "standard" },
+                            "profile": { "isKid": false }
+                        },
+                        "parents": []
+                    }
+                ]),
+                &schema,
+            )
+            .unwrap();
 
             let response = policies
                 .tpe(&request, &partial_entities, &schema)
@@ -1570,10 +1583,8 @@ unless
             // `policy_set` includes all residuals (true/false/error + non-trivial).
             assert_eq!(residual_set.num_of_policies(), policies.num_of_policies());
 
-            // Every policy in the set must have unconstrained scopes: the
-            // original scopes (e.g. `principal is Subscriber`,
-            // `action == Action::"watch"`, `resource is Movie`) must have been
-            // folded into the residual condition rather than left in the scope.
+            // Every policy in the set must have unconstrained scopes (given the current
+            // partial evaluation's implementation)
             for p in residual_set.policies() {
                 assert_matches!(p.action_constraint(), ActionConstraint::Any);
                 assert_matches!(p.principal_constraint(), PrincipalConstraint::Any);

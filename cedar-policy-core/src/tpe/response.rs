@@ -342,17 +342,18 @@ impl<'a> Response<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::BTreeMap;
     use std::sync::Arc;
 
     use crate::ast::{
-        ActionConstraint, EntityUID, Policy, PolicySet, PrincipalConstraint, ResourceConstraint,
+        ActionConstraint, Policy, PolicySet, PrincipalConstraint, ResourceConstraint,
     };
     use crate::extensions::Extensions;
-    use crate::parser::parse_policyset;
-    use crate::tpe::entities::{PartialEntities, PartialEntity};
+    use crate::parser::{parse_euid, parse_policyset};
+    use crate::tpe::entities::PartialEntities;
     use crate::tpe::is_authorized;
-    use crate::tpe::request::{PartialEntityUID, PartialRequest};
+    use crate::tpe::request::PartialRequest;
+    use crate::tpe::test_utils::parse_partial_euid;
     use crate::validator::ValidatorSchema;
 
     fn schema() -> ValidatorSchema {
@@ -388,13 +389,9 @@ mod tests {
 
     fn request() -> PartialRequest {
         PartialRequest::new(
-            r#"Auth::User::"1""#.parse::<EntityUID>().unwrap().into(),
-            r#"Auth::Action::"AssumeRole""#.parse().unwrap(),
-            // Unknown resource of type `Auth::Role`.
-            PartialEntityUID {
-                ty: "Auth::Role".parse().unwrap(),
-                eid: None,
-            },
+            parse_partial_euid(r#"Auth::User::"1""#),
+            parse_euid(r#"Auth::Action::"AssumeRole""#).unwrap(),
+            parse_partial_euid("Auth::Role"),
             Some(Arc::new(BTreeMap::new())),
             &schema(),
         )
@@ -402,22 +399,22 @@ mod tests {
     }
 
     fn entities() -> PartialEntities {
-        let schema = schema();
-        PartialEntities::from_entities(
-            [PartialEntity::new(
-                r#"Auth::User::"1""#.parse().unwrap(),
-                Some(BTreeMap::new()),
-                Some(HashSet::new()),
-                None,
-                &schema,
-            )
-            .unwrap()]
-            .into_iter(),
-            &schema,
+        PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "Auth::User", "id": "1" },
+                    "attrs": {},
+                    "parents": []
+                }
+            ]),
+            &schema(),
         )
         .unwrap()
     }
 
+    /// Assert that the scope is (principal, action, resource).
+    /// Can be used as a proxy to check a policy with constrained scope is evaluated to
+    /// a residual, which in the current implementation doesn't have scope constraints.
     #[track_caller]
     fn assert_scopes_unconstrained(policy: &Policy) {
         let t = policy.template();
