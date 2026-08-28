@@ -334,8 +334,164 @@ impl<'a> Response<'a> {
                 clippy::unwrap_used,
                 reason = "`PolicySet::add` only fails on duplicate ids, but all residual policies will have unique ids"
             )]
-            ps.add(p.policy.as_ref().clone()).unwrap()
+            ps.add(p.clone().into()).unwrap()
         }
         ps
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+    use std::sync::Arc;
+
+    use crate::ast::{
+        ActionConstraint, Policy, PolicySet, PrincipalConstraint, ResourceConstraint,
+    };
+    use crate::extensions::Extensions;
+    use crate::parser::{parse_euid, parse_policyset};
+    use crate::tpe::entities::PartialEntities;
+    use crate::tpe::is_authorized;
+    use crate::tpe::request::PartialRequest;
+    use crate::tpe::test_utils::parse_partial_euid;
+    use crate::validator::ValidatorSchema;
+
+    fn schema() -> ValidatorSchema {
+        ValidatorSchema::from_cedarschema_str(
+            r#"
+            namespace Auth {
+              entity Group {};
+              entity Role {};
+              entity User in [Group] {};
+              action "AssumeRole" appliesTo {
+                principal: [Auth::User],
+                resource: Auth::Role,
+              };
+            }
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0
+    }
+
+    fn policies() -> PolicySet {
+        parse_policyset(
+            r#"
+            @id("permit")
+            permit(principal == Auth::User::"1", action == Auth::Action::"AssumeRole", resource);
+            @id("forbid")
+            forbid(principal, action == Auth::Action::"AssumeRole", resource == Auth::Role::"2");
+            "#,
+        )
+        .unwrap()
+    }
+
+    fn request() -> PartialRequest {
+        PartialRequest::new(
+            parse_partial_euid(r#"Auth::User::"1""#),
+            parse_euid(r#"Auth::Action::"AssumeRole""#).unwrap(),
+            parse_partial_euid("Auth::Role"),
+            Some(Arc::new(BTreeMap::new())),
+            &schema(),
+        )
+        .unwrap()
+    }
+
+    fn entities() -> PartialEntities {
+        PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "Auth::User", "id": "1" },
+                    "attrs": {},
+                    "parents": []
+                }
+            ]),
+            &schema(),
+        )
+        .unwrap()
+    }
+
+    /// Assert that the scope is (principal, action, resource).
+    /// Can be used as a proxy to check a policy with constrained scope is evaluated to
+    /// a residual, which in the current implementation doesn't have scope constraints.
+    #[track_caller]
+    fn assert_scopes_unconstrained(policy: &Policy) {
+        let t = policy.template();
+        assert_eq!(
+            t.principal_constraint(),
+            &PrincipalConstraint::any(),
+            "residual policy `{}` should have an unconstrained principal scope",
+            policy.id()
+        );
+        assert_eq!(
+            t.action_constraint(),
+            &ActionConstraint::any(),
+            "residual policy `{}` should have an unconstrained action scope",
+            policy.id()
+        );
+        assert_eq!(
+            t.resource_constraint(),
+            &ResourceConstraint::any(),
+            "residual policy `{}` should have an unconstrained resource scope",
+            policy.id()
+        );
+    }
+
+    #[test]
+    fn policy_set_returns_residuals_not_originals() {
+        let policies = policies();
+        let schema = schema();
+        let request = request();
+        let entities = entities();
+
+        let res = is_authorized(&policies, &request, &entities, &schema).unwrap();
+        // With a concrete principal and an unknown resource, we can't decide.
+        assert_eq!(res.decision(), None);
+
+        let policy_set = res.policy_set();
+        assert_eq!(policy_set.policies().count(), 2);
+
+        for p in policy_set.policies() {
+            assert_scopes_unconstrained(p);
+        }
+    }
+
+    #[test]
+    fn policy_set_matches_policies() {
+        let policies = policies();
+        let schema = schema();
+        let request = request();
+        let entities = entities();
+
+        let res = is_authorized(&policies, &request, &entities, &schema).unwrap();
+
+        let policy_set = res.policy_set();
+
+        let mut expected = PolicySet::new();
+        for p in res.policies() {
+            expected.add(p.clone().into()).unwrap();
+        }
+
+        assert_eq!(policy_set.policies().count(), expected.policies().count());
+        for expected_policy in expected.policies() {
+            let actual = policy_set
+                .get(expected_policy.id())
+                .unwrap_or_else(|| panic!("missing policy `{}`", expected_policy.id()));
+            assert_eq!(actual.effect(), expected_policy.effect());
+            assert_eq!(
+                actual.template().principal_constraint(),
+                expected_policy.template().principal_constraint()
+            );
+            assert_eq!(
+                actual.template().action_constraint(),
+                expected_policy.template().action_constraint()
+            );
+            assert_eq!(
+                actual.template().resource_constraint(),
+                expected_policy.template().resource_constraint()
+            );
+            assert_eq!(actual.condition(), expected_policy.condition());
+        }
     }
 }

@@ -1526,6 +1526,85 @@ unless
             });
         }
 
+        // Api test: `TpeResponse::policy_set` agrees with `TpeResponse::policies`, as
+        // documented. It returns residuals.
+        #[test]
+        fn policy_set_returns_residuals() {
+            let schema = schema();
+            let request = PartialRequest::new(
+                PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
+                r#"Action::"watch""#.parse().unwrap(),
+                // Unknown resource of type `Movie`.
+                PartialEntityUid::new("Movie".parse().unwrap(), None),
+                Some(
+                    Context::from_pairs([(
+                        "now".into(),
+                        RestrictedExpression::new_record([
+                            (
+                                "datetime".into(),
+                                RestrictedExpression::from_str(r#"datetime("2025-07-22")"#)
+                                    .unwrap(),
+                            ),
+                            (
+                                "localTimeOffset".into(),
+                                RestrictedExpression::from_str(r#"duration("0h")"#).unwrap(),
+                            ),
+                        ])
+                        .unwrap(),
+                    )])
+                    .unwrap(),
+                ),
+                &schema,
+            )
+            .unwrap();
+            let policies = policy_set();
+            let partial_entities = PartialEntities::from_json_value(
+                serde_json::json!([
+                    {
+                        "uid": { "type": "Subscriber", "id": "Alice" },
+                        "attrs": {
+                            "subscription": { "tier": "standard" },
+                            "profile": { "isKid": false }
+                        },
+                        "parents": []
+                    }
+                ]),
+                &schema,
+            )
+            .unwrap();
+
+            let response = policies
+                .tpe(&request, &partial_entities, &schema)
+                .expect("tpe should succeed");
+            assert_eq!(response.decision(), None);
+
+            let residual_set = response.policy_set();
+
+            // `policy_set` includes all residuals (true/false/error + non-trivial).
+            assert_eq!(residual_set.num_of_policies(), policies.num_of_policies());
+
+            // Every policy in the set must have unconstrained scopes (given the current
+            // partial evaluation's implementation)
+            for p in residual_set.policies() {
+                assert_matches!(p.action_constraint(), ActionConstraint::Any);
+                assert_matches!(p.principal_constraint(), PrincipalConstraint::Any);
+                assert_matches!(p.resource_constraint(), ResourceConstraint::Any);
+            }
+
+            // `policy_set` returns exactly the same policies as `policies`.
+            let mut from_policies: Vec<(String, String)> = response
+                .policies()
+                .map(|p| (p.id().to_string(), p.to_cedar().unwrap()))
+                .collect();
+            from_policies.sort();
+            let mut from_set: Vec<(String, String)> = residual_set
+                .policies()
+                .map(|p| (p.id().to_string(), p.to_cedar().unwrap()))
+                .collect();
+            from_set.sort();
+            assert_eq!(from_set, from_policies);
+        }
+
         #[test]
         fn query_resource() {
             let schema = schema();

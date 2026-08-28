@@ -16,6 +16,7 @@ Cedar Language Version: TBD
 
 ### Fixed
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
+- For the experimental `tpe` feature, fixed `TpeResponse::policy_set` to return the residual policies, matching `TpeResponse::policies` as documented. Previously it returned the original policies (#2540).
 
 ## [4.12.0] - 2026-07-28
 
