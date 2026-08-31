@@ -3514,17 +3514,31 @@ impl Template {
 
     /// Get the PST representation of this template.
     pub fn to_pst(&self) -> Result<pst::Template, pst::PstConstructionError> {
-        self.lossless
-            .pst(|| pst::Template::try_from(self.ast.clone()))
-            .map(|t| t.with_id(self.ast.id().clone().into()))
+        Self::pst_with_id(
+            self.ast.id().clone(),
+            self.lossless
+                .pst(|| pst::Template::try_from(self.ast.clone())),
+        )
     }
 
     /// Get an owned PST representation of this template.
     /// Can return an error if the template was built from a non-PST representation that
     /// is not a valid Cedar template.
     pub fn try_into_pst(self) -> Result<pst::Template, pst::PstConstructionError> {
-        self.lossless
-            .try_into_pst(|| pst::Template::try_from(self.ast))
+        let id = self.ast.id().clone();
+        Self::pst_with_id(
+            id,
+            self.lossless
+                .try_into_pst(|| pst::Template::try_from(self.ast)),
+        )
+    }
+
+    /// Replace the representation-specific ID with the authoritative AST ID.
+    fn pst_with_id(
+        id: ast::PolicyID,
+        template: Result<pst::Template, pst::PstConstructionError>,
+    ) -> Result<pst::Template, pst::PstConstructionError> {
+        template.map(|template| template.with_id(id.into()))
     }
 
     /// Attempt to parse a [`Template`] from source.
@@ -4270,16 +4284,30 @@ impl Policy {
 
     /// Get the PST representation of this policy.
     pub fn to_pst(&self) -> Result<pst::Policy, pst::PstConstructionError> {
-        self.lossless
-            .pst(|| pst::Policy::try_from(self.ast.clone()))
-            .map(|p| p.new_id(self.ast.id().clone().into()))
+        Self::pst_with_id(
+            self.ast.id().clone(),
+            self.lossless
+                .pst(|| pst::Policy::try_from(self.ast.clone())),
+        )
     }
 
     /// Get an owned PST representation of this policy. May return an error when the policy
     /// has been constructed from a different representation that is not a valid Cedar policy.
     pub fn try_into_pst(self) -> Result<pst::Policy, pst::PstConstructionError> {
-        self.lossless
-            .try_into_pst(|| pst::Policy::try_from(self.ast.clone()))
+        let id = self.ast.id().clone();
+        Self::pst_with_id(
+            id,
+            self.lossless
+                .try_into_pst(|| pst::Policy::try_from(self.ast)),
+        )
+    }
+
+    /// Replace the representation-specific ID with the authoritative AST ID.
+    fn pst_with_id(
+        id: ast::PolicyID,
+        policy: Result<pst::Policy, pst::PstConstructionError>,
+    ) -> Result<pst::Policy, pst::PstConstructionError> {
+        policy.map(|policy| policy.new_id(id.into()))
     }
 
     /// Get all the unknown entities from the policy
