@@ -583,6 +583,9 @@ impl TpeResponse<'_> {
     /// Returns an iterator of non-trivial (meaning more than just `true`
     /// or `false`, or an error) residuals as [`Policy`]s.
     ///
+    /// This function is meant to allow inspecting non-trivial residuals. To get the complete set
+    /// of residual policies that will be used for reauthorization, use [`TpeResponse::policies`]
+    /// or [`TpeResponse::policy_set`].
     /// To find policies that reached a concrete value, use, e.g., [`TpeResponse::true_permits`].
     ///
     /// Each returned [`Policy`] inherits its [`PolicyId`] and
