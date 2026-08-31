@@ -9681,7 +9681,7 @@ mod has_non_scope_constraint {
 mod pst_api {
     use super::super::super::*;
     use cool_asserts::assert_matches;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{BTreeMap, HashMap, HashSet};
     use std::str::FromStr;
     use std::sync::Arc;
 
@@ -9802,24 +9802,55 @@ mod pst_api {
     }
 
     #[test]
-    fn template_to_pst_preserves_id_from_text() {
+    fn template_pst_conversions_preserve_id_from_text() {
         let src = "permit(principal == ?principal, action, resource);";
-        let t = Template::parse(Some(PolicyId::new("my_template")), src).unwrap();
-        let pst = t.to_pst().expect("should succeed");
-        assert_eq!(pst.id, pst::PolicyID("my_template".into()));
+        let id = PolicyId::new("my_template");
+        let to_pst = Template::parse(Some(id.clone()), src)
+            .unwrap()
+            .to_pst()
+            .unwrap();
+        let into_pst = Template::parse(Some(id), src)
+            .unwrap()
+            .try_into_pst()
+            .unwrap();
+        assert_eq!(to_pst.id, pst::PolicyID("my_template".into()));
+        assert_eq!(into_pst.id, pst::PolicyID("my_template".into()));
     }
 
     #[test]
-    fn policy_to_pst_preserves_id_from_text() {
+    fn policy_pst_conversions_preserve_id_from_text() {
         let src = "permit(principal, action, resource);";
-        // When text is parsed and parse given a policy id, we should preserve that id in the PST
-        let p = Policy::parse(Some(PolicyId::new("my_policy")), src).unwrap();
-        let pst = p.to_pst().expect("should succeed");
-        if let pst::Policy::Static(sp) = &pst {
-            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
-        } else {
-            panic!("expected static policy");
+        let id = PolicyId::new("my_policy");
+        let to_pst = Policy::parse(Some(id.clone()), src)
+            .unwrap()
+            .to_pst()
+            .unwrap();
+        let into_pst = Policy::parse(Some(id), src)
+            .unwrap()
+            .try_into_pst()
+            .unwrap();
+        for pst in [to_pst, into_pst] {
+            assert_matches!(pst, pst::Policy::Static(sp) => {
+                assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
+            });
         }
+    }
+
+    #[test]
+    fn policy_set_try_into_pst_roundtrip_preserves_ids_from_text() {
+        let src = r#"
+            permit(principal, action, resource);
+            forbid(principal, action == Action::"delete", resource);
+        "#;
+        let pset = PolicySet::from_str(src).unwrap();
+        let ids = |ps: &PolicySet| {
+            ps.policies()
+                .map(|p| p.id().to_string())
+                .collect::<HashSet<_>>()
+        };
+        let expected = ids(&pset);
+        let recovered = PolicySet::from_pst(pset.try_into_pst().unwrap()).unwrap();
+        assert_eq!(ids(&recovered), expected);
     }
 
     #[test]
@@ -9990,18 +10021,21 @@ mod pst_api {
             "resource": { "op": "All" },
             "conditions": [{ "kind": "when", "body": { "==": { "left": { "Var": "context" }, "right": { "Record": {} } } } }]
         });
-        let p = Policy::from_json(None, json.clone()).unwrap();
+        let id = PolicyId::new("my_policy");
+        let p = Policy::from_json(Some(id.clone()), json.clone()).unwrap();
         let pst = p.to_pst().expect("to_pst should succeed");
         if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
             assert_eq!(sp.body().effect, pst::Effect::Forbid);
             assert_eq!(sp.body().clauses().len(), 1);
         } else {
             panic!("expected static");
         }
         // also test try_into_pst
-        let p2 = Policy::from_json(None, json).unwrap();
-        let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
-        assert_matches!(pst2, pst::Policy::Static(_));
+        let p2 = Policy::from_json(Some(id), json).unwrap();
+        assert_matches!(p2.try_into_pst().unwrap(), pst::Policy::Static(sp) => {
+            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
+        });
     }
 
     #[test]
@@ -10013,14 +10047,17 @@ mod pst_api {
             "resource": { "op": "All" },
             "conditions": [{ "kind": "unless", "body": { "Var": "context" } }]
         });
-        let t = Template::from_json(None, json.clone()).unwrap();
+        let id = PolicyId::new("my_template");
+        let t = Template::from_json(Some(id.clone()), json.clone()).unwrap();
         let pst = t.to_pst().expect("to_pst should succeed");
+        assert_eq!(pst.id, pst::PolicyID("my_template".into()));
         assert!(pst.principal.has_slot());
         assert_eq!(pst.clauses().len(), 1);
         assert_matches!(pst.clauses()[0], pst::Clause::Unless(_));
         // also test try_into_pst
-        let t2 = Template::from_json(None, json).unwrap();
+        let t2 = Template::from_json(Some(id), json).unwrap();
         let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
+        assert_eq!(pst2.id, pst::PolicyID("my_template".into()));
         assert!(pst2.principal.has_slot());
     }
 

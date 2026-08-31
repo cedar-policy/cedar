@@ -15,6 +15,7 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 Cedar Language Version: TBD
 
 ### Fixed
+- Fixed `Policy::try_into_pst()` and `Template::try_into_pst()` to preserve policy IDs for text- and JSON-backed values, restoring `PolicySet::try_into_pst()` / `PolicySet::from_pst()` round trips.
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
 - For the experimental `tpe` feature, fixed `TpeResponse::policy_set` to return the residual policies, matching `TpeResponse::policies` as documented. Previously it returned the original policies (#2540).
 
