@@ -226,7 +226,7 @@ impl Validator {
     pub(crate) fn validate_linked_action_application<'a>(
         &self,
         p: &'a Policy,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> Result<(), ValidationError> {
         self.validate_action_application(
             p.loc(),
             p.id(),
@@ -239,7 +239,7 @@ impl Validator {
     pub(crate) fn validate_template_action_application<'a>(
         &self,
         t: &'a Template,
-    ) -> impl Iterator<Item = ValidationError> + 'a {
+    ) -> Result<(), ValidationError> {
         self.validate_action_application(
             t.loc(),
             t.id(),
@@ -260,7 +260,7 @@ impl Validator {
         principal_constraint: &PrincipalConstraint,
         action_constraint: &ActionConstraint,
         resource_constraint: &ResourceConstraint,
-    ) -> impl Iterator<Item = ValidationError> {
+    ) -> Result<(), ValidationError> {
         let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
         let resources_for_scope: HashSet<&ast::EntityType> = self
             .get_resources_satisfying_constraint(resource_constraint)
@@ -269,27 +269,26 @@ impl Validator {
             .get_principals_satisfying_constraint(principal_constraint)
             .collect();
 
-        let would_in_fix_principal =
-            self.check_if_in_fixes_principal(principal_constraint, action_constraint);
-        let would_in_fix_resource =
-            self.check_if_in_fixes_resource(resource_constraint, action_constraint);
-
-        Some(ValidationError::invalid_action_application(
-            source_loc.cloned(),
-            policy_id.clone(),
-            would_in_fix_principal,
-            would_in_fix_resource,
-        ))
-        .filter(|_| {
-            !apply_specs.any(|spec| {
-                let action_principals = spec.applicable_principal_types().collect::<HashSet<_>>();
-                let action_resources = spec.applicable_resource_types().collect::<HashSet<_>>();
-                let matching_principal = !principals_for_scope.is_disjoint(&action_principals);
-                let matching_resource = !resources_for_scope.is_disjoint(&action_resources);
-                matching_principal && matching_resource
-            })
-        })
-        .into_iter()
+        if apply_specs.any(|spec| {
+            let action_principals = spec.applicable_principal_types().collect::<HashSet<_>>();
+            let action_resources = spec.applicable_resource_types().collect::<HashSet<_>>();
+            let matching_principal = !principals_for_scope.is_disjoint(&action_principals);
+            let matching_resource = !resources_for_scope.is_disjoint(&action_resources);
+            matching_principal && matching_resource
+        }) {
+            Ok(())
+        } else {
+            let would_in_fix_principal =
+                self.check_if_in_fixes_principal(principal_constraint, action_constraint);
+            let would_in_fix_resource =
+                self.check_if_in_fixes_resource(resource_constraint, action_constraint);
+            Err(ValidationError::invalid_action_application(
+                source_loc.cloned(),
+                policy_id.clone(),
+                would_in_fix_principal,
+                would_in_fix_resource,
+            ))
+        }
     }
 
     /// Gather all `ApplySpec` objects for all actions in the schema.
@@ -466,12 +465,11 @@ mod test {
         let p = parse_policy_or_template(None, src).unwrap();
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> =
-            validate.validate_template_action_application(&p).collect();
+        let notes = validate.validate_template_action_application(&p);
 
         expect_err(
             src,
-            &Report::new(notes.first().unwrap().clone()),
+            &Report::new(notes.unwrap_err()),
             &ExpectedErrorMessageBuilder::error(
                 r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
@@ -479,7 +477,6 @@ mod test {
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -1246,19 +1243,17 @@ mod test {
         let p = parse_policy_or_template(None, src).unwrap();
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> =
-            validate.validate_template_action_application(&p).collect();
+        let notes = validate.validate_template_action_application(&p);
 
         expect_err(
             src,
-            &Report::new(notes.first().unwrap().clone()),
+            &Report::new(notes.unwrap_err()),
             &ExpectedErrorMessageBuilder::error(
                 r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -1270,19 +1265,17 @@ mod test {
         let p = parse_policy_or_template(None, src).unwrap();
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> =
-            validate.validate_template_action_application(&p).collect();
+        let notes = validate.validate_template_action_application(&p);
 
         expect_err(
             src,
-            &Report::new(notes.first().unwrap().clone()),
+            &Report::new(notes.unwrap_err()),
             &ExpectedErrorMessageBuilder::error(
                 r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]
@@ -1294,19 +1287,17 @@ mod test {
         let p = parse_policy_or_template(None, src).unwrap();
 
         let validate = Validator::new(schema);
-        let notes: Vec<ValidationError> =
-            validate.validate_template_action_application(&p).collect();
+        let notes = validate.validate_template_action_application(&p);
 
         expect_err(
             src,
-            &Report::new(notes.first().unwrap().clone()),
+            &Report::new(notes.unwrap_err()),
             &ExpectedErrorMessageBuilder::error(
                 r#"for policy `policy0`, unable to find an applicable action given the policy scope constraints"#,
             )
             .exactly_one_underline(src)
             .build(),
         );
-        assert_eq!(notes.len(), 1, "{notes:?}");
     }
 
     #[test]

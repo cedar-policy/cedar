@@ -187,7 +187,7 @@ impl Validator {
                     // schema if it only failed when there is a known action
                     // applied to known principal/resource entity types that are
                     // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p)),
+                    .chain(self.validate_template_action_application(p).err()),
             )
         }
         .into_iter()
@@ -231,7 +231,7 @@ impl Validator {
         // the slot filled by the appropriate value.
         Some(
             self.validate_entity_types_in_slots(p.id(), p.env())
-                .chain(self.validate_linked_action_application(p)),
+                .chain(self.validate_linked_action_application(p).err()),
         )
     }
 
