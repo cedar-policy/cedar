@@ -1131,6 +1131,7 @@ pub struct ActionEntityUID<N> {
     pub ty: Option<N>,
     #[cfg(feature = "extended-schema")]
     #[serde(skip)]
+    #[educe(PartialEq(ignore), Hash(ignore))]
     /// Source location - if available
     pub loc: Option<Loc>,
 }
