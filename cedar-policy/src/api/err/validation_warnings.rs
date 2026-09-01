@@ -62,3 +62,4 @@ wrap_core_warning!(BidiCharsInIdentifier);
 wrap_core_warning!(MixedScriptIdentifier);
 wrap_core_warning!(ConfusableIdentifier);
 wrap_core_warning!(ImpossiblePolicy);
+wrap_core_warning!(InvalidActionApplication);

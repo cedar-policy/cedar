@@ -14,6 +14,16 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- Invalid action application errors ("Unable to find an applicable action given the policy scope constraints")
+  are now reported as validation warnings instead of errors. These do not indicate that a run-time
+  error may exist in the policy. They are similar to the impossible policy warning, indicating that a policy
+  cannot apply to any request. This change makes it possible to remove entries from an `appliesTo` list
+  without introducing validation errors. Callers that want to keep rejecting these policies should check
+  `ValidationResult::validation_warnings` for `ValidationWarning::InvalidActionApplication`.
+
+
 ### Fixed
 - Fixed `Policy::try_into_pst()` and `Template::try_into_pst()` to preserve policy IDs for text- and JSON-backed values, restoring `PolicySet::try_into_pst()` / `PolicySet::from_pst()` round trips.
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).

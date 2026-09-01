@@ -6065,6 +6065,45 @@ mod function_argument_validation_help_tests {
     }
 }
 
+mod invalid_action_application_tests {
+    use crate::{PolicyId, PolicySet, ValidationMode, ValidationWarning, Validator};
+    use std::str::FromStr;
+
+    use super::Schema;
+
+    #[test]
+    fn removing_applies_to_warns_but_does_not_error() {
+        let policies = PolicySet::from_str(
+            r#"
+            permit(principal == User::"alice", action == Action::"view", resource);
+            permit(principal is User, action in [Action::"view"], resource is Photo);
+            permit(principal, action, resource);
+            "#,
+        )
+        .unwrap();
+
+        // no `appliesTo` the actions, simulating an edit to the schema that "deletes" the action by
+        // removing it's `appliesTo` while keeping the action to avoid unknown action errors.
+        let schema = Schema::from_str("entity User; entity Photo; action view;").unwrap();
+        let result = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        assert!(
+            result.validation_passed(),
+            "unexpected validation errors: {:?}",
+            result.validation_errors().collect::<Vec<_>>()
+        );
+        for policy_id in ["policy0", "policy1", "policy2"] {
+            assert!(
+                result.validation_warnings().any(|w| {
+                    w.policy_id() == &PolicyId::new(policy_id)
+                        && matches!(w, ValidationWarning::InvalidActionApplication(_))
+                }),
+                "expected an `InvalidActionApplication` warning for `{policy_id}`, but saw {:?}",
+                result.validation_warnings().collect::<Vec<_>>()
+            );
+        }
+    }
+}
+
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;

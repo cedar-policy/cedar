@@ -101,12 +101,6 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnrecognizedActionId(#[from] validation_errors::UnrecognizedActionId),
-    /// There is no action satisfying the action scope constraint that can be
-    /// applied to a principal and resources that both satisfy their respective
-    /// scope conditions.
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
     /// The typechecker expected to see a subtype of one of the types in
     /// `expected`, but saw `actual`.
     #[error(transparent)]
@@ -201,21 +195,6 @@ impl ValidationError {
             policy_id,
             actual_action_id,
             hint,
-        }
-        .into()
-    }
-
-    pub(crate) fn invalid_action_application(
-        source_loc: Option<Loc>,
-        policy_id: PolicyID,
-        would_in_fix_principal: bool,
-        would_in_fix_resource: bool,
-    ) -> Self {
-        validation_errors::InvalidActionApplication {
-            source_loc,
-            policy_id,
-            would_in_fix_principal,
-            would_in_fix_resource,
         }
         .into()
     }
@@ -453,6 +432,12 @@ pub enum ValidationWarning {
     #[diagnostic(transparent)]
     #[error(transparent)]
     ImpossiblePolicy(#[from] validation_warnings::ImpossiblePolicy),
+    /// There is no action satisfying the action scope constraint that can be
+    /// applied to a principal and resources that both satisfy their respective
+    /// scope conditions, so the policy can never apply to any request.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    InvalidActionApplication(#[from] validation_warnings::InvalidActionApplication),
 }
 
 impl ValidationWarning {
@@ -527,6 +512,21 @@ impl ValidationWarning {
         validation_warnings::ImpossiblePolicy {
             source_loc,
             policy_id,
+        }
+        .into()
+    }
+
+    pub(crate) fn invalid_action_application(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        would_in_fix_principal: bool,
+        would_in_fix_resource: bool,
+    ) -> Self {
+        validation_warnings::InvalidActionApplication {
+            source_loc,
+            policy_id,
+            would_in_fix_principal,
+            would_in_fix_resource,
         }
         .into()
     }
