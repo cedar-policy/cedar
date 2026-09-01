@@ -382,9 +382,6 @@ impl<'a> Response<'a> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
-
     use crate::ast::{
         ActionConstraint, Policy, PolicySet, PrincipalConstraint, ResourceConstraint,
     };
@@ -394,6 +391,7 @@ mod tests {
     use crate::tpe::is_authorized;
     use crate::tpe::request::PartialRequest;
     use crate::tpe::test_utils::parse_partial_euid;
+    use crate::tpe::value::PartialRecord;
     use crate::validator::ValidatorSchema;
 
     fn schema() -> ValidatorSchema {
@@ -432,7 +430,7 @@ mod tests {
             parse_partial_euid(r#"Auth::User::"1""#),
             parse_euid(r#"Auth::Action::"AssumeRole""#).unwrap(),
             parse_partial_euid("Auth::Role"),
-            Some(Arc::new(BTreeMap::new())),
+            Some(PartialRecord::new()),
             &schema(),
         )
         .unwrap()
