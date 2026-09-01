@@ -354,12 +354,8 @@ impl From<DateTime> for RestrictedExpr {
 
 impl From<DateTime> for RepresentableExtensionValue {
     fn from(value: DateTime) -> Self {
-        let (func, args) = value.as_ext_func_call();
-        Self {
-            func,
-            args,
-            value: Arc::new(value),
-        }
+        // Representation is derived from `canonical_repr` on demand.
+        Self::new_lazy(Arc::new(value))
     }
 }
 
@@ -410,12 +406,8 @@ impl From<Duration> for RestrictedExpr {
 
 impl From<Duration> for RepresentableExtensionValue {
     fn from(value: Duration) -> Self {
-        let (func, args) = value.as_ext_func_call();
-        Self {
-            func,
-            args,
-            value: Arc::new(value),
-        }
+        // Representation is derived from `canonical_repr` on demand.
+        Self::new_lazy(Arc::new(value))
     }
 }
 

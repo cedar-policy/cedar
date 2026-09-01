@@ -21,7 +21,7 @@ use std::any::Any;
 use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::panic::{RefUnwindSafe, UnwindSafe};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Cedar extension.
 ///
@@ -448,19 +448,61 @@ impl<V: ExtensionValue> StaticallyTyped for V {
 /// `datetime` is represented by an `offset` method call.
 /// Nevertheless, an invariant is that `eval(<func>(<args>)) == value`
 pub struct RepresentableExtensionValue {
-    pub(crate) func: Name,
-    pub(crate) args: Vec<RestrictedExpr>,
+    /// The `(func, args)` such that `eval(func(args)) == value`. When
+    /// constructed via [`RepresentableExtensionValue::new_lazy`] this is
+    /// initially empty and filled on first access from
+    /// [`ExtensionValue::canonical_repr`].
+    repr: OnceLock<(Name, Vec<RestrictedExpr>)>,
     pub(crate) value: Arc<dyn InternalExtensionValue>,
 }
 
 impl RepresentableExtensionValue {
-    /// Create a new [`RepresentableExtensionValue`]
+    /// Create a [`RepresentableExtensionValue`] with a known `(func, args)`
+    /// representation.
     pub fn new(
         value: Arc<dyn InternalExtensionValue + Send + Sync>,
         func: Name,
         args: Vec<RestrictedExpr>,
     ) -> Self {
-        Self { func, args, value }
+        let repr = OnceLock::new();
+        // `set` on a fresh `OnceLock` cannot fail.
+        let _ = repr.set((func, args));
+        Self { repr, value }
+    }
+
+    /// Create a [`RepresentableExtensionValue`] whose `(func, args)`
+    /// representation is derived from [`ExtensionValue::canonical_repr`] on
+    /// first access rather than up front.
+    ///
+    /// Only valid for values whose `canonical_repr` returns `Some`.
+    pub(crate) fn new_lazy(value: Arc<dyn InternalExtensionValue + Send + Sync>) -> Self {
+        Self {
+            repr: OnceLock::new(),
+            value,
+        }
+    }
+
+    /// The `(func, args)` such that `eval(func(args)) == value`.
+    fn repr(&self) -> &(Name, Vec<RestrictedExpr>) {
+        self.repr.get_or_init(|| {
+            #[expect(
+                clippy::expect_used,
+                reason = "`new_lazy` is only used for values whose `canonical_repr` is `Some`"
+            )]
+            self.value
+                .canonical_repr()
+                .expect("a lazily-represented extension value must have a canonical representation")
+        })
+    }
+
+    /// The extension function whose call reproduces this value.
+    pub(crate) fn func(&self) -> &Name {
+        &self.repr().0
+    }
+
+    /// The arguments to [`Self::func`] whose call reproduces this value.
+    pub(crate) fn args(&self) -> &[RestrictedExpr] {
+        &self.repr().1
     }
 
     /// Get the internal value
@@ -481,7 +523,14 @@ impl RepresentableExtensionValue {
 
 impl From<RepresentableExtensionValue> for RestrictedExpr {
     fn from(val: RepresentableExtensionValue) -> Self {
-        RestrictedExpr::call_extension_fn(val.func, val.args)
+        // Populate the cell, then take ownership of its contents.
+        val.repr();
+        #[expect(
+            clippy::expect_used,
+            reason = "`repr()` guarantees the cell is initialized"
+        )]
+        let (func, args) = val.repr.into_inner().expect("repr populated above");
+        RestrictedExpr::call_extension_fn(func, args)
     }
 }
 
