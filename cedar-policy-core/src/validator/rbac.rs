@@ -1185,7 +1185,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_validate_policy_errors(
+    fn assert_validate_policy_fails(
         validator: &Validator,
         policy: &Template,
         expected: &[ValidationError],
@@ -1350,13 +1350,13 @@ mod test {
         let policy = parse_policy_or_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
-        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_fails(&validator, &policy, &[]);
         assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal is biz in faz::"a", action, resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_errors(
+        assert_validate_policy_fails(
             &validator,
             &policy,
             &[
@@ -1379,7 +1379,7 @@ mod test {
         let src = r#"permit(principal is bar in baz::"buz", action, resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_fails(&validator, &policy, &[]);
         assert_validate_policy_flags_invalid_action_application(&validator, &policy);
     }
 
@@ -1410,19 +1410,19 @@ mod test {
         let policy = parse_policy_or_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
-        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_fails(&validator, &policy, &[]);
         assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal, action, resource is baz in bar::"buz");"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_fails(&validator, &policy, &[]);
         assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal, action, resource is biz in faz::"a");"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_errors(
+        assert_validate_policy_fails(
             &validator,
             &policy,
             &[
