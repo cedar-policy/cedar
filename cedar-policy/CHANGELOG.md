@@ -17,9 +17,9 @@ Cedar Language Version: TBD
 ### Changed
 
 - Invalid action application errors ("Unable to find an applicable action given the policy scope constraints")
-  are now reported as a validation warning instead of errors. These errors do not indicate that a run-time
+  are now reported as validation warnings instead of errors. These do not indicate that a run-time
   error may exist in the policy. They are similar to the impossible policy warning, indicating that a policy
-  cannot apply to any request. This change makes it possible to remove entires from an `appliesTo` list
+  cannot apply to any request. This change makes it possible to remove entries from an `appliesTo` list
   without introducing validation errors. Callers that want to keep rejecting these policies should check
   `ValidationResult::validation_warnings` for `ValidationWarning::InvalidActionApplication`.
 
