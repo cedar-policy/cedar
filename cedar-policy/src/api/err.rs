@@ -412,6 +412,10 @@ pub enum ValidationError {
     /// There is no action satisfying the action scope constraint that can be
     /// applied to a principal and resources that both satisfy their respective
     /// scope conditions.
+    ///
+    /// This error type is no longer ever returned; it is now reported as
+    /// [`ValidationWarning::InvalidActionApplication`] instead. It remains here
+    /// for backwards-compatibility.
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidActionApplication(#[from] validation_errors::InvalidActionApplication),
@@ -519,9 +523,6 @@ impl From<cedar_policy_core::validator::ValidationError> for ValidationError {
             cedar_policy_core::validator::ValidationError::UnrecognizedActionId(e) => {
                 Self::UnrecognizedActionId(e.into())
             }
-            cedar_policy_core::validator::ValidationError::InvalidActionApplication(e) => {
-                Self::InvalidActionApplication(e.into())
-            }
             cedar_policy_core::validator::ValidationError::UnexpectedType(e) => {
                 Self::UnexpectedType(e.into())
             }
@@ -612,6 +613,12 @@ pub enum ValidationWarning {
     #[diagnostic(transparent)]
     #[error(transparent)]
     ImpossiblePolicy(#[from] validation_warnings::ImpossiblePolicy),
+    /// There is no action satisfying the action scope constraint that can be
+    /// applied to a principal and resources that both satisfy their respective
+    /// scope conditions, so the policy can never apply to any request.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    InvalidActionApplication(#[from] validation_warnings::InvalidActionApplication),
 }
 
 impl ValidationWarning {
@@ -624,6 +631,7 @@ impl ValidationWarning {
             Self::MixedScriptIdentifier(w) => w.policy_id(),
             Self::ConfusableIdentifier(w) => w.policy_id(),
             Self::ImpossiblePolicy(w) => w.policy_id(),
+            Self::InvalidActionApplication(w) => w.policy_id(),
         }
     }
 }
@@ -649,6 +657,9 @@ impl From<cedar_policy_core::validator::ValidationWarning> for ValidationWarning
             }
             cedar_policy_core::validator::ValidationWarning::ImpossiblePolicy(w) => {
                 Self::ImpossiblePolicy(w.into())
+            }
+            cedar_policy_core::validator::ValidationWarning::InvalidActionApplication(w) => {
+                Self::InvalidActionApplication(w.into())
             }
         }
     }

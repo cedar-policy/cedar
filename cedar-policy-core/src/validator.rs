@@ -123,13 +123,14 @@ impl Validator {
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
-        let link_errs = policies
+        let (link_errs, link_warnings): (Vec<_>, Vec<_>) = policies
             .policies()
             .filter_map(|p| self.validate_slots(p, mode))
-            .flatten();
+            .unzip();
         ValidationResult::new(
-            template_and_static_policy_errs.chain(link_errs),
+            template_and_static_policy_errs.chain(link_errs.into_iter().flatten()),
             template_and_static_policy_warnings
+                .chain(link_warnings.into_iter().flatten())
                 .chain(confusable_string_checks(policies.all_templates())),
         )
     }
@@ -150,13 +151,14 @@ impl Validator {
             .unzip();
         let template_and_static_policy_errs = validate_policy_results.0.into_iter().flatten();
         let template_and_static_policy_warnings = validate_policy_results.1.into_iter().flatten();
-        let link_errs = policies
+        let (link_errs, link_warnings): (Vec<_>, Vec<_>) = policies
             .policies()
             .filter_map(|p| self.validate_slots(p, mode))
-            .flatten();
+            .unzip();
         ValidationResult::new(
-            template_and_static_policy_errs.chain(link_errs),
+            template_and_static_policy_errs.chain(link_errs.into_iter().flatten()),
             template_and_static_policy_warnings
+                .chain(link_warnings.into_iter().flatten())
                 .chain(confusable_string_checks(policies.all_templates())),
         )
     }
@@ -172,28 +174,32 @@ impl Validator {
         impl Iterator<Item = ValidationError> + 'a,
         impl Iterator<Item = ValidationWarning> + 'a,
     ) {
-        let validation_errors = if mode.is_partial() {
+        let (validation_errors, action_application_warning) = if mode.is_partial() {
             // We skip `validate_entity_types`, `validate_action_ids`, and
             // `validate_action_application` passes for partial schema
             // validation because there may be arbitrary extra entity types and
             // actions, so we can never claim that one doesn't exist.
-            None
+            (None, None)
         } else {
-            Some(
-                Validator::validate_entity_types(&self.schema, p)
-                    .chain(Validator::validate_enum_entity(&self.schema, p))
-                    .chain(Validator::validate_action_ids(&self.schema, p))
-                    // We could usefully update this pass to apply to partial
-                    // schema if it only failed when there is a known action
-                    // applied to known principal/resource entity types that are
-                    // not in its `appliesTo`.
-                    .chain(self.validate_template_action_application(p).err()),
+            (
+                Some(
+                    Validator::validate_entity_types(&self.schema, p)
+                        .chain(Validator::validate_enum_entity(&self.schema, p))
+                        .chain(Validator::validate_action_ids(&self.schema, p)),
+                ),
+                // We could usefully update this pass to apply to partial
+                // schema if it only warned when there is a known action
+                // applied to known principal/resource entity types that are
+                // not in its `appliesTo`.
+                self.validate_template_action_application(p).err(),
             )
-        }
-        .into_iter()
-        .flatten();
+        };
+        let validation_errors = validation_errors.into_iter().flatten();
         let (errors, warnings) = self.typecheck_policy(p, mode);
-        (validation_errors.chain(errors), warnings)
+        (
+            validation_errors.chain(errors),
+            action_application_warning.into_iter().chain(warnings),
+        )
     }
 
     /// Check that all entity types are defined in the schema, and each entity
@@ -215,7 +221,10 @@ impl Validator {
         &'a self,
         p: &'a Policy,
         mode: ValidationMode,
-    ) -> Option<impl Iterator<Item = ValidationError> + 'a> {
+    ) -> Option<(
+        impl Iterator<Item = ValidationError> + 'a,
+        Option<ValidationWarning>,
+    )> {
         // Ignore static policies since they are already handled by `validate_policy`
         if p.is_static() {
             return None;
@@ -229,10 +238,10 @@ impl Validator {
         // For template-linked policies `Policy::principal_constraint()` and
         // `Policy::resource_constraint()` return a copy of the constraint with
         // the slot filled by the appropriate value.
-        Some(
-            self.validate_entity_types_in_slots(p.id(), p.env())
-                .chain(self.validate_linked_action_application(p).err()),
-        )
+        Some((
+            self.validate_entity_types_in_slots(p.id(), p.env()),
+            self.validate_linked_action_application(p).err(),
+        ))
     }
 
     /// Construct a Typechecker instance and use it to detect any type errors in
@@ -472,14 +481,15 @@ mod test {
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
         assert!(!result.validation_passed());
-        assert_eq!(result.validation_errors().count(), 2);
+        assert_eq!(result.validation_errors().count(), 1);
         let undefined_err = ValidationError::unrecognized_entity_type(
             None,
             PolicyID::from_string("link2"),
             "some_namespace::Undefined".to_string(),
             Some("some_namespace::User".to_string()),
         );
-        let invalid_action_err = ValidationError::invalid_action_application(
+        // no action can apply to the linked resource type, which is a warning
+        let invalid_action_warning = ValidationWarning::invalid_action_application(
             loc.clone(),
             PolicyID::from_string("link2"),
             false,
@@ -492,13 +502,14 @@ mod test {
             .unwrap();
         assert_eq!(actual_undef_error, &undefined_err);
 
-        let actual_action_error = result
-            .validation_errors()
-            .find(|e| matches!(e, ValidationError::InvalidActionApplication(_)))
+        let actual_action_warning = result
+            .validation_warnings()
+            .find(|w| matches!(w, ValidationWarning::InvalidActionApplication(_)))
             .unwrap();
-        assert_eq!(actual_action_error, &invalid_action_err);
+        assert_eq!(actual_action_warning, &invalid_action_warning);
 
-        // this is also an invalid link (not a valid resource type for any action in the schema)
+        // this is also an invalid link (not a valid resource type for any action
+        // in the schema), but that only warrants a warning
         let mut values = HashMap::new();
         values.insert(
             ast::SlotId::resource(),
@@ -516,15 +527,17 @@ mod test {
         .expect("Linking failed!");
         let result = validator.validate(&set, ValidationMode::default());
         assert!(!result.validation_passed());
-        // `result` contains the two prior error messages plus one new one
-        assert_eq!(result.validation_errors().count(), 3);
-        let invalid_action_err = ValidationError::invalid_action_application(
+        // `result` contains the one prior error message plus one new warning
+        assert_eq!(result.validation_errors().count(), 1);
+        let invalid_action_warning = ValidationWarning::invalid_action_application(
             loc,
             PolicyID::from_string("link3"),
             false,
             false,
         );
-        assert!(result.validation_errors().contains(&invalid_action_err));
+        assert!(result
+            .validation_warnings()
+            .contains(&invalid_action_warning));
 
         Ok(())
     }
@@ -664,7 +677,11 @@ mod enumerated_entity_types {
         let validator = Validator::new(schema);
         let result = validator.validate(&policy_set, crate::validator::ValidationMode::Strict);
 
-        assert_eq!(result.validation_errors().collect_vec().len(), 1);
+        assert!(result.validation_errors().collect_vec().is_empty());
+        assert_matches!(
+            result.validation_warnings().collect_vec().as_slice(),
+            [ValidationWarning::InvalidActionApplication(_)]
+        );
     }
 
     #[test]

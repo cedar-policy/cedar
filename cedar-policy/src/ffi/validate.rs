@@ -238,6 +238,30 @@ mod test {
         })
     }
 
+    /// Assert that [`validate_json()`] returns [`ValidationAnswer::Success`]
+    /// with no errors, and return the enclosed warnings
+    #[track_caller]
+    fn assert_validates_with_warnings(json: serde_json::Value) -> Vec<ValidationError> {
+        let ans_val = validate_json(json).unwrap();
+        let result: Result<ValidationAnswer, _> = serde_json::from_value(ans_val);
+        assert_matches!(result, Ok(ValidationAnswer::Success { validation_errors, validation_warnings, other_warnings: _ }) => {
+            assert_eq!(validation_errors.len(), 0, "Unexpected validation errors: {validation_errors:?}");
+            validation_warnings
+        })
+    }
+
+    /// Assert that `warnings` reports that no action can apply to `policy_id`
+    #[track_caller]
+    fn assert_invalid_action_application_warning(warnings: &[ValidationError], policy_id: &str) {
+        let msg = format!("for policy `{policy_id}`, unable to find an applicable action given the policy scope constraints");
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.policy_id == PolicyId::new(policy_id) && w.error.message == msg),
+            "expected the warning `{msg}`, but saw warnings: {warnings:?}"
+        );
+    }
+
     /// Assert that [`validate_json_str()`] returns a `serde_json::Error`
     /// error with a message that matches `msg`
     #[track_caller]
@@ -361,7 +385,7 @@ mod test {
     }
 
     #[test]
-    fn test_semantically_incorrect_policy_fails_with_errors() {
+    fn test_impossible_policy_warns() {
         let json = json!({
         "schema": { "": {
           "entityTypes": {
@@ -388,25 +412,10 @@ mod test {
           }
         }});
 
-        let errs = assert_validates_with_errors(json);
-        assert_length_matches(&errs, 2);
-        for err in errs {
-            if err.policy_id == PolicyId::new("policy0") {
-                assert_error_matches(
-                    &err.error,
-                    "for policy `policy0`, unable to find an applicable action given the policy scope constraints",
-                    None
-                );
-            } else if err.policy_id == PolicyId::new("policy1") {
-                assert_error_matches(
-                    &err.error,
-                    "for policy `policy1`, unable to find an applicable action given the policy scope constraints",
-                    None
-                );
-            } else {
-                panic!("unexpected validation error: {err:?}");
-            }
-        }
+        // no action can apply to these policies, which is a warning, not an error
+        let warnings = assert_validates_with_warnings(json);
+        assert_invalid_action_application_warning(&warnings, "policy0");
+        assert_invalid_action_application_warning(&warnings, "policy1");
     }
 
     #[test]
@@ -524,7 +533,7 @@ mod test {
     }
 
     #[test]
-    fn test_semantically_incorrect_policy_fails_with_errors_concatenated_policies() {
+    fn test_impossible_policy_warns_concatenated_policies() {
         let json = json!({
           "schema": { "": {
             "entityTypes": {
@@ -549,14 +558,9 @@ mod test {
           }
         });
 
-        let errs = assert_validates_with_errors(json);
-        assert_length_matches(&errs, 1);
-        assert_eq!(errs[0].policy_id, PolicyId::new("policy1"));
-        assert_error_matches(
-            &errs[0].error,
-            "for policy `policy1`, unable to find an applicable action given the policy scope constraints",
-            None
-        );
+        // no action can apply to `policy1`, which is a warning, not an error
+        let warnings = assert_validates_with_warnings(json);
+        assert_invalid_action_application_warning(&warnings, "policy1");
     }
 
     #[test]
@@ -663,34 +667,15 @@ mod test {
             }
         });
         let errs = assert_validates_with_errors(json);
-        assert_length_matches(&errs, 3);
-        for err in errs {
-            if err.policy_id == PolicyId::new("ID1") {
-                if err.error.message.contains("unrecognized action") {
-                    assert_error_matches(
-                        &err.error,
-                        "for policy `ID1`, unrecognized action `Action::\"foo\"`",
-                        Some("did you mean `Action::\"viewPhoto\"`?"),
-                    );
-                } else {
-                    assert_error_matches(
-                        &err.error,
-                        "for policy `ID1`, unable to find an applicable action given the policy scope constraints",
-                        None,
-                    );
-                }
-            } else if err.policy_id == PolicyId::new("ID2") {
-                assert_error_matches(
-                    &err.error,
-                    "for policy `ID2`, unable to find an applicable action given the policy scope constraints",
-                    None,
-                );
-            } else {
-                panic!("unexpected validation error: {err:?}");
-            }
-        }
+        assert_length_matches(&errs, 1);
+        assert_eq!(errs[0].policy_id, PolicyId::new("ID1"));
+        assert_error_matches(
+            &errs[0].error,
+            "for policy `ID1`, unrecognized action `Action::\"foo\"`",
+            Some("did you mean `Action::\"viewPhoto\"`?"),
+        );
 
-        // Validation fails due to bad link
+        // Validation warns (but does not fail) due to bad link
         let json = json!({
             "schema": "entity User, Photo; action viewPhoto appliesTo { principal: User, resource: Photo };",
             "policies": {
@@ -709,13 +694,7 @@ mod test {
               }]
             }
         });
-        let errs = assert_validates_with_errors(json);
-        assert_length_matches(&errs, 1);
-        assert_eq!(errs[0].policy_id, PolicyId::new("ID2"));
-        assert_error_matches(
-            &errs[0].error,
-            "for policy `ID2`, unable to find an applicable action given the policy scope constraints",
-            None
-        );
+        let warnings = assert_validates_with_warnings(json);
+        assert_invalid_action_application_warning(&warnings, "ID2");
     }
 }

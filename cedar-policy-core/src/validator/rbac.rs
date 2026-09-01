@@ -31,7 +31,7 @@ use std::{collections::HashSet, sync::Arc};
 use crate::validator::{
     expr_iterator::{policy_entity_type_names, policy_entity_uids},
     validation_errors::unrecognized_action_id_help,
-    ValidationError,
+    ValidationError, ValidationWarning,
 };
 
 use super::{schema::*, Validator};
@@ -226,7 +226,7 @@ impl Validator {
     pub(crate) fn validate_linked_action_application<'a>(
         &self,
         p: &'a Policy,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), ValidationWarning> {
         self.validate_action_application(
             p.loc(),
             p.id(),
@@ -239,7 +239,7 @@ impl Validator {
     pub(crate) fn validate_template_action_application<'a>(
         &self,
         t: &'a Template,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), ValidationWarning> {
         self.validate_action_application(
             t.loc(),
             t.id(),
@@ -260,7 +260,7 @@ impl Validator {
         principal_constraint: &PrincipalConstraint,
         action_constraint: &ActionConstraint,
         resource_constraint: &ResourceConstraint,
-    ) -> Result<(), ValidationError> {
+    ) -> Result<(), ValidationWarning> {
         let mut apply_specs = self.get_apply_specs_for_action(action_constraint);
         let resources_for_scope: HashSet<&ast::EntityType> = self
             .get_resources_satisfying_constraint(resource_constraint)
@@ -282,7 +282,7 @@ impl Validator {
                 self.check_if_in_fixes_principal(principal_constraint, action_constraint);
             let would_in_fix_resource =
                 self.check_if_in_fixes_resource(resource_constraint, action_constraint);
-            Err(ValidationError::invalid_action_application(
+            Err(ValidationWarning::invalid_action_application(
                 source_loc.cloned(),
                 policy_id.clone(),
                 would_in_fix_principal,
@@ -1185,7 +1185,7 @@ mod test {
     }
 
     #[track_caller] // report the caller's location as the location of the panic, not the location in this function
-    fn assert_validate_policy_fails(
+    fn assert_validate_policy_errors(
         validator: &Validator,
         policy: &Template,
         expected: &[ValidationError],
@@ -1211,6 +1211,29 @@ mod test {
                 policy.loc().cloned(),
                 policy.id().clone()
             )],
+            "Unexpected validation warnings."
+        );
+    }
+
+    #[track_caller]
+    fn assert_validate_policy_flags_invalid_action_application(
+        validator: &Validator,
+        policy: &Template,
+    ) {
+        assert_eq!(
+            validator
+                .validate_policy(policy, ValidationMode::default())
+                .1
+                .collect::<Vec<ValidationWarning>>(),
+            vec![
+                ValidationWarning::invalid_action_application(
+                    policy.loc().cloned(),
+                    policy.id().clone(),
+                    false,
+                    false,
+                ),
+                ValidationWarning::impossible_policy(policy.loc().cloned(), policy.id().clone()),
+            ],
             "Unexpected validation warnings."
         );
     }
@@ -1327,22 +1350,13 @@ mod test {
         let policy = parse_policy_or_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
-        assert_validate_policy_fails(
-            &validator,
-            &policy,
-            &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..43, Arc::from(src))),
-                PolicyID::from_string("policy0"),
-                false,
-                false,
-            )],
-        );
-        assert_validate_policy_flags_impossible_policy(&validator, &policy);
+        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal is biz in faz::"a", action, resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_fails(
+        assert_validate_policy_errors(
             &validator,
             &policy,
             &[
@@ -1358,30 +1372,15 @@ mod test {
                     "biz".into(),
                     Some("baz".into()),
                 ),
-                ValidationError::invalid_action_application(
-                    Some(Loc::new(0..55, Arc::from(src))),
-                    PolicyID::from_string("policy0"),
-                    false,
-                    false,
-                ),
             ],
         );
-        assert_validate_policy_flags_impossible_policy(&validator, &policy);
+        assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal is bar in baz::"buz", action, resource);"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_fails(
-            &validator,
-            &policy,
-            &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..57, Arc::from(src))),
-                PolicyID::from_string("policy0"),
-                false,
-                false,
-            )],
-        );
-        assert_validate_policy_flags_impossible_policy(&validator, &policy);
+        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_flags_invalid_action_application(&validator, &policy);
     }
 
     #[test]
@@ -1411,37 +1410,19 @@ mod test {
         let policy = parse_policy_or_template(None, src).unwrap();
 
         let validator = Validator::new(schema);
-        assert_validate_policy_fails(
-            &validator,
-            &policy,
-            &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..43, Arc::from(src))),
-                PolicyID::from_string("policy0"),
-                false,
-                false,
-            )],
-        );
-        assert_validate_policy_flags_impossible_policy(&validator, &policy);
+        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal, action, resource is baz in bar::"buz");"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_fails(
-            &validator,
-            &policy,
-            &[ValidationError::invalid_action_application(
-                Some(Loc::new(0..57, Arc::from(src))),
-                PolicyID::from_string("policy0"),
-                false,
-                false,
-            )],
-        );
-        assert_validate_policy_flags_impossible_policy(&validator, &policy);
+        assert_validate_policy_errors(&validator, &policy, &[]);
+        assert_validate_policy_flags_invalid_action_application(&validator, &policy);
 
         let src = r#"permit(principal, action, resource is biz in faz::"a");"#;
         let policy = parse_policy_or_template(None, src).unwrap();
 
-        assert_validate_policy_fails(
+        assert_validate_policy_errors(
             &validator,
             &policy,
             &[
@@ -1457,15 +1438,9 @@ mod test {
                     "biz".into(),
                     Some("baz".into()),
                 ),
-                ValidationError::invalid_action_application(
-                    Some(Loc::new(0..55, Arc::from(src))),
-                    PolicyID::from_string("policy0"),
-                    false,
-                    false,
-                ),
             ],
         );
-        assert_validate_policy_flags_impossible_policy(&validator, &policy);
+        assert_validate_policy_flags_invalid_action_application(&validator, &policy);
     }
 
     #[test]
@@ -1640,7 +1615,7 @@ mod test {
 
         let validator = Validator::new(schema);
         let (template, _) = Template::link_static_policy(policy);
-        assert_validate_policy_flags_impossible_policy(&validator, &template);
+        assert_validate_policy_flags_invalid_action_application(&validator, &template);
     }
 }
 
