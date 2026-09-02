@@ -517,9 +517,9 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
     match &value.value {
         ValueKind::Lit(_) => None,
         ValueKind::ExtensionValue(ev) => Some(Value {
-            value: ValueKind::ExtensionValue(Arc::new(
-                ast::RepresentableExtensionValue::new_lazy(ev.value.clone()),
-            )),
+            value: ValueKind::ExtensionValue(Arc::new(ast::RepresentableExtensionValue::new_lazy(
+                ev.value.clone(),
+            ))),
             loc: value.loc.clone(),
         }),
         ValueKind::Set(s) if s.fast.is_some() => {
