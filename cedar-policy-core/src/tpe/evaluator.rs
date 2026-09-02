@@ -30,7 +30,7 @@ use crate::{
     tpe::entities::PartialEntities,
     tpe::request::PartialRequest,
     tpe::residual::{Residual, ResidualKind},
-    tpe::value::{PartialAttribute, PartialValue},
+    tpe::value::AttrState,
 };
 
 #[cfg(test)]
@@ -95,15 +95,11 @@ impl Evaluator<'_> {
                     mk_residual(ResidualKind::Var(Var::Resource))
                 }
             }
-            ResidualKind::Var(Var::Context) => {
-                if let Some(context) = self.request.context() {
-                    PartialValue::Record(context.clone())
-                        .try_into_residual(r.ty().clone())
-                        .unwrap_or(mk_residual(ResidualKind::Var(Var::Context)))
-                } else {
-                    mk_residual(ResidualKind::Var(Var::Context))
-                }
-            }
+            ResidualKind::Var(Var::Context) => match self.request.context() {
+                Some(context) => AttrState::PartialRecord(context.clone())
+                    .to_residual(r.ty(), || mk_residual(ResidualKind::Var(Var::Context))),
+                None => mk_residual(ResidualKind::Var(Var::Context)),
+            },
             ResidualKind::And { left, right } => {
                 let left = self.interpret(left);
                 match &left {
@@ -322,16 +318,8 @@ impl Evaluator<'_> {
                             let Ok(tag) = v2.get_as_string() else {
                                 return mk_error();
                             };
-                            match self.entity_tag(uid, tag) {
-                                PartialAttribute::Value((pv, ty)) => pv
-                                    .clone()
-                                    .try_into_residual(ty.clone())
-                                    .unwrap_or_else(|| binapp_residual(arg1.clone(), arg2.clone())),
-                                PartialAttribute::Exists | PartialAttribute::Unknown => {
-                                    binapp_residual(arg1, arg2)
-                                }
-                                PartialAttribute::Absent => mk_error(),
-                            }
+                            self.entity_tag(uid, tag)
+                                .to_residual(r.ty(), || binapp_residual(arg1.clone(), arg2.clone()))
                         }
                         BinaryOp::HasTag => {
                             let Ok(uid) = v1.get_as_entity() else {
@@ -341,14 +329,9 @@ impl Evaluator<'_> {
                                 return mk_error();
                             };
                             match self.entity_tag(uid, tag) {
-                                PartialAttribute::Value(_) | PartialAttribute::Exists => {
-                                    // `Exists` can be `true` because we know the entity is present
-                                    // so we do no need to account for `hasTag` returning `false`
-                                    // on an entity that doesn't exist.
-                                    mk_concrete(true.into())
-                                }
-                                PartialAttribute::Absent => mk_concrete(false.into()),
-                                PartialAttribute::Unknown => binapp_residual(arg1, arg2),
+                                state if state.exists() => mk_concrete(true.into()),
+                                AttrState::Absent => mk_concrete(false.into()),
+                                _ => binapp_residual(arg1, arg2),
                             }
                         }
                         BinaryOp::Contains => match v1.get_as_set() {
@@ -375,92 +358,31 @@ impl Evaluator<'_> {
             }
             ResidualKind::GetAttr { expr, attr } => {
                 let expr = self.interpret(expr);
-                match &expr {
-                    Residual::Concrete { value, .. } => {
-                        if let Ok(r) = value.get_as_record() {
-                            if let Some(val) = r.as_ref().get(attr) {
-                                mk_concrete(val.clone())
-                            } else {
-                                mk_error()
-                            }
-                        } else if let Ok(uid) = value.get_as_entity() {
-                            let get_attr_residual = || {
-                                mk_residual(ResidualKind::GetAttr {
-                                    expr: Arc::new(expr.clone()),
-                                    attr: attr.clone(),
-                                })
-                            };
-                            match self.entity_attr(uid, attr) {
-                                PartialAttribute::Value((pv, ty)) => pv
-                                    .clone()
-                                    .try_into_residual(ty.clone())
-                                    .unwrap_or_else(get_attr_residual),
-                                PartialAttribute::Exists | PartialAttribute::Unknown => {
-                                    get_attr_residual()
-                                }
-                                PartialAttribute::Absent => mk_error(),
-                            }
-                        } else {
-                            mk_error()
-                        }
-                    }
-                    Residual::Partial { .. } => {
-                        let get_attr_residual = || {
-                            mk_residual(ResidualKind::GetAttr {
-                                expr: Arc::new(expr.clone()),
-                                attr: attr.clone(),
-                            })
-                        };
-                        match self.residual_state_at_attr(&expr, attr) {
-                            AttrState::Value(v) => mk_concrete(v.clone()),
-                            AttrState::Partial(pv, ty) => pv
-                                .try_into_residual(ty.clone())
-                                .unwrap_or_else(get_attr_residual),
-                            AttrState::Exists | AttrState::Unknown => get_attr_residual(),
-                            AttrState::Absent => mk_error(),
-                        }
-                    }
-                    Residual::Error(_) => mk_error(),
+                if matches!(expr, Residual::Error(_)) {
+                    return mk_error();
                 }
+                self.attr_state_at(&expr, attr).to_residual(r.ty(), || {
+                    mk_residual(ResidualKind::GetAttr {
+                        expr: Arc::new(expr.clone()),
+                        attr: attr.clone(),
+                    })
+                })
             }
             ResidualKind::HasAttr { expr, attr } => {
                 let expr = self.interpret(expr);
+                if matches!(expr, Residual::Error(_)) {
+                    return mk_error();
+                }
                 if let Some(v) = try_decide_has_residual(self.schema, &expr, attr) {
                     return mk_concrete(v);
                 }
-                match &expr {
-                    Residual::Concrete { value, .. } => {
-                        if let Ok(r) = value.get_as_record() {
-                            mk_concrete(r.as_ref().contains_key(attr).into())
-                        } else if let Ok(uid) = value.get_as_entity() {
-                            match self.entity_attr(uid, attr) {
-                                PartialAttribute::Value(_) | PartialAttribute::Exists => {
-                                    // `Exists` is `true` because the entity is present so we do not
-                                    // need to account for `has` returning `false` on an entity that
-                                    // doesn't exist.
-                                    mk_concrete(true.into())
-                                }
-                                PartialAttribute::Absent => mk_concrete(false.into()),
-                                PartialAttribute::Unknown => mk_residual(ResidualKind::HasAttr {
-                                    expr: Arc::new(expr.clone()),
-                                    attr: attr.clone(),
-                                }),
-                            }
-                        } else {
-                            mk_error()
-                        }
-                    }
-                    Residual::Partial { .. } => match self.residual_state_at_attr(&expr, attr) {
-                        AttrState::Value(_) | AttrState::Partial(_, _) | AttrState::Exists => {
-                            mk_concrete(true.into())
-                        }
-                        AttrState::Absent => mk_concrete(false.into()),
-                        AttrState::Unknown => mk_residual(ResidualKind::HasAttr {
-                            expr: Arc::new(expr),
-                            attr: attr.clone(),
-                        }),
-                    },
-                    Residual::Error(_) => mk_error(),
+                match self.attr_state_at(&expr, attr) {
+                    state if state.exists() => mk_concrete(true.into()),
+                    AttrState::Absent => mk_concrete(false.into()),
+                    _ => mk_residual(ResidualKind::HasAttr {
+                        expr: Arc::new(expr),
+                        attr: attr.clone(),
+                    }),
                 }
             }
             ResidualKind::UnaryApp { op, arg } => {
@@ -553,86 +475,74 @@ impl Evaluator<'_> {
 
     /// Lookup the partial information available for an entity's attribute, accounting for what is
     /// known in the entity data and what we can infer from the type.
-    fn entity_attr(&self, uid: &EntityUID, attr: &str) -> PartialAttribute<(&PartialValue, &Type)> {
+    fn entity_attr(&self, uid: &EntityUID, attr: &str) -> AttrState {
         let Some(attrs) = self.entities.get_attrs(uid) else {
-            return PartialAttribute::Unknown;
+            return AttrState::Unknown;
         };
         let Some(et) = self.schema.get_entity_type(uid.entity_type()) else {
-            return PartialAttribute::Unknown;
+            return AttrState::Unknown;
         };
         attrs.resolve_attr(attr, et.attributes())
     }
 
-    /// Lookup the partial information available for an entity's tag, accounting for what is
-    /// known in the entity data and what we can infer from the type.
-    fn entity_tag(&self, uid: &EntityUID, tag: &str) -> PartialAttribute<(&PartialValue, &Type)> {
-        let Some(tags) = self.entities.get_tags(uid) else {
-            return PartialAttribute::Unknown;
-        };
-        // Tags share one declared type for the whole entity.
-        let tag_ty = self
-            .schema
-            .get_entity_type(uid.entity_type())
-            .and_then(|et| et.tag_type());
-        match (tags.attr(tag), tag_ty) {
-            (PartialAttribute::Value(value), Some(ty)) => PartialAttribute::Value((value, ty)),
-            // Without a declared type we can only report that the tag exists.
-            (PartialAttribute::Value(_), None) | (PartialAttribute::Exists, _) => {
-                PartialAttribute::Exists
-            }
-            (PartialAttribute::Absent, _) => PartialAttribute::Absent,
-            (PartialAttribute::Unknown, _) => PartialAttribute::Unknown,
+    /// Lookup the partial information available for an entity's tag
+    fn entity_tag(&self, uid: &EntityUID, tag: &str) -> AttrState {
+        match self.entities.get_tags(uid) {
+            Some(tags) => tags.attr(tag).clone(),
+            None => AttrState::Unknown,
         }
     }
 
     /// What we know about an attribute of a residual
-    fn residual_state_at_attr<'a>(&'a self, r: &'a Residual, attr: &str) -> AttrState<'a> {
-        match self.residual_state(r) {
-            AttrState::Value(v) => {
+    ///
+    /// Uses r's type to infer what attributes must exist if `r` is partial
+    fn attr_state_at(&self, r: &Residual, attr: &str) -> AttrState {
+        match (self.residual_state(r), r.ty()) {
+            (AttrState::Value(v), _) => {
                 if let Ok(record) = v.get_as_record() {
                     match record.get(attr) {
-                        Some(v) => AttrState::Value(v),
+                        Some(v) => AttrState::Value(v.clone()),
                         None => AttrState::Absent,
                     }
                 } else if let Ok(uid) = v.get_as_entity() {
                     // An entity's attributes come from the partial store plus the schema.
-                    AttrState::of_attr(self.entity_attr(uid, attr))
+                    self.entity_attr(uid, attr)
                 } else {
                     AttrState::Unknown
                 }
             }
-            AttrState::Partial(PartialValue::Record(rec), Type::Record { attrs, .. }) => {
-                AttrState::of_attr(rec.resolve_attr(attr, attrs))
+            (AttrState::PartialRecord(rec), Type::Record { attrs, .. }) => {
+                rec.resolve_attr(attr, attrs)
             }
             _ => AttrState::Unknown,
         }
     }
 
-    /// What we know about a residual
+    /// What we knows about a residual
     ///
     /// This functions returns an `AttrState` because we are primarily interested in the case where
     /// the residual is get-attr expression (`context.foo`) where we want to know what level of
     /// partial information we know about the attribute.
-    fn residual_state<'a>(&'a self, r: &'a Residual) -> AttrState<'a> {
+    fn residual_state(&self, r: &Residual) -> AttrState {
         match r {
-            Residual::Concrete { value, .. } => AttrState::Value(value),
+            Residual::Concrete { value, .. } => AttrState::Value(value.clone()),
             Residual::Error(_) => AttrState::Unknown,
             Residual::Partial { kind, .. } => match kind {
                 ResidualKind::Var(Var::Context) => match self.request.context() {
-                    Some(context) => {
-                        AttrState::Partial(PartialValue::Record(context.clone()), r.ty())
-                    }
+                    Some(context) => AttrState::PartialRecord(context.clone()),
                     None => AttrState::Unknown,
                 },
-                ResidualKind::GetAttr { expr, attr } => self.residual_state_at_attr(expr, attr),
+                ResidualKind::GetAttr { expr, attr } => self.attr_state_at(expr, attr),
                 ResidualKind::BinaryApp {
                     op: BinaryOp::GetTag,
                     arg1,
                     arg2,
                 } => match (self.residual_state(arg1), self.residual_state(arg2)) {
                     (AttrState::Value(v1), AttrState::Value(v2)) => {
+                        // Checking for `<entity-lit>.getTag(<tag-lit>)` so that we can get the partial
+                        // attribute information for tag values.
                         match (v1.get_as_entity(), v2.get_as_string()) {
-                            (Ok(uid), Ok(tag)) => AttrState::of_attr(self.entity_tag(uid, tag)),
+                            (Ok(uid), Ok(tag)) => self.entity_tag(uid, tag),
                             _ => AttrState::Unknown,
                         }
                     }
@@ -640,32 +550,6 @@ impl Evaluator<'_> {
                 },
                 _ => AttrState::Unknown,
             },
-        }
-    }
-}
-
-/// What TPE knows about an attribute of a partial record
-pub(crate) enum AttrState<'a> {
-    /// Exists with this fully concrete value
-    Value(&'a Value),
-    /// Exists with this partial value, of the given declared type.
-    Partial(PartialValue, &'a Type),
-    /// Exists, but the value is unknown.
-    Exists,
-    /// Known not to exist.
-    Absent,
-    /// Whether it exists at all is unknown.
-    Unknown,
-}
-
-impl<'a> AttrState<'a> {
-    /// The state of an attribute resolved against its declared type.
-    fn of_attr(attr: PartialAttribute<(&PartialValue, &'a Type)>) -> Self {
-        match attr {
-            PartialAttribute::Value((pv, ty)) => Self::Partial(pv.clone(), ty),
-            PartialAttribute::Exists => Self::Exists,
-            PartialAttribute::Absent => Self::Absent,
-            PartialAttribute::Unknown => Self::Unknown,
         }
     }
 }

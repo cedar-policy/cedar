@@ -19,7 +19,6 @@
 use crate::ast;
 use crate::ast::Entity;
 use crate::ast::RestrictedExpr;
-use crate::ast::ValueKind;
 use crate::entities::conformance::err::{
     AttrOrTag, EntitySchemaConformanceError, UndeclaredAction, UnexpectedEntityTypeError,
 };
@@ -36,7 +35,7 @@ use crate::tpe::err::{
     MismatchedAttributeError, MismatchedTagError, MissingEntityError, UnexpectedActionError,
     UnknownActionComponentError, UnknownAttributeError, UnknownEntityError, UnknownTagError,
 };
-use crate::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+use crate::tpe::value::{AttrState, PartialRecord};
 use crate::{
     ast::{EntityUID, Value},
     entities::{
@@ -55,7 +54,6 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde_as]
@@ -131,28 +129,21 @@ impl PartialEntity {
                 .map(|(a, v)| Ok((a, Value::try_from(v)?)))
                 .collect::<Result<BTreeMap<_, _>, EntitiesError>>()?,
             entity_type.attributes(),
-        )
-        .map_err(|a| unexpected_attr(uid.clone(), a))?;
+        );
         let tags = tags
             .into_iter()
             .map(|(a, v)| {
-                let ty = entity_type
-                    .tag_type()
-                    .ok_or_else(|| unexpected_tag(uid.clone(), a.clone()))?;
-                Ok((
-                    a,
-                    PartialAttribute::Value(
-                        PartialValue::from_value(Value::try_from(v)?, ty)
-                            .map_err(|a| unexpected_attr(uid.clone(), a))?,
-                    ),
-                ))
+                if entity_type.tag_type().is_none() {
+                    return Err(unexpected_tag(uid.clone(), a));
+                }
+                Ok((a, Value::try_from(v)?))
             })
-            .collect::<Result<BTreeMap<_, _>, EntitiesError>>()?;
+            .collect::<Result<Vec<_>, EntitiesError>>()?;
         Self::new(
             uid,
             Some(attrs),
             Some(parents),
-            Some(PartialRecord::from_attrs(Arc::new(tags))),
+            Some(PartialRecord::from_concrete_tags(tags)),
             schema,
         )
     }
@@ -269,28 +260,22 @@ impl PartialEntity {
 }
 
 /// Build a `PartialRecord` from restricted expressions
-///
-/// Restricted expressions carry no type information, so converting one to a [`PartialValue`] needs
-/// the declared type of the attribute, which `type_of` supplies.
 fn partial_record_from_exprs(
-    exprs: impl IntoIterator<Item = (SmolStr, PartialAttribute<RestrictedExpr>)>,
-    type_of: impl Fn(&str) -> Option<Type>,
+    exprs: impl IntoIterator<Item = (SmolStr, AttrState<RestrictedExpr>)>,
 ) -> Result<PartialRecord, SmolStr> {
     exprs
         .into_iter()
         .map(|(k, attr)| {
             let state = match attr {
-                PartialAttribute::Value(expr) => {
-                    // Only a known value needs a type: the other states say nothing about the
-                    // value, so they are valid for whatever type the schema declares.
-                    let ty = type_of(&k).ok_or_else(|| k.clone())?;
+                AttrState::Value(expr) => {
                     let eval = RestrictedEvaluator::new(Extensions::all_available());
                     let value = eval.interpret(expr.as_borrowed()).map_err(|_| k.clone())?;
-                    PartialAttribute::Value(PartialValue::from_value(value, &ty)?)
+                    AttrState::Value(value)
                 }
-                PartialAttribute::Exists => PartialAttribute::Exists,
-                PartialAttribute::Absent => PartialAttribute::Absent,
-                PartialAttribute::Unknown => PartialAttribute::Unknown,
+                AttrState::PartialRecord(r) => AttrState::PartialRecord(r),
+                AttrState::Present => AttrState::Present,
+                AttrState::Absent => AttrState::Absent,
+                AttrState::Unknown => AttrState::Unknown,
             };
             Ok((k, state))
         })
@@ -300,31 +285,16 @@ fn partial_record_from_exprs(
 /// Construct a `PartialEntity` from concrete attribute and tag expressions
 pub fn partial_entity_from_exprs(
     uid: EntityUID,
-    attrs: Option<impl IntoIterator<Item = (SmolStr, PartialAttribute<RestrictedExpr>)>>,
+    attrs: Option<impl IntoIterator<Item = (SmolStr, AttrState<RestrictedExpr>)>>,
     ancestors: Option<HashSet<EntityUID>>,
-    tags: Option<impl IntoIterator<Item = (SmolStr, PartialAttribute<RestrictedExpr>)>>,
+    tags: Option<impl IntoIterator<Item = (SmolStr, AttrState<RestrictedExpr>)>>,
     schema: &ValidatorSchema,
 ) -> Result<PartialEntity, EntitiesError> {
-    let entity_type = if uid.is_action() {
-        // `None` here  will cause `partial_record_from_exprs` to report and
-        // error if there are any attribute or tags on this action entity.
-        None
-    } else {
-        Some(lookup_entity_type(schema, &uid)?)
-    };
     let attrs = attrs
-        .map(|exprs| {
-            partial_record_from_exprs(exprs, |k| {
-                entity_type?.attr(k).map(|a| a.attr_type.as_ref().clone())
-            })
-            .map_err(|k| unexpected_attr(uid.clone(), k))
-        })
+        .map(|exprs| partial_record_from_exprs(exprs).map_err(|k| unexpected_attr(uid.clone(), k)))
         .transpose()?;
     let tags = tags
-        .map(|exprs| {
-            partial_record_from_exprs(exprs, |_| entity_type?.tag_type().cloned())
-                .map_err(|k| unexpected_tag(uid.clone(), k))
-        })
+        .map(|exprs| partial_record_from_exprs(exprs).map_err(|k| unexpected_tag(uid.clone(), k)))
         .transpose()?;
     PartialEntity::new(uid, attrs, ancestors, tags, schema)
 }
@@ -369,10 +339,11 @@ fn parse_value_map(
                     }
                 })?;
             // Concrete entity JSON states a fully known value for every listed attribute or tag.
-            Ok((k, PartialAttribute::Value(expr)))
+            Ok((k, AttrState::Value(expr)))
         })
         .collect::<std::result::Result<Vec<_>, JsonDeserializationError>>()?;
-    partial_record_from_exprs(exprs, |k| type_of(k).map(|(attr_ty, _)| attr_ty)).map_err(unexpected)
+    // Every key above already had to have a declared type, so nothing further to check.
+    partial_record_from_exprs(exprs).map_err(unexpected)
 }
 
 /// Parse an [`EntityJson`] into a [`PartialEntity`] according to `schema`
@@ -579,109 +550,81 @@ impl PartialEntity {
     }
 }
 
-/// Typecheck a `PartialValue` against a `SchemaType`
+/// Is the partial attribute state valid for the declared type
 ///
-/// This is like normal value typechecking except for partial record values. If an attribute
-/// value is known to exist (even if we don't know it's value), then the schema must allow it
-/// to exist with some type. If the attribute is explicitly absent then the schema must not
-/// require it. If the attribute is fully unknown, then it needs no validation.
-pub(crate) fn typecheck_partial_value(
-    val: &PartialValue,
+/// This is like normal value typechecking except for partially-known records. If an attribute is
+/// known to exist, then the schema must allow it to exist with some type. If the attribute is fully
+/// unknown, then it needs no validation.
+pub(crate) fn typecheck_attr_state(
+    state: &AttrState,
     expected_ty: &SchemaType,
     extensions: &Extensions<'_>,
 ) -> Result<(), TypecheckError> {
-    match val {
-        PartialValue::Record(rec) => {
-            // TODO: Return a new error type. `TypecheckError` carries a restricted
-            // expression, but we want give it a `PartialValue`
-            let bogus_actual_val = RestrictedExpr::val(false);
-            match expected_ty {
-                SchemaType::Record { attrs, .. } => {
-                    // Validate schema-declared attributes
-                    for (k, v) in attrs {
-                        match rec.attr(k) {
-                            PartialAttribute::Value(inner) => {
-                                typecheck_partial_value(inner, &v.attr_type, extensions)?;
-                            }
-                            PartialAttribute::Absent => {
-                                // Attribute is not present, so error if it's required
-                                if v.required {
-                                    return Err(TypeMismatchError::missing_required_attr(
-                                        expected_ty.clone(),
-                                        k.clone(),
-                                        bogus_actual_val,
-                                    )
-                                    .into());
-                                }
-                            }
-                            // Attribute is unknown, so nothing to do. In the `Exists` case, we know
-                            // the attribute is allowed to exist because it is in the schema type.
-                            PartialAttribute::Unknown | PartialAttribute::Exists => {}
-                        }
-                    }
-                    // An attribute claimed to exist that the schema does not declare is unexpected.
-                    if let Some((k, _)) = rec.attrs().find(|(k, v)| {
-                        matches!(v, PartialAttribute::Value(_) | PartialAttribute::Exists)
-                            && attrs.get(*k).is_none()
-                    }) {
-                        return Err(TypeMismatchError::unexpected_attr(
-                            expected_ty.clone(),
-                            k.clone(),
-                            bogus_actual_val,
-                        )
-                        .into());
-                    }
-                    Ok(())
-                }
-                _ => Err(TypeMismatchError::type_mismatch(
-                    expected_ty.clone(),
-                    None,
-                    bogus_actual_val,
-                )
-                .into()),
-            }
+    match state {
+        AttrState::Value(v) => {
+            // no partial state, delegate to concrete typechecking
+            typecheck_value_against_schematype(&v.clone().into(), expected_ty, extensions)
         }
-        // Non-record types hold no partial state, so we can delegate to the existing typechecker.
-        PartialValue::Lit(lit) => typecheck_value_against_schematype(
-            &Value::new(lit.clone(), None).into(),
-            expected_ty,
-            extensions,
-        ),
-        PartialValue::Set(set) => typecheck_value_against_schematype(
-            &Value {
-                value: ValueKind::Set(set.clone()),
-                loc: None,
-            }
-            .into(),
-            expected_ty,
-            extensions,
-        ),
-        PartialValue::ExtensionValue(ext) => typecheck_value_against_schematype(
-            &Value {
-                value: ValueKind::ExtensionValue(ext.clone()),
-                loc: None,
-            }
-            .into(),
-            expected_ty,
-            extensions,
-        ),
+        AttrState::PartialRecord(rec) => typecheck_partial_record(rec, expected_ty, extensions),
+        // For present/absent, `typecheck_partial_record` is responsible for ensuring the (non-)existence is valid.
+        AttrState::Present | AttrState::Absent | AttrState::Unknown => Ok(()),
     }
 }
 
+/// Is the partial record `rec` valid as a record of type `expected_ty`?
+pub(crate) fn typecheck_partial_record(
+    rec: &PartialRecord,
+    expected_ty: &SchemaType,
+    extensions: &Extensions<'_>,
+) -> Result<(), TypecheckError> {
+    // TODO: Return a new error type. `TypecheckError` carries a restricted expression, but we want to give it a partial record.
+    let bogus_actual_val = RestrictedExpr::val(false);
+    let SchemaType::Record { attrs, .. } = expected_ty else {
+        return Err(
+            TypeMismatchError::type_mismatch(expected_ty.clone(), None, bogus_actual_val).into(),
+        );
+    };
+
+    for (k, aty) in attrs {
+        match rec.attr(k) {
+            AttrState::Absent if aty.required => {
+                // The attribute is explicitly absent, but the typ requires it.
+                return Err(TypeMismatchError::missing_required_attr(
+                    expected_ty.clone(),
+                    k.clone(),
+                    bogus_actual_val,
+                )
+                .into());
+            }
+            state => typecheck_attr_state(state, &aty.attr_type, extensions)?,
+        }
+    }
+
+    if let Some((k, _)) = rec
+        .attrs()
+        .find(|(k, state)| state.exists() && attrs.get(*k).is_none())
+    {
+        // An attribute exists when the schema doesn't expect it. `.exists()`
+        // filters our absent/unknown attributes.
+        return Err(TypeMismatchError::unexpected_attr(
+            expected_ty.clone(),
+            k.clone(),
+            bogus_actual_val,
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn validate_partial_attr<S: Schema>(
-    partial_val: &PartialAttribute,
+    partial_val: &AttrState,
     expected_ty: &SchemaType,
     uid: &EntityUID,
     key: &SmolStr,
     kind: AttrOrTag,
     schema: &S,
 ) -> Result<(), EntitySchemaConformanceError> {
-    let Some(val) = partial_val.as_value() else {
-        // non-value variant. Calling function checked that it's existence is valid given the
-        // enclosing record type, so there's nothing else to do here.
-        return Ok(());
-    };
-    match typecheck_partial_value(val, expected_ty, Extensions::all_available()) {
+    match typecheck_attr_state(partial_val, expected_ty, Extensions::all_available()) {
         Ok(()) => {}
         Err(TypecheckError::TypeMismatch(e)) => {
             return Err(EntitySchemaConformanceError::type_mismatch(
@@ -700,7 +643,7 @@ fn validate_partial_attr<S: Schema>(
             ));
         }
     }
-    val.validate_euids(schema)?;
+    partial_val.validate_euids(schema)?;
     Ok(())
 }
 
@@ -713,7 +656,7 @@ fn validate_partial_record_as_attrs<S: Schema>(
 ) -> Result<(), EntitySchemaConformanceError> {
     if let Some(absent) = schema_etype
         .required_attrs()
-        .find(|attr| matches!(record.attr(&attr), PartialAttribute::Absent))
+        .find(|attr| matches!(record.attr(&attr), AttrState::Absent))
     {
         return Err(EntitySchemaConformanceError::missing_entity_attr(
             uid.clone(),
@@ -722,10 +665,7 @@ fn validate_partial_record_as_attrs<S: Schema>(
     }
 
     for (attr, partial_val) in record.attrs() {
-        if matches!(
-            partial_val,
-            PartialAttribute::Absent | PartialAttribute::Unknown
-        ) {
+        if matches!(partial_val, AttrState::Absent | AttrState::Unknown) {
             // `Absent` was already checked against the required attributes, and `Unknown` claims
             // nothing, so neither can conflict with what the schema declares.
             continue;
@@ -765,10 +705,7 @@ fn validate_partial_record_as_tags<S: Schema>(
     match schema_etype.tag_type() {
         None => {
             // No tags allowed, so a tag claimed to exist is an error
-            if let Some((tag, _)) = record
-                .attrs()
-                .find(|(_, a)| matches!(a, PartialAttribute::Value(_) | PartialAttribute::Exists))
-            {
+            if let Some((tag, _)) = record.attrs().find(|(_, a)| a.exists()) {
                 return Err(EntitySchemaConformanceError::unexpected_entity_tag(
                     uid.clone(),
                     tag.clone(),
@@ -1050,7 +987,7 @@ mod tests {
     use std::collections::{HashMap, HashSet};
 
     use crate::tpe::err::AncestorValidationError;
-    use crate::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+    use crate::tpe::value::{AttrState, PartialRecord};
     use crate::validator::ValidatorSchema;
     use crate::{
         ast::{EntityUID, Value},
@@ -1152,12 +1089,9 @@ mod tests {
         );
         let ejson: EntityJson = serde_json::from_value(json).expect("should parse");
         assert_matches!(parse_ejson(ejson, &schema), Ok(e) => {
-            let ety = schema.get_entity_type(&"A".parse().unwrap()).unwrap();
-            let b_ty = &ety.attr("b").unwrap().attr_type;
-            let c_ty = &ety.attr("c").unwrap().attr_type;
             let expected_attrs = [
-                ("b".into(), PartialAttribute::Value(PartialValue::from_value(1.into(), b_ty).unwrap())),
-                ("c".into(), PartialAttribute::Value(PartialValue::from_value(Value::record(std::iter::once(("x", false)), None), c_ty).unwrap())),
+                ("b".into(), AttrState::Value(1.into())),
+                ("c".into(), AttrState::Value(Value::record(std::iter::once(("x", false)), None))),
             ].into_iter().collect();
             assert_eq!(e, PartialEntity { uid: r#"A::"""#.parse().unwrap(), attrs: Some(expected_attrs), ancestors: Some(HashSet::default()), tags: Some(PartialRecord::new()) });
         });
@@ -1367,13 +1301,15 @@ mod test_validate {
 
     use std::collections::HashSet;
 
+    use crate::ast::{RestrictedExpr, Value};
     use crate::entities::conformance::err::EntitySchemaConformanceError;
     use crate::extensions::Extensions;
-    use crate::tpe::entities::PartialEntity;
+    use crate::tpe::entities::{partial_entity_from_exprs, PartialEntity};
     use crate::tpe::err::{
-        EntityValidationError, MismatchedActionAncestorsError, UnknownActionComponentError,
+        EntitiesError, EntityValidationError, MismatchedActionAncestorsError,
+        UnknownActionComponentError,
     };
-    use crate::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+    use crate::tpe::value::{AttrState, PartialRecord};
     use crate::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
 
@@ -1403,7 +1339,7 @@ mod test_validate {
         PartialRecord::from_iter(
             pairs
                 .into_iter()
-                .map(|(k, v)| (k, PartialAttribute::Value(PartialValue::Lit(v)))),
+                .map(|(k, v)| (k, AttrState::Value(Value::new(v, None)))),
         )
     }
 
@@ -1657,7 +1593,7 @@ mod test_validate {
     fn valid_entity_with_unknown_individual_attr() {
         let schema = test_schema();
         // `Exists` on a required attr passes: it exists, we just don't know its value.
-        let attrs = PartialRecord::from_iter([("name".into(), PartialAttribute::Exists)]);
+        let attrs = PartialRecord::from_iter([("name".into(), AttrState::Present)]);
         let entity = PartialEntity {
             uid: "User::\"alice\"".parse().unwrap(),
             attrs: Some(attrs),
@@ -1682,17 +1618,14 @@ mod test_validate {
         .0;
 
         let inner_record = PartialRecord::from_iter([
-            (
-                "name".into(),
-                PartialAttribute::Value(PartialValue::Lit("hello".into())),
-            ),
-            ("count".into(), PartialAttribute::Exists),
+            ("name".into(), AttrState::Value(Value::from("hello"))),
+            ("count".into(), AttrState::Present),
         ]);
         let entity = PartialEntity {
             uid: "Item::\"i1\"".parse().unwrap(),
             attrs: Some(PartialRecord::from_iter([(
                 "info".into(),
-                PartialAttribute::Value(PartialValue::Record(inner_record)),
+                AttrState::PartialRecord(inner_record),
             )])),
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::new()),
@@ -1715,17 +1648,14 @@ mod test_validate {
         .0;
 
         let inner_record = PartialRecord::from_iter([
-            (
-                "name".into(),
-                PartialAttribute::Value(PartialValue::Lit(42.into())),
-            ),
-            ("count".into(), PartialAttribute::Exists),
+            ("name".into(), AttrState::Value(Value::from(42))),
+            ("count".into(), AttrState::Present),
         ]);
         let entity = PartialEntity {
             uid: "Item::\"i1\"".parse().unwrap(),
             attrs: Some(PartialRecord::from_iter([(
                 "info".into(),
-                PartialAttribute::Value(PartialValue::Record(inner_record)),
+                AttrState::PartialRecord(inner_record),
             )])),
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::new()),
@@ -1746,11 +1676,8 @@ mod test_validate {
         let entity = PartialEntity {
             uid: "User::\"alice\"".parse().unwrap(),
             attrs: Some(PartialRecord::from_iter([
-                (
-                    "name".into(),
-                    PartialAttribute::Value(PartialValue::Lit("Alice".into())),
-                ),
-                ("bogus".into(), PartialAttribute::Exists),
+                ("name".into(), AttrState::Value(Value::from("Alice"))),
+                ("bogus".into(), AttrState::Present),
             ])),
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::new()),
@@ -1773,7 +1700,7 @@ mod test_validate {
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::from_iter([(
                 "sometag".into(),
-                PartialAttribute::Exists,
+                AttrState::Present,
             )])),
         };
 
@@ -1793,7 +1720,7 @@ mod test_validate {
             uid: "User::\"alice\"".parse().unwrap(),
             attrs: Some(PartialRecord::from_iter([(
                 "name".into(),
-                PartialAttribute::Absent,
+                AttrState::Absent,
             )])),
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::new()),
@@ -1814,11 +1741,8 @@ mod test_validate {
         let entity = PartialEntity {
             uid: "User::\"alice\"".parse().unwrap(),
             attrs: Some(PartialRecord::from_iter([
-                (
-                    "name".into(),
-                    PartialAttribute::Value(PartialValue::Lit("Alice".into())),
-                ),
-                ("bogus".into(), PartialAttribute::Absent),
+                ("name".into(), AttrState::Value(Value::from("Alice"))),
+                ("bogus".into(), AttrState::Absent),
             ])),
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::new()),
@@ -1835,11 +1759,8 @@ mod test_validate {
         let entity = PartialEntity {
             uid: "User::\"alice\"".parse().unwrap(),
             attrs: Some(PartialRecord::from_iter([
-                (
-                    "name".into(),
-                    PartialAttribute::Value(PartialValue::Lit("Alice".into())),
-                ),
-                ("bogus".into(), PartialAttribute::Unknown),
+                ("name".into(), AttrState::Value(Value::from("Alice"))),
+                ("bogus".into(), AttrState::Unknown),
             ])),
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::new()),
@@ -1858,11 +1779,76 @@ mod test_validate {
             ancestors: Some(HashSet::new()),
             tags: Some(PartialRecord::from_iter([(
                 "bogus".into(),
-                PartialAttribute::Unknown,
+                AttrState::Unknown,
             )])),
         };
 
         assert_matches!(entity.validate(&schema), Ok(()));
+    }
+
+    /// The construction path must agree with `validate`: `Absent` and `Unknown` claim nothing, so
+    /// an undeclared attribute in either state is valid (see the two tests above).
+    #[test]
+    fn from_exprs_accepts_undeclared_absent_and_unknown_attr() {
+        let schema = test_schema();
+        for state in [AttrState::Absent, AttrState::Unknown] {
+            let e = partial_entity_from_exprs(
+                "User::\"alice\"".parse().unwrap(),
+                Some(vec![
+                    (
+                        "name".into(),
+                        AttrState::Value(RestrictedExpr::val("Alice")),
+                    ),
+                    ("bogus".into(), state.clone()),
+                ]),
+                Some(HashSet::new()),
+                Some(Vec::<(_, AttrState<RestrictedExpr>)>::new()),
+                &schema,
+            );
+            assert_matches!(e, Ok(e) => {
+                // The state survives construction unchanged, and validation accepts it.
+                assert!(matches!(
+                    (e.attrs().unwrap().attr("bogus"), &state),
+                    (AttrState::Absent, AttrState::Absent) | (AttrState::Unknown, AttrState::Unknown)
+                ));
+            });
+        }
+    }
+
+    /// ... but a state that *does* claim the attribute exists is still rejected.
+    #[test]
+    fn from_exprs_rejects_undeclared_present_attr() {
+        let schema = test_schema();
+        let e = partial_entity_from_exprs(
+            "User::\"alice\"".parse().unwrap(),
+            Some(vec![("bogus".into(), AttrState::<RestrictedExpr>::Present)]),
+            Some(HashSet::new()),
+            Some(Vec::<(_, AttrState<RestrictedExpr>)>::new()),
+            &schema,
+        );
+        assert_matches!(
+            e,
+            Err(EntitiesError::Validation(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UnexpectedEntityAttr(_)
+            )))
+        );
+    }
+
+    /// An action entity may not state any attribute or tag, not even `Unknown`.
+    #[test]
+    fn from_exprs_rejects_any_attr_on_action() {
+        let schema = test_schema();
+        let e = partial_entity_from_exprs(
+            "Action::\"view\"".parse().unwrap(),
+            Some(vec![(
+                "anything".into(),
+                AttrState::<RestrictedExpr>::Unknown,
+            )]),
+            Some(HashSet::new()),
+            Some(Vec::<(_, AttrState<RestrictedExpr>)>::new()),
+            &schema,
+        );
+        assert_matches!(e, Err(_));
     }
 }
 

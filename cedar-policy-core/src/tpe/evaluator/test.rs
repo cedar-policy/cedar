@@ -1,12 +1,12 @@
 use super::super::test_utils::*;
 use crate::{
-    ast::{Eid, EntityUID, Expr, Literal},
+    ast::{Eid, EntityUID, Expr, Literal, Value},
     parser::parse_policyset,
     tpe::{
         self,
         entities::{PartialEntities, PartialEntity},
         request::PartialRequest,
-        value::{PartialAttribute as PA, PartialAttribute, PartialRecord, PartialValue},
+        value::{AttrState as PA, AttrState, PartialRecord},
     },
     validator::ValidatorSchema,
 };
@@ -117,26 +117,26 @@ pub(crate) fn permit_when(cond: &str) -> String {
     format!(r#"permit(principal, action, resource) when {{ {cond} }};"#)
 }
 
-/// A known-value literal attribute (`PartialAttribute::Value`).
-pub(crate) fn present(v: impl Into<Literal>) -> PartialAttribute {
-    PartialAttribute::Value(PartialValue::Lit(v.into()))
+/// A known-value literal attribute (`AttrState::Value`).
+pub(crate) fn present(v: impl Into<Literal>) -> AttrState {
+    AttrState::Value(Value::new(v.into(), None))
 }
 
-/// A known-value entity-uid attribute (`PartialAttribute::Value`).
-pub(crate) fn present_uid(ty: &str, id: &str) -> PartialAttribute {
-    PartialAttribute::Value(PartialValue::Lit(Literal::EntityUID(Arc::new(uid(ty, id)))))
+/// A known-value entity-uid attribute (`AttrState::Value`).
+pub(crate) fn present_uid(ty: &str, id: &str) -> AttrState {
+    AttrState::Value(Value::new(Literal::EntityUID(Arc::new(uid(ty, id))), None))
 }
 
-/// A known-value record attribute (`PartialAttribute::Value`).
+/// A known-value record attribute (`AttrState::Value`).
 pub(crate) fn record(
-    fields: impl IntoIterator<Item = (impl Into<SmolStr>, PartialAttribute)>,
-) -> PartialAttribute {
-    PartialAttribute::Value(PartialValue::Record(rec(fields)))
+    fields: impl IntoIterator<Item = (impl Into<SmolStr>, AttrState)>,
+) -> AttrState {
+    AttrState::PartialRecord(rec(fields))
 }
 
 /// A [`PartialRecord`] from (key, attribute) pairs.
 pub(crate) fn rec(
-    fields: impl IntoIterator<Item = (impl Into<SmolStr>, PartialAttribute)>,
+    fields: impl IntoIterator<Item = (impl Into<SmolStr>, AttrState)>,
 ) -> PartialRecord {
     fields.into_iter().map(|(k, v)| (k.into(), v)).collect()
 }
@@ -222,14 +222,14 @@ mod partial_attr_tests {
     fn test_get_attr() {
         let cond = "resource.public";
         assert_snapshot!(eval(present(true), cond), @"true");
-        assert_snapshot!(eval(PA::Exists, cond), @r#"Document::"doc".public"#);
+        assert_snapshot!(eval(PA::Present, cond), @r#"Document::"doc".public"#);
         assert_snapshot!(eval_no_public(cond), @r#"Document::"doc".public"#);
     }
 
     #[test]
     fn test_has_attr() {
         let cond = "resource has public";
-        assert_snapshot!(eval(PA::Exists, cond), @"true");
+        assert_snapshot!(eval(PA::Present, cond), @"true");
         // `public` omitted from the known attrs, yet `has` is true: required, so
         // the schema guarantees existence.
         assert_snapshot!(eval_no_public(cond), @"true");
@@ -240,7 +240,7 @@ mod partial_attr_tests {
         let cond = r#"principal.hasTag("role") && principal.getTag("role") == "admin""#;
         assert_snapshot!(eval_tag(present("admin"), cond), @"true");
         assert_snapshot!(
-            eval_tag(PA::Exists, cond),
+            eval_tag(PA::Present, cond),
             @r#"User::"alice".getTag("role") == "admin""#
         );
         assert_snapshot!(eval_tag(PA::Absent, cond), @"false");
@@ -286,7 +286,7 @@ mod nested_partial_attr_tests {
 
     #[test]
     fn test_record_value_is_error_free() {
-        let meta = record([("title", PA::Exists), ("rating", present(5))]);
+        let meta = record([("title", PA::Present), ("rating", present(5))]);
         // Error freedom here is conservative: the record read is treated as possibly erroring, so
         // the comparison is not folded away by `&& 1 == 2`. Deciding error freedom from the
         // resolved attribute state (which would fold this to `false`) is deferred.
@@ -304,7 +304,7 @@ mod nested_partial_attr_tests {
             @"true"
         );
         assert_snapshot!(
-            eval(record([("title", PA::Exists), ("rating", present(5))]), cond),
+            eval(record([("title", PA::Present), ("rating", present(5))]), cond),
             @r#"Document::"doc".meta.title == "My Doc""#
         );
     }
@@ -313,18 +313,18 @@ mod nested_partial_attr_tests {
     fn test_has_title() {
         let cond = "resource.meta has title";
         assert_snapshot!(
-            eval(record([("title", PA::Exists), ("rating", present(5))]), cond),
+            eval(record([("title", PA::Present), ("rating", present(5))]), cond),
             @"true"
         );
         assert_snapshot!(eval(record([("rating", present(5))]), cond), @"true");
-        assert_snapshot!(eval(PA::Exists, cond), @r#"Document::"doc".meta has title"#);
+        assert_snapshot!(eval(PA::Present, cond), @r#"Document::"doc".meta has title"#);
     }
 
     #[test]
     fn test_mixed_known_and_unknown_fields() {
         assert_snapshot!(
             eval(
-                record([("title", PA::Exists), ("rating", present(5))]),
+                record([("title", PA::Present), ("rating", present(5))]),
                 r#"resource.meta.rating < 10 && resource.meta.title == "My Doc""#,
             ),
             @r#"Document::"doc".meta.title == "My Doc""#
@@ -345,7 +345,7 @@ mod nested_partial_attr_tests {
         // `rating` is 6 here, not 5, but the residual re-emits `resource.meta`
         // rather than a rebuilt literal, so the compared value reads `rating: 5`.
         assert_snapshot!(
-            eval(record([("title", PA::Exists), ("rating", present(6))]), cond),
+            eval(record([("title", PA::Present), ("rating", present(6))]), cond),
             @r#"Document::"doc".meta == {rating: 5, title: "My Doc"}"#
         );
     }
@@ -389,7 +389,7 @@ mod partial_record_tag_tests {
             @"true"
         );
         assert_snapshot!(
-            eval(record([("role", PA::Exists), ("level", present(5))]), cond),
+            eval(record([("role", PA::Present), ("level", present(5))]), cond),
             @r#"User::"alice".getTag("info").role == "admin""#
         );
         assert_snapshot!(
@@ -402,7 +402,7 @@ mod partial_record_tag_tests {
     fn test_known_sibling_resolves() {
         assert_snapshot!(
             eval(
-                record([("role", PA::Exists), ("level", present(5))]),
+                record([("role", PA::Present), ("level", present(5))]),
                 r#"principal.hasTag("info") && principal.getTag("info").level < 10"#,
             ),
             @"true"
@@ -460,7 +460,7 @@ mod optional_attr_tests {
     fn test_has() {
         let cond = "principal has nickname";
         assert_snapshot!(eval(present("Ali"), cond), @"true");
-        assert_snapshot!(eval(PA::Exists, cond), @"true");
+        assert_snapshot!(eval(PA::Present, cond), @"true");
         assert_snapshot!(eval(PA::Absent, cond), @"false");
         assert_snapshot!(eval_no_nickname(cond), @r#"User::"alice" has nickname"#);
     }
@@ -469,7 +469,7 @@ mod optional_attr_tests {
     fn test_guarded() {
         let cond = r#"principal has nickname && principal.nickname == "Ali""#;
         assert_snapshot!(eval(present("Ali"), cond), @"true");
-        assert_snapshot!(eval(PA::Exists, cond), @r#"User::"alice".nickname == "Ali""#);
+        assert_snapshot!(eval(PA::Present, cond), @r#"User::"alice".nickname == "Ali""#);
         assert_snapshot!(eval(PA::Absent, cond), @"false");
         assert_snapshot!(
             eval_no_nickname(cond),
@@ -516,7 +516,7 @@ mod nested_optional_attr_tests {
             @"true"
         );
         assert_snapshot!(
-            eval(record([("title", present("Doc")), ("subtitle", PA::Exists)]), cond),
+            eval(record([("title", present("Doc")), ("subtitle", PA::Present)]), cond),
             @"true"
         );
         assert_snapshot!(
@@ -537,7 +537,7 @@ mod nested_optional_attr_tests {
             @"true"
         );
         assert_snapshot!(
-            eval(record([("title", present("Doc")), ("subtitle", PA::Exists)]), cond),
+            eval(record([("title", present("Doc")), ("subtitle", PA::Present)]), cond),
             @r#"Document::"doc".meta.subtitle == "Sub""#
         );
         assert_snapshot!(
@@ -599,7 +599,7 @@ mod context_tests {
         assert_snapshot!(eval_ctx(ctx([("level", present(5))]), cond), @"true");
         assert_snapshot!(eval_ctx(None, cond), @"context.level < 10");
         assert_snapshot!(
-            eval_ctx(ctx([("level", PA::Exists)]), cond),
+            eval_ctx(ctx([("level", PA::Present)]), cond),
             @"context.level < 10"
         );
     }
@@ -616,7 +616,7 @@ mod context_tests {
             @"false"
         );
         assert_snapshot!(
-            eval_ctx(ctx([("level", present(5)), ("tag", PA::Exists)]), cond),
+            eval_ctx(ctx([("level", present(5)), ("tag", PA::Present)]), cond),
             @r#"context.tag == "admin""#
         );
         assert_snapshot!(
@@ -693,7 +693,7 @@ mod required_attr_not_in_map_tests {
     fn test_required_in_map() {
         let cond = "principal has name";
         assert_snapshot!(eval_with_attrs([("name", present("Alice"))], cond), @"true");
-        assert_snapshot!(eval_with_attrs([("name", PA::Exists)], cond), @"true");
+        assert_snapshot!(eval_with_attrs([("name", PA::Present)], cond), @"true");
     }
 }
 
@@ -809,20 +809,20 @@ mod record_literal_tests {
     #[test]
     fn test_residual_sibling_blocks_extraction() {
         assert_snapshot!(
-            eval(PA::Exists, "{e: principal.level + 1, l: 0}.l == 0"),
+            eval(PA::Present, "{e: principal.level + 1, l: 0}.l == 0"),
             @r#"{e: User::"alice".level + 1, l: 0}.l == 0"#
         );
         assert_snapshot!(
-            eval(PA::Exists, "{e: principal.level + 1, l: 0} has l"),
+            eval(PA::Present, "{e: principal.level + 1, l: 0} has l"),
             @r#"{e: User::"alice".level + 1, l: 0} has l"#
         );
         // `has` is likewise unanswered: if the sibling errors, so does `has`.
         assert_snapshot!(
-            eval(PA::Exists, "{e: principal.level + 1, l: 0} has missing"),
+            eval(PA::Present, "{e: principal.level + 1, l: 0} has missing"),
             @r#"{e: User::"alice".level + 1, l: 0} has missing"#
         );
         assert_snapshot!(
-            eval(PA::Exists, "{e: principal.level + 1, l: 0}.e < 10"),
+            eval(PA::Present, "{e: principal.level + 1, l: 0}.e < 10"),
             @r#"{e: User::"alice".level + 1, l: 0}.e < 10"#
         );
     }
@@ -838,7 +838,7 @@ mod record_literal_tests {
         );
         assert_snapshot!(
             eval(
-                PA::Exists,
+                PA::Present,
                 "{e: if principal.level < 10 then 1 else 9223372036854775807 + 1, l: 0}.l == 0"
             ),
             @r#"{e: if User::"alice".level < 10 then 1 else error(), l: 0}.l == 0"#
@@ -906,7 +906,7 @@ mod record_literal_tests {
             "alice",
             Some(rec([(
                 "meta",
-                record([("e", PA::Exists), ("l", present(0))]),
+                record([("e", PA::Present), ("l", present(0))]),
             )])),
             Some(PartialRecord::new()),
         );
@@ -961,7 +961,7 @@ mod iterated_eval_tests {
             "alice",
             Some(rec([(
                 "meta",
-                record([("other", present_uid("Other", "o")), ("level", PA::Exists)]),
+                record([("other", present_uid("Other", "o")), ("level", PA::Present)]),
             )])),
             Some(PartialRecord::new()),
         )
@@ -1078,7 +1078,7 @@ mod export_tests {
             "alice",
             Some(rec([(
                 "meta",
-                record([("title", PA::Exists), ("rating", present(5))]),
+                record([("title", PA::Present), ("rating", present(5))]),
             )])),
             Some(PartialRecord::new()),
         )
@@ -1153,7 +1153,7 @@ mod nested_concrete_record_tests {
                 record([
                     ("inner", record([("a", present(1)), ("b", present(2))])),
                     ("other", present_uid("Other", "hidden")),
-                    ("tag", PA::Exists),
+                    ("tag", PA::Present),
                 ]),
             )])),
             Some(PartialRecord::new()),

@@ -113,7 +113,7 @@ mod tests {
 
     use crate::ast::{Annotation, AnyId, BinaryOp, Literal, PolicyID, Value, ValueKind, Var};
     use crate::tpe::residual::{Residual, ResidualKind};
-    use crate::tpe::value::{PartialAttribute, PartialValue};
+    use crate::tpe::value::AttrState;
     use crate::validator::ValidatorSchema;
     use crate::{
         ast::{EntityUID, PolicySet},
@@ -279,13 +279,7 @@ action Delete appliesTo {
                 ty: "Document".parse().unwrap(),
                 eid: None,
             },
-            Some(
-                std::iter::once((
-                    "hasMFA".into(),
-                    PartialAttribute::Value(PartialValue::Lit(true.into())),
-                ))
-                .collect(),
-            ),
+            Some(std::iter::once(("hasMFA".into(), AttrState::Value(Value::from(true)))).collect()),
             &rfc_schema(),
         )
         .unwrap()

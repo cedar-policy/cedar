@@ -22,13 +22,13 @@ use crate::ast::EntityUIDEntry;
 use crate::entities::conformance::err::InvalidEnumEntityError;
 use crate::entities::conformance::ValidateEuidError;
 use crate::entities::SchemaType;
-use crate::tpe::entities::typecheck_partial_value;
+use crate::tpe::entities::typecheck_partial_record;
 use crate::tpe::err::{
     InconsistentActionError, InconsistentPrincipalEidError, InconsistentPrincipalTypeError,
     InconsistentResourceEidError, InconsistentResourceTypeError, NoMatchingReqEnvError,
     RequestConsistencyError,
 };
-use crate::tpe::value::{PartialRecord, PartialValue};
+use crate::tpe::value::PartialRecord;
 use crate::validator::request_validation_errors::{
     InvalidContextError, UndeclaredActionError, UndeclaredPrincipalTypeError,
     UndeclaredResourceTypeError,
@@ -262,12 +262,8 @@ impl PartialRequest {
     ) -> Result<(), RequestValidationError> {
         let schema_ty =
             SchemaType::try_from(expected_ty.clone()).map_err(|_| self.invalid_context_error())?;
-        typecheck_partial_value(
-            &PartialValue::Record(context.clone()),
-            &schema_ty,
-            Extensions::all_available(),
-        )
-        .map_err(|_| self.invalid_context_error())?;
+        typecheck_partial_record(context, &schema_ty, Extensions::all_available())
+            .map_err(|_| self.invalid_context_error())?;
 
         // Validate entity UIDs in the known parts of the context
         context
@@ -778,10 +774,11 @@ mod inconsistent_requests {
 #[cfg(test)]
 mod partial_context_euids {
     use crate::ast::EntityUID;
+    use crate::ast::Value;
     use crate::extensions::Extensions;
     use crate::tpe::request::PartialRequest;
     use crate::tpe::test_utils::parse_partial_euid;
-    use crate::tpe::value::{PartialAttribute, PartialRecord, PartialValue};
+    use crate::tpe::value::{AttrState, PartialRecord};
     use crate::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
 
@@ -800,9 +797,9 @@ mod partial_context_euids {
         .0
     }
 
-    fn bad_color() -> PartialAttribute {
+    fn bad_color() -> AttrState {
         let euid: EntityUID = r#"Color::"green""#.parse().unwrap();
-        PartialAttribute::Value(PartialValue::Lit(euid.into()))
+        AttrState::Value(Value::from(euid))
     }
 
     fn validate(context: PartialRecord) -> Result<(), String> {
@@ -826,7 +823,7 @@ mod partial_context_euids {
         assert_matches!(
             validate(PartialRecord::from_iter([
                 ("c".into(), bad_color()),
-                ("nested".into(), PartialAttribute::Exists),
+                ("nested".into(), AttrState::Present),
             ])),
             Err(e) => assert!(e.contains(r#"not declared as a valid eid"#), "{e}")
         );
@@ -834,10 +831,10 @@ mod partial_context_euids {
         let inner = PartialRecord::from_iter([("c".into(), bad_color())]);
         assert_matches!(
             validate(PartialRecord::from_iter([
-                ("c".into(), PartialAttribute::Exists),
+                ("c".into(), AttrState::Present),
                 (
                     "nested".into(),
-                    PartialAttribute::Value(PartialValue::Record(inner))
+                    AttrState::PartialRecord(inner)
                 ),
             ])),
             Err(e) => assert!(e.contains(r#"not declared as a valid eid"#), "{e}")
@@ -852,32 +849,26 @@ mod partial_context_euids {
         // Undeclared attr nested under a record, with an unknown sibling so the
         // record cannot be rendered concretely.
         let inner = PartialRecord::from_iter([
-            ("c".into(), PartialAttribute::Exists),
-            (
-                "bogus".into(),
-                PartialAttribute::Value(PartialValue::Lit(1.into())),
-            ),
+            ("c".into(), AttrState::Present),
+            ("bogus".into(), AttrState::Value(Value::from(1))),
         ]);
         assert_matches!(
             validate(PartialRecord::from_iter([
-                ("c".into(), PartialAttribute::Exists),
+                ("c".into(), AttrState::Present),
                 (
                     "nested".into(),
-                    PartialAttribute::Value(PartialValue::Record(inner))
+                    AttrState::PartialRecord(inner)
                 ),
             ])),
             Err(e) => assert!(e.contains("is not valid for"), "{e}")
         );
 
         // A record value where the schema declares a non-record type.
-        let rec = PartialRecord::from_iter([(
-            "x".into(),
-            PartialAttribute::Value(PartialValue::Lit(1.into())),
-        )]);
+        let rec = PartialRecord::from_iter([("x".into(), AttrState::Value(Value::from(1)))]);
         assert_matches!(
             validate(PartialRecord::from_iter([
-                ("c".into(), PartialAttribute::Value(PartialValue::Record(rec))),
-                ("nested".into(), PartialAttribute::Exists),
+                ("c".into(), AttrState::PartialRecord(rec)),
+                ("nested".into(), AttrState::Present),
             ])),
             Err(e) => assert!(e.contains("is not valid for"), "{e}")
         );

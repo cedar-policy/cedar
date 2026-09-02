@@ -25,7 +25,7 @@ use cedar_policy_core::batched_evaluator::{
 };
 use cedar_policy_core::tpe;
 use cedar_policy_core::tpe::entities::partial_entity_from_exprs;
-use cedar_policy_core::tpe::value::{PartialAttribute, PartialRecord};
+use cedar_policy_core::tpe::value::{AttrState, PartialRecord};
 use cedar_policy_core::validator::request_validation_errors::InvalidContextError;
 use itertools::Itertools;
 use ref_cast::RefCast;
@@ -346,9 +346,9 @@ impl PartialEntity {
     /// partial attributes and tags.
     fn concrete_attr_map_to_partial(
         map: BTreeMap<SmolStr, RestrictedExpression>,
-    ) -> Vec<(SmolStr, PartialAttribute<RestrictedExpr>)> {
+    ) -> Vec<(SmolStr, AttrState<RestrictedExpr>)> {
         map.into_iter()
-            .map(|(k, v)| (k, PartialAttribute::Value(v.0)))
+            .map(|(k, v)| (k, AttrState::Value(v.0)))
             .collect()
     }
 }
