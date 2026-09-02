@@ -29,6 +29,10 @@ Cedar Language Version: TBD
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
 - For the experimental `tpe` feature, fixed `TpeResponse::policy_set` to return the residual policies, matching `TpeResponse::policies` as documented. Previously it returned the original policies (#2540).
 
+### Changed
+
+- Renamed the `Residual.can_error_assuming_well_formed()` to its negated variant `Residual.error_free_assuming_well_typed()`
+
 ## [4.12.0] - 2026-07-28
 
 Cedar Language Version: 4.5

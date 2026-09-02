@@ -110,7 +110,7 @@ impl Evaluator<'_> {
                                 // <left-residual> && true => <left-residual>
                                 Ok(true) => left,
                                 Ok(false) => {
-                                    if !left.can_error_assuming_well_formed() {
+                                    if left.error_free_assuming_well_typed() {
                                         // simplify <error-free> && false == false
                                         mk_concrete(false.into())
                                     } else {
@@ -156,7 +156,7 @@ impl Evaluator<'_> {
                                 // <left-residual> || false == <left-residual>
                                 Ok(false) => left,
                                 Ok(true) => {
-                                    if !left.can_error_assuming_well_formed() {
+                                    if left.error_free_assuming_well_typed() {
                                         // simplify <error-free> || true == true
                                         mk_concrete(true.into())
                                     } else {

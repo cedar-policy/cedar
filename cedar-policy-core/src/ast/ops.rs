@@ -32,6 +32,18 @@ pub enum UnaryOp {
     IsEmpty,
 }
 
+impl UnaryOp {
+    /// Describes whether the unary operation can produce an error, assuming well-typedness.
+    pub fn can_error(&self) -> bool {
+        match self {
+            // Integer negation can error due to integer overflow
+            UnaryOp::Neg => true,
+            // Other unary operations are error-free. Enumerated to force variant additions to consider this property.
+            UnaryOp::IsEmpty | UnaryOp::Not => false,
+        }
+    }
+}
+
 impl std::fmt::Display for UnaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -110,6 +122,27 @@ pub enum BinaryOp {
     ///
     /// First argument must have Entity type, second argument must have String type.
     HasTag,
+}
+
+impl BinaryOp {
+    /// Describes whether the binary operation can produce an error, assuming well-typedness.
+    pub fn can_error(&self) -> bool {
+        match self {
+            // Arithmetic operations could error due to integer overflow
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => true,
+            // <entityUID>.getTag possibly errors during reauthorization if <entityUID> does not exist in the entity store
+            BinaryOp::GetTag => true,
+            // Other binary operations are error-free. Enumerated to force variant additions to consider this property.
+            BinaryOp::Contains
+            | BinaryOp::ContainsAll
+            | BinaryOp::ContainsAny
+            | BinaryOp::Eq
+            | BinaryOp::HasTag
+            | BinaryOp::In
+            | BinaryOp::Less
+            | BinaryOp::LessEq => false,
+        }
+    }
 }
 
 impl std::fmt::Display for BinaryOp {
