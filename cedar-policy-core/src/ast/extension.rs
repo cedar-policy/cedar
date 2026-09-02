@@ -464,15 +464,15 @@ impl RepresentableExtensionValue {
         func: Name,
         args: Vec<RestrictedExpr>,
     ) -> Self {
-        let repr = OnceLock::new();
-        // `set` on a fresh `OnceLock` cannot fail.
-        let _ = repr.set((func, args));
-        Self { repr, value }
+        Self {
+            repr: OnceLock::from((func, args)),
+            value,
+        }
     }
 
     /// Create a [`RepresentableExtensionValue`] whose `(func, args)`
     /// representation is derived from [`ExtensionValue::canonical_repr`] on
-    /// first access rather than up front.
+    /// first access.
     ///
     /// Only valid for values whose `canonical_repr` returns `Some`.
     pub(crate) fn new_lazy(value: Arc<dyn InternalExtensionValue + Send + Sync>) -> Self {
