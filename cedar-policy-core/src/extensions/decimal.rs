@@ -182,11 +182,11 @@ impl ExtensionValue for Decimal {
     /// The canonical representation of a [`Decimal`] formats the argument string representing the
     /// decimal with [`NUM_DIGITS`] digits after `.`, even though the [`Decimal`] might have been constructed
     /// with a representation having fewer than [`NUM_DIGITS`].
-    fn canonical_repr(&self) -> Option<(Name, Vec<crate::ast::RestrictedExpr>)> {
-        Some((
+    fn canonical_repr(&self) -> (Name, Vec<crate::ast::RestrictedExpr>) {
+        (
             constants::DECIMAL_FROM_STR_NAME.clone(),
             vec![crate::ast::RestrictedExpr::val(self.to_string())],
-        ))
+        )
     }
 }
 

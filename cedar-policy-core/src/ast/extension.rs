@@ -421,15 +421,12 @@ pub trait ExtensionValue: Debug + Send + Sync + UnwindSafe + RefUnwindSafe {
     /// If it supports operator overloading
     fn supports_operator_overloading(&self) -> bool;
 
-    /// Return the canonical representation of this extension value, if it
-    /// differs from the one stored by the constructor. The canonical representation
-    /// is likely to differ from the constructed value by the formatting of its
-    /// arguments.
-    /// Used by TPE to normalize residuals.  The default (`None`) means "keep whatever the
-    /// constructor stored".
-    fn canonical_repr(&self) -> Option<(Name, Vec<RestrictedExpr>)> {
-        None
-    }
+    /// Return the canonical `(func, args)` representation of this extension
+    /// value, i.e. the one satisfying `eval(func(args)) == self`. It is likely
+    /// to differ from the representation stored by the constructor by the
+    /// formatting of its arguments.
+    /// Used by TPE to normalize residuals.
+    fn canonical_repr(&self) -> (Name, Vec<RestrictedExpr>);
 }
 
 impl<V: ExtensionValue> StaticallyTyped for V {
@@ -473,8 +470,6 @@ impl RepresentableExtensionValue {
     /// Create a [`RepresentableExtensionValue`] whose `(func, args)`
     /// representation is derived from [`ExtensionValue::canonical_repr`] on
     /// first access.
-    ///
-    /// Only valid for values whose `canonical_repr` returns `Some`.
     pub(crate) fn new_lazy(value: Arc<dyn InternalExtensionValue + Send + Sync>) -> Self {
         Self {
             repr: OnceLock::new(),
@@ -484,15 +479,7 @@ impl RepresentableExtensionValue {
 
     /// The `(func, args)` such that `eval(func(args)) == value`.
     fn repr(&self) -> &(Name, Vec<RestrictedExpr>) {
-        self.repr.get_or_init(|| {
-            #[expect(
-                clippy::expect_used,
-                reason = "`new_lazy` is only used for values whose `canonical_repr` is `Some`"
-            )]
-            self.value
-                .canonical_repr()
-                .expect("a lazily-represented extension value must have a canonical representation")
-        })
+        self.repr.get_or_init(|| self.value.canonical_repr())
     }
 
     /// The extension function whose call reproduces this value.
