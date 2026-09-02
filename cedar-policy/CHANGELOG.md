@@ -17,6 +17,7 @@ Cedar Language Version: TBD
 ### Added
 
 - For the experimental `tpe` feature, TPE now reduces `has`, `hasTag`, `in` and `==` applied to non-erroring but unknown expressions when the schema provides enough information to determine the concrete value of the operation.
+- `Entities::from_entities_unchecked`, which constructs an `Entities` without computing or checking the transitive closure of the entity hierarchy. Callers are responsible for providing a transitively closed, acyclic hierarchy. Intended for callers that already maintain the transitive closure and want to avoid the cost of recomputing it (#2378).
 
 ### Changed
 
