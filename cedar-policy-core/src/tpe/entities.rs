@@ -20,7 +20,7 @@ use crate::ast;
 use crate::ast::Entity;
 use crate::ast::RestrictedExpr;
 use crate::entities::conformance::err::{
-    AttrOrTag, EntitySchemaConformanceError, UndeclaredAction, UnexpectedEntityTypeError,
+    AttrOrTag, EntitySchemaConformanceError, UnexpectedEntityTypeError,
 };
 use crate::entities::conformance::typecheck_value_against_schematype;
 use crate::entities::conformance::TypecheckError;
@@ -33,7 +33,7 @@ use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
     EntityValidationError, JsonDeserializationError, MismatchedAncestorError,
     MismatchedAttributeError, MismatchedTagError, MissingEntityError, UnexpectedActionError,
-    UnknownActionComponentError, UnknownAttributeError, UnknownEntityError, UnknownTagError,
+    UnknownAttributeError, UnknownEntityError, UnknownTagError,
 };
 use crate::tpe::value::{AttrState, PartialRecord};
 use crate::{
@@ -510,41 +510,31 @@ impl PartialEntity {
 
     /// Validate an action entity
     fn validate_action<S: Schema>(&self, core_schema: &S) -> Result<(), EntityValidationError> {
-        let (Some(attrs), Some(ancestors), Some(tags)) = (&self.attrs, &self.ancestors, &self.tags)
-        else {
-            return Err(UnknownActionComponentError {
-                action: (&self.uid).clone(),
-            }
-            .into());
-        };
         let Some(action) = core_schema.action(&self.uid) else {
-            return Err(
-                EntitySchemaConformanceError::UndeclaredAction(UndeclaredAction {
-                    uid: self.uid.clone(),
-                })
-                .into(),
-            );
+            return Ok(());
         };
-        if let Some((attr, _)) = attrs.attrs().next() {
+        if let Some((attr, _)) = self.attrs.iter().flat_map(|attrs| attrs.attrs()).next() {
             return Err(EntitySchemaConformanceError::unexpected_entity_attr(
                 self.uid.clone(),
                 attr.clone(),
             )
             .into());
         }
-        if let Some((tag, _)) = tags.attrs().next() {
+        if let Some((tag, _)) = self.tags.iter().flat_map(|tags| tags.attrs()).next() {
             return Err(EntitySchemaConformanceError::unexpected_entity_tag(
                 self.uid.clone(),
                 tag.clone(),
             )
             .into());
         }
-        let schema_ancestors: HashSet<EntityUID> = action.ancestors().cloned().collect();
-        if &schema_ancestors != ancestors {
-            return Err(MismatchedActionAncestorsError {
-                action: self.uid.clone(),
+        if let Some(ancestors) = &self.ancestors {
+            let schema_ancestors: HashSet<EntityUID> = action.ancestors().cloned().collect();
+            if &schema_ancestors != ancestors {
+                return Err(MismatchedActionAncestorsError {
+                    action: self.uid.clone(),
+                }
+                .into());
             }
-            .into());
         }
         Ok(())
     }
@@ -761,6 +751,23 @@ impl PartialEntities {
         Self::default()
     }
 
+    /// Insert the schema's action entities, whose attributes, tags, and ancestors come from the
+    /// schema rather than from request data and so are known before anything is loaded.
+    fn insert_actions(&mut self, schema: &ValidatorSchema) {
+        for (uid, action) in &schema.actions {
+            let ancestors = action.ancestors().cloned().collect();
+            self.entities.insert(
+                uid.clone(),
+                PartialEntity {
+                    uid: uid.clone(),
+                    attrs: Some(PartialRecord::new()),
+                    ancestors: Some(ancestors),
+                    tags: Some(PartialRecord::new()),
+                },
+            );
+        }
+    }
+
     /// Get an iterator of entities
     pub fn entities(&self) -> impl Iterator<Item = &PartialEntity> {
         self.entities.values()
@@ -936,20 +943,6 @@ impl PartialEntities {
     // Insert action entities from the schema
     // Overwriting existing action entities is fine because they should come
     // from schema or be consistent with schema anyways
-    fn insert_actions(&mut self, schema: &ValidatorSchema) {
-        for (uid, action) in &schema.actions {
-            let ancestors = action.ancestors().cloned().collect();
-            self.entities.insert(
-                uid.clone(),
-                PartialEntity {
-                    uid: uid.clone(),
-                    attrs: Some(PartialRecord::new()),
-                    ancestors: Some(ancestors),
-                    tags: Some(PartialRecord::new()),
-                },
-            );
-        }
-    }
 
     /// Construct [`PartialEntities`] from a JSON list
     pub fn from_json_value(
@@ -1305,10 +1298,7 @@ mod test_validate {
     use crate::entities::conformance::err::EntitySchemaConformanceError;
     use crate::extensions::Extensions;
     use crate::tpe::entities::{partial_entity_from_exprs, PartialEntity};
-    use crate::tpe::err::{
-        EntitiesError, EntityValidationError, MismatchedActionAncestorsError,
-        UnknownActionComponentError,
-    };
+    use crate::tpe::err::{EntitiesError, EntityValidationError, MismatchedActionAncestorsError};
     use crate::tpe::value::{AttrState, PartialRecord};
     use crate::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
@@ -1374,7 +1364,7 @@ mod test_validate {
     }
 
     #[test]
-    fn invalid_action_with_unknown_ancestors() {
+    fn valid_action_with_unknown_ancestors() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"view\"".parse().unwrap(),
@@ -1383,16 +1373,11 @@ mod test_validate {
             tags: Some(PartialRecord::new()),
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
-    fn invalid_action_with_unknown_tags() {
+    fn valid_action_with_unknown_tags() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"view\"".parse().unwrap(),
@@ -1401,16 +1386,11 @@ mod test_validate {
             tags: None,
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
-    fn invalid_action_with_unknown_attrs() {
+    fn valid_action_with_unknown_attrs() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"view\"".parse().unwrap(),
@@ -1419,12 +1399,7 @@ mod test_validate {
             tags: Some(PartialRecord::new()),
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
@@ -1488,7 +1463,7 @@ mod test_validate {
     }
 
     #[test]
-    fn invalid_unexpected_action() {
+    fn undeclared_action_is_unconstrained() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"other\"".parse().unwrap(),
@@ -1497,12 +1472,7 @@ mod test_validate {
             tags: Some(PartialRecord::new()),
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::Concrete(
-                EntitySchemaConformanceError::UndeclaredAction(_)
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
