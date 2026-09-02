@@ -105,7 +105,6 @@ impl From<BTreeMap<AnyId, Annotation>> for Annotations {
 #[educe(Hash, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Annotation {
     /// Annotation value
     pub val: SmolStr,

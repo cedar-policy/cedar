@@ -57,7 +57,6 @@ pub(crate) mod context;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PolicyLanguageFeatures {
     pub allow_templates: bool,
     pub allow_multiple_policies: bool,

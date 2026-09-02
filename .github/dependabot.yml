@@ -14,11 +14,6 @@ updates:
     allow:
       - dependency-type: "all"
     ignore:
-      # Due to a build error when updating from tsify 0.4.5, we are skipping the
-      # next release (0.5.5). Issue #1744 tracks an eventual upgrade to this
-      # version or a later version.
-      - dependency-name: "tsify"
-        versions: ["0.5.5"]
       # Due to an issue with cross-compilation in lalrpop 0.23.0, we are ignoring this version.
       # Issue #2209 tracks an eventual upgrade to a later version.
       - dependency-name: "lalrpop"
