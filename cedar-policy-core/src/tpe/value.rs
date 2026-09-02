@@ -33,9 +33,6 @@ use thiserror::Error;
 /// A value was supplied that the schema gives no type to, so TPE cannot represent it.
 #[derive(Debug, Clone, PartialEq, Eq, Error, Diagnostic)]
 pub enum UntypedValueError {
-    /// An attribute (or tag) that the schema declares no type for
-    #[error("type of attribute or tag `{}` is not declared in the schema", .0)]
-    UntypedAttrOrTag(SmolStr),
     /// A context was supplied for an action the schema does not declare
     #[error("action `{}` is not declared in the schema, so its context has no type", .0)]
     UntypedContext(EntityUID),
@@ -162,11 +159,6 @@ impl FromIterator<(SmolStr, AttrState)> for PartialRecord {
 }
 
 impl PartialRecord {
-    /// Construct a `PartialRecord` from an attributes map
-    pub fn from_attrs(attrs: Arc<BTreeMap<SmolStr, AttrState>>) -> Self {
-        PartialRecord(attrs)
-    }
-
     /// Construct an empty `PartialRecord`
     pub(crate) fn new() -> Self {
         PartialRecord(Arc::new(BTreeMap::new()))
@@ -272,37 +264,6 @@ impl PartialRecord {
             return Err(UntypedValueError::UntypedContext(action.clone()));
         };
         Ok(Self::from_concrete_record(attrs, atys))
-    }
-
-    /// Construct a partial context for `action` from partial attributes information
-    pub fn partial_context_for_action<V>(
-        attrs: impl IntoIterator<Item = (SmolStr, AttrState<V>)>,
-        action: &EntityUID,
-        schema: &ValidatorSchema,
-        resolve: impl Fn(V) -> Result<Value, Option<SmolStr>>,
-    ) -> Result<Self, UntypedValueError> {
-        if !schema
-            .get_action_id(action)
-            .map(|a| a.context_type())
-            .is_some_and(|ty| matches!(ty, Type::Record { .. }))
-        {
-            return Err(UntypedValueError::UntypedContext(action.clone()));
-        }
-        attrs
-            .into_iter()
-            .map(|(k, attr)| {
-                let state = match attr {
-                    AttrState::Value(v) => AttrState::Value(resolve(v).map_err(|e| {
-                        UntypedValueError::UntypedAttrOrTag(e.unwrap_or_else(|| k.clone()))
-                    })?),
-                    AttrState::PartialRecord(r) => AttrState::PartialRecord(r),
-                    AttrState::Present => AttrState::Present,
-                    AttrState::Absent => AttrState::Absent,
-                    AttrState::Unknown => AttrState::Unknown,
-                };
-                Ok((k, state))
-            })
-            .collect::<Result<Self, UntypedValueError>>()
     }
 
     pub(crate) fn validate_euids(&self, schema: &impl Schema) -> Result<(), ValidateEuidError> {

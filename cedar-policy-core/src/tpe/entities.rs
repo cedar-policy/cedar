@@ -1312,6 +1312,7 @@ mod test_validate {
     use crate::tpe::value::{AttrState, PartialRecord};
     use crate::validator::ValidatorSchema;
     use cool_asserts::assert_matches;
+    use smol_str::SmolStr;
 
     fn test_schema() -> ValidatorSchema {
         ValidatorSchema::from_cedarschema_str(
@@ -1786,46 +1787,53 @@ mod test_validate {
         assert_matches!(entity.validate(&schema), Ok(()));
     }
 
-    /// The construction path must agree with `validate`: `Absent` and `Unknown` claim nothing, so
-    /// an undeclared attribute in either state is valid (see the two tests above).
-    #[test]
-    fn from_exprs_accepts_undeclared_absent_and_unknown_attr() {
-        let schema = test_schema();
-        for state in [AttrState::Absent, AttrState::Unknown] {
-            let e = partial_entity_from_exprs(
-                "User::\"alice\"".parse().unwrap(),
-                Some(vec![
-                    (
-                        "name".into(),
-                        AttrState::Value(RestrictedExpr::val("Alice")),
-                    ),
-                    ("bogus".into(), state.clone()),
-                ]),
-                Some(HashSet::new()),
-                Some(Vec::<(_, AttrState<RestrictedExpr>)>::new()),
-                &schema,
-            );
-            assert_matches!(e, Ok(e) => {
-                // The state survives construction unchanged, and validation accepts it.
-                assert!(matches!(
-                    (e.attrs().unwrap().attr("bogus"), &state),
-                    (AttrState::Absent, AttrState::Absent) | (AttrState::Unknown, AttrState::Unknown)
-                ));
-            });
-        }
+    /// Build a `User::"alice"` from expression-valued attributes, with no tags.
+    #[track_caller]
+    fn user_from_exprs(
+        attrs: Vec<(SmolStr, AttrState<RestrictedExpr>)>,
+        schema: &ValidatorSchema,
+    ) -> Result<PartialEntity, EntitiesError> {
+        partial_entity_from_exprs(
+            "User::\"alice\"".parse().unwrap(),
+            Some(attrs),
+            Some(HashSet::new()),
+            Some(Vec::<(SmolStr, AttrState<RestrictedExpr>)>::new()),
+            schema,
+        )
     }
 
-    /// ... but a state that *does* claim the attribute exists is still rejected.
+    fn alice_name() -> (SmolStr, AttrState<RestrictedExpr>) {
+        (
+            "name".into(),
+            AttrState::Value(RestrictedExpr::val("Alice")),
+        )
+    }
+
+    #[test]
+    fn from_exprs_accepts_undeclared_absent_attr() {
+        let e = user_from_exprs(
+            vec![alice_name(), ("bogus".into(), AttrState::Absent)],
+            &test_schema(),
+        );
+        assert_matches!(e, Ok(e) => {
+            assert_eq!(e.attrs().unwrap().attr("bogus"), &AttrState::Absent);
+        });
+    }
+
+    #[test]
+    fn from_exprs_accepts_undeclared_unknown_attr() {
+        let e = user_from_exprs(
+            vec![alice_name(), ("bogus".into(), AttrState::Unknown)],
+            &test_schema(),
+        );
+        assert_matches!(e, Ok(e) => {
+            assert_eq!(e.attrs().unwrap().attr("bogus"), &AttrState::Unknown);
+        });
+    }
+
     #[test]
     fn from_exprs_rejects_undeclared_present_attr() {
-        let schema = test_schema();
-        let e = partial_entity_from_exprs(
-            "User::\"alice\"".parse().unwrap(),
-            Some(vec![("bogus".into(), AttrState::<RestrictedExpr>::Present)]),
-            Some(HashSet::new()),
-            Some(Vec::<(_, AttrState<RestrictedExpr>)>::new()),
-            &schema,
-        );
+        let e = user_from_exprs(vec![("bogus".into(), AttrState::Present)], &test_schema());
         assert_matches!(
             e,
             Err(EntitiesError::Validation(EntityValidationError::Concrete(
@@ -1834,21 +1842,22 @@ mod test_validate {
         );
     }
 
-    /// An action entity may not state any attribute or tag, not even `Unknown`.
     #[test]
     fn from_exprs_rejects_any_attr_on_action() {
         let schema = test_schema();
         let e = partial_entity_from_exprs(
             "Action::\"view\"".parse().unwrap(),
-            Some(vec![(
-                "anything".into(),
-                AttrState::<RestrictedExpr>::Unknown,
-            )]),
+            Some(vec![("anything".into(), AttrState::Unknown)]),
             Some(HashSet::new()),
-            Some(Vec::<(_, AttrState<RestrictedExpr>)>::new()),
+            Some(Vec::<(SmolStr, AttrState<RestrictedExpr>)>::new()),
             &schema,
         );
-        assert_matches!(e, Err(_));
+        assert_matches!(
+            e,
+            Err(EntitiesError::Validation(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::UnexpectedEntityAttr(_)
+            )))
+        );
     }
 }
 
