@@ -156,7 +156,7 @@ pub struct ExtensionFunction {
     /// The argument types that this function expects, as `SchemaType`s.
     arg_types: Vec<SchemaType>,
     /// Whether this is a variadic function or not. If it is a variadic function it can accept 1 or more arguments
-    /// of the last argument type.
+    /// of the last argument type, in addition to the first argument, for a total of 2 or more arguments.
     is_variadic: bool,
 }
 
@@ -324,8 +324,11 @@ impl ExtensionFunction {
             name.clone(),
             style,
             Box::new(move |args: &[Value]| match &args {
+                // A variadic function takes two or more arguments, so `rest` must be
+                // non-empty. This keeps the evaluator in agreement with the validator,
+                // which requires `args.len() >= arg_types.len()`, i.e. at least 2.
                 #[cfg(feature = "variadic-is-in-range")]
-                &[first, rest @ ..] => func(first, rest),
+                &[first, rest @ ..] if !rest.is_empty() => func(first, rest),
                 #[cfg(not(feature = "variadic-is-in-range"))]
                 &[first, second] => func(first, std::slice::from_ref(second)),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
