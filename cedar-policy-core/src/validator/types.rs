@@ -418,11 +418,11 @@ impl Type {
     /// Get all statically known attributes of an entity or record type.
     /// Returns an empty vector if there are no declared attributes or the type
     /// is not an entity or record type.
-    pub fn all_attributes(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    pub fn all_attributes(&self, schema: &ValidatorSchema) -> Attributes {
         match self {
             Type::Entity(e) => e.all_known_attrs(schema),
-            Type::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
-            _ => vec![],
+            Type::Record { attrs, .. } => attrs.clone(),
+            _ => Attributes::with_attributes(None),
         }
     }
 
@@ -764,11 +764,11 @@ impl TryFrom<Type> for CoreSchemaType {
             } => Ok(CoreSchemaType::Record {
                 attrs: {
                     attrs
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| {
                             let schema_type = v.attr_type.as_ref().clone().try_into()?;
                             Ok((
-                                k,
+                                k.clone(),
                                 match v.is_required {
                                     true => CoreAttributeType::required(schema_type),
                                     false => CoreAttributeType::optional(schema_type),
@@ -876,12 +876,10 @@ impl EntityLUB {
             clippy::expect_used,
             reason = "Invariant on `lub_elements` guarantees the set is non-empty"
         )]
-        let arbitrary_first = Attributes::with_attributes(
-            lub_element_attributes
-                .next()
-                .expect("Invariant violated: EntityLUB set must be non-empty."),
-        );
-        lub_element_attributes.fold(arbitrary_first, |acc, elem| {
+        let arbitrary_first = lub_element_attributes
+            .next()
+            .expect("Invariant violated: EntityLUB set must be non-empty.");
+        lub_element_attributes.fold(arbitrary_first, move |acc, elem| {
             // Use the permissive version of least upper bound here for two
             // reasons. First, when in permissive mode, the attributes least
             // upper bound can never fail. We could call the main lub function
@@ -890,7 +888,7 @@ impl EntityLUB {
             // element, so that LUB can never fail, and the strict
             // attributes lub is the same as permissive if there is only one
             // attribute.
-            Attributes::permissive_least_upper_bound(&acc, &Attributes::with_attributes(elem))
+            Attributes::permissive_least_upper_bound(&acc, &elem)
         })
     }
 
@@ -1044,16 +1042,6 @@ impl Attributes {
     }
 }
 
-impl IntoIterator for Attributes {
-    type Item = (SmolStr, AttributeType);
-
-    type IntoIter = <BTreeMap<SmolStr, AttributeType> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.attrs.as_ref().clone().into_iter()
-    }
-}
-
 /// Used to tag record types to indicate if their attributes record is open or
 /// closed.
 #[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Copy, Clone, Default)]
@@ -1144,24 +1132,18 @@ impl EntityKind {
         }
     }
 
-    /// Get all the attribute names _known to exist_ for this entity.
+    /// Get all the attributes _known to exist_ for this entity.
     ///
-    /// For `AnyEntity`, this will return an empty vec, as there are no
+    /// For `AnyEntity`, this will be empty, as there are no
     /// attribute names we _know_ must exist (even though `AnyEntity` types may
     /// clearly have attributes).
     /// For LUB types, this will return only the attribute names known to exist
     /// in the LUB.
-    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Attributes {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
-            EntityKind::AnyEntity => vec![],
-            EntityKind::Entity(lub) => lub
-                .get_attribute_types(schema)
-                .attrs
-                .as_ref()
-                .keys()
-                .cloned()
-                .collect(),
+            EntityKind::AnyEntity => Attributes::with_attributes(None),
+            EntityKind::Entity(lub) => lub.get_attribute_types(schema),
         }
     }
 
