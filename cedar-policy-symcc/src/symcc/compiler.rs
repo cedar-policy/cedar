@@ -1471,4 +1471,21 @@ mod datetime_tests {
             false,
         );
     }
+
+    // `isInRange` needs a target plus at least one range. Fewer arguments than that
+    // must not compile, matching the arity error the evaluator raises.
+    #[test]
+    #[cfg(feature = "variadic-is-in-range")]
+    fn test_ipaddr_variadic_is_in_range_requires_a_range() {
+        let is_in_range =
+            Name::parse_unqualified_name("isInRange").expect("should be a valid identifier");
+        for args in [vec![], vec![parse_expr(r#"ip("192.168.0.1")"#)]] {
+            let expr = Expr::call_extension_fn(is_in_range.clone(), args);
+            assert_matches!(
+                compile(&expr, &datetime_sym_env()),
+                Err(CompileError::TypeError),
+                "{expr}"
+            );
+        }
+    }
 }

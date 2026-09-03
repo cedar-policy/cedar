@@ -1187,11 +1187,31 @@ mod tests {
             ],
         )));
 
-        // Requires at least one argument.
+        // Requires at least two arguments: the target plus at least one range.
         assert_ipaddr_wrong_num_args_err(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
                 vec![],
+            )),
+            "isInRange",
+        );
+
+        // A target with no ranges is an arity error, not `false`. `x.isInRange()` parses,
+        // so this is reachable when evaluating a policy that has not been validated.
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("192.168.0.1")],
+            )),
+            "isInRange",
+        );
+
+        // The arity check happens before the arguments are converted, so a single
+        // non-ipaddr argument is still an arity error rather than a type error.
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![Expr::val("192.168.0.1")],
             )),
             "isInRange",
         );
