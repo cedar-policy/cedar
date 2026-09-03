@@ -377,20 +377,6 @@ pub struct UnknownEntityError {
     pub(super) uid: EntityUID,
 }
 
-/// Error thrown when some requested entities were not loaded
-#[derive(Debug, Error, Diagnostic)]
-#[error("failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
-pub struct MissingEntitiesError {
-    pub(super) missing_entities: Vec<EntityUID>,
-}
-
-impl MissingEntitiesError {
-    /// Construct a new [`MissingEntitiesError`]
-    pub fn new(missing_entities: Vec<EntityUID>) -> Self {
-        Self { missing_entities }
-    }
-}
-
 /// Error thrown when a [`crate::tpe::request::PartialRequest`] is inconsistent with a [`crate::ast::Request`]
 #[derive(Debug, Error, Diagnostic)]
 pub enum RequestConsistencyError {

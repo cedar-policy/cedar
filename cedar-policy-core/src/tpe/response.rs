@@ -58,6 +58,11 @@ impl ResidualPolicy {
         self.residual.clone()
     }
 
+    /// Get a reference to the [`Residual`]
+    pub fn as_residual(&self) -> &Residual {
+        &self.residual
+    }
+
     /// Get the [`PolicyID`]
     pub fn get_policy_id(&self) -> &PolicyID {
         self.policy.id()
@@ -79,6 +84,52 @@ impl From<ResidualPolicy> for Policy {
             value.policy.annotations_arc().clone(),
         )
     }
+}
+
+fn decide(
+    true_forbids: bool,
+    true_permits: bool,
+    residual_permits: bool,
+    residual_forbids: bool,
+) -> Option<Decision> {
+    match (
+        true_forbids,
+        true_permits,
+        residual_permits,
+        residual_forbids,
+    ) {
+        // Any true forbids means we will deny
+        (true, _, _, _) => Some(Decision::Deny),
+        // No potentially or trivially true permits, means we default deny
+        (_, false, false, _) => Some(Decision::Deny),
+        // Potentially true forbids, means we can't know (as that forbid may evaluate to true, overriding any permits)
+        (false, _, _, true) => None,
+        // No true permits, but some potentially true permits + no true/potentially true forbids means we don't know
+        (false, false, true, false) => None,
+        // At least one trivially true permit, and no trivially or possible true forbids, means we allow
+        (false, true, _, false) => Some(Decision::Allow),
+    }
+}
+
+/// The decision a set of residuals determines, if any, without building a whole [`Response`].
+pub(crate) fn decision_from_residuals(residuals: &[ResidualPolicy]) -> Option<Decision> {
+    let mut true_forbid = false;
+    let mut true_permit = false;
+    let mut residual_forbid = false;
+    let mut residual_permit = false;
+    for rp in residuals {
+        match rp.get_effect() {
+            Effect::Forbid => {
+                true_forbid = true_forbid || rp.as_residual().is_true();
+                residual_forbid = residual_forbid || rp.as_residual().is_partial();
+            }
+            Effect::Permit => {
+                true_permit = true_permit || rp.as_residual().is_true();
+                residual_permit = residual_permit || rp.as_residual().is_partial();
+            }
+        }
+    }
+    decide(true_forbid, true_permit, residual_permit, residual_forbid)
 }
 
 /// The result of partial authorization.
@@ -159,23 +210,12 @@ impl<'a> Response<'a> {
             }
         }
 
-        let decision = match (
+        let decision = decide(
             !true_forbids.is_empty(),
             !true_permits.is_empty(),
             !residual_permits.is_empty(),
             !residual_forbids.is_empty(),
-        ) {
-            // Any true forbids means we will deny
-            (true, _, _, _) => Some(Decision::Deny),
-            // No potentially or trivially true permits, means we default deny
-            (_, false, false, _) => Some(Decision::Deny),
-            // Potentially true forbids, means we can't know (as that forbid may evaluate to true, overriding any permits)
-            (false, _, _, true) => None,
-            // No true permits, but some potentially true permits + no true/potentially true forbids means we don't know
-            (false, false, true, false) => None,
-            // At least one trivially true permit, and no trivially or possible true forbids, means we allow
-            (false, true, _, false) => Some(Decision::Allow),
-        };
+        );
 
         Self {
             decision,

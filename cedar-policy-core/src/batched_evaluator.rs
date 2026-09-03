@@ -30,8 +30,7 @@ use crate::tpe::entities::PartialEntity;
 use crate::tpe::err::PartialRequestError;
 use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
-use crate::tpe::residual::Residual;
-use crate::tpe::response::{ResidualPolicy, Response};
+use crate::tpe::response::{decision_from_residuals, ResidualPolicy, Response};
 use crate::validator::ValidatorSchema;
 use crate::{ast::PolicySet, extensions::Extensions};
 
@@ -92,7 +91,8 @@ pub fn is_authorized_batched(
     max_iters: u32,
 ) -> Result<Decision, BatchedEvalError> {
     let request = concrete_request_to_partial(request, schema)?;
-    let mut entities = PartialEntities::default();
+    // Actions comes from the schema, so batched eval can start with them
+    let mut entities = PartialEntities::from_entities(iter::empty(), schema)?;
     let initial_evaluator = Evaluator {
         request: &request,
         entities: &entities,
@@ -111,6 +111,11 @@ pub fn is_authorized_batched(
         .collect();
 
     for _i in 0..max_iters {
+        if decision_from_residuals(&residuals).is_some() {
+            // Exit before `max_iters` if we reach a decision
+            break;
+        }
+
         let ids = residuals.iter().flat_map(|r| r.all_literal_uids());
         let mut to_load = HashSet::new();
         // filter to_load for already loaded entities
@@ -162,14 +167,6 @@ pub fn is_authorized_batched(
                 )
             })
             .collect();
-
-        // if all the residuals are done, exit
-        if residuals
-            .iter()
-            .all(|r| !matches!(*(r.get_residual()), Residual::Partial { .. }))
-        {
-            break;
-        }
     }
 
     let response = Response::new(residuals.into_iter(), &request, &entities, schema);
@@ -177,5 +174,78 @@ pub fn is_authorized_batched(
     match response.decision() {
         Some(decision) => Ok(decision),
         None => Err(InsufficientIterationsError {}.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ast::{Context, RequestSchemaAllPass};
+    use crate::extensions::Extensions;
+    use crate::parser::parse_policyset;
+
+    struct Loader {
+        requested: Vec<EntityUID>,
+    }
+
+    impl EntityLoader for Loader {
+        fn load_entities(
+            &mut self,
+            uids: &HashSet<EntityUID>,
+        ) -> HashMap<EntityUID, Option<Entity>> {
+            self.requested.extend(uids.iter().cloned());
+            uids.iter().map(|u| (u.clone(), None)).collect()
+        }
+    }
+
+    #[track_caller]
+    fn run(policies: &str) -> (Decision, Loader) {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity User { level: Long };
+            entity Document;
+            action all;
+            action read in [all] appliesTo { principal: [User], resource: [Document] };
+            "#,
+            Extensions::all_available(),
+        )
+        .expect("schema should parse")
+        .0;
+        let request = Request::new(
+            (r#"User::"alice""#.parse().expect("uid should parse"), None),
+            (r#"Action::"read""#.parse().expect("uid should parse"), None),
+            (
+                r#"Document::"doc""#.parse().expect("uid should parse"),
+                None,
+            ),
+            Context::empty(),
+            Some(&RequestSchemaAllPass {}),
+            Extensions::all_available(),
+        )
+        .expect("request should be valid");
+        let ps = parse_policyset(policies).expect("policies should parse");
+        let mut loader = Loader {
+            requested: Vec::new(),
+        };
+        let decision = is_authorized_batched(&request, &ps, &schema, &mut loader, 3)
+            .expect("should reach a decision");
+        (decision, loader)
+    }
+
+    #[test]
+    fn actions_are_seeded_from_the_schema() {
+        let (decision, loader) = run(r#"permit(principal, action in Action::"all", resource);"#);
+        assert_eq!(decision, Decision::Allow);
+        assert_eq!(loader.requested, vec![]);
+    }
+
+    #[test]
+    fn nothing_is_loaded_once_the_decision_is_determined() {
+        let (decision, loader) = run(r#"
+            forbid(principal, action, resource);
+            permit(principal, action, resource) when { principal.level > 5 };
+            "#);
+        assert_eq!(decision, Decision::Deny);
+        assert_eq!(loader.requested, vec![]);
     }
 }

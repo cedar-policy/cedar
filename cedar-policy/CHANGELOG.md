@@ -22,6 +22,10 @@ Cedar Language Version: TBD
   cannot apply to any request. This change makes it possible to remove entries from an `appliesTo` list
   without introducing validation errors. Callers that want to keep rejecting these policies should check
   `ValidationResult::validation_warnings` for `ValidationWarning::InvalidActionApplication`.
+- For the `tpe` experimental feature,  `is_authorized_batched` now automatically loads actions
+  entities from the schema, and will now return immediately on reaching a concrete authorization decision.
+- For the `tpe` experimental feature, removed the `BatchedEvalError::MissingEntities` error variant
+  which was never constructed.
 
 
 ### Fixed
