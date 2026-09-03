@@ -9413,9 +9413,13 @@ mod to_json {
 mod test_entities_api {
     use std::collections::HashSet;
 
+    use cool_asserts::assert_matches;
+
+    use super::entities::err::EntitiesError;
     use super::Entities;
     use super::Entity;
     use super::EntityUid;
+    use super::{Authorizer, Context, Decision, PolicySet, Request, Schema};
 
     #[test]
     fn test_upsert_entities() {
@@ -9437,6 +9441,152 @@ mod test_entities_api {
         entities = entities.upsert_entities(vec![e1_updated], None).unwrap();
         assert_eq!(entities.len(), 2);
         assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
+    }
+
+    /// Three-level hierarchy `alice -> admins -> acme`. `closed` lists `acme`
+    /// directly on `alice`, as a caller maintaining its own transitive closure
+    /// would; `direct` lists only immediate parents.
+    fn hierarchy(closed: bool) -> Vec<Entity> {
+        let alice_parents = if closed {
+            HashSet::from([admins(), acme()])
+        } else {
+            HashSet::from([admins()])
+        };
+        vec![
+            Entity::new_no_attrs(alice(), alice_parents),
+            Entity::new_no_attrs(admins(), HashSet::from([acme()])),
+            Entity::new_no_attrs(acme(), HashSet::new()),
+        ]
+    }
+
+    fn alice() -> EntityUid {
+        EntityUid::from_strs("User", "alice")
+    }
+
+    fn admins() -> EntityUid {
+        EntityUid::from_strs("Group", "admins")
+    }
+
+    fn acme() -> EntityUid {
+        EntityUid::from_strs("Org", "acme")
+    }
+
+    fn alice_in_acme(entities: &Entities) -> Decision {
+        let pset: PolicySet =
+            r#"permit(principal, action, resource) when { principal in Org::"acme" };"#
+                .parse()
+                .unwrap();
+        let request = Request::new(
+            alice(),
+            EntityUid::from_strs("Action", "view"),
+            EntityUid::from_strs("Doc", "readme"),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+        Authorizer::new()
+            .is_authorized(&request, &pset, entities)
+            .decision()
+    }
+
+    /// The unchecked constructor trusts whatever ancestors the caller supplies:
+    /// a pre-closed hierarchy authorizes exactly like the checked one, while a
+    /// parents-only hierarchy is left non-closed rather than repaired.
+    #[test]
+    fn from_entities_unchecked_uses_provided_closure() {
+        let closed = Entities::from_entities_unchecked(hierarchy(true), None).unwrap();
+        assert!(closed.is_ancestor_of(&acme(), &alice()));
+        assert_eq!(alice_in_acme(&closed), Decision::Allow);
+        assert!(closed.deep_eq(&Entities::from_entities(hierarchy(true), None).unwrap()));
+
+        let direct = Entities::from_entities_unchecked(hierarchy(false), None).unwrap();
+        assert!(direct.is_ancestor_of(&admins(), &alice()));
+        assert!(!direct.is_ancestor_of(&acme(), &alice()));
+        assert_eq!(alice_in_acme(&direct), Decision::Deny);
+
+        let checked = Entities::from_entities(hierarchy(false), None).unwrap();
+        assert!(checked.is_ancestor_of(&acme(), &alice()));
+        assert_eq!(alice_in_acme(&checked), Decision::Allow);
+    }
+
+    #[test]
+    fn from_entities_unchecked_skips_cycle_detection() {
+        let cycle = || {
+            vec![
+                Entity::new_no_attrs(alice(), HashSet::from([admins()])),
+                Entity::new_no_attrs(admins(), HashSet::from([alice()])),
+            ]
+        };
+        assert_matches!(
+            Entities::from_entities(cycle(), None),
+            Err(EntitiesError::TransitiveClosureError(_))
+        );
+        assert_matches!(Entities::from_entities_unchecked(cycle(), None), Ok(_));
+    }
+
+    #[test]
+    fn from_entities_unchecked_still_rejects_duplicates() {
+        let duplicates = vec![
+            Entity::new_no_attrs(alice(), HashSet::new()),
+            Entity::new_no_attrs(alice(), HashSet::from([admins()])),
+        ];
+        assert_matches!(
+            Entities::from_entities_unchecked(duplicates, None),
+            Err(EntitiesError::Duplicate(_))
+        );
+    }
+
+    #[test]
+    fn from_entities_unchecked_still_applies_schema() {
+        let (schema, _) = Schema::from_cedarschema_str(
+            r#"
+            entity User;
+            action view appliesTo { principal: [User], resource: [User] };
+            "#,
+        )
+        .unwrap();
+        let entities = Entities::from_entities_unchecked(
+            [Entity::new_no_attrs(alice(), HashSet::new())],
+            Some(&schema),
+        )
+        .unwrap();
+        assert!(entities
+            .get(&EntityUid::from_strs("Action", "view"))
+            .is_some());
+
+        let undeclared =
+            Entity::new_no_attrs(EntityUid::from_strs("Manager", "jane"), HashSet::new());
+        assert_matches!(
+            Entities::from_entities_unchecked([undeclared], Some(&schema)),
+            Err(EntitiesError::InvalidEntity(_))
+        );
+    }
+
+    #[test]
+    fn upsert_entities_unchecked_skips_tc() {
+        let entities = Entities::from_entities(
+            [
+                Entity::new_no_attrs(alice(), HashSet::new()),
+                Entity::new_no_attrs(admins(), HashSet::from([acme()])),
+                Entity::new_no_attrs(acme(), HashSet::new()),
+            ],
+            None,
+        )
+        .unwrap();
+        assert!(!entities.is_ancestor_of(&admins(), &alice()));
+
+        // Moving `alice` under `admins` without the closure leaves `acme` unreachable.
+        let moved = Entity::new_no_attrs(alice(), HashSet::from([admins()]));
+        let unchecked = entities
+            .clone()
+            .upsert_entities_unchecked([moved.clone()], None)
+            .unwrap();
+        assert_eq!(unchecked.len(), 3);
+        assert!(unchecked.is_ancestor_of(&admins(), &alice()));
+        assert!(!unchecked.is_ancestor_of(&acme(), &alice()));
+
+        let checked = entities.upsert_entities([moved], None).unwrap();
+        assert!(checked.is_ancestor_of(&acme(), &alice()));
     }
 }
 
