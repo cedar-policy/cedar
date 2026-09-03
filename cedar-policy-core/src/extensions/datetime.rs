@@ -284,9 +284,8 @@ impl ExtensionValue for DateTime {
     /// The canonical representation of a Cedar [`DateTime`] is the one returned by
     /// [`DateTime::as_ext_func_call`], i.e.
     /// `offset(datetime(<UNIX_EPOCH_STR>), duration("<Offset in MS>ms"))`
-    fn canonical_repr(&self) -> Option<(crate::ast::Name, Vec<crate::ast::RestrictedExpr>)> {
-        let (func, args) = (*self).as_ext_func_call();
-        Some((func, args))
+    fn canonical_repr(&self) -> (crate::ast::Name, Vec<crate::ast::RestrictedExpr>) {
+        (*self).as_ext_func_call()
     }
 }
 
@@ -354,12 +353,8 @@ impl From<DateTime> for RestrictedExpr {
 
 impl From<DateTime> for RepresentableExtensionValue {
     fn from(value: DateTime) -> Self {
-        let (func, args) = value.as_ext_func_call();
-        Self {
-            func,
-            args,
-            value: Arc::new(value),
-        }
+        // Representation is derived from `canonical_repr` on demand.
+        Self::new_lazy(Arc::new(value))
     }
 }
 
@@ -395,9 +390,8 @@ impl ExtensionValue for Duration {
     }
     /// The canonical representation of a Cedar [`Duration`] is the one returned by
     /// duration("<MILLISECONDS>ms")
-    fn canonical_repr(&self) -> Option<(crate::ast::Name, Vec<RestrictedExpr>)> {
-        let (func, args) = (*self).as_ext_func_call();
-        Some((func, args))
+    fn canonical_repr(&self) -> (crate::ast::Name, Vec<RestrictedExpr>) {
+        (*self).as_ext_func_call()
     }
 }
 
@@ -410,12 +404,8 @@ impl From<Duration> for RestrictedExpr {
 
 impl From<Duration> for RepresentableExtensionValue {
     fn from(value: Duration) -> Self {
-        let (func, args) = value.as_ext_func_call();
-        Self {
-            func,
-            args,
-            value: Arc::new(value),
-        }
+        // Representation is derived from `canonical_repr` on demand.
+        Self::new_lazy(Arc::new(value))
     }
 }
 

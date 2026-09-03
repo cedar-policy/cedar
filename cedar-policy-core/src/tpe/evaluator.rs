@@ -503,10 +503,11 @@ impl Evaluator<'_> {
     }
 }
 
-/// If the value is an extension value whose type provides a [`canonical_repr`],
-/// rebuild the [`RepresentableExtensionValue`] so that the stored `func`/`args`
-/// match the canonical form.  This ensures TPE residuals are deterministic
-/// regardless of which constructor originally created the value.
+/// If the value is an extension value, rebuild the
+/// [`RepresentableExtensionValue`] so that the stored `func`/`args` match the
+/// canonical form given by [`ExtensionValue::canonical_repr`]. This ensures TPE
+/// residuals are deterministic regardless of which constructor originally
+/// created the value.
 fn normalize_ext_value(value: Value) -> Value {
     normalize_ext_value_inner(&value).unwrap_or(value)
 }
@@ -515,17 +516,12 @@ fn normalize_ext_value(value: Value) -> Value {
 fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
     match &value.value {
         ValueKind::Lit(_) => None,
-        ValueKind::ExtensionValue(ev) => {
-            let (func, args) = ev.value().canonical_repr()?;
-            Some(Value {
-                value: ValueKind::ExtensionValue(Arc::new(ast::RepresentableExtensionValue::new(
-                    ev.value.clone(),
-                    func,
-                    args,
-                ))),
-                loc: value.loc.clone(),
-            })
-        }
+        ValueKind::ExtensionValue(ev) => Some(Value {
+            value: ValueKind::ExtensionValue(Arc::new(ast::RepresentableExtensionValue::new_lazy(
+                ev.value.clone(),
+            ))),
+            loc: value.loc.clone(),
+        }),
         ValueKind::Set(s) if s.fast.is_some() => {
             // due to invariant on set, this means all elements are literals, hence nothing to norm
             None

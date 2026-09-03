@@ -558,8 +558,8 @@ impl CedarValueJson {
                 ))
             }
             ValueKind::ExtensionValue(ev) => {
-                let ext_func = &ev.func;
-                match ev.args.as_slice() {
+                let ext_func = ev.func();
+                match ev.args() {
                     [] => Err(JsonSerializationError::call_0_args(ext_func.clone())),
                     [ref expr] => Ok(Self::ExtnEscape {
                         __extn: FnAndArgs::Single {

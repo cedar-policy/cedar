@@ -249,11 +249,11 @@ impl ExtensionValue for IPAddr {
 
     /// The canonical representation of an IP Address formats the IP address string
     /// argument of the `ip` extension.
-    fn canonical_repr(&self) -> Option<(Name, Vec<crate::ast::RestrictedExpr>)> {
-        Some((
+    fn canonical_repr(&self) -> (Name, Vec<crate::ast::RestrictedExpr>) {
+        (
             names::IP_FROM_STR_NAME.clone(),
             vec![crate::ast::RestrictedExpr::val(self.to_string())],
-        ))
+        )
     }
 }
 
