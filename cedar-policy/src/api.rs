@@ -863,6 +863,53 @@ impl Entities {
         eparser.from_json_file(json).map(Entities)
     }
 
+    /// Parse entities from the Cedar entity data syntax.
+    ///
+    /// This provides a human-readable alternative to the JSON entity format.
+    /// Example input:
+    /// ```text
+    /// namespace PhotoApp {
+    ///     instance User::"alice" in UserGroup::"admins" {
+    ///         name: "Alice",
+    ///         age: 30
+    ///     };
+    /// }
+    /// ```
+    ///
+    /// If a `schema` is provided, the parsed entities will be validated
+    /// against it, returning an error if they do not conform.
+    ///
+    /// ## Errors
+    /// - [`CedarEntitiesError::Syntax`] if the input has syntax errors
+    /// - [`CedarEntitiesError::Conversion`] if extension functions are unknown or
+    ///   attribute evaluation fails
+    /// - [`CedarEntitiesError::Entities`] if there are duplicate entities or if
+    ///   entities do not conform to the provided schema
+    #[cfg(feature = "cedar-entity-syntax")]
+    pub fn from_cedar_str(src: &str, schema: Option<&Schema>) -> Result<Self, CedarEntitiesError> {
+        use cedar_policy_core::entities::cedar_syntax;
+        let extensions = Extensions::all_available();
+
+        // Parse the Cedar entity syntax
+        let ast =
+            cedar_syntax::parser::parse_entities(src).map_err(|e| CedarEntitiesError::Syntax(e))?;
+
+        // Convert AST to entities
+        let entity_vec = cedar_syntax::to_entities::cedar_entities_to_entities(ast, extensions)
+            .map_err(|e| CedarEntitiesError::Conversion(e))?;
+
+        // Construct Entities with TC computation and optional schema validation
+        let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
+        cedar_policy_core::entities::Entities::from_entities(
+            entity_vec,
+            schema.as_ref(),
+            cedar_policy_core::entities::TCComputation::ComputeNow,
+            extensions,
+        )
+        .map(Entities)
+        .map_err(|e| CedarEntitiesError::Entities(e))
+    }
+
     /// Is entity `a` an ancestor of entity `b`?
     /// Same semantics as `b in a` in the Cedar language
     pub fn is_ancestor_of(&self, a: &EntityUid, b: &EntityUid) -> bool {
@@ -915,6 +962,21 @@ impl Entities {
     /// [`Self::from_json_file`], [`Self::from_json_value`], or [`Self::from_json_str`].
     pub fn to_json_value(&self) -> Result<serde_json::Value, EntitiesError> {
         self.0.to_json_value()
+    }
+
+    /// Format entities as Cedar entity data syntax text.
+    ///
+    /// This is the inverse of [`Self::from_cedar_str()`].
+    /// The produced text can be re-parsed with `from_cedar_str()` to get
+    /// equivalent entities.
+    ///
+    /// ## Errors
+    /// Returns an error if any entity contains residual (unknown) values,
+    /// which cannot be represented in Cedar syntax.
+    #[cfg(feature = "cedar-entity-syntax")]
+    pub fn to_cedar_string(&self) -> Result<String, CedarEntitiesFormatError> {
+        cedar_policy_core::entities::cedar_syntax::fmt::format_entities(&self.0)
+            .map_err(CedarEntitiesFormatError)
     }
 
     #[doc = include_str!("../experimental_warning.md")]
