@@ -19,7 +19,7 @@
 use thiserror::Error;
 
 use crate::ast::PartialValueToValueError;
-use crate::tpe::err::{EntitiesError, MissingEntitiesError, PartialRequestError, TpeError};
+use crate::tpe::err::{EntitiesError, PartialRequestError, TpeError};
 use crate::validator::RequestValidationError;
 
 /// Errors for Batched Evaluation
@@ -41,9 +41,6 @@ pub enum BatchedEvalError {
     /// Error thrown when a entity loader provided entity was partial instead of fully concrete
     #[error(transparent)]
     PartialValueToValue(#[from] PartialValueToValueError),
-    /// Error the entity loader failed to load all requested entities
-    #[error(transparent)]
-    MissingEntities(#[from] MissingEntitiesError),
     /// Error when batched evaluation did not converge due to the iteration limit
     #[error(transparent)]
     InsufficientIterations(#[from] InsufficientIterationsError),
