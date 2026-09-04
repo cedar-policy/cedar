@@ -19,7 +19,7 @@
 use std::{collections::BTreeMap, sync::Arc};
 
 use crate::{
-    ast::{self, BinaryOp, EntityType, EntityUID, PartialValue, Set, Value, ValueKind, Var},
+    ast::{self, BinaryOp, EntityType, EntityUID, Set, Value, ValueKind, Var},
     evaluator::stack_size_check,
     extensions::Extensions,
 };
@@ -30,7 +30,11 @@ use crate::{
     tpe::entities::PartialEntities,
     tpe::request::PartialRequest,
     tpe::residual::{Residual, ResidualKind},
+    tpe::value::AttrState,
 };
+
+#[cfg(test)]
+mod test;
 
 /// The partial evaluator
 #[derive(Debug)]
@@ -91,13 +95,11 @@ impl Evaluator<'_> {
                     mk_residual(ResidualKind::Var(Var::Resource))
                 }
             }
-            ResidualKind::Var(Var::Context) => {
-                if let Some(context) = self.request.context_attrs() {
-                    mk_concrete(Value::record_arc(context.clone(), None))
-                } else {
-                    mk_residual(ResidualKind::Var(Var::Context))
-                }
-            }
+            ResidualKind::Var(Var::Context) => match self.request.context() {
+                Some(context) => AttrState::PartialRecord(context.clone())
+                    .to_residual(r.ty(), || mk_residual(ResidualKind::Var(Var::Context))),
+                None => mk_residual(ResidualKind::Var(Var::Context)),
+            },
             ResidualKind::And { left, right } => {
                 let left = self.interpret(left);
                 match &left {
@@ -316,13 +318,8 @@ impl Evaluator<'_> {
                             let Ok(tag) = v2.get_as_string() else {
                                 return mk_error();
                             };
-                            match self.entities.get_tags(uid) {
-                                Some(tags) => match tags.get(tag) {
-                                    Some(v) => mk_concrete(v.clone()),
-                                    None => mk_error(),
-                                },
-                                None => binapp_residual(arg1, arg2),
-                            }
+                            self.entity_tag(uid, tag)
+                                .to_residual(r.ty(), || binapp_residual(arg1.clone(), arg2.clone()))
                         }
                         BinaryOp::HasTag => {
                             let Ok(uid) = v1.get_as_entity() else {
@@ -331,9 +328,10 @@ impl Evaluator<'_> {
                             let Ok(tag) = v2.get_as_string() else {
                                 return mk_error();
                             };
-                            match self.entities.get_tags(uid) {
-                                Some(tags) => mk_concrete(tags.contains_key(tag).into()),
-                                None => binapp_residual(arg1, arg2),
+                            match self.entity_tag(uid, tag) {
+                                state if state.exists() => mk_concrete(true.into()),
+                                AttrState::Absent => mk_concrete(false.into()),
+                                _ => binapp_residual(arg1, arg2),
                             }
                         }
                         BinaryOp::Contains => match v1.get_as_set() {
@@ -360,62 +358,31 @@ impl Evaluator<'_> {
             }
             ResidualKind::GetAttr { expr, attr } => {
                 let expr = self.interpret(expr);
-                match &expr {
-                    Residual::Concrete { value, .. } => {
-                        if let Ok(r) = value.get_as_record() {
-                            if let Some(val) = r.as_ref().get(attr) {
-                                mk_concrete(val.clone())
-                            } else {
-                                mk_error()
-                            }
-                        } else if let Ok(uid) = value.get_as_entity() {
-                            match self.entities.get_attrs(uid) {
-                                Some(attrs) => match attrs.get(attr) {
-                                    Some(val) => mk_concrete(val.clone()),
-                                    None => mk_error(),
-                                },
-                                None => mk_residual(ResidualKind::GetAttr {
-                                    expr: Arc::new(expr),
-                                    attr: attr.clone(),
-                                }),
-                            }
-                        } else {
-                            mk_error()
-                        }
-                    }
-                    Residual::Partial { .. } => mk_residual(ResidualKind::GetAttr {
-                        expr: Arc::new(expr),
-                        attr: attr.clone(),
-                    }),
-                    Residual::Error(_) => mk_error(),
+                if matches!(expr, Residual::Error(_)) {
+                    return mk_error();
                 }
+                self.attr_state_at(&expr, attr).to_residual(r.ty(), || {
+                    mk_residual(ResidualKind::GetAttr {
+                        expr: Arc::new(expr.clone()),
+                        attr: attr.clone(),
+                    })
+                })
             }
             ResidualKind::HasAttr { expr, attr } => {
                 let expr = self.interpret(expr);
+                if matches!(expr, Residual::Error(_)) {
+                    return mk_error();
+                }
                 if let Some(v) = try_decide_has_residual(self.schema, &expr, attr) {
                     return mk_concrete(v);
                 }
-                match &expr {
-                    Residual::Concrete { value, .. } => {
-                        if let Ok(r) = value.get_as_record() {
-                            mk_concrete(r.as_ref().contains_key(attr).into())
-                        } else if let Ok(uid) = value.get_as_entity() {
-                            match self.entities.get_attrs(uid) {
-                                Some(attrs) => mk_concrete(attrs.contains_key(attr).into()),
-                                None => mk_residual(ResidualKind::HasAttr {
-                                    expr: Arc::new(expr),
-                                    attr: attr.clone(),
-                                }),
-                            }
-                        } else {
-                            mk_error()
-                        }
-                    }
-                    Residual::Partial { .. } => mk_residual(ResidualKind::HasAttr {
+                match self.attr_state_at(&expr, attr) {
+                    state if state.exists() => mk_concrete(true.into()),
+                    AttrState::Absent => mk_concrete(false.into()),
+                    _ => mk_residual(ResidualKind::HasAttr {
                         expr: Arc::new(expr),
                         attr: attr.clone(),
                     }),
-                    Residual::Error(_) => mk_error(),
                 }
             }
             ResidualKind::UnaryApp { op, arg } => {
@@ -450,7 +417,7 @@ impl Evaluator<'_> {
                     // Failed lookup or application errors both lead to
                     // `Residual::Error` of appropriate types
                     if let Ok(ext_fn) = self.extensions.func(fn_name) {
-                        if let Ok(PartialValue::Value(value)) = ext_fn.call(&vals) {
+                        if let Ok(ast::PartialValue::Value(value)) = ext_fn.call(&vals) {
                             return mk_concrete(normalize_ext_value(value));
                         }
                     }
@@ -503,6 +470,86 @@ impl Evaluator<'_> {
                     mk_residual(ResidualKind::Record(Arc::new(record)))
                 }
             }
+        }
+    }
+
+    /// Lookup the partial information available for an entity's attribute, accounting for what is
+    /// known in the entity data and what we can infer from the type.
+    fn entity_attr(&self, uid: &EntityUID, attr: &str) -> AttrState {
+        let Some(attrs) = self.entities.get_attrs(uid) else {
+            return AttrState::Unknown;
+        };
+        let Some(et) = self.schema.get_entity_type(uid.entity_type()) else {
+            return AttrState::Unknown;
+        };
+        attrs.resolve_attr(attr, et.attributes())
+    }
+
+    /// Lookup the partial information available for an entity's tag
+    fn entity_tag(&self, uid: &EntityUID, tag: &str) -> AttrState {
+        match self.entities.get_tags(uid) {
+            Some(tags) => tags.attr(tag).clone(),
+            None => AttrState::Unknown,
+        }
+    }
+
+    /// What we know about an attribute of a residual
+    ///
+    /// Uses r's type to infer what attributes must exist if `r` is partial
+    fn attr_state_at(&self, r: &Residual, attr: &str) -> AttrState {
+        match (self.residual_state(r), r.ty()) {
+            (AttrState::Value(v), _) => {
+                if let Ok(record) = v.get_as_record() {
+                    match record.get(attr) {
+                        Some(v) => AttrState::Value(v.clone()),
+                        None => AttrState::Absent,
+                    }
+                } else if let Ok(uid) = v.get_as_entity() {
+                    // An entity's attributes come from the partial store plus the schema.
+                    self.entity_attr(uid, attr)
+                } else {
+                    AttrState::Unknown
+                }
+            }
+            (AttrState::PartialRecord(rec), Type::Record { attrs, .. }) => {
+                rec.resolve_attr(attr, attrs)
+            }
+            _ => AttrState::Unknown,
+        }
+    }
+
+    /// What we knows about a residual
+    ///
+    /// This functions returns an `AttrState` because we are primarily interested in the case where
+    /// the residual is get-attr expression (`context.foo`) where we want to know what level of
+    /// partial information we know about the attribute.
+    fn residual_state(&self, r: &Residual) -> AttrState {
+        match r {
+            Residual::Concrete { value, .. } => AttrState::Value(value.clone()),
+            Residual::Error(_) => AttrState::Unknown,
+            Residual::Partial { kind, .. } => match kind {
+                ResidualKind::Var(Var::Context) => match self.request.context() {
+                    Some(context) => AttrState::PartialRecord(context.clone()),
+                    None => AttrState::Unknown,
+                },
+                ResidualKind::GetAttr { expr, attr } => self.attr_state_at(expr, attr),
+                ResidualKind::BinaryApp {
+                    op: BinaryOp::GetTag,
+                    arg1,
+                    arg2,
+                } => match (self.residual_state(arg1), self.residual_state(arg2)) {
+                    (AttrState::Value(v1), AttrState::Value(v2)) => {
+                        // Checking for `<entity-lit>.getTag(<tag-lit>)` so that we can get the partial
+                        // attribute information for tag values.
+                        match (v1.get_as_entity(), v2.get_as_string()) {
+                            (Ok(uid), Ok(tag)) => self.entity_tag(uid, tag),
+                            _ => AttrState::Unknown,
+                        }
+                    }
+                    _ => AttrState::Unknown,
+                },
+                _ => AttrState::Unknown,
+            },
         }
     }
 }
@@ -574,7 +621,7 @@ fn try_decide_has_residual(schema: &ValidatorSchema, expr: &Residual, attr: &str
 /// canonical form given by [`ExtensionValue::canonical_repr`]. This ensures TPE
 /// residuals are deterministic regardless of which constructor originally
 /// created the value.
-fn normalize_ext_value(value: Value) -> Value {
+pub(crate) fn normalize_ext_value(value: Value) -> Value {
     normalize_ext_value_inner(&value).unwrap_or(value)
 }
 
@@ -650,16 +697,14 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-    use std::sync::Arc;
-
-    use crate::ast::{Expr, SlotEnv};
+    use crate::ast::{EntityUID, Expr, SlotEnv};
     use crate::tpe::err::ExprToResidualError;
     use crate::tpe::test_utils::{parse_partial_euid, parse_typed_expr};
+    use crate::tpe::value::PartialRecord;
     use crate::validator::types::Type;
     use crate::validator::ValidatorSchema;
     use crate::{
-        ast::{Context, ExprBuilder, Value, Var},
+        ast::{Context, ExprBuilder, Var},
         expr_builder::ExprBuilder as _,
         extensions::Extensions,
     };
@@ -763,15 +808,20 @@ mod tests {
         let schema = parse_schema(
             r#"entity E; action a appliesTo {principal: E, resource: E, context: {l: Long}};"#,
         );
+        let Ok(Context::Value(context)) = Context::from_json_value(serde_json::json!({ "l": 0 }))
+        else {
+            panic!("expected concrete context")
+        };
+        let action: EntityUID = r#"Action::"a""#.parse().unwrap();
         let eval = Evaluator {
             request: &PartialRequest::new(
                 parse_partial_euid(r#"E"#),
-                r#"Action::"a""#.parse().unwrap(),
+                action.clone(),
                 parse_partial_euid("E"),
-                Some(Arc::new(BTreeMap::from([(
-                    "l".parse().unwrap(),
-                    Value::from(0),
-                )]))),
+                Some(
+                    PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema)
+                        .unwrap(),
+                ),
                 &schema,
             )
             .unwrap(),
@@ -1158,11 +1208,15 @@ mod tests {
         else {
             panic!("expected concrete context")
         };
+        let action: EntityUID = r#"Action::"a""#.parse().unwrap();
         let req = PartialRequest::new(
             parse_partial_euid(r#"E::"foo""#),
-            r#"Action::"a""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid("E"),
-            Some(context),
+            Some(
+                PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema)
+                    .unwrap(),
+            ),
             &schema,
         )
         .unwrap();
@@ -1446,14 +1500,14 @@ mod tests {
             interpret_typed_str_to_str(r#"(resource.b && E::"0" has s) && E::"0".s == context.x"#),
             @r#"resource.b && ("foo" == context.x)"#
         );
+        // `E::"1"` has empty attrs, but TPE treats anything that's not explicitly absent as unknown
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"1" has s && E::"1".s == context.x"#),
-            @"false"
+            @r#"(E::"1" has s) && (E::"1".s == context.x)"#
         );
-        // Residual `resource.b` means we can't eliminate `error` expression even though it's unreachable
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(resource.b && E::"1" has s) && E::"1".s == context.x"#),
-            @"resource.b && false && error()"
+            @r#"resource.b && (E::"1" has s) && (E::"1".s == context.x)"#
         );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"2" has s && E::"2".s == context.x"#),
@@ -1589,12 +1643,16 @@ mod tests {
         else {
             panic!("expected concrete context")
         };
+        let action: EntityUID = r#"Action::"get""#.parse().unwrap();
 
         let req = PartialRequest::new(
             parse_partial_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid(r#"E::"""#),
-            Some(context),
+            Some(
+                PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema)
+                    .unwrap(),
+            ),
             &schema,
         )
         .unwrap();
@@ -2141,8 +2199,8 @@ mod tests {
         };
         let interp_with_actions = |e| interpret_typed_str_to_str(&eval_with_actions, e, &schema);
 
-        assert_snapshot!(interp_with_actions(r#"action has bogus"#), @"false");
-        assert_snapshot!(interp_with_actions(r#"action.hasTag("t")"#), @"false");
+        assert_snapshot!(interp_with_actions(r#"action has bogus"#), @r#"App::Action::"view" has bogus"#);
+        assert_snapshot!(interp_with_actions(r#"action.hasTag("t")"#), @r#"App::Action::"view".hasTag("t")"#);
     }
 
     #[test]
@@ -2155,11 +2213,16 @@ mod tests {
         else {
             panic!("expected concrete context")
         };
+
+        let action: EntityUID = r#"Action::"get""#.parse().unwrap();
         let req = PartialRequest::new(
             parse_partial_euid("User"),
-            r#"Action::"get""#.parse().unwrap(),
+            action.clone(),
             parse_partial_euid("E"),
-            Some(context),
+            Some(
+                PartialRecord::concrete_context_for_action(context.as_ref(), &action, &schema)
+                    .unwrap(),
+            ),
             &schema,
         )
         .unwrap();
@@ -2246,9 +2309,11 @@ mod tests {
             interpret_typed_str_to_str(r#"User::"some_tags".hasTag("s")"#),
             @"true"
         );
+        // A tag missing from the map stays a residual: tag not-in-map means
+        // unknown existence, so we cannot reduce to `false`.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"some_tags".hasTag("bogus")"#),
-            @"false"
+            @r#"User::"some_tags".hasTag("bogus")"#
         );
         // Unknown entity uid, unknown tags, or absent entity: `hasTag` stays a residual.
         assert_snapshot!(
@@ -2281,10 +2346,11 @@ mod tests {
             interpret_typed_str_to_str(r#"User::"some_tags".hasTag("s") && User::"some_tags".getTag("s") == "bar" "#),
             @"true"
         );
-        // Known tags, missing key: `hasTag` is false and short-circuits.
+        // A tag missing from the map stays a residual: tag not-in-map means
+        // unknown existence, so we cannot reduce to `false`.
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
-            @"false"
+            @r#"User::"some_tags".hasTag("bogus") && (User::"some_tags".getTag("bogus") == "bar")"#
         );
         // Unknown cases
         assert_snapshot!(
@@ -2319,10 +2385,10 @@ mod tests {
             @"false"
         );
 
-        // Residual on the left prevents eliminating `error()` expression even through it's unreachable
+        // same issue tag not-in-map issue
         assert_snapshot!(
             interpret_typed_str_to_str(r#"User::"none_tags".hasTag("tag") && User::"none_tags".getTag("tag") == "foo" && User::"some_tags".hasTag("bogus") && User::"some_tags".getTag("bogus") == "bar" "#),
-            @r#"User::"none_tags".hasTag("tag") && (User::"none_tags".getTag("tag") == "foo") && false && error()"#
+            @r#"User::"none_tags".hasTag("tag") && (User::"none_tags".getTag("tag") == "foo") && User::"some_tags".hasTag("bogus") && (User::"some_tags".getTag("bogus") == "bar")"#
         );
     }
 

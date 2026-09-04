@@ -31,6 +31,7 @@ use crate::tpe::err::PartialRequestError;
 use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::response::{decision_from_residuals, ResidualPolicy, Response};
+use crate::tpe::value::PartialRecord;
 use crate::validator::ValidatorSchema;
 use crate::{ast::PolicySet, extensions::Extensions};
 
@@ -69,7 +70,10 @@ fn concrete_request_to_partial(
 
     // Convert context
     let context = match &request.context {
-        Some(crate::ast::Context::Value(attrs)) => Some(attrs.clone()),
+        Some(crate::ast::Context::Value(attrs)) => Some(
+            PartialRecord::concrete_context_for_action(attrs, &action, schema)
+                .map_err(|_| PartialRequestError {})?,
+        ),
         Some(crate::ast::Context::RestrictedResidual(_)) => {
             return Err(PartialRequestError {}.into())
         }
@@ -125,26 +129,16 @@ pub fn is_authorized_batched(
                 to_load.insert(uid);
             }
         }
-        // Subtle: missing entities are equivalent empty entities in both normal and partial evaluation.
         let loaded_entities = loader.load_entities(&to_load);
-
-        // check that all requested entities were loaded and return error otherwise
-
         for (id, e_option) in loaded_entities {
-            match e_option {
-                Some(e) => {
-                    entities.add_entities(
-                        iter::once((id, PartialEntity::try_from(e)?)),
-                        schema,
-                        TCComputation::AssumeAlreadyComputed,
-                    )?;
-                }
-                None => {
-                    entities.add_entity_trusted(
-                        id.clone(),
-                        PartialEntity::try_from(Entity::with_uid(id))?,
-                    )?;
-                }
+            // If the entity isn't loaded we can't insert an empty entity as that would assume that
+            // the entity exists, allowing partial eval to unsoundly reduce `has` and `hasTag` to `true`
+            if let Some(e) = e_option {
+                entities.add_entities(
+                    iter::once((id, PartialEntity::from_entity(e, schema)?)),
+                    schema,
+                    TCComputation::AssumeAlreadyComputed,
+                )?;
             }
         }
 
