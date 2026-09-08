@@ -61,21 +61,10 @@ pub enum EntityValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Concrete(#[from] EntitySchemaConformanceError),
-    /// Error thrown when an action component is unknown
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownActionComponent(#[from] UnknownActionComponentError),
     /// Error thrown when an action's ancestors do not match the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
     MismatchedActionAncestors(#[from] MismatchedActionAncestorsError),
-}
-
-/// Error thrown when an action has unknown ancestors/attrs/tags
-#[derive(Debug, Error, Diagnostic)]
-#[error("action `{}` has unknown ancestors/attrs/tags", .action)]
-pub struct UnknownActionComponentError {
-    pub(super) action: EntityUID,
 }
 
 /// Error thrown when an action's ancestors do not match the schema

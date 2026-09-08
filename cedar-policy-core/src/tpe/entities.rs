@@ -25,8 +25,7 @@ use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
     EntityValidationError, JsonDeserializationError, MismatchedActionAncestorsError,
     MismatchedAncestorError, MismatchedAttributeError, MismatchedTagError, MissingEntityError,
-    UnexpectedActionError, UnknownActionComponentError, UnknownAttributeError, UnknownEntityError,
-    UnknownTagError,
+    UnexpectedActionError, UnknownAttributeError, UnknownEntityError, UnknownTagError,
 };
 use crate::transitive_closure::{enforce_tc_and_dag, TcError};
 use crate::validator::{
@@ -343,12 +342,6 @@ impl PartialEntity {
         let etype = uid.entity_type();
 
         if self.uid.is_action() {
-            if self.attrs.is_none() || self.tags.is_none() {
-                return Err(UnknownActionComponentError {
-                    action: uid.clone(),
-                }
-                .into());
-            }
             if let Some(attrs) = &self.attrs {
                 if let Some((attr, _)) = attrs.first_key_value() {
                     return Err(EntitySchemaConformanceError::unexpected_entity_attr(
@@ -377,11 +370,6 @@ impl PartialEntity {
                         }
                         .into());
                     }
-                } else {
-                    return Err(UnknownActionComponentError {
-                        action: uid.clone(),
-                    }
-                    .into());
                 }
             } else {
                 return Err(EntitySchemaConformanceError::UndeclaredAction(
@@ -923,9 +911,7 @@ mod tests {
 mod test_validate {
     use super::*;
     use crate::entities::conformance::err::EntitySchemaConformanceError;
-    use crate::tpe::err::{
-        EntityValidationError, MismatchedActionAncestorsError, UnknownActionComponentError,
-    };
+    use crate::tpe::err::{EntityValidationError, MismatchedActionAncestorsError};
     use cool_asserts::assert_matches;
 
     fn test_schema() -> ValidatorSchema {
@@ -978,7 +964,7 @@ mod test_validate {
     }
 
     #[test]
-    fn invalid_action_with_unknown_ancestors() {
+    fn valid_action_with_unknown_ancestors() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"view\"".parse().unwrap(),
@@ -987,16 +973,11 @@ mod test_validate {
             tags: Some(BTreeMap::new()),
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
-    fn invalid_action_with_unknown_tags() {
+    fn valid_action_with_unknown_tags() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"view\"".parse().unwrap(),
@@ -1005,16 +986,11 @@ mod test_validate {
             tags: None,
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
-    fn invalid_action_with_unknown_attrs() {
+    fn valid_action_with_unknown_attrs() {
         let schema = test_schema();
         let action = PartialEntity {
             uid: "Action::\"view\"".parse().unwrap(),
@@ -1023,12 +999,7 @@ mod test_validate {
             tags: Some(BTreeMap::new()),
         };
 
-        assert_matches!(
-            action.validate(&schema),
-            Err(EntityValidationError::UnknownActionComponent(
-                UnknownActionComponentError { .. }
-            ))
-        );
+        assert_matches!(action.validate(&schema), Ok(()));
     }
 
     #[test]
