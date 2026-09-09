@@ -28,8 +28,8 @@ use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsErro
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
 use crate::tpe::err::PartialRequestError;
-use crate::tpe::policy_residual_map;
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
+use crate::tpe::residual_policies;
 use crate::tpe::response::{decision_from_residuals, ResidualPolicy, Response};
 use crate::validator::ValidatorSchema;
 use crate::{ast::PolicySet, extensions::Extensions};
@@ -98,17 +98,7 @@ pub fn is_authorized_batched(
         entities: &entities,
         extensions: Extensions::all_available(),
     };
-    let mut residuals: Vec<ResidualPolicy> = policy_residual_map(&request, ps, schema)?
-        .into_iter()
-        .map(|(id, expr)| {
-            let residual = initial_evaluator.interpret(&expr);
-            #[expect(
-                clippy::unwrap_used,
-                reason = "exprs and policy set contain the same policy ids"
-            )]
-            ResidualPolicy::new(Arc::new(residual), Arc::new(ps.get(id).unwrap().clone()))
-        })
-        .collect();
+    let mut residuals = residual_policies(&request, ps, schema, &initial_evaluator)?;
 
     for _i in 0..max_iters {
         if decision_from_residuals(&residuals).is_some() {

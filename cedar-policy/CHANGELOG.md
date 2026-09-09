@@ -26,6 +26,8 @@ Cedar Language Version: TBD
   entities from the schema, and will now return immediately on reaching a concrete authorization decision.
 - For the `tpe` experimental feature, removed the `BatchedEvalError::MissingEntities` error variant
   which was never constructed.
+- For the `tpe` experimental feature, `PolicySet::tpe` is faster on large policy sets
+  (~1.4x on a 25,000-policy set).
 
 
 ### Fixed
