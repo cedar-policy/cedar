@@ -358,6 +358,17 @@ impl TryFrom<models::Expr> for ast::Expr {
                 ast::Expr::has_attr(ast::Expr::try_from(arg)?, msg.attr.into())
             }
 
+            models::expr::ExprKind::ExtHasAttr(msg) => {
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                let attrs: Vec<smol_str::SmolStr> =
+                    msg.attrs.into_iter().map(smol_str::SmolStr::from).collect();
+                let attrs = nonempty::NonEmpty::from_vec(attrs)
+                    .ok_or_else(|| ProtobufConversionError::missing("attrs"))?;
+                ast::Expr::extended_has_attr(ast::Expr::try_from(arg)?, attrs)
+            }
+
             models::expr::ExprKind::Like(msg) => {
                 let arg = *msg
                     .expr
@@ -477,6 +488,12 @@ impl From<&ast::Expr> for models::Expr {
             ast::ExprKind::HasAttr { expr, attr } => {
                 models::expr::ExprKind::HasAttr(Box::new(models::expr::HasAttr {
                     attr: attr.to_string(),
+                    expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
+                }))
+            }
+            ast::ExprKind::ExtHasAttr { expr, attrs } => {
+                models::expr::ExprKind::ExtHasAttr(Box::new(models::expr::ExtHasAttr {
+                    attrs: attrs.iter().map(|a| a.to_string()).collect(),
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
             }
@@ -1309,6 +1326,17 @@ mod test {
                         models::expr::HasAttr {
                             expr: None,
                             attr: "a".to_string(),
+                        },
+                    ))),
+                },
+                "expr",
+            ),
+            (
+                models::Expr {
+                    expr_kind: Some(models::expr::ExprKind::ExtHasAttr(Box::new(
+                        models::expr::ExtHasAttr {
+                            expr: None,
+                            attrs: vec!["a".to_string(), "b".to_string()],
                         },
                     ))),
                 },

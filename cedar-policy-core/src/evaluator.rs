@@ -715,6 +715,7 @@ impl<'e> Evaluator<'e> {
                     _ => Ok(Expr::has_attr(r, attr.clone()).into()),
                 },
             },
+            ExprKind::ExtHasAttr { expr, attrs } => self.eval_extended_has_attr(expr, attrs, slots),
             ExprKind::Like { expr, pattern } => {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {
@@ -866,6 +867,92 @@ impl<'e> Evaluator<'e> {
                 Ok(Expr::ite_arc(Arc::new(guard), consequent, alternative).into())
             }
         }
+    }
+
+    /// Evaluate an extended has attribute expression.
+    /// `expr has attr1.attr2.attr3` evaluates as:
+    /// `expr has attr1 && expr.attr1 has attr2 && expr.attr1.attr2 has attr3`
+    /// with short-circuit semantics.
+    fn eval_extended_has_attr(
+        &self,
+        expr: &Arc<Expr>,
+        attrs: &nonempty::NonEmpty<SmolStr>,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        match self.partial_interpret(expr, slots)? {
+            PartialValue::Value(initial_val) => {
+                self.eval_extended_has_attr_value(&initial_val, attrs)
+            }
+            PartialValue::Residual(r) => Ok(Expr::extended_has_attr(r, attrs.clone()).into()),
+        }
+    }
+
+    /// Evaluate an extended has attribute on a concrete value, walking the
+    /// attribute chain with short-circuit semantics.
+    fn eval_extended_has_attr_value(
+        &self,
+        initial_val: &Value,
+        attrs: &nonempty::NonEmpty<SmolStr>,
+    ) -> Result<PartialValue> {
+        let mut current_val = initial_val;
+        let mut iter = attrs.iter().peekable();
+        while let Some(attr) = iter.next() {
+            // like tpe, extract information about "has attr" and something to resolve
+            // get attr if this is not the last iteration.
+            // unlike in tpe, record and entites are not symmetric in their attribute maps,
+            // so it's harder to treat them uniformly
+            let maybe_next_val = match &current_val.value {
+                ValueKind::Record(record) => record.get(attr).map(Either::Left),
+                ValueKind::Lit(Literal::EntityUID(uid)) => match self.entities.entity(uid) {
+                    Dereference::Data(e) => match e.get(attr) {
+                        Some(PartialValue::Value(next_val)) => Some(Either::Left(next_val)),
+                        Some(PartialValue::Residual(res)) => Some(Either::Right(res)),
+                        None => None,
+                    },
+                    Dereference::NoSuchEntity => None, // no entity same as no attr
+                    Dereference::Residual(r) => {
+                        // no information about having the given attr, return residual
+                        // this residual got here before getting the attr, so the residual also
+                        // contains the current attr in the path
+                        let from_here = nonempty::NonEmpty {
+                            head: attr.clone(),
+                            tail: iter.cloned().collect(),
+                        };
+                        return Ok(Expr::extended_has_attr(r, from_here).into());
+                    }
+                },
+                _ => {
+                    return Err(err::EvaluationError::type_error(
+                        nonempty![
+                            Type::Record,
+                            Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                        ],
+                        current_val,
+                    ));
+                }
+            };
+            let Some(next_val) = maybe_next_val else {
+                return Ok(false.into());
+            };
+            // only use information about deref when not last attr in chain
+            if iter.peek().is_some() {
+                match next_val {
+                    Either::Left(actual) => current_val = actual,
+                    Either::Right(residual) => {
+                        // residual obtained *after* get_attr contains the rest of attr path
+                        #[expect(
+                            clippy::expect_used,
+                            reason = "`iter.peek()` was `Some`, so at least one attr remains"
+                        )]
+                        let from_here = nonempty::NonEmpty::collect(iter.cloned())
+                            .expect("at least one attr remains after the current one");
+                        return Ok(Expr::extended_has_attr(residual.clone(), from_here).into());
+                    }
+                }
+            }
+        }
+        // All attributes are present
+        Ok(true.into())
     }
 
     /// We don't use the `source_loc()` on `expr` because that's only the loc
@@ -1454,6 +1541,65 @@ pub(crate) mod test {
             "spoon".into(),
         );
         assert_eq!(r, Either::Right(expected_residual));
+    }
+
+    /// The last attribute of an extended `has` chain is a presence check only:
+    /// if it is present but its value is a residual, the result is still `true`
+    /// (the value is never dereferenced), matching the spec.
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn extended_has_attr_last_attr_present_but_residual() {
+        use crate::ast::PartialValue;
+        // `parent.child` is a concrete reference to `E::"e"`, whose `foo`
+        // attribute is present but has a residual (unknown) value.
+        let parent_uid = EntityUID::with_eid("parent");
+        let e_uid = EntityUID::with_eid("e");
+        let parent = Entity::new_with_attr_partial_value(
+            parent_uid.clone(),
+            [(
+                "child".into(),
+                PartialValue::from(Value::from(e_uid.clone())),
+            )],
+            HashSet::new(),
+            HashSet::new(),
+            [],
+        );
+        let e = Entity::new_with_attr_partial_value(
+            e_uid.clone(),
+            [(
+                "foo".into(),
+                PartialValue::Residual(Expr::unknown(Unknown::new_untyped("u"))),
+            )],
+            HashSet::new(),
+            HashSet::new(),
+            [],
+        );
+        let entities = Entities::from_entities(
+            vec![parent, e],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        let eval = Evaluator::new(basic_request(), &entities, Extensions::none());
+
+        // `parent has child.foo` -> true: `foo` exists on `E::"e"`, and the last
+        // attribute is only checked for presence (never dereferenced), so the
+        // residual value does not force a residual result.
+        let expr = Expr::extended_has_attr(
+            Expr::val(parent_uid.clone()),
+            nonempty![SmolStr::from("child"), SmolStr::from("foo")],
+        );
+        let r = eval.partial_eval_expr(&expr).unwrap();
+        assert_eq!(r, Either::Left(true.into()));
+
+        // `parent has child.missing` -> false: absent last attribute.
+        let expr = Expr::extended_has_attr(
+            Expr::val(parent_uid),
+            nonempty![SmolStr::from("child"), SmolStr::from("missing")],
+        );
+        let r = eval.partial_eval_expr(&expr).unwrap();
+        assert_eq!(r, Either::Left(false.into()));
     }
 
     #[test]
@@ -6388,6 +6534,137 @@ pub(crate) mod test {
         {a: {b: {c: 1}}} has a.b && {a: {b: {c: 1}}}.a.b.d == 1
             "#).unwrap()), Err(EvaluationError::RecordAttrDoesNotExist(err)) => {
             assert_eq!(err.attr, "d");
+        });
+    }
+
+    #[test]
+    fn interpret_extended_has_entities() {
+        use crate::ast::{Entity, EntityUID, RestrictedExpr};
+        use std::collections::HashSet;
+
+        let uid = EntityUID::with_eid_and_type("User", "alice").unwrap();
+        let entity = Entity::new(
+            uid.clone(),
+            [(
+                "profile".into(),
+                RestrictedExpr::record([(
+                    "address".into(),
+                    RestrictedExpr::record([("zip".into(), RestrictedExpr::val("90210"))]).unwrap(),
+                )])
+                .unwrap(),
+            )],
+            HashSet::new(),
+            HashSet::new(),
+            std::iter::empty::<(SmolStr, RestrictedExpr)>(),
+            &Extensions::none(),
+        )
+        .unwrap();
+
+        let entities = Entities::from_entities(
+            [entity],
+            None::<&crate::entities::NoEntitiesSchema>,
+            crate::entities::TCComputation::ComputeNow,
+            Extensions::none(),
+        )
+        .unwrap();
+
+        let eval = Evaluator::new(empty_request(), &entities, Extensions::none());
+
+        // Entity has deep attribute chain
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(
+            r#"User::"alice" has profile.address.zip"#
+        ).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+
+        // Entity has partial chain
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(
+            r#"User::"alice" has profile.address"#
+        ).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+
+        // Entity missing attribute at first level
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(
+            r#"User::"alice" has missing.address.zip"#
+        ).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+
+        // Entity missing attribute at second level
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(
+            r#"User::"alice" has profile.missing.zip"#
+        ).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+
+        // Entity doesn't exist in store
+        assert_matches!(eval.interpret_inline_policy(&parse_expr(
+            r#"User::"unknown" has profile.address"#
+        ).unwrap()), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+    }
+
+    #[test]
+    fn interpret_nested_extended_has_no_blowup() {
+        let es = Entities::new();
+        let eval = Evaluator::new(empty_request(), &es, Extensions::none());
+
+        let nested = parse_expr(
+            r#"(if {a: {b: {c: {d: 42}}}} has a.b then {a: {b: {c: {d: 42}}}}.a.b else {c: {d: 0}}) has c.d"#
+        ).unwrap();
+        assert_matches!(eval.interpret_inline_policy(&nested), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+
+        let nested_else =
+            parse_expr(r#"(if {a: {x: 1}} has a.b then {a: {x: 1}}.a.b else {c: {d: 0}}) has c.d"#)
+                .unwrap();
+        assert_matches!(eval.interpret_inline_policy(&nested_else), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+
+        let nested_false = parse_expr(
+            r#"(if {a: {b: {c: 1}}} has a.b then {a: {b: {c: 1}}}.a.b else {x: 1}) has c.d"#,
+        )
+        .unwrap();
+        assert_matches!(eval.interpret_inline_policy(&nested_false), Err(_));
+
+        let nested_false2 = parse_expr(
+            r#"(if {a: {b: {c: 1}}} has a.b then {a: {b: {c: 1}}}.a.b else {x: 1}) has z.w"#,
+        )
+        .unwrap();
+        assert_matches!(eval.interpret_inline_policy(&nested_false2), Ok(v) => {
+            assert_eq!(v, Value::from(false));
+        });
+
+        let deep = parse_expr(
+            r#"(if {owner: {ipinfo: {additionalData: {previouslyKnownIp: "1.2.3.4"}}}} has owner.ipinfo
+                then {owner: {ipinfo: {additionalData: {previouslyKnownIp: "1.2.3.4"}}}}.owner.ipinfo
+                else {additionalData: {previouslyKnownIp: "5.6.7.8"}}) has additionalData.previouslyKnownIp"#
+        ).unwrap();
+        assert_matches!(eval.interpret_inline_policy(&deep), Ok(v) => {
+            assert_eq!(v, Value::from(true));
+        });
+
+        let big_chain = parse_expr(r#"{a: {b: {c: {d: {e: 1}}}}} has a.b.c.d.e"#).unwrap();
+        let subexpr_count = big_chain.subexpressions().count();
+        assert!(
+            subexpr_count < 15,
+            "Expected fewer than 15 subexpressions for native HasAttrExt, got {subexpr_count}"
+        );
+
+        let double_nested = parse_expr(
+            r#"(if {x: {y: {z: {w: 1}}}} has x.y.z then {x: {y: {z: {w: 1}}}}.x.y.z else {w: 0}) has w"#
+        ).unwrap();
+        let double_subexpr_count = double_nested.subexpressions().count();
+        assert!(
+            double_subexpr_count < 25,
+            "Expected fewer than 25 subexpressions for nested HasAttrExt, got {double_subexpr_count}"
+        );
+        assert_matches!(eval.interpret_inline_policy(&double_nested), Ok(v) => {
+            assert_eq!(v, Value::from(true));
         });
     }
 

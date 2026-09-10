@@ -966,6 +966,118 @@ impl<'a> SingleEnvTypechecker<'a> {
                 })
             }
 
+            ExprKind::ExtHasAttr { expr, attrs } => {
+                let actual = self.expect_one_of_types(
+                    prior_capability,
+                    expr,
+                    &[Type::any_entity_reference(), Type::any_record()],
+                    type_errors,
+                    |actual| match actual {
+                        Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                        Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
+                        _ => None,
+                    },
+                );
+                actual.then_typecheck(|typ_expr_actual, _| {
+                    if typ_expr_actual.data().is_none() {
+                        return TypecheckAnswer::fail(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(e)
+                                .extended_has_attr(typ_expr_actual, attrs.clone()),
+                        );
+                    }
+
+                    // This is an iterative implementation of `typeOfExtHasAttr` that
+                    // behaves similarly as desugaring to a chain of has, get and &&.
+                    let mut cur_typ_expr = typ_expr_actual.clone();
+                    let mut cur_expr = expr.as_ref().clone();
+                    let mut cur_cap = prior_capability.clone();
+                    let mut steps = Vec::with_capacity(attrs.len());
+
+                    for (index, attr) in attrs.iter().enumerate() {
+                        let Some((has_type, has_capability)) = self.type_of_has_attr_for_ext(
+                            &cur_cap,
+                            &cur_typ_expr,
+                            &cur_expr,
+                            attr,
+                            type_errors,
+                        ) else {
+                            return TypecheckAnswer::fail(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(e)
+                                    .extended_has_attr(typ_expr_actual, attrs.clone()),
+                            );
+                        };
+
+                        let is_last = index + 1 == attrs.len();
+                        let short_circuits = has_type == BoolType::False;
+                        steps.push((has_type, has_capability.clone()));
+                        if is_last || short_circuits {
+                            break;
+                        }
+
+                        // Check this `get` using the capability earned by the current
+                        // `has`, then pass the same capabilities to the next step.
+                        let next_cap = cur_cap.union(&has_capability);
+                        let Some(next_type) = self.type_of_get_attr_for_ext(
+                            &next_cap,
+                            &cur_typ_expr,
+                            &cur_expr,
+                            attr,
+                            type_errors,
+                        ) else {
+                            return TypecheckAnswer::fail(
+                                ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                    .with_same_source_loc(e)
+                                    .extended_has_attr(typ_expr_actual, attrs.clone()),
+                            );
+                        };
+
+                        cur_cap = next_cap;
+                        cur_typ_expr = ExprBuilder::with_data(Some(next_type))
+                            .with_same_source_loc(e)
+                            .get_attr(cur_typ_expr, attr.clone());
+                        cur_expr = ExprBuilder::new()
+                            .with_same_source_loc(e)
+                            .get_attr(cur_expr, attr.clone());
+                    }
+
+                    let Some((mut result_type, mut result_capability)) = steps.pop() else {
+                        // This shouldn't be reachable, since attrs is nonempty, and
+                        // steps.len() == attrs.len() at this point.
+                        return TypecheckAnswer::success(
+                            ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                                .with_same_source_loc(e)
+                                .extended_has_attr(typ_expr_actual, attrs.clone()),
+                        );
+                    };
+
+                    // Combine from right to left exactly like `typeOfAnd`. In
+                    // particular, a false suffix clears every prefix capability.
+                    while let Some((has_type, has_capability)) = steps.pop() {
+                        match result_type {
+                            BoolType::False => {
+                                result_capability = CapabilitySet::new();
+                            }
+                            BoolType::True => {
+                                result_type = has_type;
+                                result_capability = has_capability.union(&result_capability);
+                            }
+                            BoolType::AnyBool => {
+                                result_capability = has_capability.union(&result_capability);
+                            }
+                        }
+                    }
+
+                    TypecheckAnswer::success_with_capability(
+                        ExprBuilder::with_data(Some(Type::Bool(result_type)))
+                            .with_same_source_loc(e)
+                            .extended_has_attr(typ_expr_actual, attrs.clone()),
+                        result_capability,
+                    )
+                })
+            }
+
             ExprKind::Like { expr, pattern } => {
                 // `like` applies to a string
                 let actual = self.expect_type(
@@ -1138,6 +1250,108 @@ impl<'a> SingleEnvTypechecker<'a> {
             }
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => TypecheckAnswer::ErrorAstNode,
+        }
+    }
+
+    /// Typecheck one `has` step in an extended attribute chain.
+    fn type_of_has_attr_for_ext<'b>(
+        &self,
+        prior_capability: &CapabilitySet<'b>,
+        typed_expr: &Expr<Option<Type>>,
+        expr: &Expr,
+        attr: &smol_str::SmolStr,
+        type_errors: &mut Vec<ValidationError>,
+    ) -> Option<(BoolType, CapabilitySet<'b>)> {
+        let actual_type = typed_expr.data().as_ref()?;
+        let known_to_exist = match actual_type {
+            Type::Record { .. } => true,
+            Type::Entity(_) => false,
+            actual_type => {
+                let help = match actual_type {
+                    Type::Set { .. } => Some(UnexpectedTypeHelp::TryUsingContains),
+                    Type::String => Some(UnexpectedTypeHelp::TryUsingLike),
+                    _ => None,
+                };
+                type_errors.push(ValidationError::expected_one_of_types(
+                    expr.source_loc().cloned(),
+                    self.policy_id.clone(),
+                    vec![Type::any_entity_reference(), Type::any_record()],
+                    actual_type.clone(),
+                    help,
+                ));
+                return None;
+            }
+        };
+
+        match Type::lookup_attribute_type(self.schema, actual_type, attr) {
+            Some(attr_type) => {
+                let already_known =
+                    prior_capability.contains(&Capability::new_attribute(expr, attr.clone()));
+                if already_known || (attr_type.is_required && known_to_exist) {
+                    Some((BoolType::True, CapabilitySet::new()))
+                } else {
+                    Some((
+                        BoolType::AnyBool,
+                        CapabilitySet::singleton(Capability::new_attribute_owned(
+                            expr.clone(),
+                            attr.clone(),
+                        )),
+                    ))
+                }
+            }
+            None if Type::may_have_attr(self.schema, actual_type, attr) => {
+                Some((BoolType::AnyBool, CapabilitySet::new()))
+            }
+            None => Some((BoolType::False, CapabilitySet::new())),
+        }
+    }
+
+    /// Typecheck the `getAttr` between two `has` steps in an extended chain.
+    /// The caller supplies the capabilities earned by the current `has`.
+    fn type_of_get_attr_for_ext(
+        &self,
+        prior_capability: &CapabilitySet<'_>,
+        typed_expr: &Expr<Option<Type>>,
+        expr: &Expr,
+        attr: &smol_str::SmolStr,
+        type_errors: &mut Vec<ValidationError>,
+    ) -> Option<Type> {
+        let actual_type = typed_expr.data().as_ref()?;
+        let attr_type = Type::lookup_attribute_type(self.schema, actual_type, attr);
+        match attr_type {
+            Some(attr_type)
+                if attr_type.is_required
+                    || prior_capability
+                        .contains(&Capability::new_attribute(expr, attr.clone())) =>
+            {
+                Some(attr_type.attr_type.as_ref().clone())
+            }
+            Some(_) => {
+                type_errors.push(ValidationError::unsafe_optional_attribute_access(
+                    expr.source_loc().cloned(),
+                    self.policy_id.clone(),
+                    AttributeAccess::from_expr(self.request_env, typed_expr, attr.clone()),
+                ));
+                None
+            }
+            None if self.mode.is_partial()
+                && Type::may_have_attr(self.schema, actual_type, attr) =>
+            {
+                Some(Type::Never)
+            }
+            None => {
+                let all_attrs = actual_type.all_attributes(self.schema);
+                let borrowed = all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                let suggestion = fuzzy_search(attr, &borrowed);
+                type_errors.push(ValidationError::unsafe_attribute_access(
+                    expr.source_loc().cloned(),
+                    self.policy_id.clone(),
+                    AttributeAccess::from_expr(self.request_env, typed_expr, attr.clone()),
+                    suggestion,
+                    Type::may_have_attr(self.schema, actual_type, attr),
+                ));
+                None
+            }
         }
     }
 

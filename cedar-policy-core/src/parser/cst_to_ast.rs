@@ -5241,13 +5241,40 @@ mod tests {
             Ok(_)
         );
 
-        assert_matches!(parse_expr(r#"context has a.b"#), Ok(e) => {
-            assert!(e.eq_shape(&parse_expr(r#"(context has a) && (context.a has b)"#).unwrap()));
-        });
-
-        assert_matches!(parse_expr(r#"context has a.b.c"#), Ok(e) => {
-            assert!(e.eq_shape(&parse_expr(r#"((context has a) && (context.a has b)) && (context.a.b has c)"#).unwrap()));
-        });
+        let success_test_expr = vec![
+            (
+                r#"context has a"#,
+                Expr::has_attr(Expr::var(ast::Var::Context), "a".into()),
+            ),
+            (
+                r#"principal has a.b"#,
+                Expr::extended_has_attr(
+                    Expr::var(ast::Var::Principal),
+                    nonempty!["a".into(), "b".into()],
+                ),
+            ),
+            (
+                r#"resource has a.b.c"#,
+                Expr::extended_has_attr(
+                    Expr::var(ast::Var::Resource),
+                    nonempty!["a".into(), "b".into(), "c".into()],
+                ),
+            ),
+            (
+                r#"resource.x has a.b.c"#,
+                Expr::extended_has_attr(
+                    Expr::get_attr(Expr::var(ast::Var::Resource), "x".into()),
+                    nonempty!["a".into(), "b".into(), "c".into()],
+                ),
+            ),
+        ];
+        for (str_repr, ast_repr) in success_test_expr {
+            let e = assert_parse_expr_succeeds(str_repr);
+            assert!(
+                e.eq_shape(&ast_repr),
+                "{e:?} and {ast_repr:?} should have the same shape."
+            );
+        }
 
         let policy = r#"permit(principal, action, resource) when {
             principal has a.if
@@ -5468,6 +5495,31 @@ mod tests {
                     "invalid RHS of a `has` operation: {b: 1}.a",
                 ).help(help_msg).exactly_one_underline(r#"{b:1}"#).build());
             }
+        );
+    }
+
+    #[test]
+    fn extended_has_compact_ast() {
+        let expr = parse_expr(r#"context has a.b.c.d.e"#).unwrap();
+        assert_matches!(expr.expr_kind(), ast::ExprKind::ExtHasAttr { expr: inner, attrs } => {
+            assert_matches!(inner.expr_kind(), ast::ExprKind::Var(ast::Var::Context));
+            assert_eq!(attrs.len(), 5);
+        });
+        assert_eq!(expr.subexpressions().count(), 2);
+
+        let deep = parse_expr(r#"principal has a.b.c.d.e.f.g.h.i.j"#).unwrap();
+        assert_matches!(deep.expr_kind(), ast::ExprKind::ExtHasAttr { attrs, .. } => {
+            assert_eq!(attrs.len(), 10);
+        });
+        assert_eq!(deep.subexpressions().count(), 2);
+
+        let nested =
+            parse_expr(r#"(if principal has a.b.c then principal.a.b.c else context) has x.y.z"#)
+                .unwrap();
+        let count = nested.subexpressions().count();
+        assert!(
+            count < 12,
+            "Nested extended has should have compact AST, got {count} subexpressions"
         );
     }
 

@@ -404,6 +404,15 @@ impl EncodeCheck for models::Expr {
                             stack.push((e, child_depth));
                         }
                     }
+                    ExprKind::ExtHasAttr(has) => {
+                        // List of attributes adds +2 to depth
+                        if has.attrs.is_empty() && depth + 2 > MAX_ENCODE_DEPTH {
+                            return Err(EncodeError::MaxDepthExceeded);
+                        }
+                        if let Some(ref e) = has.expr {
+                            stack.push((e, child_depth));
+                        }
+                    }
                     ExprKind::Like(like) => {
                         if let Some(ref e) = like.expr {
                             stack.push((e, child_depth));

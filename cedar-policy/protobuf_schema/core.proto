@@ -172,6 +172,7 @@ message Expr {
         Is is = 13;
         Set set = 14;
         Record record = 15;
+        ExtHasAttr extHasAttr = 16;
     }
 
     message Literal {
@@ -251,6 +252,11 @@ message Expr {
     message HasAttr {
         Expr expr = 1;
         string attr = 2;
+    }
+
+    message ExtHasAttr {
+        Expr expr = 1;
+        repeated string attrs = 2;
     }
 
     message Like {

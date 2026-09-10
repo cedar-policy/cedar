@@ -4629,56 +4629,53 @@ mod test {
                        {
                            "kind": "when",
                            "body": {
-                               "&&": {
+                               "has": {
                                    "left": {
-                                       "&&": {
-                                           "left": {
-                                               "has": {
-                                                   "left": {
-                                                       "Var": "principal",
-                                                   },
-                                                   "attr": "a"
-                                               }
-                                           },
-                                           "right": {
-                                               "has": {
-                                                   "left": {
-                                                       ".": {
-                                                           "left": {
-                                                               "Var": "principal",
-                                                           },
-                                                           "attr": "a",
-                                                       },
-                                                   },
-                                                   "attr": "b"
-                                               }
-                                           },
-                                       }
+                                       "Var": "principal",
                                    },
-                                   "right": {
-                                       "has": {
-                                           "left": {
-                                               ".": {
-                                                   "left": {
-                                                       ".": {
-                                                           "left": {
-                                                               "Var": "principal",
-                                                           },
-                                                           "attr": "a"
-                                                       }
-                                                   },
-                                                   "attr": "b",
-                                               }
-                                           },
-                                           "attr": "c",
-                                       }
-                                   },
-                               },
+                                   "attr": ["a", "b", "c"]
+                               }
                            },
                        }
                    ]
             }))
             .unwrap()
+        );
+    }
+
+    /// Test EST roundtrips for extended has expressions.
+    #[test]
+    fn extended_has_roundtrips() {
+        let policy_text = r#"permit(principal, action, resource) when { principal has a.b.c };"#;
+        let cst = parser::text_to_cst::parse_policy(policy_text).unwrap();
+        let est: Policy = cst.node.unwrap().try_into().unwrap();
+
+        // EST JSON roundtrip preserves extended has
+        let est2 = est_roundtrip(est.clone());
+        assert_eq!(est, est2);
+
+        // EST→text→CST→EST roundtrip preserves extended has
+        let est3 = text_roundtrip(&est);
+        assert_eq!(est, est3);
+
+        // EST→AST→EST roundtrip preserves extended has
+        let est4 = ast_roundtrip(est.clone());
+        assert_eq!(est, est4);
+
+        // Full circular roundtrip: EST→AST→text→CST→EST
+        let est5 = circular_roundtrip(est.clone());
+        assert_eq!(est, est5);
+
+        // Single-attribute extended has should produce Simple form
+        let single_text = r#"permit(principal, action, resource) when { principal has x };"#;
+        let single_cst = parser::text_to_cst::parse_policy(single_text).unwrap();
+        let single_est: Policy = single_cst.node.unwrap().try_into().unwrap();
+        let single_json = serde_json::to_value(&single_est).unwrap();
+        // Single attr has should use the simple "attr": "x" form, not array
+        let body = &single_json["conditions"][0]["body"];
+        assert!(
+            body["has"]["attr"].is_string(),
+            "Single attr has should use string form"
         );
     }
 

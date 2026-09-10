@@ -22,6 +22,7 @@ use crate::{
     ast::{self, BinaryOp, EntityUID, PartialValue, Set, Value, ValueKind, Var},
     evaluator::stack_size_check,
     extensions::Extensions,
+    validator::types::Type,
 };
 
 use crate::{
@@ -414,6 +415,60 @@ impl Evaluator<'_> {
                     Residual::Error(_) => mk_error(),
                 }
             }
+            ResidualKind::ExtHasAttr { expr, attrs } => {
+                let expr = self.interpret(expr);
+                match &expr {
+                    Residual::Concrete { value, .. } => {
+                        // Walk the attribute chain with short-circuit. The last
+                        // attribute is only checked for membership (never
+                        // dereferenced), matching the spec's `loop`.
+                        let mut current_val = value;
+                        let mut iter = attrs.iter();
+                        while let Some(attr) = iter.next() {
+                            // Resolve the attributes of the current value, whether
+                            // it is a record or a (known) entity.
+                            let current_attrs = if let Ok(r) = current_val.get_as_record() {
+                                r.as_ref()
+                            } else if let Ok(uid) = current_val.get_as_entity() {
+                                match self.entities.get_attrs(uid) {
+                                    Some(entity_attrs) => entity_attrs,
+                                    None => {
+                                        // Entity not in store: reduce the residual to the
+                                        // unknown entity and the attributes not yet resolved
+                                        // (the current attr plus the remaining ones).
+                                        let reduced_attrs = nonempty::NonEmpty {
+                                            head: attr.clone(),
+                                            tail: iter.cloned().collect(),
+                                        };
+                                        let entity_ty =
+                                            Type::named_entity_reference(uid.entity_type().clone());
+                                        return mk_residual(ResidualKind::ExtHasAttr {
+                                            expr: Arc::new(Residual::Concrete {
+                                                value: current_val.clone(),
+                                                ty: entity_ty,
+                                            }),
+                                            attrs: reduced_attrs,
+                                        });
+                                    }
+                                }
+                            } else {
+                                return mk_error();
+                            };
+                            let Some(next_val) = current_attrs.get(attr) else {
+                                return mk_concrete(false.into());
+                            };
+                            current_val = next_val;
+                        }
+                        // All attributes are present
+                        mk_concrete(true.into())
+                    }
+                    Residual::Partial { .. } => mk_residual(ResidualKind::ExtHasAttr {
+                        expr: Arc::new(expr),
+                        attrs: attrs.clone(),
+                    }),
+                    Residual::Error(_) => mk_error(),
+                }
+            }
             ResidualKind::UnaryApp { op, arg } => {
                 let arg = self.interpret(arg);
                 match arg {
@@ -584,6 +639,7 @@ fn normalize_ext_value_inner(value: &Value) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
+    use smol_str::SmolStr;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
@@ -1236,7 +1292,11 @@ mod tests {
     #[test]
     fn test_has_attr() {
         let schema = parse_schema(
-            r#"entity E { s: String }; entity User { s: String }; action get appliesTo {principal: E, resource: User};"#,
+            r#"entity E { s: String };
+            entity Hat { size: Long, origin: Country };
+            entity Country { name: String };
+            entity User { s: String, hat: Hat };
+            action get appliesTo {principal: E, resource: User};"#,
         );
         // `User::""` has known attributes while `E::"e"` omits `attrs`, marking
         // them unknown.
@@ -1244,7 +1304,11 @@ mod tests {
             serde_json::json!([
                 {
                     "uid": { "type": "User", "id": "" },
-                    "attrs": { "s": "bar" },
+                    "attrs": { "s": "bar", "hat": { "__entity": { "type": "Hat", "id": "cap" } }  },
+                },
+                {
+                    "uid": { "type": "Hat", "id": "cap" },
+                    "attrs": { "size": 10, "origin": { "__entity": { "type": "Country", "id": "italy" } } }
                 },
                 {
                     "uid": { "type": "E", "id": "e" },
@@ -1284,6 +1348,18 @@ mod tests {
             @"principal has other"
         );
         assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has tomato.country"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin.name"#),
+            @r#"Country::"italy" has name"#
+        );
+        assert_snapshot!(
             interpret_typed_str_to_str(r#"E::"f" has s"#),
             @r#"E::"f" has s"#
         );
@@ -1300,10 +1376,292 @@ mod tests {
             interpret_typed_str_to_str(r#"{s: 0} has t"#),
             @"false"
         );
-
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: {t: {u: 0}}, r: 1} has s.t.u"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: {t: {u: 0}}, r: 1} has r"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"{s: {t: {u: 0}}, r: 1} has s.u.t"#),
+            @"false"
+        );
         assert_snapshot!(
             interpret_typed_str_to_str(r#"(if (9223372036854775807 * 2 == 0) then E::"alice" else E::"bob") has s"#),
             @"error()"
+        );
+    }
+
+    /// Test extended has attr in TPE specifically for entity-chain traversal
+    /// and residual production when entities are partially known.
+    #[test]
+    fn test_ext_has_attr_entity_chain() {
+        let schema = parse_schema(
+            r#"entity E { s: String };
+            entity Hat { size: Long, origin: Country };
+            entity Country { name: String };
+            entity User { s: String, hat: Hat };
+            action get appliesTo {principal: E, resource: User};"#,
+        );
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "" },
+                    "attrs": { "s": "bar", "hat": { "__entity": { "type": "Hat", "id": "cap" } } },
+                },
+                {
+                    "uid": { "type": "Hat", "id": "cap" },
+                    "attrs": { "size": 10, "origin": { "__entity": { "type": "Country", "id": "italy" } } }
+                },
+                {
+                    "uid": { "type": "Country", "id": "italy" },
+                    "attrs": { "name": "Italy" }
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+        let req = PartialRequest::new(
+            parse_partial_euid("E"),
+            r#"Action::"get""#.parse().unwrap(),
+            parse_partial_euid(r#"User::"""#),
+            None,
+            &schema,
+        )
+        .unwrap();
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin.name"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.size"#),
+            @"true"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.origin.missing"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has hat.missing.name"#),
+            @"false"
+        );
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"resource has missing.anything"#),
+            @"false"
+        );
+        assert_snapshot!(
+          interpret_typed_str_to_str(r#"Hat::"other" has origin.name"#),
+          @r#"Hat::"other" has origin.name"#
+        );
+    }
+
+    /// This mirrors the tests in `UnitTest.TPE.ExtHasAttr` from cedar-lean.
+    #[test]
+    fn test_ext_has_attr_residual_reduction() {
+        let schema = parse_schema(
+            r#"
+            entity Leaf { value: String };
+            entity Middle { info: { "tag": String }, next: Leaf };
+            entity Root { child: Middle, data: { "inner": Middle } };
+            entity User { profile: { "address": { "city": String } }, manager: Root };
+            entity Document;
+            action Do appliesTo {
+                principal: [User],
+                resource: [Document],
+                context: {
+                    "ref": Root,
+                    "nested": { "deep": { "leaf": String } },
+                    "wrap": { "box": { "target": Middle } }
+                }
+            };
+            "#,
+        );
+
+        // Entities:
+        //   User::"alice"  → { profile: {address: {city: "Seattle"}}, manager: Root::"r1" }
+        //   Root::"r1"     → { child: Middle::"m1", data: {inner: Middle::"m2"} }
+        //   Middle::"m1"   → { info: {tag: "hello"}, next: Leaf::"l1" }
+        //   Leaf::"l1"     → { value: "world" }
+        //   Middle::"m2"   — NOT in store (unknown)
+        let entities = PartialEntities::from_json_value(
+            serde_json::json!([
+                {
+                    "uid": { "type": "User", "id": "alice" },
+                    "attrs": {
+                        "profile": { "address": { "city": "Seattle" } },
+                        "manager": { "__entity": { "type": "Root", "id": "r1" } }
+                    }
+                },
+                {
+                    "uid": { "type": "Root", "id": "r1" },
+                    "attrs": {
+                        "child": { "__entity": { "type": "Middle", "id": "m1" } },
+                        "data": { "inner": { "__entity": { "type": "Middle", "id": "m2" } } }
+                    }
+                },
+                {
+                    "uid": { "type": "Middle", "id": "m1" },
+                    "attrs": {
+                        "info": { "tag": "hello" },
+                        "next": { "__entity": { "type": "Leaf", "id": "l1" } }
+                    }
+                },
+                {
+                    "uid": { "type": "Leaf", "id": "l1" },
+                    "attrs": { "value": "world" }
+                },
+            ]),
+            &schema,
+        )
+        .unwrap();
+
+        // Request: principal=User::"alice", action=Action::"Do", resource=Document (unknown eid)
+        // context = { "ref": Root::"r1", "nested": {"deep": {"leaf": "yes"}},
+        //             "wrap": {"box": {"target": Middle::"m1"}} }
+        let req = PartialRequest::new(
+            parse_partial_euid(r#"User::"alice""#),
+            r#"Action::"Do""#.parse().unwrap(),
+            parse_partial_euid("Document"),
+            Some(Arc::new(BTreeMap::from([
+                (
+                    "ref".parse().unwrap(),
+                    Value::from(ast::EntityUID::with_eid_and_type("Root", "r1").unwrap()),
+                ),
+                (
+                    "nested".parse().unwrap(),
+                    Value::record(
+                        [(
+                            SmolStr::from("deep"),
+                            Value::record(
+                                [(smol_str::SmolStr::from("leaf"), Value::from("yes"))],
+                                None,
+                            ),
+                        )],
+                        None,
+                    ),
+                ),
+                (
+                    "wrap".parse().unwrap(),
+                    Value::record(
+                        [(
+                            SmolStr::from("box"),
+                            Value::record(
+                                [(
+                                    SmolStr::from("target"),
+                                    Value::from(
+                                        ast::EntityUID::with_eid_and_type("Middle", "m1").unwrap(),
+                                    ),
+                                )],
+                                None,
+                            ),
+                        )],
+                        None,
+                    ),
+                ),
+            ]))),
+            &schema,
+        )
+        .unwrap();
+
+        let eval = Evaluator {
+            request: &req,
+            entities: &entities,
+            extensions: Extensions::all_available(),
+        };
+        let interpret_typed_str_to_str = |e| interpret_typed_str_to_str(&eval, e, &schema);
+
+        // --- Basic tests ---
+
+        // context has nested.deep.leaf → true (all records, fully known)
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has nested.deep.leaf"#),
+            @"true"
+        );
+
+        // context has nested.missing.leaf → false (no "missing" in context.nested)
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has nested.missing.leaf"#),
+            @"false"
+        );
+
+        // context has ref → true (single attr, context has "ref")
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has ref"#),
+            @"true"
+        );
+
+        // --- Residual reduction tests ---
+
+        // principal.manager has data.inner.info → Middle::"m2" has info
+        // Because: Root::"r1".data.inner = Middle::"m2" (not in store), can't check "info"
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.manager has data.inner.info"#),
+            @r#"Middle::"m2" has info"#
+        );
+
+        // principal.manager has data.inner.next → Middle::"m2" has next
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.manager has data.inner.next"#),
+            @r#"Middle::"m2" has next"#
+        );
+
+        // principal.manager has data.inner.next.value → Middle::"m2" has next.value
+        // Because: Middle::"m2" is unknown, remaining chain stays as residual
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal.manager has data.inner.next.value"#),
+            @r#"Middle::"m2" has next.value"#
+        );
+
+        // principal has manager.child.next.value → true
+        // Because: all entities in chain are known, Leaf::"l1" has "value"
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal has manager.child.next.value"#),
+            @"true"
+        );
+
+        // context has wrap.box.target.next.value → true
+        // Because: all entities resolved, Leaf::"l1" has "value"
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has wrap.box.target.next.value"#),
+            @"true"
+        );
+
+        // context has ref.child.next.value → true
+        // Because: Root::"r1" → Middle::"m1" → Leaf::"l1", all known, "value" present
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has ref.child.next.value"#),
+            @"true"
+        );
+
+        // --- Nesting pattern tests ---
+
+        // context has ref.data.inner → true (R-E-R: context→ref(entity)→data(record)→inner exists)
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has ref.data.inner"#),
+            @"true"
+        );
+
+        // context has wrap.box.target.info → true (R-R-E: records→records→entity→check)
+        // context.wrap.box.target = Middle::"m1", which has "info"
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"context has wrap.box.target.info"#),
+            @"true"
+        );
+
+        // principal has manager.child.info.tag → true (E-E-R: entity→entity→record→check)
+        // User::"alice".manager = Root::"r1", .child = Middle::"m1", .info = {tag: "hello"}, has "tag"
+        assert_snapshot!(
+            interpret_typed_str_to_str(r#"principal has manager.child.info.tag"#),
+            @"true"
         );
     }
 

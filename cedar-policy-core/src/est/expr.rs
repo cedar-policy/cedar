@@ -692,6 +692,25 @@ impl ExprBuilder for Builder {
         Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple { left: expr, attr }))
     }
 
+    /// `left has attr1.attr2...` (extended has, with an Arc)
+    fn extended_has_attr_arc(
+        self,
+        expr: Arc<Self::Expr>,
+        attrs: nonempty::NonEmpty<SmolStr>,
+    ) -> Self::Expr {
+        if attrs.tail.is_empty() {
+            Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Simple {
+                left: expr,
+                attr: attrs.head,
+            }))
+        } else {
+            Expr::ExprNoExt(ExprNoExt::HasAttr(HasAttrRepr::Extended {
+                left: expr,
+                attr: attrs,
+            }))
+        }
+    }
+
     /// `left like pattern`
     fn like(self, expr: Expr, pattern: ast::Pattern) -> Expr {
         Expr::ExprNoExt(ExprNoExt::Like {

@@ -20,6 +20,7 @@ use super::*;
 use crate::ast::{BinaryOp, Expr, ExprKind, Literal, PolicyID};
 use crate::validator::types::{EntityKind, RequestEnv, Type};
 use smol_str::SmolStr;
+use std::sync::Arc;
 use thiserror::Error;
 use typecheck::PolicyCheck;
 
@@ -79,6 +80,7 @@ impl Validator {
             policy_id: p.id(),
             max_level: max_deref_level.into(),
             level_checking_errors: HashSet::new(),
+            schema: &self.schema,
         };
         for (req_env, policy_check) in type_annotated_asts {
             match policy_check {
@@ -101,6 +103,9 @@ struct LevelChecker<'a> {
     policy_id: &'a PolicyID,
     max_level: EntityDerefLevel,
     level_checking_errors: HashSet<ValidationError>,
+    /// Schema reference needed for computing entity dereference levels
+    /// within `ExtHasAttr` nodes (which don't have intermediate type annotations).
+    schema: &'a ValidatorSchema,
 }
 
 impl LevelChecker<'_> {
@@ -312,6 +317,63 @@ impl LevelChecker<'_> {
                     );
                 }
             },
+            ExprKind::ExtHasAttr { expr, attrs } => {
+                match expr.data() {
+                    Some(ty @ Type::Entity(EntityKind::Entity { .. }))
+                    | Some(ty @ Type::Record { .. }) => {
+                        let is_record_root = matches!(ty, Type::Record { .. });
+                        let attr_strs: Vec<&str> = attrs.iter().map(SmolStr::as_str).collect();
+                        let chain_cost = self.attr_chain_cost_from_root(ty, &attr_strs);
+
+                        // If chain cost alone too high, return
+                        if chain_cost > self.max_level.level {
+                            self.level_checking_errors.insert(
+                                ValidationError::maximum_level_exceeded(
+                                    e.source_loc().cloned(),
+                                    self.policy_id.clone(),
+                                    self.max_level,
+                                    chain_cost.into(),
+                                ),
+                            );
+                        } else {
+                            // Check: base expression passes general level check in record case
+                            if is_record_root {
+                                self.check_expr_level(expr, env);
+                            }
+
+                            // Check: base expression entity access along path to
+                            // first entity dereference in the chain.
+                            let maybe_path = if is_record_root {
+                                // path to first entity along attr chain (may not exist)
+                                self.ext_has_attr_first_entity_path_rev(ty, &attr_strs)
+                            } else {
+                                Some(Vec::new()) // path to first entity empty, root is entity
+                            };
+                            if let Some(path) = maybe_path {
+                                // If expression budget to high given chain cost, return
+                                let base_budget = self.max_level.level - chain_cost;
+                                let deref_target_lvl =
+                                    self.check_entity_deref_target_level(expr, path, env);
+                                if deref_target_lvl.level > base_budget {
+                                    self.level_checking_errors.insert(
+                                        ValidationError::maximum_level_exceeded(
+                                            e.source_loc().cloned(),
+                                            self.policy_id.clone(),
+                                            self.max_level,
+                                            (deref_target_lvl.level + chain_cost).into(),
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        // Other types: just check the base expression level.
+                        // Accessing an attr on them would be an error
+                        self.check_expr_level(expr, env);
+                    }
+                }
+            }
             ExprKind::Like { expr, .. } => {
                 self.check_expr_level(expr, env);
             }
@@ -338,6 +400,75 @@ impl LevelChecker<'_> {
             }
         }
     }
+
+    /// Compute the number of entity-typed hops in `attrs` chain starting
+    /// from a given type.
+    /// If the root is an entity, then accessing any attribute from it requires
+    /// dereferencing it.
+    /// Last attribute in the chain is not counted towards cost because has
+    /// operator does not need to dereference it.
+    fn attr_chain_cost_from_root(&self, root: &Type, attrs: &[&str]) -> u32 {
+        if attrs.is_empty() {
+            return 0;
+        }
+        // offset by 1 if root is entity, since it need one deref to access attrs
+        let mut cost = if matches!(root, Type::Entity(..)) {
+            1
+        } else {
+            0
+        };
+        if attrs.len() == 1 {
+            return cost;
+        }
+        // walk the attribute chain, each attr_type is already an Arc<..>
+        let mut current_type: Arc<Type> = Arc::new(root.clone());
+        for attr in attrs.iter().take(attrs.len() - 1) {
+            if let Some(attr_ty) = Type::lookup_attribute_type(self.schema, &current_type, attr) {
+                if matches!(
+                    attr_ty.attr_type.as_ref(),
+                    Type::Entity(EntityKind::Entity { .. })
+                ) {
+                    cost += 1;
+                }
+                current_type = attr_ty.attr_type;
+            } else {
+                break;
+            }
+        }
+        cost
+    }
+
+    /// Find the path from a record/entity base to the first entity value that
+    /// the extended `has` chain will dereference through the schema.
+    /// Returns `None` if no entity is encountered before the last attribute (since
+    /// the last attr is only tested for presence, not dereferenced).
+    ///
+    /// The path is returned in reverse, i.e. if [`ty`] is like `{ a: {b : T, c: ...}}` where
+    /// `T` is an entity type, then calling `ext_has_attr_first_entity_path_rev(ty, ["a", "b", "d"])`
+    /// will return `Some(vec!["b", "a"])`.
+    fn ext_has_attr_first_entity_path_rev(
+        &self,
+        ty: &Type,
+        attrs: &[&str],
+    ) -> Option<Vec<SmolStr>> {
+        match attrs {
+            [] | [_] => None,
+            [a, rest @ ..] => {
+                let attr_ty = Type::lookup_attribute_type(self.schema, ty, a);
+                match attr_ty.as_ref().map(|at| at.attr_type.as_ref()) {
+                    Some(Type::Entity(EntityKind::Entity { .. })) => Some(vec![SmolStr::from(*a)]),
+                    Some(next) => {
+                        self.ext_has_attr_first_entity_path_rev(next, rest)
+                            .map(|mut path| {
+                                path.push(SmolStr::from(*a));
+                                path
+                            })
+                    }
+                    None => None,
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -345,6 +476,7 @@ mod levels_validation_tests {
     use super::*;
     use crate::parser;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use std::sync::Arc;
 
     fn get_schema() -> ValidatorSchema {
         json_schema::Fragment::from_json_value(serde_json::json!(
@@ -1034,6 +1166,186 @@ mod levels_validation_tests {
             r#"permit(principal, action, resource) when { if true then true else principal.bool };"#,
             [],
             0,
+        );
+    }
+
+    #[test]
+    fn attr_chain_cost_from_root_entity_single_attr() {
+        // This tests chain cost of ext-has-attr with a single attr. This isn't
+        // reachable through the parsing paths wich only produce an extended has for
+        // more than two attributes, but we want to be sure "extended has user" is
+        // consistent with "has user".
+        let schema = get_schema();
+        let policy_id = PolicyID::from_string("test");
+        let checker = LevelChecker {
+            policy_id: &policy_id,
+            max_level: EntityDerefLevel::from(3u32),
+            level_checking_errors: HashSet::new(),
+            schema: &schema,
+        };
+        let entity_ty = Type::entity_lub(["User"]);
+        let record_ty = Type::closed_record_with_required_attributes([(
+            SmolStr::from("user"),
+            Arc::new(entity_ty.clone()),
+        )]);
+        // one attr --> one deref
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&entity_ty, &vec!["user"]),
+            1
+        );
+        // zero attrs -> zero deref --> cost is 0
+        assert_eq!(checker.attr_chain_cost_from_root(&entity_ty, &vec![]), 0);
+        // one attr on record --> zero deref
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&record_ty, &vec!["user"]),
+            0
+        );
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&entity_ty, &vec!["user", "bool"]),
+            2
+        );
+        assert_eq!(
+            checker.attr_chain_cost_from_root(&record_ty, &vec!["user", "bool"]),
+            1
+        );
+    }
+
+    #[test]
+    fn ext_has_entity_base_chain_cost() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user };"#,
+            ["principal has user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.bool };"#,
+            ["principal has user.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user };"#,
+            ["principal has user.user"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user.bool };"#,
+            ["principal has user.user.bool"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has user.user.user };"#,
+            ["principal has user.user.user"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has bool };"#,
+            ["principal has bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has nested.user };"#,
+            ["principal has nested.user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal has nested.user.bool };"#,
+            ["principal has nested.user.bool"],
+            2,
+        );
+    }
+
+    #[test]
+    fn ext_has_record_base_chain_cost() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user.bool };"#,
+            ["context has user.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user.user };"#,
+            ["context has user.user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has nested.user };"#,
+            ["context has nested.user"],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { context has user.user.bool };"#,
+            ["context has user.user.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: resource} has foo.user };"#,
+            ["{foo: principal, bar: resource} has foo.user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource)
+            when {
+                {foo: principal, bar: resource} has foo &&
+                {foo: principal, bar: resource}.foo has user
+             };"#,
+            ["{foo: principal, bar: resource}.foo has user"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: resource} has missing.user };"#,
+            [],
+            0,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource)
+            when {
+              {foo: principal, bar: resource} has missing &&
+              {foo: principal, bar: resource}.missing has user
+            };"#,
+            [],
+            0,
+        );
+    }
+
+    #[test]
+    fn ext_has_with_deep_base() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user has user.bool };"#,
+            ["principal.user has user.bool"],
+            3,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { principal.user.user has bool };"#,
+            ["principal.user.user has bool"],
+            3,
+        );
+    }
+
+    #[test]
+    fn ext_has_record_base_entity_path() {
+        assert_requires_level(
+            r#"permit(principal, action, resource) when { {foo: principal, bar: resource}.foo has user.bool };"#,
+            ["{foo: principal, bar: resource}.foo has user.bool"],
+            2,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource)
+            when {
+                {n: {u: principal}} has n &&
+                {n: {u: principal}}.n has u &&
+                {n: {u: principal}}.n.u has bool
+            };"#,
+            ["{n: {u: principal}}.n.u has bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when {{n: {u: principal}} has n.u.bool };"#,
+            ["{n: {u: principal}} has n.u.bool"],
+            1,
+        );
+        assert_requires_level(
+            r#"permit(principal, action, resource) when {{n: {u: principal}} has n.u.nested.user.bool };"#,
+            ["{n: {u: principal}} has n.u.nested.user.bool"],
+            2,
         );
     }
 }

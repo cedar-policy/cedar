@@ -143,6 +143,151 @@ fn slot_has_typechecks() {
 }
 
 #[test]
+fn extended_has_precise_boolean_types_empty_schema() {
+    let typechecks_examples = vec![
+        ("{ a: { b: true }} has a", Type::singleton_boolean(true)),
+        ("{ a: { b: true }} has a.b", Type::singleton_boolean(true)),
+        (
+            "{c: { a: { b: true }}} has c.a.b",
+            Type::singleton_boolean(true),
+        ),
+        ("{ a: {}} has a.missing", Type::singleton_boolean(false)),
+        (
+            "{ a: {b: {}}} has a.b.missing",
+            Type::singleton_boolean(false),
+        ),
+    ];
+    for (expr_str, expected) in typechecks_examples {
+        assert_typechecks_empty_schema(&expr_str.parse().unwrap(), &expected);
+    }
+}
+
+#[test]
+fn extended_has_rejects_primitive_intermediate() {
+    let errors = assert_typecheck_fails_empty_schema(
+        &"{ a: 1 } has a.b".parse().unwrap(),
+        &Type::primitive_boolean(),
+    );
+    assert_eq!(errors.len(), 1);
+}
+
+#[test]
+fn extended_has_precise_boolean_types_schema() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        type r = { n : String, sub1: T };
+        entity T { cnt : Long};
+        entity P { x: {y?: r, z: Long}, sub1: {sub2: T, sub3?: P}};
+        action "action" appliesTo { principal: P, resource: T, };
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+    let typechecks_examples = vec![
+        (r#"P::"a" has x"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.z"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.y.n"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.y.n"#, Type::primitive_boolean()),
+        (r#"P::"a" has x.y.sub1"#, Type::primitive_boolean()),
+        (
+            r#"{n: "name", sub1: T::"a"} has sub1.cnt"#,
+            Type::primitive_boolean(),
+        ),
+        (r#"P::"a" has x.y.n"#, Type::primitive_boolean()),
+        (r#"P::"a" has sub1.sub2"#, Type::primitive_boolean()),
+        (r#"T::"a" has x.y"#, Type::singleton_boolean(false)),
+    ];
+    for (expr_str, expected) in typechecks_examples {
+        assert_typechecks(schema.clone(), &expr_str.parse().unwrap(), &expected);
+    }
+}
+
+#[test]
+fn extended_has_optional_chain_propagates_capabilities() {
+    let schema_src = r#"
+        entity A {
+            x?: {
+                y?: {
+                    z?: Long,
+                }
+            }
+        };
+    "#;
+    let (schema, _) =
+        crate::validator::ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none())
+            .unwrap();
+    let typechecker =
+        crate::validator::typecheck::Typechecker::new(&schema, ValidationMode::Strict);
+    let expr: Expr = r#"A::"a" has x.y.z"#.parse().unwrap();
+    let policy_id = expr_id_placeholder();
+    let mut errors = std::collections::HashSet::new();
+
+    match typechecker.typecheck_expr(&expr, &policy_id, &mut errors) {
+        crate::validator::typecheck::TypecheckAnswer::TypecheckSuccess {
+            expr_type,
+            expr_capability,
+        } => {
+            assert_eq!(expr_type.data(), &Some(Type::primitive_boolean()));
+            let base: Expr = r#"A::"a""#.parse().unwrap();
+            let x = Expr::get_attr(base.clone(), "x".into());
+            let xy = Expr::get_attr(x.clone(), "y".into());
+            assert!(
+                expr_capability.contains(&crate::validator::types::Capability::new_attribute(
+                    &base,
+                    "x".into()
+                ))
+            );
+            assert!(
+                expr_capability.contains(&crate::validator::types::Capability::new_attribute(
+                    &x,
+                    "y".into()
+                ))
+            );
+            assert!(
+                expr_capability.contains(&crate::validator::types::Capability::new_attribute(
+                    &xy,
+                    "z".into()
+                ))
+            );
+        }
+        answer => panic!("expected successful typechecking, got {answer:?}"),
+    }
+    assert!(errors.is_empty());
+}
+
+#[test]
+fn extended_has_false_suffix_clears_prefix_capabilities() {
+    let schema_src = r#"
+        entity A {
+            x: {
+                present: Long,
+            }
+        };
+    "#;
+    let (schema, _) =
+        crate::validator::ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none())
+            .unwrap();
+    let typechecker =
+        crate::validator::typecheck::Typechecker::new(&schema, ValidationMode::Strict);
+    let expr: Expr = r#"A::"a" has x.missing"#.parse().unwrap();
+    let policy_id = expr_id_placeholder();
+    let mut errors = std::collections::HashSet::new();
+
+    match typechecker.typecheck_expr(&expr, &policy_id, &mut errors) {
+        crate::validator::typecheck::TypecheckAnswer::TypecheckSuccess {
+            expr_type,
+            expr_capability,
+        } => {
+            assert_eq!(expr_type.data(), &Some(Type::singleton_boolean(false)));
+            assert_eq!(
+                expr_capability,
+                crate::validator::types::CapabilitySet::new()
+            );
+        }
+        answer => panic!("expected successful typechecking, got {answer:?}"),
+    }
+    assert!(errors.is_empty());
+}
+
+#[test]
 fn set_typechecks() {
     assert_typechecks_empty_schema(
         &Expr::set([Expr::val(true)]),

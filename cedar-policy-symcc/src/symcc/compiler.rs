@@ -312,6 +312,46 @@ pub fn compile_has_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
     }
 }
 
+pub fn compile_ext_has_attr(
+    t: Term,
+    attrs: &nonempty::NonEmpty<Attr>,
+    es: &SymEntities,
+) -> Result<Term> {
+    let mut current = t;
+    let mut results = Vec::new();
+    let mut attrs_iter = attrs.iter().peekable();
+
+    while let Some(attr) = attrs_iter.next() {
+        let has = if_some(
+            current.clone(),
+            compile_has_attr(option_get(current.clone()), attr, es)?,
+        );
+        let statically_false = matches!(&has, Term::Some(t) if matches!(t.as_ref(), Term::Prim(TermPrim::Bool(false))));
+        results.push(has);
+
+        if statically_false || attrs_iter.peek().is_none() {
+            break;
+        }
+
+        match compile_get_attr(option_get(current.clone()), attr, es) {
+            Ok(get_res) => current = if_some(current, get_res),
+            Err(CompileError::NoSuchAttribute(_)) => break,
+            Err(e) => return Err(e),
+        }
+    }
+
+    // Iterative implementation needs to construct conjunct in reverse to match recursive Lean
+    let mut results = results.into_iter().rev();
+    let Some(mut result) = results.next() else {
+        // `attrs` is nonempty, so this branch is unreachable through the public API.
+        return Ok(some_of(true.into()));
+    };
+    for has in results {
+        result = compile_and(has, Ok(result))?;
+    }
+    Ok(result)
+}
+
 pub fn compile_get_attr(t: Term, a: &Attr, es: &SymEntities) -> Result<Term> {
     let attrs = compile_attrs_of(t, es)?;
     match attrs.type_of() {
@@ -720,6 +760,10 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 t.clone(),
                 compile_has_attr(option_get(t), attr, &env.entities)?,
             ))
+        }
+        ExprKind::ExtHasAttr { expr, attrs } => {
+            let t = compile(expr, env)?;
+            compile_ext_has_attr(t, attrs, &env.entities)
         }
         ExprKind::GetAttr { expr, attr } => {
             let t = compile(expr, env)?;
@@ -1487,5 +1531,196 @@ mod datetime_tests {
                 "{expr}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+#[expect(clippy::panic, reason = "unit tests")]
+pub(crate) mod ext_has_attr_tests {
+    use cedar_policy::{RequestEnv, Schema};
+    use cool_asserts::assert_matches;
+
+    use std::str::FromStr;
+
+    use crate::{
+        symcc::test_utils::{deep_chain_sym_env, deep_has_chain_expr},
+        term::TermPrim,
+    };
+
+    use super::*;
+
+    #[track_caller]
+    fn pretty_panic<T>(e: impl miette::Diagnostic + Send + Sync + 'static) -> T {
+        panic!("{:?}", miette::Report::new(e))
+    }
+
+    pub(crate) fn schema() -> Schema {
+        let schema = r#"
+            entity Thing;
+            entity Thing2 { id: String, opt?: Long };
+            type Thing3 = { thing2: Thing2, thing2bis?: Thing2, id: String};
+            entity User { x : Thing3, xopt?: Thing3, name: String, thing1?: Thing, thing2: Thing2};
+            action View appliesTo {
+                principal: [User],
+                resource: [Thing],
+                context: { rec: { x: Long, sub: { y: Long }}}
+            };
+        "#;
+        Schema::from_cedarschema_str(schema)
+            .unwrap_or_else(pretty_panic)
+            .0
+    }
+
+    pub(crate) fn request_env() -> RequestEnv {
+        RequestEnv::new(
+            "User".parse().unwrap(),
+            "Action::\"View\"".parse().unwrap(),
+            "Thing".parse().unwrap(),
+        )
+    }
+
+    pub(crate) fn sym_env() -> SymEnv {
+        SymEnv::new(&schema(), &request_env()).expect("Malformed sym env.")
+    }
+
+    pub(crate) fn parse_expr(str: &str) -> Expr {
+        Expr::from_str(str).unwrap_or_else(|e| panic!("Could not parse expression: {str}: {e}"))
+    }
+
+    #[track_caller]
+    fn assert_compiles_to(str: &str, expected: Term) {
+        assert_eq!(
+            compile(&parse_expr(str), &sym_env()).unwrap(),
+            expected,
+            "{str}"
+        );
+    }
+
+    #[test]
+    fn test_ext_has_attr() {
+        assert_compiles_to(
+            "context has rec.x",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+        );
+        assert_compiles_to(
+            "context has rec.sub.y",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+        );
+        assert_compiles_to(
+            "context has rec.nonexistent",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "context has nonexistent.x",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "context has rec.sub.nonexistent",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "context has rec.nonexistent.sub",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+        );
+        assert_compiles_to(
+            "principal has thing2.id",
+            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+        );
+        // Terms that don't compile to true/false
+        // entity base, optional then present
+        assert_matches!(
+            compile(&parse_expr("principal has thing1.id"), &sym_env()).unwrap(),
+            Term::App { .. }
+        );
+        // entity base, present then optional
+        assert_matches!(
+            compile(&parse_expr("principal has thing2.opt"), &sym_env()).unwrap(),
+            Term::Some { .. }
+        );
+        // record base, present then opt
+        assert_matches!(
+            compile(&parse_expr("principal.x has thing2.opt"), &sym_env()).unwrap(),
+            Term::Some { .. }
+        );
+        // record base, opt then present
+        assert_matches!(
+            compile(&parse_expr("principal.x has thing2bis.id"), &sym_env()).unwrap(),
+            Term::App { .. }
+        );
+    }
+
+    #[test]
+    fn test_ext_has_attr_is_right_associated() {
+        let env = sym_env();
+        let expr = parse_expr("principal has xopt.thing2bis.opt");
+        let extended = compile(&expr, &env).unwrap();
+        let explicitly_right_associated = compile(
+            &parse_expr(
+                "principal has xopt && \
+                 (principal.xopt has thing2bis && principal.xopt.thing2bis has opt)",
+            ),
+            &env,
+        )
+        .unwrap();
+        let explicitly_left_associated = compile(
+            &parse_expr(
+                "(principal has xopt && principal.xopt has thing2bis) && \
+                 principal.xopt.thing2bis has opt",
+            ),
+            &env,
+        )
+        .unwrap();
+
+        assert_eq!(extended, explicitly_right_associated);
+        assert_ne!(extended, explicitly_left_associated);
+    }
+
+    #[test]
+    fn test_ext_has_attr_type_error_mid_chain() {
+        assert_matches!(
+            compile(&parse_expr("context has rec.x.z"), &sym_env()),
+            Err(CompileError::TypeError)
+        );
+    }
+
+    #[test]
+    fn compiled_term_dag_stays_small() {
+        use std::collections::BTreeSet;
+
+        fn collect_distinct(t: &Term, set: &mut BTreeSet<Term>) {
+            if !set.insert(t.clone()) {
+                return;
+            }
+            match t {
+                Term::Some(t) => collect_distinct(t, set),
+                Term::Set { elts, .. } => elts.iter().for_each(|e| collect_distinct(e, set)),
+                Term::Record(r) => r.values().for_each(|e| collect_distinct(e, set)),
+                Term::App { args, .. } => args.iter().for_each(|a| collect_distinct(a, set)),
+                Term::Prim(_) | Term::None(_) | Term::Var(_) => {}
+            }
+        }
+
+        let distinct: Vec<usize> = (2..=5)
+            .map(|d| {
+                let compiled_chain = compile(&deep_has_chain_expr(d), &deep_chain_sym_env(d))
+                    .expect("expression should compile");
+                let mut set = BTreeSet::new();
+                collect_distinct(&compiled_chain, &mut set);
+                set.len()
+            })
+            .collect();
+
+        let diffs: Vec<i64> = distinct
+            .iter()
+            .zip(distinct.iter().skip(1))
+            .map(|(prev, next)| *next as i64 - *prev as i64)
+            .collect();
+        assert!(
+            diffs
+                .iter()
+                .zip(diffs.iter().skip(1))
+                .all(|(prev, next)| prev == next),
+            "distinct-node count should grow linearly, got distinct={distinct:?} diffs={diffs:?}"
+        );
     }
 }

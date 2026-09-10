@@ -28,6 +28,7 @@ use crate::{
 };
 use educe::Educe;
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use serde::{Deserialize, Serialize};
 use smol_str::SmolStr;
 use std::{
@@ -135,6 +136,14 @@ pub enum ExprKind<T = ()> {
         /// Attribute or field to check for
         attr: SmolStr,
     },
+    /// Does the given `expr` have the given sequence of nested `attrs`?
+    // This form may merge with HasAttr once we have high confidence we're not introducing regressions
+    ExtHasAttr {
+        /// Expression to test. Must evaluate to either Entity or Record type
+        expr: Arc<Expr<T>>,
+        /// List of attribute to check for sequentially
+        attrs: NonEmpty<SmolStr>,
+    },
     /// Regex-like string matching similar to IAM's `StringLike` operator.
     Like {
         /// Expression to test. Must evaluate to String type
@@ -185,12 +194,13 @@ impl<T> ExprKind<T> {
             ExprKind::ExtensionFunctionApp { .. } => 9,
             ExprKind::GetAttr { .. } => 10,
             ExprKind::HasAttr { .. } => 11,
-            ExprKind::Like { .. } => 12,
-            ExprKind::Set(_) => 13,
-            ExprKind::Record(_) => 14,
-            ExprKind::Is { .. } => 15,
+            ExprKind::ExtHasAttr { .. } => 12,
+            ExprKind::Like { .. } => 13,
+            ExprKind::Set(_) => 14,
+            ExprKind::Record(_) => 15,
+            ExprKind::Is { .. } => 16,
             #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => 16,
+            ExprKind::Error { .. } => 17,
         }
     }
 }
@@ -421,6 +431,7 @@ impl<T> Expr<T> {
                 ..
             } => None,
             ExprKind::HasAttr { .. } => Some(Type::Bool),
+            ExprKind::ExtHasAttr { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
@@ -483,6 +494,10 @@ impl<T> Expr<T> {
             }
             ExprKind::HasAttr { expr, attr } => {
                 Ok(builder.has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attr))
+            }
+            ExprKind::ExtHasAttr { expr, attrs } => {
+                Ok(builder
+                    .extended_has_attr(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, attrs))
             }
             ExprKind::Like { expr, pattern } => {
                 Ok(builder.like(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, pattern))
@@ -737,6 +752,14 @@ impl Expr {
         ExprBuilder::new().has_attr(expr, attr)
     }
 
+    /// Create an `Expr` which tests for the existence of a given
+    /// sequence of attributes on a given `Entity` or record.
+    ///
+    /// `expr` must evaluate to either Entity or Record type
+    pub fn extended_has_attr(expr: Expr, attrs: NonEmpty<SmolStr>) -> Self {
+        ExprBuilder::new().extended_has_attr(expr, attrs)
+    }
+
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type
@@ -848,6 +871,10 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 attr.clone(),
             )),
+            ExprKind::ExtHasAttr { expr, attrs } => Ok(Expr::extended_has_attr(
+                expr.substitute_general::<T>(definitions)?,
+                attrs.clone(),
+            )),
             ExprKind::Like { expr, pattern } => Ok(Expr::like(
                 expr.substitute_general::<T>(definitions)?,
                 pattern.clone(),
@@ -888,6 +915,7 @@ impl Expr {
     /// The invariants being checked are:
     /// - The name of the function in a function call is a known extension.
     /// - If the function call must be a "method style" call, then its arguments are non-empty
+    /// - extended has only uses valid identifiers in the attributes
     ///
     ///
     /// Other invariants guaranteed for the AST (a parseable expression) are maintained
@@ -898,18 +926,30 @@ impl Expr {
     /// guarantee this.
     pub fn try_validate(self) -> Result<Self, ExprValidationError> {
         for sub in self.subexpressions() {
-            if let ExprKind::ExtensionFunctionApp { fn_name, args } = sub.expr_kind() {
-                // Invariant: fn_name must be a known extension function
-                let ext_fn = Extensions::all_available().func(fn_name).map_err(|_| {
-                    ExprValidationError(format!("unknown extension function `{fn_name}`"))
-                })?;
-                // Invariant: if fn_name is MethodStyle then args must be non-empty
-                if ext_fn.style() == CallStyle::MethodStyle && args.is_empty() {
-                    return Err(ExprValidationError(format!(
-                        "method-style extension function `{fn_name}` requires a receiver argument"
-                    )));
+            match sub.expr_kind() {
+                ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                    // Invariant: fn_name must be a known extension function
+                    let ext_fn = Extensions::all_available().func(fn_name).map_err(|_| {
+                        ExprValidationError(format!("unknown extension function `{fn_name}`"))
+                    })?;
+                    // Invariant: if fn_name is MethodStyle then args must be non-empty
+                    if ext_fn.style() == CallStyle::MethodStyle && args.is_empty() {
+                        return Err(ExprValidationError(format!(
+                            "method-style extension function `{fn_name}` requires a receiver argument"
+                        )));
+                    }
+                    // **NOT** an invariant of parsed ASTs: arity is correct.
                 }
-                // **NOT** an invariant of parsed ASTs: arity is correct.
+                ExprKind::ExtHasAttr { attrs, .. } => {
+                    for attr in attrs {
+                        if !is_normalized_ident(attr) {
+                            return Err(ExprValidationError(format!(
+                                "extended has attribute `{attr}` is not a valid identifier"
+                            )));
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         Ok(self)
@@ -1375,6 +1415,19 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         self.with_expr_kind(ExprKind::Is { expr, entity_type })
     }
 
+    /// Create an extended has expression directly in the AST without desugaring.
+    fn extended_has_attr_arc(self, expr: Arc<Expr<T>>, attrs: NonEmpty<SmolStr>) -> Expr<T> {
+        // If there's only one attribute, create a simple HasAttr node
+        if attrs.tail.is_empty() {
+            self.with_expr_kind(ExprKind::HasAttr {
+                expr,
+                attr: attrs.head,
+            })
+        } else {
+            self.with_expr_kind(ExprKind::ExtHasAttr { expr, attrs })
+        }
+    }
+
     /// Don't support AST Error nodes - return the error right back
     #[cfg(feature = "tolerant-ast")]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
@@ -1598,6 +1651,13 @@ impl<T> Expr<T> {
                 },
             ) => attr == attr1 && expr.eq_shape(expr1),
             (
+                ExtHasAttr { expr, attrs },
+                ExtHasAttr {
+                    expr: expr1,
+                    attrs: attrs1,
+                },
+            ) => attrs == attrs1 && expr.eq_shape(expr1),
+            (
                 Like { expr, pattern },
                 Like {
                     expr: expr1,
@@ -1682,6 +1742,10 @@ impl<T> Expr<T> {
             ExprKind::HasAttr { expr, attr } => {
                 expr.hash_shape(state);
                 attr.hash(state);
+            }
+            ExprKind::ExtHasAttr { expr, attrs } => {
+                expr.hash_shape(state);
+                attrs.hash(state);
             }
             ExprKind::Like { expr, pattern } => {
                 expr.hash_shape(state);
@@ -1810,6 +1874,13 @@ impl<T> Expr<T> {
                     attr: attr1,
                 },
             ) => attr.cmp(attr1).then_with(|| expr.cmp_shape(expr1)),
+            (
+                ExtHasAttr { expr, attrs },
+                ExtHasAttr {
+                    expr: expr1,
+                    attrs: attrs1,
+                },
+            ) => attrs.cmp(attrs1).then_with(|| expr.cmp_shape(expr1)),
             (
                 Like { expr, pattern },
                 Like {
@@ -2077,6 +2148,30 @@ mod test {
         // `\`'s escaped form is `\\`
         let e = Expr::has_attr(Expr::val("a"), r"\".into());
         assert_eq!(format!("{e}"), r#""a" has "\\""#);
+    }
+
+    #[test]
+    fn extended_has_display() {
+        use nonempty::nonempty;
+        // Extended has with 2 attributes
+        let e =
+            Expr::extended_has_attr(Expr::var(Var::Principal), nonempty!["a".into(), "b".into()]);
+        assert_eq!(format!("{e}"), "principal has a.b");
+        // Extended has with 3 attributes
+        let e = Expr::extended_has_attr(
+            Expr::var(Var::Context),
+            nonempty!["user".into(), "profile".into(), "email".into()],
+        );
+        assert_eq!(format!("{e}"), "context has user.profile.email");
+        // Extended has preserves structure through display roundtrip
+        let e = Expr::extended_has_attr(
+            Expr::var(Var::Resource),
+            nonempty!["owner".into(), "ipinfo".into(), "additionalData".into()],
+        );
+        let displayed = format!("{e}");
+        assert_eq!(displayed, "resource has owner.ipinfo.additionalData");
+        let reparsed = displayed.parse::<Expr>().unwrap();
+        assert!(e.eq_shape(&reparsed));
     }
 
     #[test]
@@ -2453,6 +2548,8 @@ mod test {
 
 #[cfg(test)]
 mod validate_test {
+    use cool_asserts::assert_matches;
+
     use super::*;
 
     fn ext_call(name: &str, args: Vec<Expr>) -> Expr {
@@ -2490,5 +2587,31 @@ mod validate_test {
             err.to_string().contains("requires a receiver argument"),
             "got: {err}"
         );
+    }
+
+    #[test]
+    fn extended_has_with_invalid_ids_rejected() {
+        let exprs = vec![
+            Expr::extended_has_attr(
+                Expr::var(Var::Principal),
+                nonempty::nonempty!["".into(), "a".into()], // principal has "".a
+            ),
+            Expr::extended_has_attr(
+                Expr::var(Var::Principal),
+                nonempty::nonempty!["a".into(), "".into()], // principal has a.""
+            ),
+            Expr::extended_has_attr(
+                Expr::var(Var::Principal),
+                nonempty::nonempty!["true".into(), "a".into()], // principal has true.a
+            ),
+        ];
+        for e in exprs {
+            let e = e.try_validate();
+            assert_matches!(e, Err(ExprValidationError(..)));
+            assert!(e
+                .unwrap_err()
+                .to_string()
+                .starts_with("invalid expression: extended has attribute"))
+        }
     }
 }
