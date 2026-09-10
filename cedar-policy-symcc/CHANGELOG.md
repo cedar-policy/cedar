@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Cedar Language Version: TBD
 
+### Added
+
+- `ResetMode` and `CedarSymCompiler::with_reset_mode()`, controlling whether the `(reset)`
+  at the start of each query is emitted as an SMTLib command (`ResetMode::Emit`, the
+  default and previous behavior) or as a comment (`ResetMode::Comment`). The latter is for
+  `Solver` implementations that send each query as a standalone script, where a real
+  `(reset)` is unnecessary and hides accidental reuse of a solver session.
+
 ## [0.6.0] - 2026-07-28
 
 Cedar Language Version: 4.5
