@@ -14,27 +14,36 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+## [4.13.0] - COMING SOON
+
+Cedar Language Version: 4.5
+
 ### Changed
 
+- *A `has` expression with a chain of attributes (`e has a.b.c`) now converts to JSON as a
+  single `has` node whose `attr` field is an array (`["a", "b", "c"]`), instead of a
+  conjunction of one-attribute `has` checks (`(e has a) && (e.a has b) && (e.a.b has c)`).
+  A single-attribute `has` still converts with `attr` as a string. The evaluation result is
+  unchanged (#2560).
 - Invalid action application errors ("Unable to find an applicable action given the policy scope constraints")
   are now reported as validation warnings instead of errors. These do not indicate that a run-time
   error may exist in the policy. They are similar to the impossible policy warning, indicating that a policy
   cannot apply to any request. This change makes it possible to remove entries from an `appliesTo` list
   without introducing validation errors. Callers that want to keep rejecting these policies should check
-  `ValidationResult::validation_warnings` for `ValidationWarning::InvalidActionApplication`.
+  `ValidationResult::validation_warnings` for `ValidationWarning::InvalidActionApplication` (#2545).
 - For the `tpe` experimental feature,  `is_authorized_batched` now automatically loads actions
-  entities from the schema, and will now return immediately on reaching a concrete authorization decision.
+  entities from the schema, and will now return immediately on reaching a concrete authorization decision (#2554).
 - For the `tpe` experimental feature, removed the `BatchedEvalError::MissingEntities` error variant
-  which was never constructed.
+  which was never constructed (#2554).
 - For the `tpe` experimental feature, `PolicySet::tpe` is faster on large policy sets
-  (~1.4x on a 25,000-policy set).
+  (~1.4x on a 25,000-policy set) (#2558).
 
 
 ### Fixed
-- Fixed `Policy::try_into_pst()` and `Template::try_into_pst()` to preserve policy IDs for text- and JSON-backed values, restoring `PolicySet::try_into_pst()` / `PolicySet::from_pst()` round trips.
+- Fixed `Policy::try_into_pst()` and `Template::try_into_pst()` to preserve policy IDs for text- and JSON-backed values, restoring `PolicySet::try_into_pst()` / `PolicySet::from_pst()` round trips (#2543).
 - In the experimental `protobufs` feature, the `Schema::decode` function now accepts schemas that reference `Action` entity types not defined in the schema. This was previously  rejected (#2491).
 - For the experimental `tpe` feature, fixed `TpeResponse::policy_set` to return the residual policies, matching `TpeResponse::policies` as documented. Previously it returned the original policies (#2540).
-- For the experimental `tpe` feature, partial entity validation now accept action entities with unknown components. The `UnknownActionComponent` is now never returned and is deleted.
+- For the experimental `tpe` feature, partial entity validation now accept action entities with unknown components. The `UnknownActionComponent` is now never returned and is deleted (#2555).
 
 ## [4.12.0] - 2026-07-28
 
