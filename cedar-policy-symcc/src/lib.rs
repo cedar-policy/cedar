@@ -47,7 +47,7 @@ pub use symcc::term_type;
 pub use symcc::type_abbrevs;
 pub use symcc::verifier::Asserts;
 pub use symcc::Interpretation;
-pub use symcc::{CompiledSchema, Env, SmtLibScript, SymEnv};
+pub use symcc::{CompiledSchema, Env, ResetMode, SmtLibScript, SymEnv};
 
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
@@ -271,10 +271,24 @@ pub struct CedarSymCompiler<S: Solver> {
 
 impl<S: Solver> CedarSymCompiler<S> {
     /// Constructs a new [`CedarSymCompiler`] with the given [`Solver`] instance.
+    ///
+    /// Uses the default [`ResetMode`]; see [`Self::with_reset_mode()`].
     pub fn new(solver: S) -> Result<Self> {
         Ok(Self {
             symcc: SymCompiler::new(solver),
         })
+    }
+
+    /// Returns this [`CedarSymCompiler`] with the given [`ResetMode`], e.g.
+    /// `CedarSymCompiler::new(solver)?.with_reset_mode(ResetMode::Comment)`.
+    pub fn with_reset_mode(mut self, reset_mode: ResetMode) -> Self {
+        self.symcc.set_reset_mode(reset_mode);
+        self
+    }
+
+    /// Returns the [`ResetMode`] used for queries issued by this [`CedarSymCompiler`]
+    pub fn reset_mode(&self) -> ResetMode {
+        self.symcc.reset_mode()
     }
 
     /// Returns a reference to the [`Solver`] instance used to construct this [`CedarSymCompiler`]
