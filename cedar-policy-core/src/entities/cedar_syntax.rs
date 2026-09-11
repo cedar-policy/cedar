@@ -14,26 +14,13 @@
  * limitations under the License.
  */
 
-use clap::Args;
+//! Parser for entity data in the Cedar syntax
 
-use crate::{CedarExitCode, EntitiesArgs};
+pub(crate) mod ast;
+pub mod err;
+pub mod fmt;
+pub mod parser;
+pub mod to_entities;
 
-#[derive(Args, Debug)]
-pub struct VisualizeArgs {
-    /// Entities args (incorporated by reference)
-    #[command(flatten)]
-    pub entities: EntitiesArgs,
-}
-
-pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
-    match args.entities.get_entities(None) {
-        Ok(entities) => {
-            println!("{}", entities.to_dot_str());
-            CedarExitCode::Success
-        }
-        Err(report) => {
-            eprintln!("{report:?}");
-            CedarExitCode::Failure
-        }
-    }
-}
+#[cfg(test)]
+mod test;

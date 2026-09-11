@@ -1,0 +1,148 @@
+[
+    {
+        "uid": {
+            "type": "Host",
+            "id": "webserver1"
+        },
+        "attrs": {
+            "addr": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "192.168.1.100"
+                }
+            },
+            "subnet": {
+                "__extn": {
+                    "fn": "ip",
+                    "arg": "10.0.0.0/8"
+                }
+            },
+            "backup_addrs": [
+                {
+                    "__extn": {
+                        "fn": "ip",
+                        "arg": "192.168.1.101"
+                    }
+                },
+                {
+                    "__extn": {
+                        "fn": "ip",
+                        "arg": "192.168.1.102"
+                    }
+                }
+            ]
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Product",
+            "id": "widget"
+        },
+        "attrs": {
+            "price": {
+                "__extn": {
+                    "fn": "decimal",
+                    "arg": "19.99"
+                }
+            },
+            "discount": {
+                "__extn": {
+                    "fn": "decimal",
+                    "arg": "0.15"
+                }
+            },
+            "weight": {
+                "__extn": {
+                    "fn": "decimal",
+                    "arg": "2.5"
+                }
+            }
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Event",
+            "id": "deployment"
+        },
+        "attrs": {
+            "scheduled_at": {
+                "__extn": {
+                    "fn": "datetime",
+                    "arg": "2026-03-15T10:30:00Z"
+                }
+            },
+            "timeout": {
+                "__extn": {
+                    "fn": "duration",
+                    "arg": "30m"
+                }
+            },
+            "window": {
+                "start": {
+                    "__extn": {
+                        "fn": "datetime",
+                        "arg": "2026-03-15T10:00:00Z"
+                    }
+                },
+                "end": {
+                    "__extn": {
+                        "fn": "datetime",
+                        "arg": "2026-03-15T11:00:00Z"
+                    }
+                },
+                "max_duration": {
+                    "__extn": {
+                        "fn": "duration",
+                        "arg": "2h"
+                    }
+                }
+            }
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Server",
+            "id": "prod1"
+        },
+        "attrs": {
+            "config": {
+                "listen_addr": {
+                    "__extn": {
+                        "fn": "ip",
+                        "arg": "0.0.0.0"
+                    }
+                },
+                "allowed_ranges": [
+                    {
+                        "__extn": {
+                            "fn": "ip",
+                            "arg": "10.0.0.0/8"
+                        }
+                    },
+                    {
+                        "__extn": {
+                            "fn": "ip",
+                            "arg": "172.16.0.0/12"
+                        }
+                    }
+                ],
+                "heartbeat_interval": {
+                    "__extn": {
+                        "fn": "duration",
+                        "arg": "5s"
+                    }
+                },
+                "max_uptime": {
+                    "__extn": {
+                        "fn": "duration",
+                        "arg": "30d"
+                    }
+                }
+            }
+        },
+        "parents": []
+    }
+]
