@@ -21,6 +21,7 @@ mod capability;
 pub use capability::*;
 mod request_env;
 use educe::Educe;
+use nonempty::NonEmpty;
 pub use request_env::*;
 
 use itertools::Itertools;
@@ -803,9 +804,15 @@ pub struct EntityLUB {
     /// If that changes in the future, we will have to change this here to
     /// `InternalName`, or change `EntityType` to be backed by `InternalName`
     /// instead of `Name`.
-    //
-    // INVARIANT: Non-empty set.
-    lub_elements: BTreeSet<EntityType>,
+    ///
+    /// This is stored as a `NonEmpty` so that we avoid any heap allocation in the singleton case,
+    /// which is the only possible case in strict validation. This is less efficient for permissive
+    /// mode, but we are optimizing for strict as it is the only stable version of validation.
+    ///
+    /// INVARIANT: `lub_elements` is a sorted list without duplicates. This invariant only impacts
+    /// correctness for permissive validation. In strict validation this always has exactly one
+    /// element, satisfying the invariant.
+    lub_elements: NonEmpty<EntityType>,
 }
 
 impl EntityLUB {
@@ -813,36 +820,26 @@ impl EntityLUB {
     /// just that entity type.
     pub fn single_entity(entity_type_name: EntityType) -> Self {
         Self {
-            lub_elements: BTreeSet::from([entity_type_name]),
+            lub_elements: NonEmpty::singleton(entity_type_name),
         }
     }
 
     /// Check if this LUB is a singleton, and if so, return a reference to its entity type
     pub fn get_single_entity(&self) -> Option<&EntityType> {
-        let mut names = self.lub_elements.iter();
-        #[expect(
-            clippy::expect_used,
-            reason = "Invariant on `lub_elements` guarantees the set is non-empty"
-        )]
-        let first = names.next().expect("should have one element by invariant");
-        match names.next() {
-            Some(_) => None, // there are two or more names
-            None => Some(first),
+        if self.lub_elements.len() == 1 {
+            Some(self.lub_elements.first())
+        } else {
+            None
         }
     }
 
     /// Like `get_single_entity()`, but consumes the [`EntityLUB`] and produces an
     /// owned entity type name
     pub fn into_single_entity(self) -> Option<EntityType> {
-        let mut names = self.lub_elements.into_iter();
-        #[expect(
-            clippy::expect_used,
-            reason = "Invariant on `lub_elements` guarantees the set is non-empty"
-        )]
-        let first = names.next().expect("should have one element by invariant");
-        match names.next() {
-            Some(_) => None, // there are two or more names
-            None => Some(first),
+        if self.lub_elements.len() == 1 {
+            Some(self.lub_elements.head)
+        } else {
+            None
         }
     }
 
@@ -850,7 +847,9 @@ impl EntityLUB {
     /// the case when the entity types in the least upper bound are a subset of
     /// the entity types in the other.
     fn is_subtype(&self, other: &EntityLUB) -> bool {
-        self.lub_elements.is_subset(&other.lub_elements)
+        self.lub_elements
+            .iter()
+            .all(|e| other.lub_elements.contains(e))
     }
 
     /// Retrieve the attributes and their types. If this is a single entity type,
@@ -860,7 +859,7 @@ impl EntityLUB {
     /// will keep only the common attributes with a type that is the least upper
     /// bound of the all the attribute type.
     fn get_attribute_types(&self, schema: &ValidatorSchema) -> Attributes {
-        let mut lub_element_attributes = self.lub_elements.iter().map(|name| {
+        let lub_element_attributes = self.lub_elements.as_ref().map(|name| {
             schema
                 .get_entity_type(name)
                 .map(ValidatorEntityType::attributes)
@@ -868,49 +867,52 @@ impl EntityLUB {
                 .unwrap_or_else(|| Attributes::with_attributes(None))
         });
 
-        // If I wanted to write this as a fold over a possibly empty set, I
-        // would need a bottom record type that would contain every attribute with a
-        // bottom type. We don't have that, so I instead restrict EntityLUB to
-        // be a least upper bound of one or more entities.
-        #[expect(
-            clippy::expect_used,
-            reason = "Invariant on `lub_elements` guarantees the set is non-empty"
-        )]
-        let arbitrary_first = Attributes::with_attributes(
-            lub_element_attributes
-                .next()
-                .expect("Invariant violated: EntityLUB set must be non-empty."),
-        );
-        lub_element_attributes.fold(arbitrary_first, |acc, elem| {
-            // Use the permissive version of least upper bound here for two
-            // reasons. First, when in permissive mode, the attributes least
-            // upper bound can never fail. We could call the main lub function
-            // with an unwrap, but this avoids a chance at a panic. Second, when
-            // in strict mode, an entity LUB will only ever have a single
-            // element, so that LUB can never fail, and the strict
-            // attributes lub is the same as permissive if there is only one
-            // attribute.
-            Attributes::permissive_least_upper_bound(&acc, &Attributes::with_attributes(elem))
-        })
+        lub_element_attributes
+            .tail
+            .into_iter()
+            .fold(lub_element_attributes.head, |acc, elem| {
+                // Use the permissive version of least upper bound here for two
+                // reasons. First, when in permissive mode, the attributes least
+                // upper bound can never fail. We could call the main lub function
+                // with an unwrap, but this avoids a chance at a panic. Second, when
+                // in strict mode, an entity LUB will only ever have a single
+                // element, so that LUB can never fail, and the strict
+                // attributes lub is the same as permissive if there is only one
+                // attribute.
+                Attributes::permissive_least_upper_bound(&acc, &elem)
+            })
     }
 
     /// Generate the least upper bound of this [`EntityLUB`] and another. This
     /// returns an [`EntityLUB`] for the union of the entity types in both argument
     /// LUBs. The attributes of the LUB are not computed.
     pub(crate) fn least_upper_bound(&self, other: &EntityLUB) -> EntityLUB {
+        // We could have a fast-path for a reflexive singleton lub, the only possible case in strict
+        // validation, but we actually never reach this case because `Type::least_upper_bound` first
+        // checks for subtyping before computing the least upper bound.
+        #[expect(
+            clippy::unwrap_used,
+            reason = "`chain` of two nonempty is nonempty, even after `unique`"
+        )]
         EntityLUB {
-            lub_elements: self
-                .lub_elements
-                .union(&other.lub_elements)
-                .cloned()
-                .collect::<BTreeSet<_>>(),
+            lub_elements: NonEmpty::collect(
+                self.lub_elements
+                    .iter()
+                    .chain(&other.lub_elements)
+                    .sorted()
+                    .dedup()
+                    .cloned(),
+            )
+            .unwrap(),
         }
     }
 
     /// Return true if the set of entity types composing this [`EntityLUB`] is
-    /// disjoint from th entity types composing another [`EntityLUB`].
+    /// disjoint from the entity types composing another [`EntityLUB`].
     pub(crate) fn is_disjoint(&self, other: &EntityLUB) -> bool {
-        self.lub_elements.is_disjoint(&other.lub_elements)
+        self.lub_elements
+            .iter()
+            .all(|e| !other.lub_elements.contains(e))
     }
 
     /// Return true if the given entity type [`Name`] is in the set of entity
@@ -1335,7 +1337,10 @@ mod test {
     impl Type {
         pub(crate) fn entity_lub<'a>(es: impl IntoIterator<Item = &'a str>) -> Type {
             let lub = EntityLUB {
-                lub_elements: es.into_iter().map(|e| e.parse().unwrap()).collect(),
+                lub_elements: NonEmpty::collect(
+                    es.into_iter().sorted().map(|e| e.parse().unwrap()),
+                )
+                .unwrap(),
             };
             assert!(!lub.lub_elements.is_empty());
             Type::Entity(EntityKind::Entity(lub))
@@ -1414,10 +1419,12 @@ mod test {
         let lub = Type::least_upper_bound(&lhs, &rhs, mode);
         assert_matches!(&lub, Ok(Type::Entity(EntityKind::Entity(entity_lub))) => {
             assert_eq!(
-                lub_names
-                    .iter()
-                    .map(|s| s.parse().expect("Expected valid entity type name."))
-                    .collect::<BTreeSet<_>>(),
+                NonEmpty::collect(
+                    lub_names
+                        .iter()
+                        .sorted()
+                        .map(|s| s.parse().expect("Expected valid entity type name."))
+                ).unwrap(),
                 entity_lub.lub_elements,
                 "Incorrect entity types composing LUB for {mode:?}."
             );
@@ -2223,15 +2230,7 @@ mod test {
             &["baz", "buz"],
             &[
                 ("a", Type::primitive_long()),
-                (
-                    "c",
-                    Type::Entity(EntityKind::Entity(EntityLUB {
-                        lub_elements: ["foo".to_string(), "bar".to_string()]
-                            .into_iter()
-                            .map(|n| n.parse().expect("Expected valid entity type name."))
-                            .collect::<BTreeSet<_>>(),
-                    })),
-                ),
+                ("c", Type::entity_lub(["foo", "bar"])),
             ],
         );
         assert_least_upper_bound(
@@ -2361,15 +2360,7 @@ mod test {
             Type::named_entity_reference_from_str("biz"),
             Type::named_entity_reference_from_str("fiz"),
             &["biz", "fiz"],
-            &[(
-                "c",
-                Type::Entity(EntityKind::Entity(EntityLUB {
-                    lub_elements: ["biz".to_string(), "fiz".to_string()]
-                        .into_iter()
-                        .map(|n| n.parse().expect("Expected valid entity type name."))
-                        .collect::<BTreeSet<_>>(),
-                })),
-            )],
+            &[("c", Type::entity_lub(["biz", "fiz"]))],
         );
         assert_least_upper_bound(
             ValidationMode::Strict,
