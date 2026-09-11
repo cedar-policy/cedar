@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- `Entities::from_entities_unchecked` and `Entities::upsert_entities_unchecked`, which construct or extend an `Entities` without computing or checking the transitive closure of the entity hierarchy. Callers are responsible for providing a transitively closed, acyclic hierarchy. Intended for callers that already maintain the transitive closure and want to avoid the cost of recomputing it (#2378).
+
 ### Changed
 
 - Invalid action application errors ("Unable to find an applicable action given the policy scope constraints")

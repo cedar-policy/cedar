@@ -508,6 +508,69 @@ impl Entities {
         .map(Entities)
     }
 
+    /// Create an `Entities` object with the given entities, without computing
+    /// or checking the transitive closure of the entity hierarchy.
+    ///
+    /// The caller is responsible for ensuring that the entities already form a
+    /// DAG and are transitively closed; that is, each entity's `parents` must
+    /// already contain all of its transitive ancestors. Nothing is verified, and
+    /// violating this yields an `Entities` whose `in` and ancestor queries are
+    /// incorrect. This is useful for performance if you already maintain the
+    /// transitive closure yourself; otherwise prefer
+    /// [`Entities::from_entities`], which computes it.
+    ///
+    /// `schema` represents a source of `Action` entities, which will be added
+    /// to the entities provided.
+    /// (If any `Action` entities are present in the provided entities, and a
+    /// `schema` is also provided, each `Action` entity in the provided entities
+    /// must exactly match its definition in the schema or an error is
+    /// returned.)
+    ///
+    /// If a `schema` is present, this function will also ensure that the
+    /// produced entities fully conform to the `schema` -- for instance, it will
+    /// error if attributes have the wrong types (e.g., string instead of
+    /// integer), or if required attributes are missing or superfluous
+    /// attributes are provided.
+    /// ## Errors
+    /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    ///
+    /// ```
+    /// # use cedar_policy::{Entities, Entity, EntityUid};
+    /// # use std::collections::HashSet;
+    /// # use std::str::FromStr;
+    /// let alice = EntityUid::from_str(r#"User::"alice""#).unwrap();
+    /// let admins = EntityUid::from_str(r#"Group::"admins""#).unwrap();
+    /// let acme = EntityUid::from_str(r#"Org::"acme""#).unwrap();
+    /// // `alice` lists both her direct parent and its parent, so the
+    /// // transitive closure is already present in the input.
+    /// let entities = Entities::from_entities_unchecked(
+    ///     [
+    ///         Entity::new_no_attrs(alice.clone(), HashSet::from([admins.clone(), acme.clone()])),
+    ///         Entity::new_no_attrs(admins.clone(), HashSet::from([acme.clone()])),
+    ///         Entity::new_no_attrs(acme.clone(), HashSet::new()),
+    ///     ],
+    ///     None,
+    /// )
+    /// .unwrap();
+    /// assert!(entities.is_ancestor_of(&acme, &alice));
+    /// ```
+    pub fn from_entities_unchecked(
+        entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        cedar_policy_core::entities::Entities::from_entities(
+            entities.into_iter().map(|e| e.0),
+            schema
+                .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
+                .as_ref(),
+            cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
+            Extensions::all_available(),
+        )
+        .map(Entities)
+    }
+
     /// Add all of the [`Entity`]s in the collection to this [`Entities`]
     /// structure, re-computing the transitive closure.
     ///
@@ -583,6 +646,46 @@ impl Entities {
                     .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
                     .as_ref(),
                 cedar_policy_core::entities::TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )?,
+        ))
+    }
+
+    /// Updates or adds all of the [`Entity`]s in the collection to this [`Entities`]
+    /// structure, without re-computing the transitive closure.
+    ///
+    /// The caller is responsible for ensuring that the resulting entities still
+    /// form a DAG and are transitively closed; that is, each added entity's
+    /// `parents` must already contain all of its transitive ancestors. Nothing
+    /// is verified, and violating this yields an `Entities` whose `in` and
+    /// ancestor queries are incorrect. This method is only safe on an
+    /// `Entities` whose transitive closure was supplied entirely by the caller
+    /// (for instance, one built with [`Entities::from_entities_unchecked`]):
+    /// when it replaces an existing entity, ancestors that were previously
+    /// computed for that entity's descendants are dropped and not re-computed.
+    /// If you do not maintain the transitive closure yourself, prefer
+    /// [`Entities::upsert_entities`], which re-computes it.
+    ///
+    /// If a `schema` is provided, this method will ensure that the added
+    /// entities fully conform to the schema -- for instance, it will error if
+    /// attributes have the wrong types (e.g., string instead of integer), or if
+    /// required attributes are missing or superfluous attributes are provided.
+    /// (This method will not add action entities from the `schema`.)
+    /// ## Errors
+    /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
+    ///   to the schema
+    pub fn upsert_entities_unchecked(
+        self,
+        entities: impl IntoIterator<Item = Entity>,
+        schema: Option<&Schema>,
+    ) -> Result<Self, EntitiesError> {
+        Ok(Self(
+            self.0.upsert_entities(
+                entities.into_iter().map(|e| Arc::new(e.0)),
+                schema
+                    .map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0))
+                    .as_ref(),
+                cedar_policy_core::entities::TCComputation::AssumeAlreadyComputed,
                 Extensions::all_available(),
             )?,
         ))
