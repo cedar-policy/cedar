@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Cedar Language Version: TBD
 
+## [0.7.0] - COMING SOON
+
+Cedar Language Version: 4.5
+
 ### Added
 
 - `ResetMode` and `CedarSymCompiler::with_reset_mode()`, controlling whether the `(reset)`
@@ -16,6 +20,13 @@ Cedar Language Version: TBD
   default and previous behavior) or as a comment (`ResetMode::Comment`). The latter is for
   `Solver` implementations that send each query as a standalone script, where a real
   `(reset)` is unnecessary and hides accidental reuse of a solver session.
+
+### Changed
+
+- The emitted SMT-LIB now names each entity type's eid selector after the entity type
+  (`E_eid` instead of `eid`). SMT-LIB requires selector names to be unique across all
+  datatypes, although solvers typically support the old naming scheme (#2529).
+
 
 ## [0.6.0] - 2026-07-28
 
