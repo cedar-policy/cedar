@@ -18,6 +18,12 @@ Cedar Language Version: TBD
 
 - For the experimental `tpe` feature, TPE now reduces `has`, `hasTag`, `in` and `==` applied to non-erroring but unknown expressions when the schema provides enough information to determine the concrete value of the operation.
 
+### Changed
+
+- `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
+  parses the string and renders the result back out to check that the input was normalized. The same
+  optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+
 ## [4.13.0] - 2026-09-15
 
 Cedar Language Version: 4.5
