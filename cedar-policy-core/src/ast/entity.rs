@@ -25,7 +25,7 @@ use crate::extensions::Extensions;
 use crate::parser::err::ParseErrors;
 use crate::parser::Loc;
 use crate::transitive_closure::TCNode;
-use crate::FromNormalizedStr;
+use crate::{default_from_normalized_str, FromNormalizedStr};
 use educe::Educe;
 use itertools::Itertools;
 use miette::Diagnostic;
@@ -372,6 +372,27 @@ impl std::str::FromStr for EntityUID {
 impl FromNormalizedStr for EntityUID {
     fn describe_self() -> &'static str {
         "Entity UID"
+    }
+
+    // Specialized implementation of `from_normalized_str()` that scans for the
+    // `Type::"eid"` form instead of parsing it and rendering the result back out
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if let Some((ty, eid)) = s.strip_suffix('"').and_then(|s| s.split_once("::\"")) {
+            // `Eid::escaped()` is `str::escape_debug`, so an eid it leaves
+            // alone is the one that `Display` would have written
+            if eid.escape_debug().eq(eid.chars()) {
+                if let Ok(ty) = Name::from_normalized_str(ty) {
+                    return Ok(Self::from_components(
+                        ty.into(),
+                        Eid::new(eid),
+                        Some(Loc::new(0..(s.len()), s.into())),
+                    ));
+                }
+            }
+        }
+        // Fall back on the default (unoptimized) implementation
+        // to get a nice error message
+        default_from_normalized_str(s, Self::describe_self)
     }
 }
 
@@ -965,6 +986,58 @@ mod test {
     #[test]
     fn action_type_is_valid_id() {
         Id::from_normalized_str(ACTION_ENTITY_TYPE).unwrap();
+    }
+
+    #[test]
+    fn normalized_euid() {
+        EntityUID::from_normalized_str(r#"A::"alice""#).expect("should be OK");
+        EntityUID::from_normalized_str(r#"A::B::"alice""#).expect("should be OK");
+        EntityUID::from_normalized_str(r#"A::"has spaces""#).expect("should be OK");
+        EntityUID::from_normalized_str(r#"A::"A::B::\"quoted\"""#).expect("should be OK");
+        EntityUID::from_normalized_str(r#" A::"alice""#).expect_err("shouldn't be OK");
+        EntityUID::from_normalized_str(r#"A :: "alice""#).expect_err("shouldn't be OK");
+        EntityUID::from_normalized_str(r#"A::"alice" "#).expect_err("shouldn't be OK");
+        EntityUID::from_normalized_str(r#"A::"alice"//comment"#).expect_err("shouldn't be OK");
+        EntityUID::from_normalized_str(r#"A::"\u{0041}""#).expect_err("shouldn't be OK");
+        EntityUID::from_normalized_str(r#"__cedar::"alice""#).expect_err("shouldn't be OK");
+        EntityUID::from_normalized_str("A::alice").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn normalized_euid_matches_default() {
+        for s in [
+            r#"A::"alice""#,
+            r#"A::B::"alice""#,
+            r#"Namespace::Type::"a::b::c""#,
+            r#"A::"has spaces""#,
+            r#"A::"it's""#,
+            r#"A::"é""#,
+            r#"A::"\n""#,
+            r#"A::"\t\\""#,
+            r#"A::"A::B::\"quoted\"""#,
+            r#"A::"""#,
+            r#"A::"\u{0041}""#,
+            r#"A::"a"b""#,
+            r#" A::"alice""#,
+            r#"A :: "alice""#,
+            r#"A::"alice" "#,
+            r#"A::"alice"//comment"#,
+            r#"__cedar::"alice""#,
+            r#"if::"alice""#,
+            "A::alice",
+            "A::B",
+            "",
+            r#""alice""#,
+        ] {
+            let specialized = EntityUID::from_normalized_str(s);
+            let default =
+                default_from_normalized_str::<EntityUID>(s, EntityUID::describe_self).ok();
+            assert_eq!(
+                specialized.as_ref().ok(),
+                default.as_ref(),
+                "specialized and default `from_normalized_str()` disagree on {s:?}"
+            );
+        }
     }
 
     #[cfg(feature = "tolerant-ast")]

@@ -14,6 +14,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
+  parses the string and renders the result back out to check that the input was normalized. The same
+  optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+
 ## [4.13.0] - COMING SOON
 
 Cedar Language Version: 4.5
