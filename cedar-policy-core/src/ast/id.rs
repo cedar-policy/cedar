@@ -18,7 +18,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
 use crate::{
-    ast::is_normalized_ident, default_from_normalized_str, parser::err::ParseErrors,
+    ast::{is_normalized_any_ident, is_normalized_ident},
+    default_from_normalized_str,
+    parser::err::ParseErrors,
     FromNormalizedStr,
 };
 
@@ -170,6 +172,18 @@ impl std::str::FromStr for UnreservedId {
 impl FromNormalizedStr for UnreservedId {
     fn describe_self() -> &'static str {
         "Unreserved Id"
+    }
+
+    // Specialized implementation of `from_normalized_str()` that
+    // uses the optimized implementation `is_normalized_ident()`
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if is_normalized_ident(s) {
+            Ok(Self(Id::new_unchecked(s)))
+        } else {
+            // Fall back on the default (unoptimized) implementation
+            // to get a nice error message
+            default_from_normalized_str(s, Self::describe_self)
+        }
     }
 }
 
@@ -372,6 +386,18 @@ impl FromNormalizedStr for AnyId {
     fn describe_self() -> &'static str {
         "AnyId"
     }
+
+    // Specialized implementation of `from_normalized_str()` that
+    // uses the optimized implementation `is_normalized_any_ident()`
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if is_normalized_any_ident(s) {
+            Ok(Self::new_unchecked(s))
+        } else {
+            // Fall back on the default (unoptimized) implementation
+            // to get a nice error message
+            default_from_normalized_str(s, Self::describe_self)
+        }
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -427,5 +453,68 @@ mod test {
         Id::from_normalized_str("foo ").expect_err("shouldn't be OK");
         Id::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         Id::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn normalized_unreserved_id() {
+        UnreservedId::from_normalized_str("foo").expect("should be OK");
+        UnreservedId::from_normalized_str("__cedar").expect_err("shouldn't be OK");
+        UnreservedId::from_normalized_str("if").expect_err("shouldn't be OK");
+        UnreservedId::from_normalized_str("foo::bar").expect_err("shouldn't be OK");
+        UnreservedId::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        UnreservedId::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        UnreservedId::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn normalized_any_id() {
+        AnyId::from_normalized_str("foo").expect("should be OK");
+        AnyId::from_normalized_str("__cedar").expect("should be OK");
+        AnyId::from_normalized_str("if").expect("should be OK");
+        AnyId::from_normalized_str("foo::bar").expect_err("shouldn't be OK");
+        AnyId::from_normalized_str(" foo").expect_err("shouldn't be OK");
+        AnyId::from_normalized_str("foo ").expect_err("shouldn't be OK");
+        AnyId::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn normalized_ids_match_default() {
+        for s in [
+            "foo",
+            "Foo",
+            "_foo",
+            "foo1",
+            "__cedar",
+            "___cedar",
+            "if",
+            "then",
+            "true",
+            "permit",
+            "foo::bar",
+            r#"foo::"bar""#,
+            " foo",
+            "foo ",
+            "foo\n",
+            "foo//comment",
+            "1foo",
+            "fo o",
+            "",
+        ] {
+            assert_eq!(
+                Id::from_normalized_str(s).ok(),
+                default_from_normalized_str::<Id>(s, Id::describe_self).ok(),
+                "specialized and default `from_normalized_str()` disagree on Id {s:?}"
+            );
+            assert_eq!(
+                UnreservedId::from_normalized_str(s).ok(),
+                default_from_normalized_str::<UnreservedId>(s, UnreservedId::describe_self).ok(),
+                "specialized and default `from_normalized_str()` disagree on UnreservedId {s:?}"
+            );
+            assert_eq!(
+                AnyId::from_normalized_str(s).ok(),
+                default_from_normalized_str::<AnyId>(s, AnyId::describe_self).ok(),
+                "specialized and default `from_normalized_str()` disagree on AnyId {s:?}"
+            );
+        }
     }
 }

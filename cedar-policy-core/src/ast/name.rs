@@ -30,7 +30,7 @@ use thiserror::Error;
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::Loc;
-use crate::FromNormalizedStr;
+use crate::{default_from_normalized_str, FromNormalizedStr};
 
 /// Represents the name of an entity type, function, etc.
 /// The name may include namespaces.
@@ -237,6 +237,27 @@ impl FromNormalizedStr for InternalName {
     fn describe_self() -> &'static str {
         "internal name"
     }
+
+    // Specialized implementation of `from_normalized_str()` that scans `s`
+    // instead of parsing it and rendering the result back out
+    fn from_normalized_str(s: &str) -> Result<Self, ParseErrors> {
+        if VALID_NAME_REGEX.is_match(s) {
+            let path_parts: Vec<&str> = s.split("::").collect();
+            // unlike a `Name`, an `InternalName` may contain `__cedar`
+            if !path_parts.iter().any(|s| RESERVED_KEYWORDS.contains(s)) {
+                if let Some((last, prefix)) = path_parts.split_last() {
+                    return Ok(InternalName::new(
+                        Id::new_unchecked(*last),
+                        prefix.iter().map(|part| Id::new_unchecked(*part)),
+                        Some(Loc::new(0..(s.len()), s.into())),
+                    ));
+                }
+            }
+        }
+        // Fall back on the default (unoptimized) implementation
+        // to get a nice error message
+        default_from_normalized_str(s, Self::describe_self)
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -428,14 +449,23 @@ static VALID_NAME_REGEX: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|
 
 // All of Cedar's reserved keywords for identifiers.
 // Notice this is only a subset of all reserved keywords.
+static RESERVED_KEYWORDS: std::sync::LazyLock<HashSet<&'static str>> =
+    std::sync::LazyLock::new(|| {
+        vec![
+            "true", "false", "if", "then", "else", "in", "is", "like", "has",
+        ]
+        .into_iter()
+        .collect()
+    });
+
+// The reserved keywords, plus `__cedar`, which can only be used in an
+// [`InternalName`].
 static RESERVED_IDS: std::sync::LazyLock<HashSet<&'static str>> = std::sync::LazyLock::new(|| {
-    vec![
-        "true", "false", "if", "then", "else", "in", "is", "like", "has",
-        // Can only be used in [`InternalName`]
-        "__cedar",
-    ]
-    .into_iter()
-    .collect()
+    RESERVED_KEYWORDS
+        .iter()
+        .copied()
+        .chain(std::iter::once("__cedar"))
+        .collect()
 });
 
 /**
@@ -444,7 +474,13 @@ static RESERVED_IDS: std::sync::LazyLock<HashSet<&'static str>> = std::sync::Laz
  * whitespace) that does not require quoting when used as an attribute.
  */
 pub fn is_normalized_ident(s: &str) -> bool {
-    VALID_ANY_IDENT_REGEX.is_match(s) && !RESERVED_IDS.contains(s)
+    is_normalized_any_ident(s) && !RESERVED_IDS.contains(s)
+}
+
+/// Like [`is_normalized_ident()`], but also accepts Cedar's reserved keywords,
+/// as an [`AnyId`](super::AnyId) may be one of them.
+pub(crate) fn is_normalized_any_ident(s: &str) -> bool {
+    VALID_ANY_IDENT_REGEX.is_match(s)
 }
 
 impl FromNormalizedStr for Name {
@@ -665,6 +701,44 @@ mod test {
         InternalName::from_normalized_str("foo ").expect_err("shouldn't be OK");
         InternalName::from_normalized_str("foo\n").expect_err("shouldn't be OK");
         InternalName::from_normalized_str("foo//comment").expect_err("shouldn't be OK");
+        InternalName::from_normalized_str("if").expect_err("shouldn't be OK");
+        InternalName::from_normalized_str("foo::if").expect_err("shouldn't be OK");
+    }
+
+    #[test]
+    fn normalized_names_match_default() {
+        for s in [
+            "foo",
+            "foo::bar::baz",
+            "__cedar",
+            "__cedar::foo",
+            "foo::__cedar",
+            "___cedar::foo",
+            "if",
+            "foo::if",
+            "permit::foo",
+            r#"foo::"bar""#,
+            " foo",
+            "foo ",
+            "foo\n",
+            "foo//comment",
+            "foo :: bar",
+            "foo::",
+            "::foo",
+            "foo:bar",
+            "",
+        ] {
+            assert_eq!(
+                InternalName::from_normalized_str(s).ok(),
+                default_from_normalized_str::<InternalName>(s, InternalName::describe_self).ok(),
+                "specialized and default `from_normalized_str()` disagree on {s:?}"
+            );
+            assert_eq!(
+                Name::from_normalized_str(s).ok(),
+                default_from_normalized_str::<Name>(s, Name::describe_self).ok(),
+                "specialized and default `from_normalized_str()` disagree on {s:?}"
+            );
+        }
     }
 
     #[test]
