@@ -17,7 +17,7 @@
 use crate::ast::*;
 use crate::entities::{
     err::{EntitiesError, InvalidEntityStructureError},
-    json::err::JsonSerializationError,
+    json::{err::JsonSerializationError, is_reserved_key},
     EntityJson,
 };
 use crate::evaluator::{EvaluationError, RestrictedEvaluator};
@@ -762,9 +762,7 @@ impl Entity {
     /// - entity should not be its own ancestor
     /// - parents and indirect_ancestors should be disjoint
     /// - action entities must only have action parents
-    ///
-    /// The [`uid`], [`attrs`] and [`tags`] are correct by construction (valid names where
-    /// applicable).
+    /// - no attribute or tag value contains a record with a reserved key
     pub fn try_validate(self) -> Result<Self, EntitiesError> {
         self.validate()?;
         Ok(self)
@@ -802,7 +800,34 @@ impl Entity {
                 .into());
             }
         }
+        // Invariant: no attribute or tag value uses a reserved JSON key, which
+        // would not round-trip through the JSON format
+        if let Some(key) = self
+            .attrs
+            .values()
+            .chain(self.tags.values())
+            .find_map(|pv| match pv {
+                PartialValue::Value(v) => value_reserved_key(v),
+                PartialValue::Residual(_) => None,
+            })
+        {
+            return Err(JsonSerializationError::reserved_key(key.clone()).into());
+        }
         Ok(())
+    }
+}
+
+/// Return the first reserved key found in a record anywhere within `v`, if any.
+/// Read-only and allocation-free; returns early on the first hit.
+fn value_reserved_key(v: &Value) -> Option<&SmolStr> {
+    match &v.value {
+        ValueKind::Record(fields) => fields.iter().find_map(|(k, v)| {
+            is_reserved_key(k)
+                .then_some(k)
+                .or_else(|| value_reserved_key(v))
+        }),
+        ValueKind::Set(s) => s.authoritative.iter().find_map(value_reserved_key),
+        ValueKind::Lit(_) | ValueKind::ExtensionValue(_) => None,
     }
 }
 
@@ -965,6 +990,33 @@ mod test {
     #[test]
     fn action_type_is_valid_id() {
         Id::from_normalized_str(ACTION_ENTITY_TYPE).unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_reserved_key_in_value() {
+        let tag = |v: Value| {
+            Entity::new_with_attr_partial_value(
+                EntityUID::with_eid("a"),
+                [],
+                HashSet::new(),
+                HashSet::new(),
+                [("t".into(), v.into())],
+            )
+            .validate()
+        };
+        let reserveds = [
+            Value::record([("__extn", Value::from(true))], None),
+            Value::record([("__expr", Value::from(true))], None),
+            Value::record([("__entity", Value::from(true))], None),
+        ];
+
+        // reserved keys directly in a value, and nested inside a set
+        for reserved in reserveds {
+            assert!(tag(reserved.clone()).is_err());
+            assert!(tag(Value::set([Value::set([reserved], None)], None)).is_err());
+        }
+        // ordinary keys are fine
+        assert!(tag(Value::record([("ordinary", Value::from(1))], None)).is_ok());
     }
 
     #[cfg(feature = "tolerant-ast")]
