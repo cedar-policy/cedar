@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use serde_with::{DeserializeAs, SerializeAs};
 use smol_str::{SmolStr, ToSmolStr};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[cfg(feature = "wasm")]
@@ -654,6 +654,15 @@ impl CedarValueJson {
     }
 }
 
+/// The JSON escapes reserved as record keys.
+/// A record using any of these as a key has an ambiguous JSON representation.
+pub(crate) const RESERVED_KEYS: [&str; 3] = ["__entity", "__extn", "__expr"];
+
+/// Whether `key` is one of the reserved JSON escape keys.
+pub(crate) fn is_reserved_key(key: &str) -> bool {
+    RESERVED_KEYS.contains(&key)
+}
+
 /// helper function to check if the given keys contain any reserved keys,
 /// throwing an appropriate `JsonSerializationError` if so
 fn check_for_reserved_keys<'a>(
@@ -663,8 +672,7 @@ fn check_for_reserved_keys<'a>(
     // conservative, we throw an error for any record that contains
     // any key with a reserved name, not just single-key records
     // with the reserved names.
-    let reserved_keys: HashSet<&str> = HashSet::from_iter(["__entity", "__extn", "__expr"]);
-    let collision = keys.find(|k| reserved_keys.contains(k.as_str()));
+    let collision = keys.find(|k| is_reserved_key(k.as_str()));
     match collision {
         Some(collision) => Err(JsonSerializationError::reserved_key(collision.clone())),
         None => Ok(()),
