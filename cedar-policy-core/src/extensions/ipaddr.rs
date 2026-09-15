@@ -249,11 +249,11 @@ impl ExtensionValue for IPAddr {
 
     /// The canonical representation of an IP Address formats the IP address string
     /// argument of the `ip` extension.
-    fn canonical_repr(&self) -> Option<(Name, Vec<crate::ast::RestrictedExpr>)> {
-        Some((
+    fn canonical_repr(&self) -> (Name, Vec<crate::ast::RestrictedExpr>) {
+        (
             names::IP_FROM_STR_NAME.clone(),
             vec![crate::ast::RestrictedExpr::val(self.to_string())],
-        ))
+        )
     }
 }
 
@@ -320,7 +320,7 @@ mod proof {
 fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
     if contains_at_least_two(s, ':') && contains_at_least_two(s, '.') {
         return Err(format!(
-            "error parsing IP address from string: We do not accept IPv4 embedded in IPv6 (e.g., ::ffff:127.0.0.1). Found: `{}`", &s.to_string()));
+            "error parsing IP address from string: We do not accept IPv4 embedded in IPv6 (e.g., ::ffff:127.0.0.1). Found: `{}`", s));
     }
     Ok(())
 }
@@ -1187,11 +1187,31 @@ mod tests {
             ],
         )));
 
-        // Requires at least one argument.
+        // Requires at least two arguments: the target plus at least one range.
         assert_ipaddr_wrong_num_args_err(
             eval.interpret_inline_policy(&Expr::call_extension_fn(
                 Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
                 vec![],
+            )),
+            "isInRange",
+        );
+
+        // A target with no ranges is an arity error, not `false`. `x.isInRange()` parses,
+        // so this is reachable when evaluating a policy that has not been validated.
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![ip("192.168.0.1")],
+            )),
+            "isInRange",
+        );
+
+        // The arity check happens before the arguments are converted, so a single
+        // non-ipaddr argument is still an arity error rather than a type error.
+        assert_ipaddr_wrong_num_args_err(
+            eval.interpret_inline_policy(&Expr::call_extension_fn(
+                Name::parse_unqualified_name("isInRange").expect("should be a valid identifier"),
+                vec![Expr::val("192.168.0.1")],
             )),
             "isInRange",
         );

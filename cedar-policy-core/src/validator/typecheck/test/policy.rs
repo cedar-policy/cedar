@@ -1147,6 +1147,268 @@ fn extended_has() {
     );
 }
 
+#[test]
+fn extended_has_nested_typechecks() {
+    let schema_src = r#"
+        entity Resource {
+          owner?: {
+            ipinfo?: {
+              additionalData?: {
+                previouslyKnownIp?: String,
+              }
+            }
+          }
+        };
+
+        type namePrefix = {
+            content: String,
+        };
+
+        entity Name {
+            first: String,
+            last: String,
+            prefix?: namePrefix,
+        };
+
+        entity User {
+            identity: {
+                name: Name,
+                confirmed: Bool,
+            }
+        };
+
+        action "access" appliesTo {
+          principal: User,
+          resource: Resource,
+          context: {
+            session: {
+                role?: User,
+                expired: Bool,
+            },
+            ipinfo?: {
+              additionalData?: {
+                previouslyKnownIp?: String,
+              }
+            }
+          }
+        };
+    "#;
+    let (schema, _) =
+        ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
+
+    // Deep extended has on principal, record and identity
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        principal has identity.name.first &&
+        principal has identity.name.last &&
+        principal.identity.name.first == "X"
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Deep extended has on resource, records only
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        resource has owner.ipinfo.additionalData.previouslyKnownIp
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Extended has guarding a deep access
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        resource has owner.ipinfo.additionalData.previouslyKnownIp &&
+        resource.owner.ipinfo.additionalData.previouslyKnownIp == "1.2.3.4"
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // resource has deep path, use it, else use context
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        context has ipinfo.additionalData.previouslyKnownIp
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // complex nesting of if extended has
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"access", resource) when {
+        (if
+            (if (context has session.role.identity.name) then context.session.role else User::"default")
+            has identity.name.prefix
+        then
+            (if (context has session.role.identity.name) then context.session.role else User::"default")
+            .identity.name.prefix.content
+        else
+            "default")
+            == "prefix"
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Extended has with only some attrs present should fail appropriately
+    let src = r#"
+    permit(principal, action == Action::"access", resource) when {
+        resource has owner.ipinfo &&
+        resource.owner.ipinfo.additionalData.previouslyKnownIp == "x"
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    let errors = assert_policy_typecheck_fails(schema, policy);
+    // Should get an error for accessing additionalData without guarding it
+    assert!(!errors.is_empty());
+}
+
+#[test]
+fn extended_has_all_required_record() {
+    let schema_src = r#"
+        entity Resource {
+          info: {
+            nested: {
+              value: Long,
+            }
+          }
+        };
+        entity User {};
+        action "read" appliesTo {
+          principal: User,
+          resource: Resource,
+          context: {
+            data: {
+              nested: {
+                flag: Bool,
+              }
+            }
+          }
+        };
+    "#;
+    let (schema, _) =
+        ValidatorSchema::from_cedarschema_str(schema_src, Extensions::none()).unwrap();
+
+    // Extended has on a record with all required attrs should typecheck.
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        context has data.nested.flag
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Extended has on entity with required attrs
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has info.nested.value &&
+        resource.info.nested.value > 0
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Attribute not in schema on closed type
+    let src = r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has info.nested.nonexistent &&
+        resource.info.nested.nonexistent > 0
+    };
+    "#;
+    let policy = parse_policy(None, src).unwrap();
+    assert_policy_typechecks(schema, policy);
+}
+
+#[test]
+fn extended_has_unknown_intermediate_attr() {
+    use crate::validator::json_schema;
+    let schema: ValidatorSchema = json_schema::Fragment::from_json_value(serde_json::json!(
+        {
+            "": {
+                "entityTypes": {
+                    "Resource": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "owner": { "type": "Entity", "name": "User" }
+                            },
+                            "additionalAttributes": false
+                        }
+                    },
+                    "User": {
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {
+                                "name": { "type": "String" }
+                            },
+                            "additionalAttributes": false
+                        }
+                    }
+                },
+                "actions": {
+                    "read": {
+                        "appliesTo": {
+                            "principalTypes": ["User"],
+                            "resourceTypes": ["Resource"]
+                        }
+                    }
+                }
+            }
+        }
+    ))
+    .unwrap()
+    .try_into()
+    .unwrap();
+
+    // Non-last attr `bogus` does not exist on closed entity User —
+    // the `has` chain short-circuits to `false`
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has owner.bogus.name
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema.clone(), policy);
+
+    // Last attr unknown on a closed type is fine (just returns Bool = false)
+    let policy = parse_policy(
+        None,
+        r#"
+    permit(principal, action == Action::"read", resource) when {
+        resource has owner.unknown
+    };
+    "#,
+    )
+    .unwrap();
+    assert_policy_typechecks(schema, policy);
+}
+
 mod templates {
     use super::*;
 

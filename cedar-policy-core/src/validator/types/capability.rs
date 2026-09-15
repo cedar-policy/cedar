@@ -87,6 +87,16 @@ impl<'a> Capability<'a> {
         }
     }
 
+    /// Construct a new [`Capability`] stating that the attribute `attribute` is
+    /// known to exist for the owned expression `on_expr`
+    pub fn new_attribute_owned(on_expr: Expr<()>, attribute: SmolStr) -> Self {
+        Self {
+            on_expr: ExprShapeOnly::new_from_owned(on_expr),
+            attribute_or_tag: ExprShapeOnly::new_from_owned(Expr::val(attribute)),
+            kind: CapabilityKind::Attribute,
+        }
+    }
+
     /// Construct a new [`Capability`] stating that the tag `tag` is
     /// known to exist for the expression `on_expr`
     pub fn new_borrowed_tag(on_expr: &'a Expr<()>, tag: &'a Expr<()>) -> Self {

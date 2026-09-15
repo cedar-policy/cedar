@@ -26,9 +26,8 @@ pub mod response;
 #[cfg(test)]
 pub(crate) mod test_utils;
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
-use crate::ast::PolicyID;
 use crate::tpe::err::{PolicyValidationError, TpeError};
 use crate::tpe::residual::Residual;
 use crate::tpe::response::{ResidualPolicy, Response};
@@ -38,12 +37,14 @@ use crate::{ast::PolicySet, extensions::Extensions};
 
 use crate::tpe::{entities::PartialEntities, evaluator::Evaluator, request::PartialRequest};
 
-pub(crate) fn policy_residual_map<'a>(
-    request: &'a PartialRequest,
-    ps: &'a PolicySet,
+/// Typecheck each policy in `ps` and partially evaluate it against `request`
+pub(crate) fn residual_policies(
+    request: &PartialRequest,
+    ps: &PolicySet,
     schema: &ValidatorSchema,
-) -> std::result::Result<HashMap<&'a PolicyID, Residual>, TpeError> {
-    let mut residuals = HashMap::new();
+    evaluator: &Evaluator<'_>,
+) -> std::result::Result<Vec<ResidualPolicy>, TpeError> {
+    let mut residuals = Vec::new();
     let tc = Typechecker::new(schema, crate::validator::ValidationMode::Strict);
     let env = request.find_request_env(schema)?;
     for p in ps.policies() {
@@ -57,21 +58,15 @@ pub(crate) fn policy_residual_map<'a>(
         // Get an environment using the actual types of the entities linked with
         // this template. If static, the slot env is empty and this is a no-op.
         let env = env.clone().link_slot_env(p.env());
-        match tc.typecheck_by_single_request_env(t, &env) {
-            PolicyCheck::Success(expr) => {
-                residuals.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
-            }
-            PolicyCheck::Fail(errs) => {
+        let expr = match tc.typecheck_by_single_request_env(t, &env) {
+            PolicyCheck::Success(expr) => expr,
+            PolicyCheck::Irrelevant(errs, expr) if errs.is_empty() => expr,
+            PolicyCheck::Fail(errs) | PolicyCheck::Irrelevant(errs, _) => {
                 return Err(PolicyValidationError::new(errs).into());
             }
-            PolicyCheck::Irrelevant(errs, expr) => {
-                if errs.is_empty() {
-                    residuals.insert(p.id(), Residual::try_from_typed_expr(&expr, p.env())?);
-                } else {
-                    return Err(PolicyValidationError::new(errs).into());
-                }
-            }
-        }
+        };
+        let residual = evaluator.interpret(&Residual::try_from_typed_expr(&expr, p.env())?);
+        residuals.push(ResidualPolicy::new(Arc::new(residual), Arc::new(p.clone())));
     }
     Ok(residuals)
 }
@@ -91,18 +86,14 @@ pub fn is_authorized<'a>(
         entities,
         extensions: Extensions::all_available(),
     };
-    let residuals = policy_residual_map(request, ps, schema)?
-        .into_iter()
-        .map(|(id, residual)| {
-            let residual = evaluator.interpret(&residual);
-            #[expect(
-                clippy::unwrap_used,
-                reason = "exprs and policy set contain the same policy ids"
-            )]
-            ResidualPolicy::new(Arc::new(residual), Arc::new(ps.get(id).unwrap().clone()))
-        });
+    let residuals = residual_policies(request, ps, schema, &evaluator)?;
 
-    Ok(Response::new(residuals, request, entities, schema))
+    Ok(Response::new(
+        residuals.into_iter(),
+        request,
+        entities,
+        schema,
+    ))
 }
 
 #[cfg(test)]

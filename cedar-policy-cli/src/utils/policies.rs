@@ -156,7 +156,7 @@ pub(crate) fn read_json_policy_set(
             Err(_) => {
                 let template = Template::from_json(None, json)
                     .wrap_err_with(|| format!("failed to parse {context}"))
-                    .map_err(|err| add_json_source(err))?;
+                    .map_err(add_json_source)?;
                 let mut ps = PolicySet::new();
                 ps.add_template(template)?;
                 Ok(ps)
@@ -164,7 +164,7 @@ pub(crate) fn read_json_policy_set(
         },
         JsonPolicyType::PolicySet => PolicySet::from_json_value(json)
             .wrap_err_with(|| format!("failed to create policy set from {context}"))
-            .map_err(|err| add_json_source(err)),
+            .map_err(add_json_source),
     }
 }
 

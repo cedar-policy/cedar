@@ -129,6 +129,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
         ),
         ExprKind::GetAttr { expr, .. } => Box::new(of_entity(x).chain(footprint(expr, env))),
         ExprKind::HasAttr { expr, .. }
+        | ExprKind::ExtHasAttr { expr, .. }
         | ExprKind::UnaryApp { arg: expr, .. }
         | ExprKind::Like { expr, .. }
         | ExprKind::Is { expr, .. } => footprint(expr, env),

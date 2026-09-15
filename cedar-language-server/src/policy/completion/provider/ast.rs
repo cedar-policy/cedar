@@ -19,6 +19,7 @@ use std::sync::Arc;
 use cedar_policy_core::{
     ast::{BinaryOp, EntityType, Expr, ExprVisitor, Literal, Pattern},
     parser::Loc,
+    pst::NonEmpty,
 };
 use smol_str::SmolStr;
 
@@ -231,6 +232,35 @@ impl ExprVisitor for ConditionCompletionVisitor<'_> {
         loc: Option<&Loc>,
     ) -> Option<Self::Output> {
         self.visit_attr(expr, attr, loc, AttrContextKind::Has)
+    }
+
+    fn visit_extended_has_attr(
+        &mut self,
+        expr: &Arc<Expr>,
+        attrs: &NonEmpty<SmolStr>,
+        loc: Option<&Loc>,
+    ) -> Option<Self::Output> {
+        // For extended has, treat the last attribute as the one being completed
+        // with the receiver being the chain of get_attrs up to the second-to-last
+        self.visit_expr(expr).or_else(|| {
+            let word = self.cx.get_word_under_cursor();
+            let last_attr = attrs.last();
+            if self.cx.is_cursor_over_loc(loc) && (last_attr.is_empty() || word == Some(last_attr))
+            {
+                // Build the receiver expression: expr.attr1.attr2...attr(n-1)
+                let mut receiver: Arc<Expr> = expr.clone();
+                for attr in attrs.iter().take(attrs.len().saturating_sub(1)) {
+                    receiver =
+                        Arc::new(Expr::get_attr(Arc::unwrap_or_clone(receiver), attr.clone()));
+                }
+                return CompletionContextKind::Attr(AttrContext::new(
+                    ReceiverContext::new(receiver),
+                    AttrContextKind::Has,
+                ))
+                .into();
+            }
+            None
+        })
     }
 
     fn visit_get_attr(

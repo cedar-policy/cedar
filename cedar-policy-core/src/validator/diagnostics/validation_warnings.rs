@@ -135,3 +135,38 @@ impl Diagnostic for ImpossiblePolicy {
     impl_diagnostic_from_source_loc_opt_field!(source_loc);
     impl_diagnostic_warning!();
 }
+
+/// Warning for policies where no action in the schema can be applied to a
+/// principal and resource that both satisfy the policy scope
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("for policy `{policy_id}`, unable to find an applicable action given the policy scope constraints")]
+pub struct InvalidActionApplication {
+    /// Source location
+    pub source_loc: Option<Loc>,
+    /// Policy ID where the warning occurred
+    pub policy_id: PolicyID,
+    /// `true` if changing `==` to `in` would fix the principal clause
+    pub would_in_fix_principal: bool,
+    /// `true` if changing `==` to `in` would fix the resource clause
+    pub would_in_fix_resource: bool,
+}
+
+impl Diagnostic for InvalidActionApplication {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        match (self.would_in_fix_principal, self.would_in_fix_resource) {
+            (true, false) => Some(Box::new(
+                "try replacing `==` with `in` in the principal clause",
+            )),
+            (false, true) => Some(Box::new(
+                "try replacing `==` with `in` in the resource clause",
+            )),
+            (true, true) => Some(Box::new(
+                "try replacing `==` with `in` in the principal clause and the resource clause",
+            )),
+            (false, false) => None,
+        }
+    }
+}

@@ -1002,6 +1002,66 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res = compile_has_attr(res1.map_term(option_get), attr, &env.entities)?;
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
+        ExprKind::ExtHasAttr { expr, attrs } => {
+            // Same term as unoptimized compiler. Footprint only from the base expression;
+            // intermediate get_attr calls don't contribute entity-typed sub-expressions.
+            let res1 = compile(expr, env)?;
+            let res1_term = res1.term.clone();
+            let res1_footprint = res1.footprint;
+            let mut current = res1_term;
+            let mut results = Vec::new();
+            let mut attrs_iter = std::iter::once(&attrs.head)
+                .chain(attrs.tail.iter())
+                .peekable();
+
+            while let Some(attr) = attrs_iter.next() {
+                let has_res = compile_has_attr(
+                    CompileResult {
+                        term: option_get(current.clone()),
+                        footprint: Footprint::empty(),
+                    },
+                    attr,
+                    &env.entities,
+                )?;
+                let has_result = has_res.map_term(|term| if_some(current.clone(), term));
+                let statically_false = matches!(
+                    &has_result.term,
+                    Term::Some(inner) if matches!(&**inner, Term::Prim(TermPrim::Bool(false)))
+                );
+                results.push(has_result);
+
+                if statically_false || attrs_iter.peek().is_none() {
+                    break;
+                }
+
+                match compile_get_attr(
+                    CompileResult {
+                        term: option_get(current.clone()),
+                        footprint: Footprint::empty(),
+                    },
+                    attr,
+                    &env.entities,
+                ) {
+                    Ok(get_res) => current = if_some(current, get_res.term),
+                    Err(CompileError::NoSuchAttribute(_)) => break,
+                    Err(e) => return Err(e),
+                }
+            }
+
+            // Iterative implementation needs to construct conjunct in reverse to match recursive Lean
+            let mut results = results.into_iter().rev();
+            let Some(mut result) = results.next() else {
+                return Ok(CompileResult {
+                    term: some_of(true.into()),
+                    footprint: res1_footprint,
+                });
+            };
+            for has in results {
+                result = compile_and(has, Ok(result))?;
+            }
+            result.footprint = res1_footprint;
+            Ok(result)
+        }
         ExprKind::GetAttr { expr, attr } => {
             // subtlety:
             // similar to the comment above in the `BinaryApp` case
@@ -1056,5 +1116,40 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             "symbolic compilation of `{}` is not supported",
             x
         ))),
+    }
+}
+
+#[cfg(test)]
+mod ext_has_attr_tests {
+    use super::*;
+    use crate::symcc::compiler::{
+        compile as compile_unoptimized,
+        ext_has_attr_tests::{parse_expr, sym_env},
+    };
+
+    #[test]
+    fn test_ext_has_attr_right_associated() {
+        let env = sym_env();
+        let expr = parse_expr("principal has xopt.thing2bis.opt");
+        let optimized = compile(&expr, &env).unwrap().term;
+        let explicitly_right_associated = compile_unoptimized(
+            &parse_expr(
+                "principal has xopt && \
+                 (principal.xopt has thing2bis && principal.xopt.thing2bis has opt)",
+            ),
+            &env,
+        )
+        .unwrap();
+        let explicitly_left_associated = compile_unoptimized(
+            &parse_expr(
+                "(principal has xopt && principal.xopt has thing2bis) && \
+                 principal.xopt.thing2bis has opt",
+            ),
+            &env,
+        )
+        .unwrap();
+
+        assert_eq!(optimized, explicitly_right_associated);
+        assert_ne!(optimized, explicitly_left_associated);
     }
 }

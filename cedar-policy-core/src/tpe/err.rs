@@ -61,21 +61,10 @@ pub enum EntityValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Concrete(#[from] EntitySchemaConformanceError),
-    /// Error thrown when an action component is unknown
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnknownActionComponent(#[from] UnknownActionComponentError),
     /// Error thrown when an action's ancestors do not match the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
     MismatchedActionAncestors(#[from] MismatchedActionAncestorsError),
-}
-
-/// Error thrown when an action has unknown ancestors/attrs/tags
-#[derive(Debug, Error, Diagnostic)]
-#[error("action `{}` has unknown ancestors/attrs/tags", .action)]
-pub struct UnknownActionComponentError {
-    pub(super) action: EntityUID,
 }
 
 /// Error thrown when an action's ancestors do not match the schema
@@ -185,71 +174,6 @@ pub struct PartialRequestError {}
 #[derive(Debug, Error, Diagnostic)]
 #[error("no request environment in the schema matches the given request")]
 pub struct NoMatchingReqEnvError;
-
-/// Error thrown when using a [`crate::tpe::request::RequestBuilder`]
-#[derive(Debug, Error, Diagnostic)]
-pub enum RequestBuilderError {
-    /// Error thrown when the request cannot be validated
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    Validation(#[from] RequestValidationError),
-    /// Error thrown when attempting to add a principal when one exists
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExistingPrincipal(#[from] ExistingPrincipalError),
-    /// Error thrown when attempting to add a resource when one exists
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ExistingResource(#[from] ExistingResourceError),
-    /// Error thrown when attempting to add a context when one exists
-    #[error("a context has already been set on this request")]
-    ExistingContext,
-    /// Error thrown when attempting to add a principal with an incorrect
-    /// entity type
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    IncorrectPrincipalEntityType(#[from] IncorrectPrincipalEntityTypeError),
-    /// Error thrown when attempting to add a resource with an incorrect
-    /// entity type
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    IncorrectResourceEntityType(#[from] IncorrectResourceEntityTypeError),
-    /// Error thrown when the context candidate contains unknowns
-    #[error("context candidate contains unknowns")]
-    UnknownContextCandidate,
-}
-
-/// Error thrown when attempting to add a principal when one already exists
-#[derive(Debug, Error, Diagnostic)]
-#[error("a principal (`{principal}`) has already been set on this request")]
-pub struct ExistingPrincipalError {
-    pub(super) principal: EntityUID,
-}
-
-/// Error thrown when attempting to add a resource when one already exists
-#[derive(Debug, Error, Diagnostic)]
-#[error("a resource (`{resource}`) has already been set on this request")]
-pub struct ExistingResourceError {
-    pub(super) resource: EntityUID,
-}
-
-/// Error thrown when attempting to add a principal with an incorrect
-/// entity type
-#[derive(Debug, Error, Diagnostic)]
-#[error("principal type `{ty}` does not match the partial request's principal type `{expected}`")]
-pub struct IncorrectPrincipalEntityTypeError {
-    pub(super) ty: EntityType,
-    pub(super) expected: EntityType,
-}
-
-/// Error thrown when attempting to add a resource with an incorrect
-/// entity type
-#[derive(Debug, Error, Diagnostic)]
-#[error("resource type `{ty}` does not match the partial request's resource type `{expected}`")]
-pub struct IncorrectResourceEntityTypeError {
-    pub(super) ty: EntityType,
-    pub(super) expected: EntityType,
-}
 
 /// Error thrown when constructing [`crate::tpe::entities::PartialEntities`]
 #[derive(Debug, Error, Diagnostic)]
@@ -375,20 +299,6 @@ pub struct MissingEntityError {
 #[error("concrete entities contain unknown entity `{uid}`")]
 pub struct UnknownEntityError {
     pub(super) uid: EntityUID,
-}
-
-/// Error thrown when some requested entities were not loaded
-#[derive(Debug, Error, Diagnostic)]
-#[error("failed to load entities: {}", .missing_entities.iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(", "))]
-pub struct MissingEntitiesError {
-    pub(super) missing_entities: Vec<EntityUID>,
-}
-
-impl MissingEntitiesError {
-    /// Construct a new [`MissingEntitiesError`]
-    pub fn new(missing_entities: Vec<EntityUID>) -> Self {
-        Self { missing_entities }
-    }
 }
 
 /// Error thrown when a [`crate::tpe::request::PartialRequest`] is inconsistent with a [`crate::ast::Request`]

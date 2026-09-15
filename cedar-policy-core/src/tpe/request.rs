@@ -21,10 +21,8 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::ast::{EntityUIDEntry, RequestSchema};
 use crate::entities::conformance::err::InvalidEnumEntityError;
 use crate::tpe::err::{
-    ExistingPrincipalError, ExistingResourceError, InconsistentActionError,
-    InconsistentPrincipalEidError, InconsistentPrincipalTypeError, InconsistentResourceEidError,
-    InconsistentResourceTypeError, IncorrectPrincipalEntityTypeError,
-    IncorrectResourceEntityTypeError, NoMatchingReqEnvError, RequestBuilderError,
+    InconsistentActionError, InconsistentPrincipalEidError, InconsistentPrincipalTypeError,
+    InconsistentResourceEidError, InconsistentResourceTypeError, NoMatchingReqEnvError,
     RequestConsistencyError,
 };
 use crate::validator::request_validation_errors::{
@@ -109,39 +107,6 @@ impl PartialEUIDValidationError {
     }
 }
 
-#[derive(Debug)]
-enum PartialEUIDBuilderError {
-    Existing(EntityUID),
-    IncorrectType(EntityType, EntityType),
-    Invalid(PartialEUIDValidationError),
-}
-
-impl PartialEUIDBuilderError {
-    pub fn into_resource_error(self) -> RequestBuilderError {
-        match self {
-            PartialEUIDBuilderError::Existing(resource) => {
-                ExistingResourceError { resource }.into()
-            }
-            PartialEUIDBuilderError::IncorrectType(ty, expected) => {
-                IncorrectResourceEntityTypeError { ty, expected }.into()
-            }
-            PartialEUIDBuilderError::Invalid(e) => e.into_resource_error().into(),
-        }
-    }
-
-    pub fn into_principal_error(self) -> RequestBuilderError {
-        match self {
-            PartialEUIDBuilderError::Existing(principal) => {
-                ExistingPrincipalError { principal }.into()
-            }
-            PartialEUIDBuilderError::IncorrectType(ty, expected) => {
-                IncorrectPrincipalEntityTypeError { ty, expected }.into()
-            }
-            PartialEUIDBuilderError::Invalid(e) => e.into_principal_error().into(),
-        }
-    }
-}
-
 impl PartialEntityUID {
     fn check_type(
         &self,
@@ -183,31 +148,6 @@ impl PartialEntityUID {
                 ));
             }
         }
-        Ok(())
-    }
-
-    /// Attempt to fill an unknown euid in a request with a concrete candidate.
-    ///
-    /// Errors without changing `self` if the candidate is in incompatible
-    fn set_candidate(
-        &mut self,
-        candidate: EntityUID,
-        schema: &ValidatorSchema,
-    ) -> Result<(), PartialEUIDBuilderError> {
-        if let Some(eid) = &self.eid {
-            return Err(PartialEUIDBuilderError::Existing(
-                EntityUID::from_components(self.ty.clone(), eid.clone(), None),
-            ));
-        }
-        if candidate.entity_type() != &self.ty {
-            return Err(PartialEUIDBuilderError::IncorrectType(
-                candidate.entity_type().clone(),
-                self.ty.clone(),
-            ));
-        }
-        self.check_type(schema, Some(&candidate))
-            .map_err(PartialEUIDBuilderError::Invalid)?;
-        *self = PartialEntityUID::from(candidate);
         Ok(())
     }
 }
@@ -382,93 +322,6 @@ impl PartialRequest {
     /// Get the `context` attributes
     pub fn context_attrs(&self) -> Option<&Arc<BTreeMap<SmolStr, Value>>> {
         self.context.as_ref()
-    }
-}
-
-/// A request builder based on a [`PartialRequest`]
-/// Users should use it to iteratively construct a [`Request`] using methods
-/// `add_*`
-#[derive(Debug, Clone)]
-pub struct RequestBuilder<'s> {
-    /// The `PartialRequest`
-    partial_request: PartialRequest,
-    /// Env used for validation
-    schema: &'s ValidatorSchema,
-}
-
-impl<'s> RequestBuilder<'s> {
-    /// Attempt to construct a [`RequestBuilder`] from a [`PartialRequest`] and
-    /// a [`ValidatorSchema`]
-    pub fn new(
-        partial_request: PartialRequest,
-        schema: &'s ValidatorSchema,
-    ) -> Result<Self, RequestBuilderError> {
-        partial_request.validate(schema)?;
-        Ok(Self {
-            partial_request,
-            schema,
-        })
-    }
-
-    /// Attempt to get a concrete [`Request`]
-    /// Return `None` if there are still missing components
-    pub fn get_request(&self) -> Option<Request> {
-        let PartialRequest {
-            principal,
-            action,
-            resource,
-            context,
-        } = &self.partial_request;
-        match (
-            EntityUID::try_from(principal.clone()),
-            EntityUID::try_from(resource.clone()),
-            context,
-        ) {
-            (Ok(principal), Ok(resource), Some(context)) => Some(Request::new_unchecked(
-                principal.into(),
-                action.clone().into(),
-                resource.into(),
-                Some(Context::Value(context.clone())),
-            )),
-            _ => None,
-        }
-    }
-
-    /// Attempt to add `principal`
-    pub fn add_principal(&mut self, candidate: EntityUID) -> Result<(), RequestBuilderError> {
-        self.partial_request
-            .principal
-            .set_candidate(candidate, self.schema)
-            .map_err(|e| e.into_principal_error())
-    }
-
-    /// Attempt to add `resource`
-    pub fn add_resource(&mut self, candidate: EntityUID) -> Result<(), RequestBuilderError> {
-        self.partial_request
-            .resource
-            .set_candidate(candidate, self.schema)
-            .map_err(|e| e.into_resource_error())
-    }
-
-    /// Attempt to add `context`
-    pub fn add_context(&mut self, candidate: &Context) -> Result<(), RequestBuilderError> {
-        if let Context::Value(v) = candidate {
-            if self.partial_request.context.is_some() {
-                Err(RequestBuilderError::ExistingContext)
-            } else {
-                self.schema
-                    .validate_context(
-                        candidate,
-                        &self.partial_request.action,
-                        Extensions::all_available(),
-                    )
-                    .map_err(RequestBuilderError::Validation)?;
-                self.partial_request.context = Some(v.clone());
-                Ok(())
-            }
-        } else {
-            Err(RequestBuilderError::UnknownContextCandidate)
-        }
     }
 }
 
@@ -867,120 +720,5 @@ mod inconsistent_requests {
             &concrete,
             "the concrete request's context contains unknowns",
         );
-    }
-}
-
-#[cfg(test)]
-mod request_builder_tests {
-    use std::{collections::BTreeMap, sync::Arc};
-
-    use cool_asserts::assert_matches;
-    use std::str::FromStr;
-
-    use crate::{
-        ast::{Context, EntityUID},
-        extensions::Extensions,
-        tpe::{
-            err::RequestBuilderError,
-            request::{PartialRequest, RequestBuilder},
-            test_utils::parse_partial_euid,
-        },
-        validator::{RequestValidationError, ValidatorSchema},
-    };
-
-    #[track_caller]
-    fn schema() -> ValidatorSchema {
-        ValidatorSchema::from_cedarschema_str(
-            r#"
-        entity A enum ["foo"];
-        entity B;
-        action a appliesTo {
-          principal: A,
-          resource: B,
-          context: {
-            "" : A,
-          }
-        };
-        "#,
-            Extensions::all_available(),
-        )
-        .unwrap()
-        .0
-    }
-
-    #[track_caller]
-    fn request() -> PartialRequest {
-        PartialRequest::new(
-            parse_partial_euid("A"),
-            r#"Action::"a""#.parse().unwrap(),
-            parse_partial_euid("B"),
-            None,
-            &schema(),
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn build() {
-        let schema = schema();
-        let request = request();
-        let mut builder = RequestBuilder::new(request, &schema).expect("should succeed");
-
-        // add principal of incorrect type
-        assert_matches!(
-            builder.add_principal(r#"B::"""#.parse().unwrap()),
-            Err(RequestBuilderError::IncorrectPrincipalEntityType(_))
-        );
-        // add invalid principal
-        assert_matches!(
-            builder.add_principal(r#"A::"""#.parse().unwrap()),
-            Err(RequestBuilderError::Validation(
-                RequestValidationError::InvalidEnumEntity(_)
-            )),
-        );
-        // add a principal
-        assert_matches!(builder.add_principal(r#"A::"foo""#.parse().unwrap()), Ok(_));
-        // then we can't add it again
-        assert_matches!(
-            builder.add_principal(r#"A::"foo""#.parse().unwrap()),
-            Err(RequestBuilderError::ExistingPrincipal(_))
-        );
-        // and we're not done
-        assert_matches!(builder.get_request(), None);
-        // add resource
-        assert_matches!(builder.add_resource(r#"B::"foo""#.parse().unwrap()), Ok(_));
-        // so we can't do it again
-        assert_matches!(
-            builder.add_resource(r#"B::"foo""#.parse().unwrap()),
-            Err(RequestBuilderError::ExistingResource(_))
-        );
-        // add a context of incorrect type
-        assert_matches!(
-            builder.add_context(&Context::Value(Arc::new(BTreeMap::from_iter([(
-                "".into(),
-                1.into()
-            )])))),
-            Err(RequestBuilderError::Validation(
-                RequestValidationError::InvalidContext(_)
-            ))
-        );
-        // add a context
-        assert_matches!(
-            builder.add_context(&Context::Value(Arc::new(BTreeMap::from_iter([(
-                "".into(),
-                EntityUID::from_str(r#"A::"foo""#).unwrap().into(),
-            )])))),
-            Ok(_)
-        );
-        // can't do it again
-        assert_matches!(
-            builder.add_context(&Context::Value(Arc::new(BTreeMap::from_iter([(
-                "".into(),
-                EntityUID::from_str(r#"A::"foo""#).unwrap().into(),
-            )])))),
-            Err(RequestBuilderError::ExistingContext)
-        );
-        // and we're done
-        assert_matches!(builder.get_request(), Some(_));
     }
 }

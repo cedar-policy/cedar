@@ -31,6 +31,7 @@ use crate::{
     ast::{self, BinaryOp, EntityType, Expr, Name, Pattern, UnaryOp, Value, Var},
     expr_builder::ExprBuilder,
 };
+use nonempty::NonEmpty;
 use smol_str::SmolStr;
 
 /// The [`Name`] used to represent error nodes in the AST when converting from
@@ -148,7 +149,9 @@ impl Residual {
                 // <entityUID>.<attr> possibly errors during reauthorization if <entityUID> does not exist in the entity store
                 ResidualKind::GetAttr { .. } => true,
 
-                ResidualKind::HasAttr { expr, .. } => expr.can_error_assuming_well_formed(),
+                ResidualKind::HasAttr { expr, .. } | ResidualKind::ExtHasAttr { expr, .. } => {
+                    expr.can_error_assuming_well_formed()
+                }
 
                 ResidualKind::UnaryApp { op, arg } => match op {
                     // Integer negation can error due to integer overflow
@@ -237,6 +240,10 @@ impl Residual {
             ast::ExprKind::HasAttr { expr, attr } => ResidualKind::HasAttr {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 attr: attr.clone(),
+            },
+            ast::ExprKind::ExtHasAttr { expr, attrs } => ResidualKind::ExtHasAttr {
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
+                attrs: attrs.clone(),
             },
             ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
@@ -361,6 +368,13 @@ pub enum ResidualKind {
         /// Attribute or field to check for
         attr: SmolStr,
     },
+    /// Extended has: does the given `expr` have the given `attrs`?
+    ExtHasAttr {
+        /// Expression to test. Must evaluate to either Entity or Record type
+        expr: Arc<Residual>,
+        /// Attributes or fields to check for
+        attrs: NonEmpty<SmolStr>,
+    },
     /// Regex-like string matching similar to IAM's `StringLike` operator.
     Like {
         /// Expression to test. Must evaluate to String type
@@ -424,6 +438,7 @@ impl ResidualKind {
             }
             ResidualKind::GetAttr { expr, .. }
             | ResidualKind::HasAttr { expr, .. }
+            | ResidualKind::ExtHasAttr { expr, .. }
             | ResidualKind::Like { expr, .. }
             | ResidualKind::Is { expr, .. } => expr.all_literal_uids(),
             ResidualKind::Set(elements) => {
@@ -507,11 +522,7 @@ impl From<Residual> for Expr {
                     ResidualKind::ExtensionFunctionApp { fn_name, args } => builder
                         .call_extension_fn(
                             fn_name,
-                            args.as_ref()
-                                .clone()
-                                .into_iter()
-                                .map(|arg| arg.into())
-                                .collect::<Vec<_>>(),
+                            args.as_ref().clone().into_iter().map(|arg| arg.into()),
                         )
                         .unwrap_infallible(),
                     ResidualKind::GetAttr { expr, attr } => {
@@ -519,6 +530,9 @@ impl From<Residual> for Expr {
                     }
                     ResidualKind::HasAttr { expr, attr } => {
                         builder.has_attr(expr.as_ref().clone().into(), attr)
+                    }
+                    ResidualKind::ExtHasAttr { expr, attrs } => {
+                        builder.extended_has_attr(expr.as_ref().clone().into(), attrs)
                     }
                     ResidualKind::If {
                         test_expr,
@@ -542,13 +556,9 @@ impl From<Residual> for Expr {
                     ResidualKind::Record(map) => builder
                         .record(map.as_ref().clone().into_iter().map(|(k, v)| (k, v.into())))
                         .expect("should succeed"),
-                    ResidualKind::Set(set) => builder.set(
-                        set.as_ref()
-                            .clone()
-                            .into_iter()
-                            .map(|v| v.into())
-                            .collect::<Vec<_>>(),
-                    ),
+                    ResidualKind::Set(set) => {
+                        builder.set(set.as_ref().clone().into_iter().map(|v| v.into()))
+                    }
                     ResidualKind::UnaryApp { op, arg } => {
                         builder.unary_app(op, arg.as_ref().clone().into())
                     }

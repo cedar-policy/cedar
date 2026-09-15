@@ -91,7 +91,7 @@ impl AsRef<str> for Id {
 
 impl Display for Id {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -548,13 +548,13 @@ impl Display for BinaryOp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BinaryOp::Eq => write!(f, "{}", ast::BinaryOp::Eq),
-            BinaryOp::NotEq => write!(f, "{}", &constants::NOT_EQ_STR),
+            BinaryOp::NotEq => write!(f, "{}", constants::NOT_EQ_STR),
             BinaryOp::Less => write!(f, "{}", ast::BinaryOp::Less),
             BinaryOp::LessEq => write!(f, "{}", ast::BinaryOp::LessEq),
-            BinaryOp::Greater => write!(f, "{}", &constants::GREATER_STR),
-            BinaryOp::GreaterEq => write!(f, "{}", &constants::GREATER_EQ_STR),
-            BinaryOp::And => write!(f, "{}", &constants::AND_STR),
-            BinaryOp::Or => write!(f, "{}", &constants::OR_STR),
+            BinaryOp::Greater => write!(f, "{}", constants::GREATER_STR),
+            BinaryOp::GreaterEq => write!(f, "{}", constants::GREATER_EQ_STR),
+            BinaryOp::And => write!(f, "{}", constants::AND_STR),
+            BinaryOp::Or => write!(f, "{}", constants::OR_STR),
             BinaryOp::Add => write!(f, "{}", ast::BinaryOp::Add),
             BinaryOp::Sub => write!(f, "{}", ast::BinaryOp::Sub),
             BinaryOp::Mul => write!(f, "{}", ast::BinaryOp::Mul),

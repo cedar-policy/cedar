@@ -515,11 +515,13 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
             expr: expr.clone(),
         }
         .into()),
-        ExprKind::HasAttr { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
-            feature: "'has'".into(),
-            expr: expr.clone(),
+        ExprKind::HasAttr { .. } | ExprKind::ExtHasAttr { .. } => {
+            Err(restricted_expr_errors::InvalidRestrictedExpressionError {
+                feature: "'has'".into(),
+                expr: expr.clone(),
+            }
+            .into())
         }
-        .into()),
         ExprKind::Like { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "'like'".into(),
             expr: expr.clone(),
@@ -560,7 +562,7 @@ impl Deref for RestrictedExpr {
 
 impl std::fmt::Display for RestrictedExpr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -593,7 +595,7 @@ impl<'a> Deref for BorrowedRestrictedExpr<'a> {
 
 impl std::fmt::Display for BorrowedRestrictedExpr<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", &self.0)
+        write!(f, "{}", self.0)
     }
 }
 

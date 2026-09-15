@@ -34,11 +34,14 @@ use crate::ValidationError;
 // documentation should be written.
 macro_rules! wrap_core_error {
     ($s:ident) => {
+        wrap_core_error!($s, validation_errors);
+    };
+    ($s:ident, $m:ident) => {
         #[derive(Debug, Clone, Error, Diagnostic)]
         #[error(transparent)]
         #[diagnostic(transparent)]
         #[doc=concat!("Structure containing details about a [`ValidationError::", stringify!($s), "`].")]
-        pub struct $s(cedar_policy_core::validator::validation_errors::$s);
+        pub struct $s(cedar_policy_core::validator::$m::$s);
 
         impl $s {
             /// Access the `[PolicyId]` for the policy where this error was found.
@@ -48,8 +51,8 @@ macro_rules! wrap_core_error {
         }
 
         #[doc(hidden)]
-        impl From<cedar_policy_core::validator::validation_errors::$s> for $s {
-            fn from(e: cedar_policy_core::validator::validation_errors::$s) -> Self {
+        impl From<cedar_policy_core::validator::$m::$s> for $s {
+            fn from(e: cedar_policy_core::validator::$m::$s) -> Self {
                 Self(e)
             }
         }
@@ -58,7 +61,7 @@ macro_rules! wrap_core_error {
 
 wrap_core_error!(UnrecognizedEntityType);
 wrap_core_error!(UnrecognizedActionId);
-wrap_core_error!(InvalidActionApplication);
+wrap_core_error!(InvalidActionApplication, validation_warnings);
 wrap_core_error!(UnexpectedType);
 wrap_core_error!(IncompatibleTypes);
 wrap_core_error!(UnsafeAttributeAccess);

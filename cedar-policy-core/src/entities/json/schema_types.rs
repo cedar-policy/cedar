@@ -188,7 +188,7 @@ impl std::fmt::Display for AttributeType {
             } else {
                 "optional"
             },
-            &self.attr_type
+            self.attr_type
         )
     }
 }

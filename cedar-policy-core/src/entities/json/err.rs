@@ -247,10 +247,14 @@ impl JsonDeserializationError {
     }
 }
 
+/// General error for type mismatches
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("{ctx}, {err}")]
 #[diagnostic(forward(err))]
-/// General error for type mismatches
 pub struct TypeMismatch {
     /// Context of this error, which will be something other than `EntityAttribute`.
     /// (Type mismatches in entity attributes are reported as
@@ -260,9 +264,13 @@ pub struct TypeMismatch {
     err: TypeMismatchError,
 }
 
+/// Error type for a record missing a required attr
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("{}, expected the record to have an attribute `{}`, but it does not", .ctx, .record_attr)]
-/// Error type for a record missing a required attr
 pub struct MissingRequiredRecordAttr {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
@@ -270,9 +278,13 @@ pub struct MissingRequiredRecordAttr {
     record_attr: SmolStr,
 }
 
+/// Error type for record attributes that should not exist
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Diagnostic, Error)]
 #[error("{}, record attribute `{}` should not exist according to the schema", .ctx, .record_attr)]
-/// Error type for record attributes that should not exist
 pub struct UnexpectedRecordAttr {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
@@ -280,9 +292,13 @@ pub struct UnexpectedRecordAttr {
     record_attr: SmolStr,
 }
 
+/// Error type for records having duplicate keys
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("{}, duplicate key `{}` in record", .ctx, .key)]
-/// Error type for records having duplicate keys
 pub struct DuplicateKey {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
@@ -290,10 +306,14 @@ pub struct DuplicateKey {
     key: SmolStr,
 }
 
+/// Error type for missing extension constructors
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("{}, missing extension constructor for {}", .ctx, .return_type)]
 #[diagnostic(help("expected a value of type {} because of the schema", .return_type))]
-/// Error type for missing extension constructors
 pub struct MissingImpliedConstructor {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,
@@ -313,10 +333,14 @@ pub struct IncorrectNumOfArguments {
     func_name: SmolStr,
 }
 
+/// Error type for action  parents not having type `Action`
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("action `{}` has a non-action parent `{}`", .uid, .parent)]
 #[diagnostic(help("parents of actions need to have type `Action` themselves, perhaps namespaced"))]
-/// Error type for action  parents not having type `Action`
 pub struct ActionParentIsNotAction {
     /// Action entity that had the invalid parent
     uid: EntityUID,
@@ -324,6 +348,11 @@ pub struct ActionParentIsNotAction {
     parent: EntityUID,
 }
 
+/// Error type for incorrect escaping
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("failed to parse escape `{kind}`: {value}, errors: {errs}")]
 #[diagnostic(
@@ -333,7 +362,6 @@ pub struct ActionParentIsNotAction {
     }),
     forward(errs)
 )]
-/// Error type for incorrect escaping
 pub struct ParseEscape {
     /// Escape kind
     kind: EscapeKind,
@@ -356,10 +384,14 @@ pub struct ExpectedLiteralEntityRef {
     got: Box<Either<serde_json::Value, Expr>>,
 }
 
+/// Error type for getting any expression other than en extesion value
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
 #[derive(Debug, Error, Diagnostic)]
 #[error("{}, expected an extension value, but got `{}`", .ctx, display_json_value(.got.as_ref()))]
 #[diagnostic(help(r#"extension values can be made with `{{ "fn": "SomeFn", "id": "SomeId" }}`"#))]
-/// Error type for getting any expression other than en extesion value
 pub struct ExpectedExtnValue {
     /// Context of this error
     ctx: Box<JsonDeserializationErrorContext>,

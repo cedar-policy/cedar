@@ -348,6 +348,22 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.with_expr_kind(ExprKind::HasAttr { expr, attr })
     }
 
+    /// Create an extended has expression directly in the AST without desugaring.
+    fn extended_has_attr_arc(
+        self,
+        expr: Arc<Expr<T>>,
+        attrs: nonempty::NonEmpty<SmolStr>,
+    ) -> Expr<T> {
+        if attrs.tail.is_empty() {
+            self.with_expr_kind(ExprKind::HasAttr {
+                expr,
+                attr: attrs.head,
+            })
+        } else {
+            self.with_expr_kind(ExprKind::ExtHasAttr { expr, attrs })
+        }
+    }
+
     /// Create a 'like' expression.
     ///
     /// `expr` must evaluate to a String type

@@ -2232,9 +2232,9 @@ mod json_parsing_tests {
 
         assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
             assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
-                assert_eq!(v.func, "offset".parse().unwrap());
-                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
-                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+                assert_eq!(*v.func(), "offset".parse().unwrap());
+                assert_eq!(v.args()[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args()[1].to_string(), r#"duration("3600000ms")"#);
             });
         });
 
@@ -2252,9 +2252,9 @@ mod json_parsing_tests {
 
         assert_matches!(eparser.single_from_json_value(json), Ok(entity) => {
             assert_matches!(entity.get("time"), Some(PartialValue::Value(Value { value: ValueKind::ExtensionValue(v), .. })) => {
-                assert_eq!(v.func, "offset".parse().unwrap());
-                assert_eq!(v.args[0].to_string(), r#"datetime("1970-01-01")"#);
-                assert_eq!(v.args[1].to_string(), r#"duration("3600000ms")"#);
+                assert_eq!(*v.func(), "offset".parse().unwrap());
+                assert_eq!(v.args()[0].to_string(), r#"datetime("1970-01-01")"#);
+                assert_eq!(v.args()[1].to_string(), r#"duration("3600000ms")"#);
             });
         });
     }

@@ -5436,9 +5436,8 @@ mod partial_schema {
 
 mod level_validation_tests {
     use crate::ValidationMode;
-    use crate::{Policy, PolicySet, ValidationError, Validator};
+    use crate::{Policy, PolicySet, ValidationResult, Validator};
     use cedar_policy_core::test_utils::{expect_err, ExpectedErrorMessageBuilder};
-    use cool_asserts::assert_matches;
     use serde_json::json;
 
     use super::Schema;
@@ -5491,272 +5490,161 @@ mod level_validation_tests {
         .expect("Schema parse error.")
     }
 
-    #[test]
-    fn level_validation_passes() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
+    fn validate_at_level(src: &str, level: u32) -> ValidationResult {
+        let validator = Validator::new(get_schema());
         let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when {1 > 0};"#;
         let p = Policy::parse(None, src).unwrap();
         set.add(p).unwrap();
+        validator.validate_with_level(&set, ValidationMode::default(), level)
+    }
 
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
+    fn success_test_case(src: &str, level: u32) {
+        let result = validate_at_level(src, level);
         assert!(
             result.validation_passed(),
             "{:?}",
             miette::Report::new(result)
         );
+    }
+
+    fn failure_test_case(src: &str, level: u32, num: usize, msg: &str, entity_deref: &str) {
+        let result = validate_at_level(src, level);
+        assert!(
+            !result.validation_passed(),
+            "{:?}",
+            miette::Report::new(result)
+        );
+        assert_eq!(
+            result.validation_errors().count(),
+            num,
+            "{:?}",
+            miette::Report::new(result)
+        );
+        expect_err(
+            src,
+            &miette::Report::new(result),
+            &ExpectedErrorMessageBuilder::error(msg)
+                .exactly_one_underline(entity_deref)
+                .build(),
+        );
+    }
+
+    #[test]
+    fn level_validation_passes() {
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when {1 > 0};"#,
+            0,
+        )
     }
 
     #[test]
     fn level_validation_fails() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
         let src = r#"permit(principal == User::"henry", action, resource) when {resource in resource.foo.profile_pic};"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
-        assert!(
-            !result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
-        );
-        assert_eq!(
-            result.validation_errors().count(),
-            1,
-            "{:?}",
-            miette::Report::new(result)
-        );
-        expect_err(
-            src,
-            &miette::Report::new(result),
-            &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
-            )
-            .exactly_one_underline("resource.foo.profile_pic")
-            .build(),
-        );
+        failure_test_case(
+            src, 1, 1,
+            "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
+            "resource.foo.profile_pic")
     }
 
     #[test]
     fn level_validation_fails_rhs_in() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when {principal in resource.foo.profile_pic};"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
-        assert!(
-            !result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
-        );
-        assert_eq!(
-            result.validation_errors().count(),
+        failure_test_case(
+            r#"permit(principal == User::"henry", action, resource) when {principal in resource.foo.profile_pic};"#,
             1,
-            "{:?}",
-            miette::Report::new(result)
-        );
-        expect_err(
-            src,
-            &miette::Report::new(result),
-            &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
-            )
-            .exactly_one_underline("resource.foo.profile_pic")
-            .build(),
-        );
+            1,
+            "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
+            "resource.foo.profile_pic"
+        )
     }
 
     #[test]
     fn level_validation_passes_level2() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when { resource.foo.is_admin };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
-        assert!(
-            result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { resource.foo.is_admin };"#,
+            2,
         );
     }
 
     #[test]
+    fn level_validation_extended_has_passes() {
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { resource has foo };"#,
+            1,
+        );
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { resource has foo.is_admin };"#,
+            2,
+        );
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { resource has foo.profile_pic.name };"#,
+            3,
+        );
+    }
+
+    #[test]
+    fn level_validation_extended_has_fails_level1() {
+        failure_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { resource has foo.is_admin };"#,
+            1, // level
+            1,
+            "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
+            "resource has foo.is_admin");
+        failure_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { resource has foo.profile_pic.name };"#,
+            2, // level
+            1,
+            "for policy `policy0`, this policy requires level 3, which exceeds the maximum allowed level (2)",
+            "resource has foo.profile_pic.name");
+    }
+
+    #[test]
     fn level_validation_irrelevant_policy_passes() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when { false && principal.is_admin };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(
-            result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { false && principal.is_admin };"#,
+            0,
         );
     }
 
     #[test]
     fn level_validation_irrelevant_policy_fails() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
         let src = r#"permit(principal == User::"henry", action, resource) when { principal.is_admin && false };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 0);
-        assert!(
-            !result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
-        );
-        assert_eq!(
-            result.validation_errors().count(),
-            1,
-            "{:?}",
-            miette::Report::new(result)
-        );
-        assert_matches!(
-            result.validation_errors().next().unwrap(),
-            ValidationError::EntityDerefLevelViolation(_)
-        );
+        failure_test_case(src, 0, 1, "for policy `policy0`, this policy requires level 1, which exceeds the maximum allowed level (0)", "principal.is_admin");
     }
 
     #[test]
     fn level_validation_fails_ite() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
         let src = r#"permit(principal == User::"henry", action, resource) when { if principal == User::"henry" then true else resource in resource.foo.profile_pic };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
-        assert!(
-            !result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
-        );
-        assert_eq!(
-            result.validation_errors().count(),
-            1,
-            "{:?}",
-            miette::Report::new(result)
-        );
-        expect_err(
-            src,
-            &miette::Report::new(result),
-            &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
-            )
-            .exactly_one_underline("resource.foo.profile_pic")
-            .build(),
-        );
+        failure_test_case(src, 1, 1, "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)", "resource.foo.profile_pic")
     }
 
     #[test]
     fn level_validation_passes_ite() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
-        assert!(
-            result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { if principal == User::"henry" then true else principal in resource.foo };"#,
+            1,
         );
     }
 
     #[test]
     fn level_validation_fails_record() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
         let src = r#"permit(principal == User::"henry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 1);
-        assert!(
-            !result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
-        );
-        assert_eq!(
-            result.validation_errors().count(),
-            1,
-            "{:?}",
-            miette::Report::new(result)
-        );
-        expect_err(
-            src,
-            &miette::Report::new(result),
-            &ExpectedErrorMessageBuilder::error(
-                "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)",
-            )
-            .exactly_one_underline("resource.foo.is_admin")
-            .build(),
-        );
+        failure_test_case(src, 1, 1, "for policy `policy0`, this policy requires level 2, which exceeds the maximum allowed level (1)","resource.foo.is_admin")
     }
 
     #[test]
     fn level_validation_passes_record_increased_level() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
-        assert!(
-            result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { { "foo": true, "bar": resource.foo.is_admin }.bar };"#,
+            2,
         );
     }
 
     #[test]
     fn level_validation_passes_record_other_attr() {
-        let schema = get_schema();
-        let validator = Validator::new(schema);
-
-        let mut set = PolicySet::new();
-        let src = r#"permit(principal == User::"henry", action, resource) when { { "foo": resource.foo, "bar": resource.foo.is_admin }.foo.is_admin };"#;
-        let p = Policy::parse(None, src).unwrap();
-        set.add(p).unwrap();
-
-        let result = validator.validate_with_level(&set, ValidationMode::default(), 2);
-        assert!(
-            result.validation_passed(),
-            "{:?}",
-            miette::Report::new(result)
-        );
+        success_test_case(
+            r#"permit(principal == User::"henry", action, resource) when { { "foo": resource.foo, "bar": resource.foo.is_admin }.foo.is_admin };"#,
+            2,
+        )
     }
 }
 
@@ -6062,6 +5950,45 @@ mod function_argument_validation_help_tests {
             .exactly_one_underline(r#"decimal("foo").lessThan(decimal("1.0"))"#)
             .build(),
         );
+    }
+}
+
+mod invalid_action_application_tests {
+    use crate::{PolicyId, PolicySet, ValidationMode, ValidationWarning, Validator};
+    use std::str::FromStr;
+
+    use super::Schema;
+
+    #[test]
+    fn removing_applies_to_warns_but_does_not_error() {
+        let policies = PolicySet::from_str(
+            r#"
+            permit(principal == User::"alice", action == Action::"view", resource);
+            permit(principal is User, action in [Action::"view"], resource is Photo);
+            permit(principal, action, resource);
+            "#,
+        )
+        .unwrap();
+
+        // no `appliesTo` the actions, simulating an edit to the schema that "deletes" the action by
+        // removing it's `appliesTo` while keeping the action to avoid unknown action errors.
+        let schema = Schema::from_str("entity User; entity Photo; action view;").unwrap();
+        let result = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        assert!(
+            result.validation_passed(),
+            "unexpected validation errors: {:?}",
+            result.validation_errors().collect::<Vec<_>>()
+        );
+        for policy_id in ["policy0", "policy1", "policy2"] {
+            assert!(
+                result.validation_warnings().any(|w| {
+                    w.policy_id() == &PolicyId::new(policy_id)
+                        && matches!(w, ValidationWarning::InvalidActionApplication(_))
+                }),
+                "expected an `InvalidActionApplication` warning for `{policy_id}`, but saw {:?}",
+                result.validation_warnings().collect::<Vec<_>>()
+            );
+        }
     }
 }
 
@@ -8353,13 +8280,13 @@ mod policy_manipulation_functions_tests {
             r#"permit(principal, action, resource) when { User::"Bob" has attr };"#,
             mapping.clone(),
         );
-        // Since there's no extended has in AST, the result of the substitution has the desugared has
+        // Extended has is now preserved in the AST, so entity substitution preserves it
         assert_entity_sub(
             r#"permit(principal, action, resource) when { User::"Alice" has attr.andNested };"#,
-            r#"permit(principal, action, resource) when { (User::"Bob" has attr) && (User::"Bob".attr has andNested) };"#,
+            r#"permit(principal, action, resource) when { User::"Bob" has attr.andNested };"#,
             mapping.clone(),
         );
-        // But staying in the EST doesn't result in desugaring
+        // Extended has is not desugared in the EST either
         assert_entity_sub_from_json(
             serde_json::json!({
               "effect": "permit",
@@ -8593,7 +8520,7 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.12.0");
+        assert_eq!(get_sdk_version().to_string(), "4.13.0");
     }
 
     #[test]
@@ -9263,42 +9190,6 @@ permit(
                 }
             }]
         });
-        // The equivalent policy without the extended has relation
-        let desugared_json = serde_json::json!({
-            "effect": "permit",
-            "principal": { "op": "All" },
-            "action": { "op": "All" },
-            "resource": { "op": "All" },
-            "conditions": [{
-                "kind": "when",
-                "body": {
-                    "&&": {
-                        "left": {
-                            "&&": {
-                                "left": {
-                                    "has": {
-                                        "left": { "Var": "context" },
-                                        "attr": "user"
-                                    }
-                                },
-                                "right": {
-                                    "has": {
-                                        "left": { ".": { "left": { "Var": "context" }, "attr": "user" } },
-                                        "attr": "profile"
-                                    }
-                                }
-                            }
-                        },
-                        "right": {
-                            "has": {
-                                "left": { ".": { "left": { ".": { "left": { "Var": "context" }, "attr": "user" } }, "attr": "profile" } },
-                                "attr": "email"
-                            }
-                        }
-                    }
-                }
-            }]
-        });
 
         let extended_pset = PolicySet::from_json_value(serde_json::json!({
             "staticPolicies": { "p1": extended_json },
@@ -9307,17 +9198,12 @@ permit(
         }))
         .unwrap();
 
-        let desugared_pset = PolicySet::from_json_value(serde_json::json!({
-            "staticPolicies": { "p1": desugared_json },
-            "templates": {},
-            "templateLinks": []
-        }))
-        .unwrap();
-
-        // Currently, to_cedar() desugars the extended has. Both policies result in the same text
-        assert_eq!(
-            extended_pset.to_cedar().unwrap(),
-            desugared_pset.to_cedar().unwrap()
+        // Extended has is now preserved in Cedar text output
+        let cedar_text = extended_pset.to_cedar().unwrap();
+        assert!(
+            cedar_text.contains("context has user.profile.email"),
+            "Expected extended has form, got: {}",
+            cedar_text
         );
     }
 
@@ -9365,9 +9251,8 @@ mod to_json {
         let policy = Policy::parse(None, policy_cedar).unwrap();
         let json = policy.to_json().unwrap();
         let json_str = json.to_string();
-        // Should not contain array form of extended has
-        assert!(!json_str.contains(r#""attr":["#));
-        assert!(!json_str.contains(r#"["user","profile","email"]"#));
+        // Extended has should be preserved in JSON as an array of attrs
+        assert!(json_str.contains(r#""attr":["user","profile"]"#));
     }
 }
 
@@ -9681,7 +9566,7 @@ mod has_non_scope_constraint {
 mod pst_api {
     use super::super::super::*;
     use cool_asserts::assert_matches;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::{BTreeMap, HashMap, HashSet};
     use std::str::FromStr;
     use std::sync::Arc;
 
@@ -9802,24 +9687,55 @@ mod pst_api {
     }
 
     #[test]
-    fn template_to_pst_preserves_id_from_text() {
+    fn template_pst_conversions_preserve_id_from_text() {
         let src = "permit(principal == ?principal, action, resource);";
-        let t = Template::parse(Some(PolicyId::new("my_template")), src).unwrap();
-        let pst = t.to_pst().expect("should succeed");
-        assert_eq!(pst.id, pst::PolicyID("my_template".into()));
+        let id = PolicyId::new("my_template");
+        let to_pst = Template::parse(Some(id.clone()), src)
+            .unwrap()
+            .to_pst()
+            .unwrap();
+        let into_pst = Template::parse(Some(id), src)
+            .unwrap()
+            .try_into_pst()
+            .unwrap();
+        assert_eq!(to_pst.id, pst::PolicyID("my_template".into()));
+        assert_eq!(into_pst.id, pst::PolicyID("my_template".into()));
     }
 
     #[test]
-    fn policy_to_pst_preserves_id_from_text() {
+    fn policy_pst_conversions_preserve_id_from_text() {
         let src = "permit(principal, action, resource);";
-        // When text is parsed and parse given a policy id, we should preserve that id in the PST
-        let p = Policy::parse(Some(PolicyId::new("my_policy")), src).unwrap();
-        let pst = p.to_pst().expect("should succeed");
-        if let pst::Policy::Static(sp) = &pst {
-            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
-        } else {
-            panic!("expected static policy");
+        let id = PolicyId::new("my_policy");
+        let to_pst = Policy::parse(Some(id.clone()), src)
+            .unwrap()
+            .to_pst()
+            .unwrap();
+        let into_pst = Policy::parse(Some(id), src)
+            .unwrap()
+            .try_into_pst()
+            .unwrap();
+        for pst in [to_pst, into_pst] {
+            assert_matches!(pst, pst::Policy::Static(sp) => {
+                assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
+            });
         }
+    }
+
+    #[test]
+    fn policy_set_try_into_pst_roundtrip_preserves_ids_from_text() {
+        let src = r#"
+            permit(principal, action, resource);
+            forbid(principal, action == Action::"delete", resource);
+        "#;
+        let pset = PolicySet::from_str(src).unwrap();
+        let ids = |ps: &PolicySet| {
+            ps.policies()
+                .map(|p| p.id().to_string())
+                .collect::<HashSet<_>>()
+        };
+        let expected = ids(&pset);
+        let recovered = PolicySet::from_pst(pset.try_into_pst().unwrap()).unwrap();
+        assert_eq!(ids(&recovered), expected);
     }
 
     #[test]
@@ -9990,18 +9906,21 @@ mod pst_api {
             "resource": { "op": "All" },
             "conditions": [{ "kind": "when", "body": { "==": { "left": { "Var": "context" }, "right": { "Record": {} } } } }]
         });
-        let p = Policy::from_json(None, json.clone()).unwrap();
+        let id = PolicyId::new("my_policy");
+        let p = Policy::from_json(Some(id.clone()), json.clone()).unwrap();
         let pst = p.to_pst().expect("to_pst should succeed");
         if let pst::Policy::Static(sp) = &pst {
+            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
             assert_eq!(sp.body().effect, pst::Effect::Forbid);
             assert_eq!(sp.body().clauses().len(), 1);
         } else {
             panic!("expected static");
         }
         // also test try_into_pst
-        let p2 = Policy::from_json(None, json).unwrap();
-        let pst2 = p2.try_into_pst().expect("try_into_pst should succeed");
-        assert_matches!(pst2, pst::Policy::Static(_));
+        let p2 = Policy::from_json(Some(id), json).unwrap();
+        assert_matches!(p2.try_into_pst().unwrap(), pst::Policy::Static(sp) => {
+            assert_eq!(sp.body().id, pst::PolicyID("my_policy".into()));
+        });
     }
 
     #[test]
@@ -10013,14 +9932,17 @@ mod pst_api {
             "resource": { "op": "All" },
             "conditions": [{ "kind": "unless", "body": { "Var": "context" } }]
         });
-        let t = Template::from_json(None, json.clone()).unwrap();
+        let id = PolicyId::new("my_template");
+        let t = Template::from_json(Some(id.clone()), json.clone()).unwrap();
         let pst = t.to_pst().expect("to_pst should succeed");
+        assert_eq!(pst.id, pst::PolicyID("my_template".into()));
         assert!(pst.principal.has_slot());
         assert_eq!(pst.clauses().len(), 1);
         assert_matches!(pst.clauses()[0], pst::Clause::Unless(_));
         // also test try_into_pst
-        let t2 = Template::from_json(None, json).unwrap();
+        let t2 = Template::from_json(Some(id), json).unwrap();
         let pst2 = t2.try_into_pst().expect("try_into_pst should succeed");
+        assert_eq!(pst2.id, pst::PolicyID("my_template".into()));
         assert!(pst2.principal.has_slot());
     }
 
