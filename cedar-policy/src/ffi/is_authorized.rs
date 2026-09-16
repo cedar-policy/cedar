@@ -62,6 +62,10 @@ thread_local!(
 /// Throws if `call` does not match the `AuthorizationCall` type, or if the
 /// answer cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "isAuthorized")]
 pub fn is_authorized_wasm(call: Ts<AuthorizationCall>) -> Result<Ts<AuthorizationAnswer>, JsError> {
     Ok(is_authorized(call.to_rust()?).into_ts()?)
@@ -122,6 +126,10 @@ pub fn is_authorized_json_str(json: &str) -> Result<String, serde_json::Error> {
 /// Throws if `policies` does not match the `PolicySet` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "preparsePolicySet")]
 pub fn preparse_policy_set_wasm(
     pset_id: String,
@@ -159,6 +167,10 @@ pub fn preparse_policy_set(pset_id: String, policies: PolicySet) -> CheckParseAn
 /// Throws if `schema` does not match the `Schema` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "preparseSchema")]
 pub fn preparse_schema_wasm(
     schema_name: String,
@@ -198,6 +210,10 @@ pub fn preparse_schema(schema_name: String, schema: Schema) -> CheckParseAnswer 
 /// the answer cannot be serialized back to JavaScript.
 #[doc = include_str!("../../experimental_warning.md")]
 #[cfg(all(feature = "wasm", feature = "partial-eval"))]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "isAuthorizedPartial")]
 pub fn is_authorized_partial_wasm(
     call: Ts<PartialAuthorizationCall>,
@@ -677,6 +693,10 @@ pub struct PartialAuthorizationCall {
 /// Throws if `call` does not match the `StatefulAuthorizationCall` type, or if
 /// the answer cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "statefulIsAuthorized")]
 pub fn stateful_is_authorized_wasm(
     call: Ts<StatefulAuthorizationCall>,

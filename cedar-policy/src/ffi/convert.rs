@@ -84,6 +84,10 @@ pub fn policy_set_text_to_parts(policyset_str: &str) -> PolicySetTextToPartsAnsw
 /// Throws if `policy` does not match the `Policy` type, or if the answer cannot
 /// be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "policyToText")]
 pub fn policy_to_text_wasm(policy: Ts<Policy>) -> Result<Ts<PolicyToTextAnswer>, JsError> {
     Ok(policy_to_text(policy.to_rust()?).into_ts()?)
@@ -108,6 +112,10 @@ pub fn policy_to_text(policy: Policy) -> PolicyToTextAnswer {
 /// Throws if `template` does not match the `Template` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "templateToText")]
 pub fn template_to_text_wasm(template: Ts<Template>) -> Result<Ts<PolicyToTextAnswer>, JsError> {
     Ok(template_to_text(template.to_rust()?).into_ts()?)
@@ -132,6 +140,10 @@ pub fn template_to_text(template: Template) -> PolicyToTextAnswer {
 /// Throws if `policy` does not match the `Policy` type, or if the answer cannot
 /// be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "policyToJson")]
 pub fn policy_to_json_wasm(policy: Ts<Policy>) -> Result<Ts<PolicyToJsonAnswer>, JsError> {
     Ok(policy_to_json(policy.to_rust()?).into_ts()?)
@@ -159,6 +171,10 @@ pub fn policy_to_json(policy: Policy) -> PolicyToJsonAnswer {
 /// Throws if `template` does not match the `Template` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "templateToJson")]
 pub fn template_to_json_wasm(template: Ts<Template>) -> Result<Ts<PolicyToJsonAnswer>, JsError> {
     Ok(template_to_json(template.to_rust()?).into_ts()?)
@@ -186,6 +202,10 @@ pub fn template_to_json(template: Template) -> PolicyToJsonAnswer {
 /// Throws if `schema` does not match the `Schema` type, or if the answer cannot
 /// be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "schemaToText")]
 pub fn schema_to_text_wasm(schema: Ts<Schema>) -> Result<Ts<SchemaToTextAnswer>, JsError> {
     Ok(schema_to_text(schema.to_rust()?).into_ts()?)
@@ -227,6 +247,10 @@ pub fn schema_to_text(schema: Schema) -> SchemaToTextAnswer {
 /// Throws if `schema` does not match the `Schema` type, or if the answer cannot
 /// be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "schemaToJson")]
 pub fn schema_to_json_wasm(schema: Ts<Schema>) -> Result<Ts<SchemaToJsonAnswer>, JsError> {
     Ok(schema_to_json(schema.to_rust()?).into_ts()?)

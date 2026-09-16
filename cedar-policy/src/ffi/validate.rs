@@ -43,6 +43,10 @@ extern crate tsify;
 /// Throws if `call` does not match the `ValidationCall` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "validate")]
 pub fn validate_wasm(call: Ts<ValidationCall>) -> Result<Ts<ValidationAnswer>, JsError> {
     Ok(validate(call.to_rust()?).into_ts()?)

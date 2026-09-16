@@ -40,6 +40,10 @@ extern crate tsify;
 /// Throws if `call` does not match the `FormattingCall` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "formatPolicies")]
 pub fn format_wasm(call: Ts<FormattingCall>) -> Result<Ts<FormattingAnswer>, JsError> {
     Ok(format(call.to_rust()?).into_ts()?)

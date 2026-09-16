@@ -31,6 +31,10 @@ pub enum GetValidRequestEnvsResult {
 /// Throws if `t` does not match the `Template` type or `s` does not
 /// match the `Schema` type, or if the result cannot be serialized back to
 /// JavaScript.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "getValidRequestEnvsTemplate")]
 pub fn get_valid_request_envs_template_wasm(
     t: Ts<Template>,
@@ -60,6 +64,10 @@ pub fn get_valid_request_envs_template(t: Template, s: Schema) -> GetValidReques
 /// Throws if `t` does not match the `Policy` type or `s` does not
 /// match the `Schema` type, or if the result cannot be serialized back to
 /// JavaScript.
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "getValidRequestEnvsPolicy")]
 pub fn get_valid_request_envs_policy_wasm(
     t: Ts<Policy>,

@@ -39,6 +39,10 @@ extern crate tsify;
 /// Throws if `policies` does not match the `PolicySet` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "checkParsePolicySet")]
 pub fn check_parse_policy_set_wasm(
     policies: Ts<PolicySet>,
@@ -85,6 +89,10 @@ pub fn check_parse_policy_set_json_str(json: &str) -> Result<String, serde_json:
 /// Throws if `schema` does not match the `Schema` type, or if the answer
 /// cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "checkParseSchema")]
 pub fn check_parse_schema_wasm(schema: Ts<Schema>) -> Result<Ts<CheckParseAnswer>, JsError> {
     Ok(check_parse_schema(schema.to_rust()?).into_ts()?)
@@ -192,6 +200,10 @@ pub fn check_parse_scope_variables_json(
 /// Throws if `call` does not match the `EntitiesParsingCall` type, or if the
 /// answer cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "checkParseEntities")]
 pub fn check_parse_entities_wasm(
     call: Ts<EntitiesParsingCall>,
@@ -247,6 +259,10 @@ pub fn check_parse_entities_json_str(json: &str) -> Result<String, serde_json::E
 /// Throws if `call` does not match the `ContextParsingCall` type, or if the
 /// answer cannot be serialized back to JavaScript.
 #[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
 #[wasm_bindgen(js_name = "checkParseContext")]
 pub fn check_parse_context_wasm(
     call: Ts<ContextParsingCall>,
