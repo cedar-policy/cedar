@@ -983,26 +983,11 @@ mod tests {
         let prefix_24 = extract_v4("10.0.0.0/24").prefix;
         let prefix_none = extract_v4("10.0.0.0").prefix;
 
-        assert_eq!(
-            prefix_0.partial_cmp(&prefix_8),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            prefix_8.partial_cmp(&prefix_24),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            prefix_24.partial_cmp(&prefix_none),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            prefix_8.partial_cmp(&prefix_8),
-            Some(Ordering::Equal)
-        );
-        assert_eq!(
-            prefix_none.partial_cmp(&prefix_0),
-            Some(Ordering::Greater)
-        );
+        assert_eq!(prefix_0.partial_cmp(&prefix_8), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_24), Some(Ordering::Less));
+        assert_eq!(prefix_24.partial_cmp(&prefix_none), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_8), Some(Ordering::Equal));
+        assert_eq!(prefix_none.partial_cmp(&prefix_0), Some(Ordering::Greater));
         assert!(prefix_0 < prefix_8);
         assert!(prefix_none > prefix_24);
     }
@@ -1015,26 +1000,11 @@ mod tests {
         let prefix_64 = extract_v6("::/64").prefix;
         let prefix_none = extract_v6("::").prefix;
 
-        assert_eq!(
-            prefix_0.partial_cmp(&prefix_8),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            prefix_8.partial_cmp(&prefix_64),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            prefix_64.partial_cmp(&prefix_none),
-            Some(Ordering::Less)
-        );
-        assert_eq!(
-            prefix_8.partial_cmp(&prefix_8),
-            Some(Ordering::Equal)
-        );
-        assert_eq!(
-            prefix_none.partial_cmp(&prefix_0),
-            Some(Ordering::Greater)
-        );
+        assert_eq!(prefix_0.partial_cmp(&prefix_8), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_64), Some(Ordering::Less));
+        assert_eq!(prefix_64.partial_cmp(&prefix_none), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_8), Some(Ordering::Equal));
+        assert_eq!(prefix_none.partial_cmp(&prefix_0), Some(Ordering::Greater));
         assert!(prefix_0 < prefix_8);
         assert!(prefix_none > prefix_64);
     }
