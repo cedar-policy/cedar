@@ -774,7 +774,7 @@ impl std::fmt::Display for IPNet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{op::ExtOp::IpaddrAddrV4, symcc::type_abbrevs::*};
+    use crate::symcc::type_abbrevs::*;
 
     fn test_valid(str: &str, expected: &IPNet) {
         assert_eq!(&IPNet::from_str(str).unwrap(), expected);
