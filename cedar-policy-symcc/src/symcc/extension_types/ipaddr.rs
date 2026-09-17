@@ -961,6 +961,84 @@ mod tests {
         assert!(!parse_unwrap("240.0.0.0/16").is_multicast());
     }
 
+    fn extract_v4(s: &str) -> CIDRv4 {
+        match IPNet::from_str(s).unwrap() {
+            IPNet::V4(c) => c,
+            _ => panic!("expected V4"),
+        }
+    }
+
+    fn extract_v6(s: &str) -> CIDRv6 {
+        match IPNet::from_str(s).unwrap() {
+            IPNet::V6(c) => c,
+            _ => panic!("expected V6"),
+        }
+    }
+
+    #[test]
+    fn tests_for_ipv4prefix_partial_ord() {
+        use std::cmp::Ordering;
+        let prefix_0 = extract_v4("10.0.0.0/0").prefix;
+        let prefix_8 = extract_v4("10.0.0.0/8").prefix;
+        let prefix_24 = extract_v4("10.0.0.0/24").prefix;
+        let prefix_none = extract_v4("10.0.0.0").prefix;
+
+        assert_eq!(
+            prefix_0.partial_cmp(&prefix_8),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            prefix_8.partial_cmp(&prefix_24),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            prefix_24.partial_cmp(&prefix_none),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            prefix_8.partial_cmp(&prefix_8),
+            Some(Ordering::Equal)
+        );
+        assert_eq!(
+            prefix_none.partial_cmp(&prefix_0),
+            Some(Ordering::Greater)
+        );
+        assert!(prefix_0 < prefix_8);
+        assert!(prefix_none > prefix_24);
+    }
+
+    #[test]
+    fn tests_for_ipv6prefix_partial_ord() {
+        use std::cmp::Ordering;
+        let prefix_0 = extract_v6("::/0").prefix;
+        let prefix_8 = extract_v6("::/8").prefix;
+        let prefix_64 = extract_v6("::/64").prefix;
+        let prefix_none = extract_v6("::").prefix;
+
+        assert_eq!(
+            prefix_0.partial_cmp(&prefix_8),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            prefix_8.partial_cmp(&prefix_64),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            prefix_64.partial_cmp(&prefix_none),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            prefix_8.partial_cmp(&prefix_8),
+            Some(Ordering::Equal)
+        );
+        assert_eq!(
+            prefix_none.partial_cmp(&prefix_0),
+            Some(Ordering::Greater)
+        );
+        assert!(prefix_0 < prefix_8);
+        assert!(prefix_none > prefix_64);
+    }
+
     #[test]
     fn ipnet_address_with_prefix_before_prefixless() {
         // Two V4 addresses with the same addr but one has no prefix and the other has a prefix.
