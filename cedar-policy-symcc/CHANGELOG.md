@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Cedar Language Version: TBD
 
+### Changed
+
+- Changed IP address ordering (via `Ord` and `PartialOrd`). A prefix-less address is now greater 
+  than an otherwise equivalent address with a prefix (#2571).
+
 ## [0.7.0] - 2026-09-15
 
 Cedar Language Version: 4.5

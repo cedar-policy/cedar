@@ -206,11 +206,24 @@ impl IPv6Addr {
 }
 
 /// Internal representation of IPv4 prefixes.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IPv4Prefix {
     /// Optional IPv4 prefix value.
     /// INVARIANT: width must be equal to V4_WIDTH
     val: Option<BitVec>,
+}
+
+impl PartialOrd for IPv4Prefix {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for IPv4Prefix {
+    // Uses `to_nat` to match Lean's `IPNetPrefix.lt`.
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        IPv4Prefix::to_nat(self).cmp(&IPv4Prefix::to_nat(other))
+    }
 }
 
 impl IPv4Prefix {
@@ -251,11 +264,24 @@ impl IPv4Prefix {
 }
 
 /// Internal representation of IPv6 prefixes.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IPv6Prefix {
     /// Optional IPv6 prefix value.
     /// INVARIANT: width must be equal to V6_WIDTH
     val: Option<BitVec>,
+}
+
+impl PartialOrd for IPv6Prefix {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for IPv6Prefix {
+    // Uses `to_nat` to match Lean's `IPNetPrefix.lt`.
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        IPv6Prefix::to_nat(self).cmp(&IPv6Prefix::to_nat(other))
+    }
 }
 
 impl IPv6Prefix {
@@ -933,5 +959,72 @@ mod tests {
         assert!(!parse_unwrap("ffff:bb00::2:2a:6065/5").is_multicast());
         assert!(parse_unwrap("224.0.0.0").is_multicast());
         assert!(!parse_unwrap("240.0.0.0/16").is_multicast());
+    }
+
+    fn extract_v4(s: &str) -> CIDRv4 {
+        match IPNet::from_str(s).unwrap() {
+            IPNet::V4(c) => c,
+            _ => panic!("expected V4"),
+        }
+    }
+
+    fn extract_v6(s: &str) -> CIDRv6 {
+        match IPNet::from_str(s).unwrap() {
+            IPNet::V6(c) => c,
+            _ => panic!("expected V6"),
+        }
+    }
+
+    #[test]
+    fn tests_for_ipv4prefix_partial_ord() {
+        use std::cmp::Ordering;
+        let prefix_0 = extract_v4("10.0.0.0/0").prefix;
+        let prefix_8 = extract_v4("10.0.0.0/8").prefix;
+        let prefix_24 = extract_v4("10.0.0.0/24").prefix;
+        let prefix_none = extract_v4("10.0.0.0").prefix;
+
+        assert_eq!(prefix_0.partial_cmp(&prefix_8), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_24), Some(Ordering::Less));
+        assert_eq!(prefix_24.partial_cmp(&prefix_none), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_8), Some(Ordering::Equal));
+        assert_eq!(prefix_none.partial_cmp(&prefix_0), Some(Ordering::Greater));
+        assert!(prefix_0 < prefix_8);
+        assert!(prefix_none > prefix_24);
+    }
+
+    #[test]
+    fn tests_for_ipv6prefix_partial_ord() {
+        use std::cmp::Ordering;
+        let prefix_0 = extract_v6("::/0").prefix;
+        let prefix_8 = extract_v6("::/8").prefix;
+        let prefix_64 = extract_v6("::/64").prefix;
+        let prefix_none = extract_v6("::").prefix;
+
+        assert_eq!(prefix_0.partial_cmp(&prefix_8), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_64), Some(Ordering::Less));
+        assert_eq!(prefix_64.partial_cmp(&prefix_none), Some(Ordering::Less));
+        assert_eq!(prefix_8.partial_cmp(&prefix_8), Some(Ordering::Equal));
+        assert_eq!(prefix_none.partial_cmp(&prefix_0), Some(Ordering::Greater));
+        assert!(prefix_0 < prefix_8);
+        assert!(prefix_none > prefix_64);
+    }
+
+    #[test]
+    fn ipnet_address_with_prefix_before_prefixless() {
+        // Two V4 addresses with the same addr but one has no prefix and the other has a prefix.
+        let addr_no_prefix = IPNet::from_str("2.2.2.2").unwrap(); // prefix = None
+        let addr_prefix_2 = IPNet::from_str("2.2.2.2/2").unwrap(); // prefix = Some(2)
+        assert!(
+            addr_prefix_2 < addr_no_prefix,
+            "address with prefix/2 should sort before prefix-less address"
+        );
+
+        // Same check for IPv6.
+        let v6_no_prefix = IPNet::from_str("::1").unwrap(); // prefix = None
+        let v6_prefix_30 = IPNet::from_str("::1/30").unwrap(); // prefix = Some(30)
+        assert!(
+            v6_prefix_30 < v6_no_prefix,
+            "IPv6 address with /30 should sort before prefix-less address"
+        );
     }
 }
