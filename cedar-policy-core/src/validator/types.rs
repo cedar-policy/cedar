@@ -372,7 +372,7 @@ impl Type {
                     // common, are disjoint types.
                     // Entity types least-upper-bounds that have entity types in
                     // common, are not disjoint types.
-                    lub1.is_disjoint(&lub2)
+                    lub1.is_disjoint(lub2)
                 } else {
                     false // conservatively false, not promising disjointness; see notes on this function
                 }
@@ -461,6 +461,66 @@ impl Type {
             // `AnyEntity` is handled by the open-attribute match case.
             // No other types may have attributes.
             _ => false,
+        }
+    }
+
+    /// Get `self` as a specific entity type (or set of types in permissive
+    /// validation). Returns `None` for non-entity types and for `AnyEntity`.
+    pub(crate) fn as_entity_lub(&self) -> Option<&EntityLUB> {
+        match &self {
+            Type::Entity(entity_kind) => entity_kind.as_entity_lub(),
+            _ => None,
+        }
+    }
+
+    /// Get `self` as a specific entity type, or, if `self` is a set, then the
+    /// element type as an entity type.  Returns `None` if `self` is neither an
+    /// entity or set of entity, and for `AnyEntity`.
+    pub(crate) fn as_set_or_entity_lub(&self) -> Option<&EntityLUB> {
+        match self {
+            Type::Set {
+                element_type: Some(element_type),
+            } => element_type.as_entity_lub(),
+            _ => self.as_entity_lub(),
+        }
+    }
+
+    /// Are all entity types that a value of type `ty` could have declared as
+    /// entity types in `schema`? Returns `true` for non-entity types.
+    ///
+    /// This is `false` for action entity types, which are declared as actions
+    /// rather than as entity types, so `may_have_attr` and `may_have_tags`
+    /// report them as having no attributes and no tags.
+    #[cfg(feature = "tpe")]
+    pub(crate) fn has_declared_entity_types(schema: &ValidatorSchema, ty: &Type) -> bool {
+        match ty {
+            Type::Entity(EntityKind::Entity(entity_lub)) => entity_lub
+                .iter()
+                .all(|entity| schema.get_entity_type(entity).is_some()),
+            _ => true,
+        }
+    }
+
+    /// Could a value of type `ty` have any tags, according to `schema`?
+    ///
+    /// Returns `false` only when `ty` is an entity type and none of the entity
+    /// types it could be declare tags in the schema. Entity types missing from
+    /// the schema count as declaring no tags, so callers that don't want to
+    /// rely on that should also check [`Type::has_declared_entity_types`].
+    #[cfg(feature = "tpe")]
+    pub(crate) fn may_have_tags(schema: &ValidatorSchema, ty: &Type) -> bool {
+        match ty {
+            Type::Entity(EntityKind::Entity(entity_lub)) => {
+                entity_lub.lub_elements.iter().any(|entity| {
+                    schema
+                        .get_entity_type(entity)
+                        .is_some_and(|entity_type| entity_type.tag_type().is_some())
+                })
+            }
+            // Non-entity types cannot have tags, but `hasTag` is only
+            // well-typed on entities, so this case is not expected. The safe
+            // behavior is to assume they might have tags.
+            _ => true,
         }
     }
 
@@ -1096,10 +1156,10 @@ pub enum EntityKind {
 }
 
 impl EntityKind {
-    pub(crate) fn as_entity_lub(&self) -> Option<EntityLUB> {
+    pub(crate) fn as_entity_lub(&self) -> Option<&EntityLUB> {
         match self {
             EntityKind::AnyEntity => None,
-            EntityKind::Entity(lub) => Some(lub.clone()),
+            EntityKind::Entity(lub) => Some(lub),
         }
     }
 
