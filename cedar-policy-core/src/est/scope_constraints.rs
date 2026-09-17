@@ -37,7 +37,6 @@ extern crate tsify;
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PrincipalConstraint {
     /// No constraint (e.g., `principal,`)
     #[serde(alias = "all")]
@@ -58,7 +57,6 @@ pub enum PrincipalConstraint {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ActionConstraint {
     /// No constraint (i.e., `action,`)
     #[serde(alias = "all")]
@@ -80,7 +78,6 @@ pub enum ActionConstraint {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "op")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ResourceConstraint {
     /// No constraint (e.g., `resource,`)
     #[serde(alias = "all")]
@@ -100,7 +97,6 @@ pub enum ResourceConstraint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EqConstraint {
     /// `==` a literal entity
     Entity {
@@ -120,7 +116,6 @@ pub enum EqConstraint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PrincipalOrResourceInConstraint {
     /// `in` a literal entity
     Entity {
@@ -140,7 +135,6 @@ pub enum PrincipalOrResourceInConstraint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PrincipalOrResourceIsConstraint {
     #[cfg_attr(feature = "wasm", tsify(type = "string"))]
     entity_type: SmolStr,
@@ -170,7 +164,6 @@ impl PrincipalOrResourceIsConstraint {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ActionInConstraint {
     /// Single entity
     Single {

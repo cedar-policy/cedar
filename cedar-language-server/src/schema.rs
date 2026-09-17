@@ -38,7 +38,6 @@ extern crate tsify;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum SchemaType {
     CedarSchema,
     Json,
@@ -46,7 +45,6 @@ pub enum SchemaType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SchemaInfo {
     pub schema_type: SchemaType,
     pub text: String,

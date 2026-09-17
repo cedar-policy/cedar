@@ -37,7 +37,6 @@ extern crate tsify;
 /// Structure of the JSON output representing one `miette` error
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Deserialize, Serialize, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct DetailedError {
@@ -81,7 +80,6 @@ impl FromStr for DetailedError {
 /// If `miette::Severity` adds `derive(Hash)` in the future, we can remove this
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub enum Severity {
     /// Advice (the lowest severity)
@@ -105,7 +103,6 @@ impl From<miette::Severity> for Severity {
 /// Structure of the JSON output representing a `miette` source label (range)
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SourceLabel {
@@ -119,7 +116,6 @@ pub struct SourceLabel {
 /// A range of source code representing the location of an error or warning.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Hash, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct SourceLocation {
@@ -182,7 +178,6 @@ impl From<miette::Report> for DetailedError {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityUid(
     #[cfg_attr(feature = "wasm", tsify(type = "EntityUidJson"))] JsonValueWithNoDuplicateKeys,
 );
@@ -223,7 +218,6 @@ impl From<serde_json::Value> for EntityUid {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Context(
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
     JsonValueWithNoDuplicateKeys,
@@ -273,7 +267,6 @@ impl From<serde_json::Value> for Context {
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct Entities(
     #[cfg_attr(feature = "wasm", tsify(type = "Array<EntityJson>"))] JsonValueWithNoDuplicateKeys,
 );
@@ -311,7 +304,6 @@ impl From<serde_json::Value> for Entities {
 /// Represents a static policy in either the Cedar or JSON policy format
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
 #[serde(
     expecting = "expected a static policy in the Cedar or JSON policy format (with no duplicate keys)"
@@ -383,7 +375,6 @@ impl From<&crate::Policy> for Policy {
 /// Represents a policy template in either the Cedar or JSON policy format.
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
 #[serde(
     expecting = "expected a policy template in the Cedar or JSON policy format (with no duplicate keys)"
@@ -473,7 +464,6 @@ impl From<&crate::Template> for Template {
 /// Represents a set of static policies
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
 #[serde(
     expecting = "expected a static policy set represented by a string, JSON array, or JSON object (with no duplicate keys)"
@@ -549,7 +539,6 @@ impl From<&crate::PolicySet> for StaticPolicySet {
 /// Represents a template-linked policy
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct TemplateLink {
@@ -583,7 +572,6 @@ impl TemplateLink {
 /// Represents a policy set, including static policies, templates, and template links
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct PolicySet {
@@ -647,7 +635,6 @@ impl PolicySet {
 /// Represents a schema in either the Cedar or JSON schema format
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(untagged)]
 #[serde(
     expecting = "expected a schema in the Cedar or JSON policy format (with no duplicate keys)"

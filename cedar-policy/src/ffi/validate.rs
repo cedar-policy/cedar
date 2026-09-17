@@ -26,7 +26,9 @@ use super::utils::{DetailedError, PolicySet, Schema, WithWarnings};
 use crate::{PolicyId, ValidationMode, Validator};
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "wasm")]
-use wasm_bindgen::prelude::wasm_bindgen;
+use tsify::{Ts, Tsify as _};
+#[cfg(feature = "wasm")]
+use wasm_bindgen::{prelude::wasm_bindgen, JsError};
 
 #[cfg(feature = "wasm")]
 extern crate tsify;
@@ -35,7 +37,25 @@ extern crate tsify;
 ///
 /// This is the basic validator interface, using [`ValidationCall`] and
 /// [`ValidationAnswer`] types
-#[cfg_attr(feature = "wasm", wasm_bindgen(js_name = "validate"))]
+///
+/// # Errors
+///
+/// Throws if `call` does not match the `ValidationCall` type, or if the answer
+/// cannot be serialized back to JavaScript.
+#[cfg(feature = "wasm")]
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "FFI function which conventionally takes owned arguments"
+)]
+#[wasm_bindgen(js_name = "validate")]
+pub fn validate_wasm(call: Ts<ValidationCall>) -> Result<Ts<ValidationAnswer>, JsError> {
+    Ok(validate(call.to_rust()?).into_ts()?)
+}
+
+/// Parse a policy set and optionally validate it against a provided schema
+///
+/// This is the basic validator interface, using [`ValidationCall`] and
+/// [`ValidationAnswer`] types
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {
@@ -102,7 +122,6 @@ pub fn validate_json_str(json: &str) -> Result<String, serde_json::Error> {
 /// Struct containing the input data for validation
 #[derive(Serialize, Deserialize, Debug)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ValidationCall {
@@ -153,7 +172,6 @@ impl ValidationCall {
 /// Configuration for the validation call
 #[derive(Serialize, Deserialize, Debug, Default)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ValidationSettings {
@@ -164,7 +182,6 @@ pub struct ValidationSettings {
 /// Error (or warning) for a specified policy after validation
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct ValidationError {
@@ -180,7 +197,6 @@ pub struct ValidationError {
 /// Result struct for validation
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(tag = "type")]
 #[serde(rename_all = "camelCase")]
 pub enum ValidationAnswer {

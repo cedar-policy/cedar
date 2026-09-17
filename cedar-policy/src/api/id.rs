@@ -357,7 +357,6 @@ impl From<ast::EntityUID> for EntityUid {
 #[repr(transparent)]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Serialize, Deserialize, RefCast)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct PolicyId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::PolicyID);
 
 #[doc(hidden)] // because this converts to a private/internal type
@@ -418,7 +417,6 @@ impl From<PolicyId> for pst::PolicyID {
 #[repr(transparent)]
 #[derive(Debug, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, RefCast, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct SlotId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::SlotId);
 
 #[doc(hidden)] // because this converts to a private/internal type

@@ -98,8 +98,8 @@ pub struct CommonType<N> {
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[cfg_attr(feature = "wasm", serde(rename = "SchemaJson"))]
+#[cfg_attr(feature = "wasm", tsify(rename = "SchemaJson"))]
 pub struct Fragment<N>(
     #[serde(deserialize_with = "deserialize_schema_fragment")]
     #[cfg_attr(
@@ -304,7 +304,6 @@ impl Fragment<InternalName> {
 #[derive(Educe, Debug, Clone, Serialize)]
 #[educe(PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct CommonTypeId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] UnreservedId);
 
 impl From<CommonTypeId> for UnreservedId {
@@ -421,7 +420,6 @@ pub struct ReservedCommonTypeBasenameError {
 #[serde(rename_all = "camelCase")]
 #[doc(hidden)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
@@ -592,7 +590,6 @@ impl NamespaceDefinition<InternalName> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum EntityTypeKind<N> {
     /// The standard entity type specified by [`StandardEntityType`]
     Standard(StandardEntityType<N>),
@@ -733,7 +730,6 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct StandardEntityType<N> {
     /// Entities of this [`StandardEntityType`] are allowed to be members of entities of
     /// these types.
@@ -850,7 +846,6 @@ impl EntityType<ConditionalName> {
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct AttributesOrContext<N>(
     // We use the usual `Type` deserialization, but it will ultimately need to
     // be a `Record` or common-type reference which resolves to a `Record`.
@@ -935,7 +930,6 @@ impl AttributesOrContext<ConditionalName> {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionType<N> {
     /// Vestigial attributes left in place to avoid any possibly breaking change
     /// to schema parsing. Providing anything other than `None` will result in an error.
@@ -1042,7 +1036,6 @@ impl ActionType<ConditionalName> {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ApplySpec<N> {
     /// Resource types that are valid for the action
     pub resource_types: Vec<N>,
@@ -1110,7 +1103,6 @@ impl ApplySpec<ConditionalName> {
 #[serde(deny_unknown_fields)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ActionEntityUID<N> {
     /// Represents the [`crate::ast::Eid`] of the action
     pub id: SmolStr,
@@ -1349,7 +1341,6 @@ impl From<EntityUID> for ActionEntityUID<Name> {
 // captures the name of the unrecognized tag.
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Type<N> {
     /// One of the standard types exposed to users.
     ///
@@ -2082,7 +2073,6 @@ impl<N> From<TypeVariant<N>> for Type<N> {
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct RecordType<N> {
     /// Attribute names and types for the record
     pub attributes: BTreeMap<SmolStr, TypeOfAttribute<N>>,
@@ -2159,7 +2149,6 @@ impl RecordType<ConditionalName> {
 #[serde(tag = "type")]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum TypeVariant<N> {
     /// String
     String,

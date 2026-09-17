@@ -40,7 +40,6 @@ use std::sync::Arc;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Expr {
     /// Any Cedar expression other than an extension function call.
     ExprNoExt(ExprNoExt),
@@ -115,7 +114,6 @@ impl<'de> Deserialize<'de> for Expr {
 /// Represent an element of a pattern literal
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum PatternElem {
     /// The wildcard asterisk
     Wildcard,
@@ -160,7 +158,6 @@ impl From<crate::ast::Pattern> for Vec<PatternElem> {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi,))]
 pub enum HasAttrRepr {
     /// Simple has test with a single attribute :
     /// { "has": { "left": ..., "attr": <string>}}
@@ -186,7 +183,6 @@ pub enum HasAttrRepr {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum ExprNoExt {
     /// Literal value (including anything that's legal to express in the
     /// attribute-value JSON format)
@@ -414,7 +410,6 @@ pub enum ExprNoExt {
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ExtFuncCall {
     /// maps the name of the function to a JSON list/array of the arguments.
     /// Note that for method calls, the method receiver is the first argument.

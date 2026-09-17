@@ -42,7 +42,6 @@ extern crate tsify;
 #[serde_as]
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct EntityJson {
     /// UID of the entity, specified in any form accepted by `EntityUidJson`
     uid: EntityUidJson,

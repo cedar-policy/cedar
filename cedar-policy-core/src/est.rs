@@ -53,8 +53,8 @@ extern crate tsify;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[cfg_attr(feature = "wasm", serde(rename = "PolicyJson"))]
+#[cfg_attr(feature = "wasm", tsify(rename = "PolicyJson"))]
 pub struct Policy {
     /// `Effect` of the policy or template
     pub(crate) effect: ast::Effect,
@@ -78,7 +78,6 @@ pub struct Policy {
 #[serde(tag = "kind", content = "body")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 pub enum Clause {
     /// A `when` clause
     When(Expr),

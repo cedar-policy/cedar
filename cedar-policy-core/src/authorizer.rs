@@ -696,7 +696,6 @@ impl Response {
 /// Decision returned from the `Authorizer`
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "wasm", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(rename_all = "camelCase")]
 pub enum Decision {
     /// The `Authorizer` determined that the request should be allowed
