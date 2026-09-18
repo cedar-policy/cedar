@@ -1,0 +1,37 @@
+instance User::"alice" = {
+    "name": "Alice",
+    "address": {
+        "street": "123 Main St",
+        "city": "Seattle",
+        "state": "WA",
+        "zip": 98101
+    },
+    "preferences": {
+        "theme": "dark",
+        "notifications": {
+            "email": true,
+            "sms": false,
+            "channels": ["alerts", "updates"]
+        }
+    },
+    "manager": {
+        "ref": User::"bob",
+        "since": 2023
+    }
+};
+
+instance Document::"report" = {
+    "metadata": {
+        "author": User::"alice",
+        "reviewers": [User::"bob", User::"carol"],
+        "stats": {
+            "pages": 42,
+            "words": 15000,
+            "figures": 7
+        }
+    },
+    "permissions": {
+        "read": [Team::"engineering", Team::"management"],
+        "write": [User::"alice"]
+    }
+};
