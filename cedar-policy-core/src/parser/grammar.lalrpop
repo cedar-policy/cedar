@@ -35,7 +35,7 @@ extern {
 
 match {
     // Whitespace and comments
-    r"\s*" => { }, // The default whitespace skipping is disabled an `ignore pattern` is specified
+    r"(?-u:\s)*" => { }, // Default whitespace skipping is disabled and this `ignore pattern` is used instead. `(?-u:\s)` disables Unicode mode so this matches only the six ASCII whitespace characters (space, \t, \n, \r, \x0b, \x0c), matching the Lean spec's `ws` set. Unicode whitespace such as U+0085 (NEL) or U+00A0 (NBSP) is NOT skipped.
     r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
 
     // Special Identifiers (begin expressions)
