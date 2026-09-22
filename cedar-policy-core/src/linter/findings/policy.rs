@@ -135,6 +135,28 @@ impl Diagnostic for ExtConstructorError {
     }
 }
 
+/// A multiplication where neither operand is a constant. Legal and cheap to
+/// evaluate, but hard to *analyze*: symbolic analysis compiles `Long` to a
+/// fixed-width bitvector, and a variable-by-variable multiply bit-blasts to a
+/// multiplier circuit that SAT/SMT solvers reason through slowly. Multiplying by
+/// a constant lowers to shifts and adds and stays cheap.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("multiplication of two non-constant expressions")]
+pub struct NonLinearArithmetic {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for NonLinearArithmetic {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "multiplying two variables bit-blasts to a multiplier circuit that automated reasoning tools solve slowly; multiplying by a constant avoids it",
+        ))
+    }
+}
+
 /// Which kind of member was accessed on an action.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ActionMember {

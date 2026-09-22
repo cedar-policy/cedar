@@ -251,6 +251,10 @@ declare_lints! {
 
     /// Empty set literals, which strict validation rejects.
     EmptySet => "empty-set", StrictMigration, true;
+
+    /// Multiplication where neither operand is a constant, which automated
+    /// reasoning tools cannot analyze.
+    NonLinearArithmetic => "non-linear-arithmetic", Analyzability, false;
 }
 
 impl std::fmt::Display for Lint {
@@ -599,6 +603,7 @@ impl Linter {
             Lint::Tags => type tags::TagLinter,
             Lint::EmptySet => fn empty_set::lint,
             Lint::ExtConstructors => fn ext_constructors::lint,
+            Lint::NonLinearArithmetic => fn nonlinear::lint,
         });
 
         findings
@@ -626,6 +631,24 @@ mod test {
         for lint in Lint::all() {
             assert!(linter.runs(lint), "{lint} should be enabled");
         }
+    }
+
+    /// The default set is a strict subset of every lint: some lints are off by
+    /// default, and no lint is on by default without also being in `all`.
+    #[test]
+    fn default_lints_is_a_strict_subset() {
+        let default = Linter::default_lints();
+        let mut off_by_default = 0;
+        for lint in Lint::all() {
+            assert_eq!(default.runs(lint), lint.is_default(), "{lint}");
+            if !lint.is_default() {
+                off_by_default += 1;
+            }
+        }
+        assert!(
+            off_by_default > 0,
+            "if every lint is on by default, `default_lints` is pointless"
+        );
     }
 
     #[test]
@@ -797,7 +820,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 5);
+        assert_eq!(Lint::all().count(), 6);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

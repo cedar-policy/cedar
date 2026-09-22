@@ -72,6 +72,11 @@ pub enum Finding {
     #[error(transparent)]
     ExtConstructorError(#[from] ExtConstructorError),
 
+    /// A multiplication where neither operand is constant.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    NonLinearArithmetic(#[from] NonLinearArithmetic),
+
     /// An attribute or tag access on an action, which no schema can declare.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -93,6 +98,7 @@ impl Finding {
             Finding::NonLitExtConstructor(_) | Finding::ExtConstructorError(_) => {
                 Lint::ExtConstructors
             }
+            Finding::NonLinearArithmetic(_) => Lint::NonLinearArithmetic,
             Finding::ImpossibleIsCheck(_) => Lint::Types,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -108,6 +114,7 @@ impl Finding {
             Finding::EmptySet(f) => f.loc.as_ref(),
             Finding::NonLitExtConstructor(f) => f.loc.as_ref(),
             Finding::ExtConstructorError(f) => f.loc.as_ref(),
+            Finding::NonLinearArithmetic(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
         }

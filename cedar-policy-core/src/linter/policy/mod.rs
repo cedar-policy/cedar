@@ -21,4 +21,5 @@
 
 pub(crate) mod empty_set;
 pub(crate) mod ext_constructors;
+pub(crate) mod nonlinear;
 pub(crate) mod tags;
