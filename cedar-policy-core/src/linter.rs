@@ -100,6 +100,7 @@ mod policy;
 // Schema lints (the `SchemaLinter`).
 mod schema;
 // Schema-informed policy lints (typechecker as a service).
+mod schema_informed;
 // TPE-based lints (feature-gated).
 
 // Shared infrastructure used across the lint groups.
@@ -361,6 +362,20 @@ declare_lints! {
     /// Configured separately from the `forbid` case, since the `forbid` case is
     /// the one with a security consequence and is worth adopting on its own.
     PermitAttrGuards => "permit-attr-guards", Restriction, false;
+
+    /// (Schema-informed) A sub-expression the typechecker proves is a constant
+    /// boolean in every request environment the policy applies to, e.g.
+    /// `principal is User` when every principal is a `User`. Runs only with a
+    /// schema, via [`Linter::lint_with_schema`].
+    TypedConstantCondition => "typed-constant-condition", Correctness, true;
+
+    /// (Schema-informed) A `has` on an attribute the schema declares required, so
+    /// the check is always true.
+    ///
+    /// Off by default and in deliberate tension with the attribute-guard lints,
+    /// which ask for exactly this guard; see [`Finding`](findings::Finding)'s
+    /// `HasOnRequiredAttr` docs. Runs only with a schema.
+    HasOnRequiredAttr => "has-on-required-attr", Correctness, false;
 
     /// (Schema) An attribute typed `Set<{key: String, value: T}>`, the idiom for
     /// emulating tags before Cedar had a native `tags` construct.
@@ -720,6 +735,30 @@ impl Linter {
             findings.extend(duplicate_policy::lint_duplicate_policy(policy_set));
         }
 
+        LintResult::new(findings)
+    }
+
+    /// Lint policies against a schema, running the schema-free lints plus the
+    /// schema-informed ones.
+    ///
+    /// The schema-free lints of [`Linter::lint`] all run here too; on top of them,
+    /// a schema unlocks lints that reason about types across every request
+    /// environment a policy applies to — see
+    /// [`schema_informed`](self::schema_informed). With the `tpe` feature it also
+    /// runs the TPE-based lints ([`tpe`]), whose findings fold into the same
+    /// [`LintResult`]. Lints that need neither a schema nor the CST behave
+    /// identically to `lint`.
+    pub fn lint_with_schema(
+        &self,
+        policy_set: &PolicySet,
+        schema: &crate::validator::ValidatorSchema,
+    ) -> LintResult {
+        let mut findings = self.lint(policy_set).into_findings();
+        let enabled = schema_informed::Enabled {
+            typed_constant: self.runs(Lint::TypedConstantCondition),
+            has_on_required: self.runs(Lint::HasOnRequiredAttr),
+        };
+        findings.extend(schema_informed::lint(policy_set, schema, enabled));
         LintResult::new(findings)
     }
 
@@ -1106,7 +1145,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 34);
+        assert_eq!(Lint::all().count(), 36);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

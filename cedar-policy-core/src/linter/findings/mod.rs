@@ -31,6 +31,8 @@ mod policy;
 pub use policy::*;
 mod schema;
 pub use schema::*;
+mod schema_informed;
+pub use schema_informed::*;
 
 /// A single problem the linter found.
 ///
@@ -220,6 +222,16 @@ pub enum Finding {
     #[error(transparent)]
     YodaCondition(#[from] YodaCondition),
 
+    /// A sub-expression that is a constant boolean in every request env.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    TypedConstantCondition(#[from] TypedConstantCondition),
+
+    /// A `has` on an attribute the schema declares required.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    HasOnRequiredAttr(#[from] HasOnRequiredAttr),
+
     /// Arithmetic negation applied twice.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -276,6 +288,8 @@ impl Finding {
             | Finding::DuplicateSetElement(_) => Lint::RedundantExpr,
             Finding::DuplicatePolicy(_) => Lint::DuplicatePolicy,
             Finding::YodaCondition(_) => Lint::YodaCondition,
+            Finding::TypedConstantCondition(_) => Lint::TypedConstantCondition,
+            Finding::HasOnRequiredAttr(_) => Lint::HasOnRequiredAttr,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
     }
@@ -319,6 +333,8 @@ impl Finding {
             Finding::DuplicateSetElement(f) => f.loc.as_ref(),
             Finding::DuplicatePolicy(f) => f.loc.as_ref(),
             Finding::YodaCondition(f) => f.loc.as_ref(),
+            Finding::TypedConstantCondition(f) => f.loc.as_ref(),
+            Finding::HasOnRequiredAttr(f) => f.loc.as_ref(),
             Finding::DoubleNegation(f) => f.loc.as_ref(),
             Finding::SingletonSetIn(f) => f.loc.as_ref(),
             Finding::PlusNegativeLiteral(f) => f.loc.as_ref(),
