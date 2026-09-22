@@ -29,6 +29,8 @@ use crate::{ast::PolicyID, linter::Lint, parser::Loc};
 
 mod policy;
 pub use policy::*;
+mod schema;
+pub use schema::*;
 
 /// A single problem the linter found.
 ///
@@ -444,3 +446,77 @@ impl LintFinding {
     }
 }
 
+/// A single problem the schema linter found.
+///
+/// Schema findings are separate from policy [`Finding`]s: they arise from a
+/// schema rather than a policy, and are located by the entity type, attribute, or
+/// namespace they concern rather than by a policy ID.
+///
+/// PUBLIC API: re-exported unchanged from `cedar-policy`, so a breaking change to
+/// a variant here breaks that crate's API too. `#[non_exhaustive]`, so adding a
+/// variant is not breaking.
+#[derive(Diagnostic, Error, Debug, Clone, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaFinding {
+    /// An attribute typed like the pre-`tags` tag-emulation idiom.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    AttributeShouldBeTags(#[from] AttributeShouldBeTags),
+
+    /// Many entity types sharing a name prefix, which a namespace would express.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    SharedPrefixNamespace(#[from] SharedPrefixNamespace),
+
+    /// A declared entity type nothing references.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnusedEntityType(#[from] UnusedEntityType),
+
+    /// A declared common type nothing references.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnusedCommonType(#[from] UnusedCommonType),
+
+    /// An action no other action lists as a parent.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnusedAction(#[from] UnusedAction),
+
+    /// A `memberOf`/`in` list with a repeated entry.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    DuplicateMemberOf(#[from] DuplicateMemberOf),
+
+    /// An enumerated entity type with a repeated choice.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    DuplicateEnumChoice(#[from] DuplicateEnumChoice),
+
+    /// Several entity types sharing many attributes, suggesting a common type.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    SharedAttributes(#[from] SharedAttributes),
+}
+
+impl SchemaFinding {
+    /// The lint that produced this finding.
+    pub fn lint(&self) -> Lint {
+        match self {
+            SchemaFinding::AttributeShouldBeTags(_) => Lint::AttributeShouldBeTags,
+            SchemaFinding::SharedPrefixNamespace(_) => Lint::SharedPrefixNamespace,
+            SchemaFinding::UnusedEntityType(_) => Lint::UnusedEntityType,
+            SchemaFinding::UnusedCommonType(_) => Lint::UnusedCommonType,
+            SchemaFinding::UnusedAction(_) => Lint::UnusedAction,
+            SchemaFinding::DuplicateMemberOf(_) => Lint::DuplicateMemberOf,
+            SchemaFinding::DuplicateEnumChoice(_) => Lint::DuplicateEnumChoice,
+            SchemaFinding::SharedAttributes(_) => Lint::SharedAttributes,
+        }
+    }
+
+    /// Is this finding a warning rather than an error? Every schema finding is
+    /// advisory, so this is always true; provided for parity with [`Finding`].
+    pub fn is_warning(&self) -> bool {
+        Diagnostic::severity(self) == Some(miette::Severity::Warning)
+    }
+}

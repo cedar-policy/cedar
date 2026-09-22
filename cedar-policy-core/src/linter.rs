@@ -98,6 +98,7 @@ mod util;
 // Schema-free policy lints, one submodule each.
 mod policy;
 // Schema lints (the `SchemaLinter`).
+mod schema;
 // Schema-informed policy lints (typechecker as a service).
 // TPE-based lints (feature-gated).
 
@@ -143,7 +144,8 @@ use crate::{
     fuzzy_match::fuzzy_search,
 };
 
-pub use findings::{Finding, LintFinding};
+pub use findings::{Finding, LintFinding, SchemaFinding};
+pub use schema::SchemaLinter;
 
 /// Run each enabled lint over `$input`, collecting its findings into `$findings`.
 /// Collapses the otherwise-identical per-lint dispatch blocks in
@@ -359,6 +361,35 @@ declare_lints! {
     /// Configured separately from the `forbid` case, since the `forbid` case is
     /// the one with a security consequence and is worth adopting on its own.
     PermitAttrGuards => "permit-attr-guards", Restriction, false;
+
+    /// (Schema) An attribute typed `Set<{key: String, value: T}>`, the idiom for
+    /// emulating tags before Cedar had a native `tags` construct.
+    AttributeShouldBeTags => "attribute-should-be-tags", Schema, true;
+
+    /// (Schema) Several entity types sharing a name prefix, which a namespace
+    /// would express more cleanly.
+    SharedPrefixNamespace => "shared-prefix-namespace", Schema, true;
+
+    /// (Schema) An entity type no action applies to and nothing else references,
+    /// so no request can involve it.
+    UnusedEntityType => "unused-entity-type", Schema, true;
+
+    /// (Schema) A common type nothing references.
+    UnusedCommonType => "unused-common-type", Schema, true;
+
+    /// (Schema) An action that groups no other action and applies to no request.
+    UnusedAction => "unused-action", Schema, true;
+
+    /// (Schema) A `memberOf`/`in` list that names the same parent twice.
+    DuplicateMemberOf => "duplicate-member-of", Schema, true;
+
+    /// (Schema) An enumerated entity type repeating a choice, e.g.
+    /// `enum ["red", "red"]`.
+    DuplicateEnumChoice => "duplicate-enum-choice", Schema, true;
+
+    /// (Schema) Several entity types sharing many attributes (fully or partly),
+    /// which a common type could factor out.
+    SharedAttributes => "shared-attributes", Schema, true;
 }
 
 impl std::fmt::Display for Lint {
@@ -1059,7 +1090,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 23);
+        assert_eq!(Lint::all().count(), 31);
         assert_eq!(LintGroup::all().count(), 6);
     }
 
