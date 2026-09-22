@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-use cedar_policy::Schema;
+use cedar_policy::{Schema, SchemaFragment};
 use clap::{Args, ValueEnum};
 use miette::{Result, WrapErr};
 use std::path::{Path, PathBuf};
@@ -67,6 +67,31 @@ impl OptionalSchemaArgs {
             return Ok(None);
         };
         read_schema_from_file(schema_file, self.schema_format).map(Some)
+    }
+}
+
+/// Read a [`SchemaFragment`] — the schema as written, before name resolution —
+/// from `path`. Used by the `lint` command's `--lint-schema`, which lints the
+/// schema source itself rather than a resolved schema. Parse warnings are printed
+/// to stderr, as in [`read_schema_from_file`].
+pub(crate) fn read_schema_fragment(
+    path: impl AsRef<Path>,
+    format: SchemaFormat,
+) -> Result<SchemaFragment> {
+    let path = path.as_ref();
+    let schema_src = read_from_file(path, "schema")?;
+    match format {
+        SchemaFormat::Json => SchemaFragment::from_json_str(&schema_src)
+            .wrap_err_with(|| format!("failed to parse schema from file {}", path.display())),
+        SchemaFormat::Cedar => {
+            let (fragment, warnings) = SchemaFragment::from_cedarschema_str(&schema_src)
+                .wrap_err_with(|| format!("failed to parse schema from file {}", path.display()))?;
+            for warning in warnings {
+                let report = miette::Report::new(warning);
+                eprintln!("{report:?}");
+            }
+            Ok(fragment)
+        }
     }
 }
 

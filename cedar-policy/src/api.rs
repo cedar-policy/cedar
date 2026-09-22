@@ -47,6 +47,9 @@ mod tpe;
 #[cfg(feature = "tpe")]
 pub use tpe::*;
 
+mod linter;
+pub use linter::*;
+
 pub use ast::Effect;
 pub use authorizer::Decision;
 #[cfg(feature = "partial-eval")]

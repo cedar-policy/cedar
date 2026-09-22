@@ -21,6 +21,8 @@ mod evaluate;
 pub use evaluate::*;
 mod validate;
 pub use validate::*;
+mod lint;
+pub use lint::*;
 mod check_parse;
 pub use check_parse::*;
 #[cfg(feature = "analyze")]
@@ -95,6 +97,9 @@ pub enum Commands {
     Evaluate(EvaluateArgs),
     /// Validate a policy set against a schema
     Validate(ValidateArgs),
+    /// Lint a policy set (and optionally its schema) for likely mistakes,
+    /// stylistic issues, and constructs a caller may want to rule out
+    Lint(LintArgs),
     /// Check that policies, expressions, schema, and/or entities successfully parse.
     /// (All arguments are optional; this checks that whatever is provided parses)
     ///
