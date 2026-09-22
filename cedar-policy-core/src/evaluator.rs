@@ -34,6 +34,7 @@ use evaluation_errors::*;
 use itertools::{Either, Itertools};
 use nonempty::nonempty;
 use smol_str::SmolStr;
+use yaspar_macros::stack_safe;
 
 const REQUIRED_STACK_SPACE: usize = 1024 * 100;
 
@@ -223,6 +224,7 @@ pub struct RestrictedEvaluator<'e> {
     extensions: &'e Extensions<'e>,
 }
 
+#[stack_safe]
 impl<'e> RestrictedEvaluator<'e> {
     /// Create a fresh evaluator for evaluating "restricted" expressions
     pub fn new(extensions: &'e Extensions<'e>) -> Self {
@@ -278,13 +280,17 @@ impl<'e> RestrictedEvaluator<'e> {
     ///
     /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
     fn partial_interpret_internal(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
-        match expr.as_ref().expr_kind() {
+        let inner: &Expr = expr.into();
+        match inner.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
             ExprKind::Set(items) => {
-                let vals = items
-                    .iter()
-                    .map(|item| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))) // assuming the invariant holds for `e`, it will hold here
-                    .collect::<Result<Vec<_>>>()?;
+                let mut vals: Vec<PartialValue> = Vec::with_capacity(items.len());
+                for idx in 0..items.len() {
+                    // assuming the invariant holds for `e`, it will hold here
+                    let item = &items[idx];
+                    let val = self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))?;
+                    vals.push(val);
+                }
                 match split(vals) {
                     Either::Left(values) => Ok(Value::set(values, expr.source_loc().cloned()).into()),
                     Either::Right(residuals) => Ok(Expr::set(residuals).into()),
@@ -292,11 +298,16 @@ impl<'e> RestrictedEvaluator<'e> {
             }
             ExprKind::Unknown(u) => Ok(PartialValue::unknown(u.clone())),
             ExprKind::Record(map) => {
-                let map = map
-                    .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?))) // assuming the invariant holds for `e`, it will hold here
-                    .collect::<Result<Vec<_>>>()?;
-                let (names, attrs) : (Vec<_>, Vec<_>) = map.into_iter().unzip();
+                let entries: Vec<(&SmolStr, &Expr)> = map.iter().collect();
+                let mut names: Vec<SmolStr> = Vec::with_capacity(entries.len());
+                let mut attrs: Vec<PartialValue> = Vec::with_capacity(entries.len());
+                for idx in 0..entries.len() {
+                    // assuming the invariant holds for `e`, it will hold here
+                    let (k, v) = entries[idx];
+                    let val = self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?;
+                    names.push(k.clone());
+                    attrs.push(val);
+                }
                 match split(attrs) {
                     Either::Left(values) => Ok(Value::record(names.into_iter().zip(values), expr.source_loc().cloned()).into()),
                     Either::Right(residuals) => {
@@ -310,11 +321,14 @@ impl<'e> RestrictedEvaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args
-                    .iter()
-                    .map(|arg| self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(arg))) // assuming the invariant holds for `e`, it will hold here
-                    .collect::<Result<Vec<_>>>()?;
-                match split(args) {
+                let mut evalled_args: Vec<PartialValue> = Vec::with_capacity(args.len());
+                for idx in 0..args.len() {
+                    // assuming the invariant holds for `e`, it will hold here
+                    let arg = &args[idx];
+                    let val = self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(arg))?;
+                    evalled_args.push(val);
+                }
+                match split(evalled_args) {
                     Either::Left(values) => {
                         let values : Vec<_> = values.collect();
                         let efunc = self.extensions.func(fn_name)?;
@@ -413,6 +427,62 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    // Never map unknowns when feature flag is not set
+    #[cfg(not(feature = "partial-eval"))]
+    #[inline(always)]
+    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
+        Ok(PartialValue::Residual(Expr::unknown(u.clone())))
+    }
+
+    // Try resolving a named Unknown into a Value
+    #[cfg(feature = "partial-eval")]
+    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
+        match (self.unknowns_mapper.as_ref()(&u.name), &u.type_annotation) {
+            // The mapper might not recognize the unknown
+            (None, _) => Ok(PartialValue::Residual(Expr::unknown(u.clone()))),
+            // Replace the unknown value with the concrete one found
+            (Some(v), None) => Ok(PartialValue::Value(v)),
+            (Some(v), Some(t)) => {
+                if v.type_of() == *t {
+                    Ok(PartialValue::Value(v))
+                } else {
+                    Err(EvaluationError::type_error_single(t.clone(), &v))
+                }
+            }
+        }
+    }
+
+    fn eval_in(
+        &self,
+        uid1: &EntityUID,
+        entity1: Option<&Entity>,
+        arg2: &Value,
+    ) -> Result<PartialValue> {
+        // `rhs` is a list of all the UIDs for which we need to
+        // check if `uid1` is a descendant of
+        let rhs = match &arg2.value {
+            ValueKind::Lit(Literal::EntityUID(uid)) => vec![uid.as_ref()],
+            ValueKind::Set(_) => arg2.get_as_entity_set()?,
+            _ => {
+                return Err(EvaluationError::type_error(
+                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    arg2,
+                ))
+            }
+        };
+        for uid2 in rhs {
+            if uid1 == uid2 || entity1.map(|e1| e1.is_descendant_of(uid2)).unwrap_or(false) {
+                return Ok(true.into());
+            }
+        }
+        // if we get here, `uid1` is not a descendant of (or equal to)
+        // any UID in `rhs`
+        Ok(false.into())
+    }
+}
+
+#[stack_safe]
+impl<'e> Evaluator<'e> {
     /// Interpret an `Expr` into a `Value` in this evaluation environment.
     ///
     /// May return a residual expression, if the input expression is symbolic.
@@ -468,20 +538,21 @@ impl<'e> Evaluator<'e> {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => self.eval_if(test_expr, then_expr, else_expr, slots),
+            } => self.eval_if(test_expr.as_ref(), then_expr, else_expr, slots),
             ExprKind::And { left, right } => {
-                match self.partial_interpret(left, slots)? {
+                match self.partial_interpret(left.as_ref(), slots)? {
                     // PE Case: Try to partial interpret right expression in best-effort.
                     // If it fails, fall back to original right expression.
-                    PartialValue::Residual(e) => Ok(PartialValue::Residual(Expr::and(
-                        e,
-                        self.partial_interpret(right, slots)
-                            .map_or_else(|_| right.as_ref().clone(), Into::into),
-                    ))),
+                    PartialValue::Residual(e) => {
+                        let rhs = self
+                            .partial_interpret(right.as_ref(), slots)
+                            .map_or_else(|_| right.as_ref().clone(), Into::into);
+                        Ok(PartialValue::Residual(Expr::and(e, rhs)))
+                    }
                     // Full eval case
                     PartialValue::Value(v) => {
                         if v.get_as_bool()? {
-                            match self.partial_interpret(right, slots)? {
+                            match self.partial_interpret(right.as_ref(), slots)? {
                                 // you might think that `true && <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `true && <residual>` to ensure
                                 // type check happens
@@ -499,21 +570,22 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Or { left, right } => {
-                match self.partial_interpret(left, slots)? {
+                match self.partial_interpret(left.as_ref(), slots)? {
                     // PE Case: Try to partial interpret right expression in best-effort.
                     // If it fails, fall back to original right expression.
-                    PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::or(
-                        r,
-                        self.partial_interpret(right, slots)
-                            .map_or_else(|_| right.as_ref().clone(), Into::into),
-                    ))),
+                    PartialValue::Residual(r) => {
+                        let rhs = self
+                            .partial_interpret(right.as_ref(), slots)
+                            .map_or_else(|_| right.as_ref().clone(), Into::into);
+                        Ok(PartialValue::Residual(Expr::or(r, rhs)))
+                    }
                     // Full eval case
                     PartialValue::Value(lhs) => {
                         if lhs.get_as_bool()? {
                             // We can short circuit here
                             Ok(true.into())
                         } else {
-                            match self.partial_interpret(right, slots)? {
+                            match self.partial_interpret(right.as_ref(), slots)? {
                                 PartialValue::Residual(rhs) =>
                                 // you might think that `false || <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `false || <residual>` to ensure
@@ -527,7 +599,7 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
+            ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg.as_ref(), slots)? {
                 PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
                 // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
                 // Could be a nice target for fault injection
@@ -538,10 +610,9 @@ impl<'e> Evaluator<'e> {
                 // Current limitations:
                 //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
                 //   implemented in short_circuit_*
-                let (arg1, arg2) = match (
-                    self.partial_interpret(arg1, slots)?,
-                    self.partial_interpret(arg2, slots)?,
-                ) {
+                let pval1 = self.partial_interpret(arg1.as_ref(), slots)?;
+                let pval2 = self.partial_interpret(arg2.as_ref(), slots)?;
+                let (arg1, arg2) = match (pval1, pval2) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
                         if let Some(val) = self.short_circuit_value_and_residual(&v1, &e2, *op) {
@@ -667,11 +738,13 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args
-                    .iter()
-                    .map(|arg| self.partial_interpret(arg, slots))
-                    .collect::<Result<Vec<_>>>()?;
-                match split(args) {
+                let mut evalled_args: Vec<PartialValue> = Vec::with_capacity(args.len());
+                for idx in 0..args.len() {
+                    let arg = &args[idx];
+                    let val = self.partial_interpret(arg, slots)?;
+                    evalled_args.push(val);
+                }
+                match split(evalled_args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
                         let efunc = self.extensions.func(fn_name)?;
@@ -683,7 +756,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
-            ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
+            ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr.as_ref(), slots)? {
                 PartialValue::Value(Value {
                     value: ValueKind::Record(record),
                     ..
@@ -717,7 +790,7 @@ impl<'e> Evaluator<'e> {
             },
             ExprKind::ExtHasAttr { expr, attrs } => self.eval_extended_has_attr(expr, attrs, slots),
             ExprKind::Like { expr, pattern } => {
-                let v = self.partial_interpret(expr, slots)?;
+                let v = self.partial_interpret(expr.as_ref(), slots)?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((pattern.wildcard_match(v.get_as_string()?)).into())
@@ -726,7 +799,7 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Is { expr, entity_type } => {
-                let v = self.partial_interpret(expr, slots)?;
+                let v = self.partial_interpret(expr.as_ref(), slots)?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((v.get_as_entity()?.entity_type() == entity_type).into())
@@ -747,21 +820,27 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Set(items) => {
-                let vals = items
-                    .iter()
-                    .map(|item| self.partial_interpret(item, slots))
-                    .collect::<Result<Vec<_>>>()?;
+                let mut vals: Vec<PartialValue> = Vec::with_capacity(items.len());
+                for idx in 0..items.len() {
+                    let item = &items[idx];
+                    let val = self.partial_interpret(item, slots)?;
+                    vals.push(val);
+                }
                 match split(vals) {
                     Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
             ExprKind::Record(map) => {
-                let map = map
-                    .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
-                    .collect::<Result<Vec<_>>>()?;
-                let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
+                let entries: Vec<(&SmolStr, &Expr)> = map.iter().collect();
+                let mut names: Vec<SmolStr> = Vec::with_capacity(entries.len());
+                let mut evalled: Vec<PartialValue> = Vec::with_capacity(entries.len());
+                for idx in 0..entries.len() {
+                    let (k, v) = entries[idx];
+                    let val = self.partial_interpret(v, slots)?;
+                    names.push(k.clone());
+                    evalled.push(val);
+                }
                 match split(evalled) {
                     Either::Left(vals) => {
                         Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
@@ -783,59 +862,6 @@ impl<'e> Evaluator<'e> {
         }
     }
 
-    // Never map unknowns when feature flag is not set
-    #[cfg(not(feature = "partial-eval"))]
-    #[inline(always)]
-    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
-        Ok(PartialValue::Residual(Expr::unknown(u.clone())))
-    }
-
-    // Try resolving a named Unknown into a Value
-    #[cfg(feature = "partial-eval")]
-    fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
-        match (self.unknowns_mapper.as_ref()(&u.name), &u.type_annotation) {
-            // The mapper might not recognize the unknown
-            (None, _) => Ok(PartialValue::Residual(Expr::unknown(u.clone()))),
-            // Replace the unknown value with the concrete one found
-            (Some(v), None) => Ok(PartialValue::Value(v)),
-            (Some(v), Some(t)) => {
-                if v.type_of() == *t {
-                    Ok(PartialValue::Value(v))
-                } else {
-                    Err(EvaluationError::type_error_single(t.clone(), &v))
-                }
-            }
-        }
-    }
-
-    fn eval_in(
-        &self,
-        uid1: &EntityUID,
-        entity1: Option<&Entity>,
-        arg2: &Value,
-    ) -> Result<PartialValue> {
-        // `rhs` is a list of all the UIDs for which we need to
-        // check if `uid1` is a descendant of
-        let rhs = match &arg2.value {
-            ValueKind::Lit(Literal::EntityUID(uid)) => vec![uid.as_ref()],
-            ValueKind::Set(_) => arg2.get_as_entity_set()?,
-            _ => {
-                return Err(EvaluationError::type_error(
-                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
-                    arg2,
-                ))
-            }
-        };
-        for uid2 in rhs {
-            if uid1 == uid2 || entity1.map(|e1| e1.is_descendant_of(uid2)).unwrap_or(false) {
-                return Ok(true.into());
-            }
-        }
-        // if we get here, `uid1` is not a descendant of (or equal to)
-        // any UID in `rhs`
-        Ok(false.into())
-    }
-
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
     fn eval_if(
@@ -848,23 +874,26 @@ impl<'e> Evaluator<'e> {
         match self.partial_interpret(guard, slots)? {
             PartialValue::Value(v) => {
                 if v.get_as_bool()? {
-                    self.partial_interpret(consequent, slots)
+                    self.partial_interpret(consequent.as_ref(), slots)
                 } else {
-                    self.partial_interpret(alternative, slots)
+                    self.partial_interpret(alternative.as_ref(), slots)
                 }
             }
-            PartialValue::Residual(guard) => {
+            PartialValue::Residual(residual_guard) => {
                 // Try to partial interpret both branches in best-effort:
                 // if a branch partial evaluation fails, then fallback to the original branch expression.
-                let consequent = self
-                    .partial_interpret(consequent, slots)
+                let consequent_res = self.partial_interpret(consequent.as_ref(), slots);
+                let new_consequent = consequent_res
                     .map(|r| Arc::new(r.into()))
                     .unwrap_or_else(|_| consequent.clone());
-                let alternative = self
-                    .partial_interpret(alternative, slots)
+                let alternative_res = self.partial_interpret(alternative.as_ref(), slots);
+                let new_alternative = alternative_res
                     .map(|r| Arc::new(r.into()))
                     .unwrap_or_else(|_| alternative.clone());
-                Ok(Expr::ite_arc(Arc::new(guard), consequent, alternative).into())
+                Ok(
+                    Expr::ite_arc(Arc::new(residual_guard), new_consequent, new_alternative)
+                        .into(),
+                )
             }
         }
     }
@@ -975,19 +1004,21 @@ impl<'e> Evaluator<'e> {
                         // 2) If it's not safe to project, we can check to see if the requested key exists in the record
                         //    if it doesn't, we can fail early
                         if res.is_projectable() {
-                            map.as_ref()
+                            let found = map
+                                .as_ref()
                                 .iter()
                                 .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
                                 .next()
-                                .ok_or_else(|| {
-                                    EvaluationError::record_attr_does_not_exist(
-                                        attr.clone(),
-                                        map.keys(),
-                                        map.len(),
-                                        source_loc.cloned(),
-                                    )
-                                })
-                                .and_then(|e| self.partial_interpret(e, slots))
+                                .cloned();
+                            match found {
+                                Some(e) => self.partial_interpret_reentrant(&e, slots),
+                                None => Err(EvaluationError::record_attr_does_not_exist(
+                                    attr.clone(),
+                                    map.keys(),
+                                    map.len(),
+                                    source_loc.cloned(),
+                                )),
+                            }
                         } else if map.keys().any(|k| k == attr) {
                             Ok(PartialValue::Residual(Expr::get_attr(
                                 Expr::record_arc(Arc::clone(map)),
@@ -1060,6 +1091,13 @@ impl<'e> Evaluator<'e> {
                 &v,
             )),
         }
+    }
+
+}
+
+impl Evaluator<'_> {
+    fn partial_interpret_reentrant(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        self.partial_interpret(expr, slots)
     }
 
     /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
@@ -6704,5 +6742,28 @@ pub(crate) mod test {
         let e = Expr::is_eq(Expr::var(Var::Principal), Expr::var(Var::Resource));
         let r = eval.partial_eval_expr(&e).unwrap();
         assert_eq!(r, Either::Left(Value::from(false)));
+    }
+
+    #[test]
+    fn deeply_nested_expr_is_stack_safe() {
+        const DEPTH: usize = 20_000;
+
+        std::thread::Builder::new()
+            .stack_size(512 * 1024)
+            .spawn(|| {
+                let mut expr = Expr::val(true);
+                for _ in 0..DEPTH {
+                    expr = Expr::not(expr);
+                }
+                let request = basic_request();
+                let entities = basic_entities();
+                let eval = Evaluator::new(request, &entities, Extensions::none());
+                assert_eq!(eval.interpret_inline_policy(&expr), Ok(Value::from(true)));
+
+                stacker::grow(64 * 1024 * 1024, || drop(expr));
+            })
+            .expect("failed to spawn thread")
+            .join()
+            .expect("thread panicked");
     }
 }
