@@ -420,6 +420,7 @@ dependencies = [
  "arbitrary",
  "chrono",
  "cool_asserts",
+ "criterion",
  "educe",
  "either",
  "insta",

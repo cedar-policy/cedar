@@ -78,6 +78,7 @@ extended-schema = []
 lalrpop = "0.22.2"
 
 [dev-dependencies]
+criterion = "0.8"
 similar-asserts = "2.0.0"
 cool_asserts = "2.0"
 miette = { version = "7.6.0", features = ["fancy"] }
@@ -89,3 +90,7 @@ workspace = true
 [package.metadata.docs.rs]
 features = ["experimental", "unstable-tooling", "test-util"]
 rustdoc-args = ["--cfg", "docsrs"]
+
+[[bench]]
+name = "evaluation"
+harness = false
