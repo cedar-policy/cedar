@@ -103,6 +103,7 @@ mod policy;
 
 // Shared infrastructure used across the lint groups.
 mod capability;
+mod cst_visitor;
 mod types;
 
 // The policy lint modules are reached through `policy::`, but the driver names
@@ -236,6 +237,11 @@ declare_lints! {
     /// without a schema, so they are [`Lint::ActionAttrs`] instead.
     Types => "types", Correctness, true;
 
+    /// Arithmetic negation applied twice, as in `- -x`, which computes the operand
+    /// back again while adding an overflow failure mode. Almost always a mistake:
+    /// a missing left operand of a subtraction, or a logical `!` meant instead.
+    DoubleNegation => "double-negation", Correctness, true;
+
     /// `getTag` calls not guarded by a corresponding `hasTag`, which error if
     /// the tag is absent.
     Tags => "tags", Correctness, true;
@@ -275,12 +281,60 @@ declare_lints! {
     /// no wildcard, or one that is only wildcards.
     LikePatterns => "like-patterns", Style, true;
 
+    /// Boolean-valued expressions written the long way round: `a == true`,
+    /// `a == false`, and `if c then true else false`. Pure rewrites, all
+    /// expressible on the AST since the parser leaves them intact.
+    RedundantBoolean => "redundant-boolean", Style, true;
+
+    /// Negated comparisons and repeated `!` written out by hand, where Cedar has
+    /// syntax that says the same thing: `!(a == b)` for `a != b`, `!!a` for `a`.
+    ///
+    /// Reads the CST rather than the AST, since the parser desugars `a != b` into
+    /// `!(a == b)` and the two are indistinguishable afterwards.
+    PreferSugar => "prefer-sugar", Style, true;
+
+    /// Expressions with a shorter equivalent form that the AST records directly:
+    /// `x in [E]` for `x in E`, and `a + -1` for `a - 1`.
+    ExprStyle => "expr-style", Style, true;
+
+    /// Roundabout syntax that the CST records but the AST does not:
+    /// `principal["foo"]` for `principal.foo`, doubled parentheses, and an
+    /// `unless` clause whose body is negated.
+    SyntaxStyle => "syntax-style", Style, true;
+
+    /// `==` and `in` comparisons between a scope variable and an entity literal
+    /// that are written in a condition, where the policy scope could express
+    /// them directly. Equivalent either way, but only a scope constraint lets a
+    /// policy store slice on it.
+    ScopeConstraints => "scope-constraints", Style, true;
+
     /// Arithmetic in a policy condition, which can overflow and cause the
     /// policy to be skipped. Most dangerous in a `forbid`.
     ///
     /// Off by default: it rules out arithmetic in conditions altogether, which
     /// is a real restriction on what you can express.
     ErroringArithmetic => "erroring-arithmetic", Restriction, false;
+
+    /// Attribute accesses in a `forbid` policy that no corresponding `has` check
+    /// guards. If the attribute is missing the condition errors, which skips the
+    /// `forbid` and may allow the request.
+    ///
+    /// Worth enabling even alongside strict validation: a guard also covers an
+    /// entity that is absent from the store entirely, which no schema can rule
+    /// out.
+    ///
+    /// Off by default: it asks for a guard on every access, which is a real
+    /// restriction on how conditions can be written.
+    ForbidAttrGuards => "forbid-attr-guards", Restriction, false;
+
+    /// Attribute accesses in a `permit` policy that no corresponding `has` check
+    /// guards. Same mechanism as [`Lint::ForbidAttrGuards`], but skipping a
+    /// `permit` denies the request rather than allowing it, so this is about a
+    /// `permit` silently not working rather than about security.
+    ///
+    /// Configured separately from the `forbid` case, since the `forbid` case is
+    /// the one with a security consequence and is worth adopting on its own.
+    PermitAttrGuards => "permit-attr-guards", Restriction, false;
 }
 
 impl std::fmt::Display for Lint {
@@ -595,6 +649,30 @@ impl Linter {
         LintResult::new(findings)
     }
 
+    /// Lint policies from their source text, which additionally runs the lints
+    /// that need the concrete syntax tree.
+    ///
+    /// [`Linter::lint`] cannot run those: the parser desugars `a != b` into
+    /// `!(a == b)` and drops parentheses and the `unless` keyword, so a
+    /// [`PolicySet`] no longer records how the author wrote things.
+    /// [`Lint::PreferSugar`] and [`Lint::SyntaxStyle`] need this; every other lint
+    /// gives the same result either way.
+    ///
+    /// Returns a parse error if `src` does not parse, since there is nothing to
+    /// lint in that case.
+    pub fn lint_str(&self, src: &str) -> Result<LintResult, crate::parser::err::ParseErrors> {
+        let cst = crate::parser::text_to_cst::parse_policies(src)?;
+        let policy_set = cst.to_policyset()?;
+        let mut result = self.lint(&policy_set).into_findings();
+        if self.runs(Lint::PreferSugar) {
+            result.extend(sugar::SugarLinter::lint_policies(&cst));
+        }
+        if self.runs(Lint::SyntaxStyle) {
+            result.extend(syntax_style::SyntaxStyleLinter::lint_policies(&cst));
+        }
+        Ok(LintResult::new(result))
+    }
+
     /// Lint a single template or static policy.
     fn lint_template(&self, template: &Template) -> Vec<LintFinding> {
         let mut findings = self.lint_expr(&template.condition());
@@ -603,14 +681,32 @@ impl Linter {
         // effect, or both).
         run_lints!(self, findings, template, {
             Lint::ErroringArithmetic => type erroring_forbid::ErroringForbidLinter,
+            Lint::ScopeConstraints => type scope_constraints::ScopeConstraintLinter,
         });
 
         // Linters that consume just the `when`/`unless` clauses, skipped when the
         // policy has none.
+        if let Some(conditions) = template.non_scope_constraints() {
+            run_lints!(self, findings, conditions, {
+                Lint::DoubleNegation => type double_negation::DoubleNegationLinter,
+                Lint::ExprStyle => type expr_style::ExprStyleLinter,
+                Lint::RedundantBoolean => type redundant_boolean::RedundantBooleanLinter,
+            });
+        }
 
         // Free-function lints over the whole template.
 
         // Lints with a non-`Default` constructor.
+        for (lint, effect) in [
+            (Lint::ForbidAttrGuards, Effect::Forbid),
+            (Lint::PermitAttrGuards, Effect::Permit),
+        ] {
+            if self.runs(lint) {
+                let mut linter = attr_guards::AttrGuardLinter::new(effect);
+                linter.lint(template);
+                findings.extend(linter.into_findings());
+            }
+        }
 
         LintFinding::tag_all(findings, template.id())
     }
@@ -812,6 +908,42 @@ mod test {
         ));
     }
 
+    /// The two attribute-guard lints are selected independently, and each only
+    /// reports policies of its own effect.
+    #[test]
+    fn attr_guard_lints_are_independent() {
+        let policies = parse_policyset(
+            r#"
+            forbid(principal, action, resource) when { principal.a };
+            permit(principal, action, resource) when { principal.a };
+        "#,
+        )
+        .unwrap();
+
+        let only_forbid = Linter::new([Lint::ForbidAttrGuards]).lint(&policies);
+        assert_eq!(only_forbid.len(), 1);
+        assert!(matches!(
+            only_forbid.findings().next().unwrap().finding(),
+            Finding::UnguardedAttrInForbid(_)
+        ));
+
+        let only_permit = Linter::new([Lint::PermitAttrGuards]).lint(&policies);
+        assert_eq!(only_permit.len(), 1);
+        assert!(matches!(
+            only_permit.findings().next().unwrap().finding(),
+            Finding::UnguardedAttrInPermit(_)
+        ));
+
+        // Both together report both, and neither is on by default.
+        assert_eq!(
+            Linter::new([Lint::ForbidAttrGuards, Lint::PermitAttrGuards])
+                .lint(&policies)
+                .len(),
+            2
+        );
+        assert!(Linter::default_lints().lint(&policies).is_empty());
+    }
+
     #[test]
     fn findings_are_tagged_with_policy_id() {
         let policies = parse_policyset(
@@ -896,7 +1028,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 10);
+        assert_eq!(Lint::all().count(), 18);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

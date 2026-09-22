@@ -19,11 +19,18 @@
 //! one lint; the driver in [`Linter`](crate::linter::Linter) selects and runs
 //! them.
 
+pub(crate) mod attr_guards;
+pub(crate) mod double_negation;
 pub(crate) mod empty_set;
 pub(crate) mod erroring_forbid;
+pub(crate) mod expr_style;
 pub(crate) mod ext_constructors;
 pub(crate) mod forbid_without_permit;
 pub(crate) mod like_patterns;
 pub(crate) mod nonlinear;
+pub(crate) mod redundant_boolean;
+pub(crate) mod scope_constraints;
+pub(crate) mod sugar;
+pub(crate) mod syntax_style;
 pub(crate) mod tags;
 pub(crate) mod universal_policy;

@@ -127,6 +127,51 @@ pub enum Finding {
     #[error(transparent)]
     ForbidWithoutPermit(#[from] ForbidWithoutPermit),
 
+    /// An attribute access in a `forbid` policy with no `has` guard.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnguardedAttrInForbid(#[from] UnguardedAttrInForbid),
+
+    /// An attribute access in a `permit` policy with no `has` guard.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnguardedAttrInPermit(#[from] UnguardedAttrInPermit),
+
+    /// A scope-expressible comparison written in a condition instead.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ScopeConstraintInCondition(#[from] ScopeConstraintInCondition),
+
+    /// A comparison against a boolean literal, or an `if` returning booleans.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    RedundantBoolean(#[from] RedundantBoolean),
+
+    /// An expression spelled out by hand that Cedar has syntax for.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    PreferSugar(#[from] PreferSugar),
+
+    /// An `expr["key"]` access where `expr.key` would do.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    IndexWithLiteralKey(#[from] IndexWithLiteralKey),
+
+    /// A doubled pair of parentheses.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    RedundantParens(#[from] RedundantParens),
+
+    /// An `unless` clause whose body is a negation.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnlessWithNegation(#[from] UnlessWithNegation),
+
+    /// A separate `is` and `in` that the `is .. in ..` form would combine.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    SeparateIsAndIn(#[from] SeparateIsAndIn),
+
     /// An attribute or tag access on an action, which no schema can declare.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -137,6 +182,21 @@ pub enum Finding {
     #[diagnostic(transparent)]
     #[error(transparent)]
     ImpossibleIsCheck(#[from] ImpossibleIsCheck),
+
+    /// Arithmetic negation applied twice.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    DoubleNegation(#[from] DoubleNegation),
+
+    /// An `in` against a one-element set literal.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    SingletonSetIn(#[from] SingletonSetIn),
+
+    /// An addition of a negative literal, i.e. `a + -1`.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    PlusNegativeLiteral(#[from] PlusNegativeLiteral),
 }
 impl Finding {
     /// The lint that produced this finding.
@@ -160,6 +220,17 @@ impl Finding {
             | Finding::PermitAllWithoutForbid(_)
             | Finding::ForbidAllSubsumesPolicies(_) => Lint::UniversalPolicy,
             Finding::ForbidWithoutPermit(_) => Lint::ForbidWithoutPermit,
+            Finding::UnguardedAttrInForbid(_) => Lint::ForbidAttrGuards,
+            Finding::UnguardedAttrInPermit(_) => Lint::PermitAttrGuards,
+            Finding::ScopeConstraintInCondition(_) => Lint::ScopeConstraints,
+            Finding::RedundantBoolean(_) => Lint::RedundantBoolean,
+            Finding::PreferSugar(_) => Lint::PreferSugar,
+            Finding::IndexWithLiteralKey(_)
+            | Finding::RedundantParens(_)
+            | Finding::UnlessWithNegation(_)
+            | Finding::SeparateIsAndIn(_) => Lint::SyntaxStyle,
+            Finding::SingletonSetIn(_) | Finding::PlusNegativeLiteral(_) => Lint::ExprStyle,
+            Finding::DoubleNegation(_) => Lint::DoubleNegation,
             Finding::ImpossibleIsCheck(_) => Lint::Types,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -186,8 +257,20 @@ impl Finding {
             Finding::PermitAllWithoutForbid(f) => f.loc.as_ref(),
             Finding::ForbidAllSubsumesPolicies(f) => f.loc.as_ref(),
             Finding::ForbidWithoutPermit(f) => f.loc.as_ref(),
+            Finding::UnguardedAttrInForbid(f) => f.loc.as_ref(),
+            Finding::UnguardedAttrInPermit(f) => f.loc.as_ref(),
+            Finding::ScopeConstraintInCondition(f) => f.loc.as_ref(),
+            Finding::RedundantBoolean(f) => f.loc.as_ref(),
+            Finding::PreferSugar(f) => f.loc.as_ref(),
+            Finding::IndexWithLiteralKey(f) => f.loc.as_ref(),
+            Finding::RedundantParens(f) => f.loc.as_ref(),
+            Finding::UnlessWithNegation(f) => f.loc.as_ref(),
+            Finding::SeparateIsAndIn(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
+            Finding::DoubleNegation(f) => f.loc.as_ref(),
+            Finding::SingletonSetIn(f) => f.loc.as_ref(),
+            Finding::PlusNegativeLiteral(f) => f.loc.as_ref(),
         }
     }
 

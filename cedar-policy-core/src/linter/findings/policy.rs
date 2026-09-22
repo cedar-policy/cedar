@@ -358,6 +358,269 @@ impl Diagnostic for ForbidWithoutPermit {
     }
 }
 
+/// An attribute access in a `forbid` policy that no `has` check guards. If the
+/// attribute is absent the access errors, the `forbid` is skipped, and the
+/// request may be allowed by some `permit`.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("attribute `{attr}` is accessed in a `forbid` policy without a `has` guard")]
+pub struct UnguardedAttrInForbid {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) attr: SmolStr,
+    /// How the target reads in source, for the suggested guard, e.g. `principal`
+    /// for `principal.admin`.
+    pub(crate) target: String,
+}
+
+impl Diagnostic for UnguardedAttrInForbid {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "if `{attr}` is absent the condition errors and the `forbid` is skipped, so the request may be allowed; guard the access with `{target} has {attr} &&`",
+            attr = self.attr,
+            target = self.target,
+        )))
+    }
+}
+
+/// An attribute access in a `permit` policy that no `has` check guards. Same
+/// mechanism as [`UnguardedAttrInForbid`], but skipping a `permit` fails closed:
+/// the request is denied rather than allowed. Still worth flagging, since the
+/// `permit` silently stops working.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("attribute `{attr}` is accessed in a `permit` policy without a `has` guard")]
+pub struct UnguardedAttrInPermit {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) attr: SmolStr,
+    /// How the target reads in source, for the suggested guard, e.g. `principal`
+    /// for `principal.admin`.
+    pub(crate) target: String,
+}
+
+impl Diagnostic for UnguardedAttrInPermit {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "if `{attr}` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `{target} has {attr} &&`",
+            attr = self.attr,
+            target = self.target,
+        )))
+    }
+}
+
+/// A comparison between a scope variable and an entity literal, written in a
+/// condition where the policy scope could express it directly.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`{var} {op} ..` belongs in the policy scope, not in a condition")]
+pub struct ScopeConstraintInCondition {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) var: Var,
+    /// The operator as it reads in source, `==` or `in`.
+    pub(crate) op: &'static str,
+}
+
+impl Diagnostic for ScopeConstraintInCondition {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "write it as `{var} {op} ..` in the scope instead; the scope is what lets a policy store slice on this constraint, and what a reader sees first",
+            var = self.var,
+            op = self.op,
+        )))
+    }
+}
+
+/// An expression written the long way round, where Cedar has syntax that says the
+/// same thing. A pure rewrite: both forms evaluate identically.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("{wrote} can be written more directly")]
+pub struct PreferSugar {
+    pub(crate) loc: Option<Loc>,
+    /// What was written, as it reads in source.
+    pub(crate) wrote: String,
+    /// What to write instead.
+    pub(crate) prefer: String,
+}
+
+impl Diagnostic for PreferSugar {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "prefer {}; the two are equivalent for every input",
+            self.prefer
+        )))
+    }
+}
+
+/// A boolean-valued expression written the long way round: compared against a
+/// boolean literal, or produced by an `if` whose branches are `true`/`false`.
+/// A pure rewrite; both forms evaluate identically.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("{wrote} is redundant")]
+pub struct RedundantBoolean {
+    pub(crate) loc: Option<Loc>,
+    /// What was written, as it reads in source.
+    pub(crate) wrote: String,
+    /// What to write instead.
+    pub(crate) prefer: String,
+}
+
+impl Diagnostic for RedundantBoolean {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "write {} instead; the two are equivalent for every input",
+            self.prefer
+        )))
+    }
+}
+
+/// An `expr["key"]` access whose key is a legal identifier, so `expr.key` says the
+/// same thing more directly.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`[\"{key}\"]` can be written as `.{key}`")]
+pub struct IndexWithLiteralKey {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) key: String,
+}
+
+impl Diagnostic for IndexWithLiteralKey {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "`.{key}` is the idiomatic form; the index form is needed only when the key is not a legal identifier",
+            key = self.key,
+        )))
+    }
+}
+
+/// A pair of parentheses immediately inside another pair, which cannot affect
+/// precedence.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("redundant parentheses")]
+pub struct RedundantParens {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for RedundantParens {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "this pair is already inside another, so it cannot change how the expression parses",
+        ))
+    }
+}
+
+/// An `unless` clause whose body is negated, which is a double negative since the
+/// clause itself negates.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`unless` with a negated body is a double negative")]
+pub struct UnlessWithNegation {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for UnlessWithNegation {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "`unless` already negates, so drop the `!` and use `when` instead",
+        ))
+    }
+}
+
+/// An `in` whose right operand is a one-element set literal. `x in [E]` and
+/// `x in E` are evaluated identically, so the set adds nothing.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`in` against a one-element set")]
+pub struct SingletonSetIn {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for SingletonSetIn {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "`in` accepts a single entity directly, so the surrounding `[..]` can be dropped",
+        ))
+    }
+}
+
+/// An addition of a negative literal, i.e. `a + -1`, which reads as a subtraction.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("adding a negative literal")]
+pub struct PlusNegativeLiteral {
+    pub(crate) loc: Option<Loc>,
+    /// The literal's magnitude, for the suggested rewrite.
+    pub(crate) magnitude: String,
+}
+
+impl Diagnostic for PlusNegativeLiteral {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "write `- {mag}` instead; both compute the same value and overflow in the same cases",
+            mag = self.magnitude,
+        )))
+    }
+}
+
+/// An `x is T && x in E` that the combined `x is T in E` form expresses directly.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`is` and `in` on the same operand can be combined")]
+pub struct SeparateIsAndIn {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for SeparateIsAndIn {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "Cedar has an `is .. in ..` form that states both constraints at once",
+        ))
+    }
+}
+
+/// Arithmetic negation applied twice, as in `- -x`. Computes the operand back
+/// again, so it says nothing `x` alone does not — while adding an overflow failure
+/// mode, since negating `i64::MIN` errors. Almost certainly not what was intended.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("negation applied twice")]
+pub struct DoubleNegation {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for DoubleNegation {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "negating twice computes the operand back again, and errors on `i64::MIN` where the operand alone would not; did you mean a subtraction, or the logical `!`?",
+        ))
+    }
+}
+
 /// Which kind of member was accessed on an action.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ActionMember {
