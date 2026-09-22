@@ -87,6 +87,26 @@ pub enum Finding {
     #[error(transparent)]
     ArithmeticInPermit(#[from] ArithmeticInPermit),
 
+    /// A `like` pattern containing no wildcard.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    LikeWithoutWildcard(#[from] LikeWithoutWildcard),
+
+    /// A `like` pattern consisting only of wildcards.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    LikeWithOnlyWildcards(#[from] LikeWithOnlyWildcards),
+
+    /// A `like` pattern with two or more consecutive wildcards.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    LikeWithConsecutiveWildcards(#[from] LikeWithConsecutiveWildcards),
+
+    /// A prefix and a suffix `like` pattern on the same operand that combine.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    CombinableLikePatterns(#[from] CombinableLikePatterns),
+
     /// An attribute or tag access on an action, which no schema can declare.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -112,6 +132,10 @@ impl Finding {
             Finding::ArithmeticInForbid(_) | Finding::ArithmeticInPermit(_) => {
                 Lint::ErroringArithmetic
             }
+            Finding::LikeWithoutWildcard(_)
+            | Finding::LikeWithOnlyWildcards(_)
+            | Finding::LikeWithConsecutiveWildcards(_)
+            | Finding::CombinableLikePatterns(_) => Lint::LikePatterns,
             Finding::ImpossibleIsCheck(_) => Lint::Types,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -130,6 +154,10 @@ impl Finding {
             Finding::NonLinearArithmetic(f) => f.loc.as_ref(),
             Finding::ArithmeticInForbid(f) => f.loc.as_ref(),
             Finding::ArithmeticInPermit(f) => f.loc.as_ref(),
+            Finding::LikeWithoutWildcard(f) => f.loc.as_ref(),
+            Finding::LikeWithOnlyWildcards(f) => f.loc.as_ref(),
+            Finding::LikeWithConsecutiveWildcards(f) => f.loc.as_ref(),
+            Finding::CombinableLikePatterns(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
         }

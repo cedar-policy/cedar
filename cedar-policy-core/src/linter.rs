@@ -256,6 +256,10 @@ declare_lints! {
     /// reasoning tools cannot analyze.
     NonLinearArithmetic => "non-linear-arithmetic", Analyzability, false;
 
+    /// `like` patterns that are almost certainly not what was meant: one with
+    /// no wildcard, or one that is only wildcards.
+    LikePatterns => "like-patterns", Style, true;
+
     /// Arithmetic in a policy condition, which can overflow and cause the
     /// policy to be skipped. Most dangerous in a `forbid`.
     ///
@@ -614,6 +618,7 @@ impl Linter {
             Lint::EmptySet => fn empty_set::lint,
             Lint::ExtConstructors => fn ext_constructors::lint,
             Lint::NonLinearArithmetic => fn nonlinear::lint,
+            Lint::LikePatterns => fn like_patterns::lint,
         });
 
         findings
@@ -870,7 +875,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 7);
+        assert_eq!(Lint::all().count(), 8);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

@@ -195,6 +195,93 @@ impl Diagnostic for ArithmeticInPermit {
         ))
     }
 }
+/// A `like` pattern with no wildcard, which is just a string equality.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`like` pattern `\"{pattern}\"` contains no wildcard")]
+pub struct LikeWithoutWildcard {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) pattern: String,
+}
+
+impl Diagnostic for LikeWithoutWildcard {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "this matches only the one exact string; use `==` to compare strings, or add a `*` wildcard",
+        ))
+    }
+}
+
+/// A `like` pattern of only wildcards, which matches every string.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`like` pattern `\"{pattern}\"` matches every string")]
+pub struct LikeWithOnlyWildcards {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) pattern: String,
+}
+
+impl Diagnostic for LikeWithOnlyWildcards {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "this comparison is always true for a string operand, so it has no effect",
+        ))
+    }
+}
+
+/// A `like` pattern with two or more consecutive wildcards, e.g. `"a**b"`. A run of
+/// `*`s matches exactly what a single `*` matches, so the extra ones are redundant.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`like` pattern `\"{pattern}\"` has consecutive wildcards")]
+pub struct LikeWithConsecutiveWildcards {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) pattern: String,
+}
+
+impl Diagnostic for LikeWithConsecutiveWildcards {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "a run of `*`s matches the same as a single `*`; collapse each run to one wildcard",
+        ))
+    }
+}
+
+/// Two `like` patterns on the same operand — a prefix constraint (`"cs*"`) and a
+/// suffix constraint (`"*p"`) — that combine into one equivalent pattern
+/// (`"cs*p"`). Only reported when the prefix and suffix literals cannot overlap, so
+/// the merge is exactly equivalent (see the lint docs).
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`like` patterns `\"{prefix}\"` and `\"{suffix}\"` on the same operand combine into one")]
+pub struct CombinableLikePatterns {
+    /// Anchored at the first of the two patterns in source order.
+    pub(crate) loc: Option<Loc>,
+    /// The prefix-constraint pattern (`"cs*"`), as written.
+    pub(crate) prefix: String,
+    /// The suffix-constraint pattern (`"*p"`), as written.
+    pub(crate) suffix: String,
+    /// The single equivalent pattern (`"cs*p"`).
+    pub(crate) merged: String,
+}
+
+impl Diagnostic for CombinableLikePatterns {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "the prefix and suffix cannot overlap, so together they are exactly `like \"{}\"`; use that single pattern",
+            self.merged,
+        )))
+    }
+}
+
 /// Which kind of member was accessed on an action.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ActionMember {
