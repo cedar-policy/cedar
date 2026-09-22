@@ -107,6 +107,7 @@ pub mod expr_builder;
 pub mod extensions;
 pub mod fuzzy_match;
 pub mod jsonvalue;
+pub mod linter;
 pub mod parser;
 pub mod pst;
 #[cfg(feature = "tpe")]
