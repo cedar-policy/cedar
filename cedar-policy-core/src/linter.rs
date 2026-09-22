@@ -363,6 +363,10 @@ declare_lints! {
     /// the one with a security consequence and is worth adopting on its own.
     PermitAttrGuards => "permit-attr-guards", Restriction, false;
 
+    /// A `has` check on an attribute an earlier `has` in the same conjunction
+    /// already established, e.g. `x has a && x has a`. Schema-free.
+    RedundantHas => "redundant-has", Correctness, true;
+
     /// (Schema-informed) A sub-expression the typechecker proves is a constant
     /// boolean in every request environment the policy applies to, e.g.
     /// `principal is User` when every principal is a `User`. Runs only with a
@@ -853,6 +857,7 @@ impl Linter {
             Lint::SelfComparison => fn self_comparison::lint,
             Lint::YodaCondition => fn yoda_condition::lint,
             Lint::RedundantExpr => fn redundant_expr::lint,
+            Lint::RedundantHas => type redundant_has::RedundantHasLinter,
         });
 
         findings
@@ -1145,7 +1150,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 36);
+        assert_eq!(Lint::all().count(), 37);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

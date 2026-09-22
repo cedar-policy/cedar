@@ -32,6 +32,7 @@ pub(crate) mod like_patterns;
 pub(crate) mod nonlinear;
 pub(crate) mod redundant_boolean;
 pub(crate) mod redundant_expr;
+pub(crate) mod redundant_has;
 pub(crate) mod scope_constraints;
 pub(crate) mod self_comparison;
 pub(crate) mod sugar;

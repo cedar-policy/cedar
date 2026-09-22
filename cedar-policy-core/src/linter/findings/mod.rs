@@ -227,6 +227,11 @@ pub enum Finding {
     #[error(transparent)]
     TypedConstantCondition(#[from] TypedConstantCondition),
 
+    /// A `has` on a capability an earlier `has` already established.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    RedundantHas(#[from] RedundantHas),
+
     /// A `has` on an attribute the schema declares required.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -289,6 +294,7 @@ impl Finding {
             Finding::DuplicatePolicy(_) => Lint::DuplicatePolicy,
             Finding::YodaCondition(_) => Lint::YodaCondition,
             Finding::TypedConstantCondition(_) => Lint::TypedConstantCondition,
+            Finding::RedundantHas(_) => Lint::RedundantHas,
             Finding::HasOnRequiredAttr(_) => Lint::HasOnRequiredAttr,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -334,6 +340,7 @@ impl Finding {
             Finding::DuplicatePolicy(f) => f.loc.as_ref(),
             Finding::YodaCondition(f) => f.loc.as_ref(),
             Finding::TypedConstantCondition(f) => f.loc.as_ref(),
+            Finding::RedundantHas(f) => f.loc.as_ref(),
             Finding::HasOnRequiredAttr(f) => f.loc.as_ref(),
             Finding::DoubleNegation(f) => f.loc.as_ref(),
             Finding::SingletonSetIn(f) => f.loc.as_ref(),
