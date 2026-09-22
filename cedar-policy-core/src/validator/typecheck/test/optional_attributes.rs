@@ -526,6 +526,60 @@ fn in_list_no_capability() {
 }
 
 #[test]
+fn not_not_capability() {
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"permit(principal, action, resource) when { !!(principal has name) && principal.name == "foo" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typechecks(schema_with_optionals(), policy);
+}
+
+#[test]
+fn or_negative_capability() {
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"permit(principal, action, resource) when { !(principal has name) || principal.name == "foo" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typechecks(schema_with_optionals(), policy);
+}
+
+#[test]
+fn ite_negative_capability() {
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"permit(principal, action, resource) when { if !(principal has name) then false else principal.name == "foo" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_policy_typechecks(schema_with_optionals(), policy);
+}
+
+#[test]
+fn and_intersects_negative_capability() {
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"permit(principal, action, resource) when { (!(principal has name) && !(principal has other)) || principal.name == "foo" };"#,
+    )
+    .expect("Policy should parse.");
+    assert_name_access_fails(policy);
+}
+
+#[test]
+fn ite_contradiction_capability() {
+    let policy = parse_policy(
+        Some(PolicyID::from_string("0")),
+        r#"permit(principal, action, resource) when {
+            (if principal == User::"alice"
+            then principal has name
+            else !(principal has name)) && principal.name == "foo"
+        };"#,
+    )
+    .expect("Policy should parse.");
+    assert_name_access_fails(policy);
+}
+
+#[test]
 fn record_optional_attrs() {
     let schema = serde_json::from_str::<json_schema::NamespaceDefinition<RawName>>(
         r#"

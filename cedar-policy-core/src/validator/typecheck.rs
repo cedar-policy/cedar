@@ -481,7 +481,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                         // by `test`. This enables an attribute access
                         // `principal.foo` after a condition `principal has foo`.
                         let ans_then = self.typecheck(
-                            &prior_capability.union(&test_capability),
+                            &prior_capability.clone().and(&test_capability),
                             then_expr,
                             type_errors,
                         );
@@ -500,7 +500,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     ),
                                 // The output capability of the whole `if` expression also
                                 // needs to contain the capability of the condition.
-                                then_capability.union(&test_capability),
+                                then_capability.and(&test_capability),
                             )
                         })
                     } else if typ_test.data() == &Some(Type::singleton_boolean(false)) {
@@ -508,7 +508,11 @@ impl<'a> SingleEnvTypechecker<'a> {
                         // we know in the `else` branch that the condition
                         // evaluated to `false`. It still can use the original
                         // prior capability.
-                        let ans_else = self.typecheck(prior_capability, else_expr, type_errors);
+                        let ans_else = self.typecheck(
+                            &prior_capability.clone().and(&test_capability.negate()),
+                            else_expr,
+                            type_errors,
+                        );
 
                         ans_else.then_typecheck(|typ_else, else_capability| {
                             TypecheckAnswer::success_with_capability(
@@ -531,12 +535,16 @@ impl<'a> SingleEnvTypechecker<'a> {
                         // prior capability are in their individual cases.
                         let ans_then = self
                             .typecheck(
-                                &prior_capability.union(&test_capability),
+                                &prior_capability.clone().and(&test_capability),
                                 then_expr,
                                 type_errors,
                             )
-                            .map_capability(|capability| capability.union(&test_capability));
-                        let ans_else = self.typecheck(prior_capability, else_expr, type_errors);
+                            .map_capability(|capability| capability.and(&test_capability));
+                        let ans_else = self.typecheck(
+                            &prior_capability.clone().and(&test_capability.negate()),
+                            else_expr,
+                            type_errors,
+                        );
                         // The type of the if expression is then the least
                         // upper bound of the types of the then and else
                         // branches.  If either of these fails to typecheck, the
@@ -566,7 +574,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     // operand capability sets.
                                     TypecheckAnswer::success_with_capability(
                                         annot_expr,
-                                        else_capability.intersect(&then_capability),
+                                        else_capability.or(&then_capability),
                                     )
                                 } else {
                                     TypecheckAnswer::fail(annot_expr)
@@ -603,7 +611,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                             // the right will only be evaluated after the left
                             // evaluated to `true`.
                             let ans_right = self.expect_type(
-                                &prior_capability.union(&capability_left),
+                                &prior_capability.clone().and(&capability_left),
                                 right,
                                 Type::primitive_boolean(),
                                 type_errors,
@@ -636,7 +644,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                             ExprBuilder::with_data(typ_left.data().clone())
                                                 .with_same_source_loc(e)
                                                 .and(typ_left, typ_right),
-                                            capability_left.union(&capability_right),
+                                            capability_left.and(&capability_right),
                                         )
                                     }
                                     (Some(Type::Bool(BoolType::True)), Some(_)) => {
@@ -644,7 +652,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                             ExprBuilder::with_data(typ_right.data().clone())
                                                 .with_same_source_loc(e)
                                                 .and(typ_left, typ_right),
-                                            capability_right.union(&capability_right),
+                                            capability_left.and(&capability_right),
                                         )
                                     }
 
@@ -654,7 +662,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                             .with_same_source_loc(e)
                                             .and(typ_left, typ_right),
-                                        capability_left.union(&capability_right),
+                                        capability_left.and(&capability_right),
                                     ),
 
                                     // One or both of the left and the right failed to
@@ -695,7 +703,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                         // left could have evaluated to either `true` or `false`
                         // when the left is evaluated.
                         let ans_right = self.expect_type(
-                            prior_capability,
+                            &prior_capability
+                                .clone()
+                                .and(&capability_left.clone().negate()),
                             right,
                             Type::primitive_boolean(),
                             type_errors,
@@ -745,7 +755,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                         .with_same_source_loc(e)
                                         .or(ty_expr_left, ty_expr_right),
-                                    capability_right.intersect(&capability_left),
+                                    capability_right.or(&capability_left),
                                 ),
                                 _ => TypecheckAnswer::fail(
                                     ExprBuilder::with_data(Some(Type::primitive_boolean()))
@@ -924,6 +934,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                                         .contains(&Capability::new_attribute(expr, attr.clone()))
                                     {
                                         Type::singleton_boolean(true)
+                                    } else if prior_capability.contains_negation(
+                                        &Capability::new_attribute(expr, attr.clone()),
+                                    ) {
+                                        Type::singleton_boolean(false)
                                     } else {
                                         Type::primitive_boolean()
                                     },
@@ -1018,7 +1032,7 @@ impl<'a> SingleEnvTypechecker<'a> {
 
                         // Check this `get` using the capability earned by the current
                         // `has`, then pass the same capabilities to the next step.
-                        let next_cap = cur_cap.union(&has_capability);
+                        let next_cap = cur_cap.clone().and(&has_capability);
                         let Some(next_type) = self.type_of_get_attr_for_ext(
                             &next_cap,
                             &cur_typ_expr,
@@ -1061,10 +1075,10 @@ impl<'a> SingleEnvTypechecker<'a> {
                             }
                             BoolType::True => {
                                 result_type = has_type;
-                                result_capability = has_capability.union(&result_capability);
+                                result_capability = has_capability.and(&result_capability);
                             }
                             BoolType::AnyBool => {
-                                result_capability = has_capability.union(&result_capability);
+                                result_capability = has_capability.and(&result_capability);
                             }
                         }
                     }
@@ -2211,9 +2225,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                     type_errors,
                     |_| None,
                 );
-                ans_arg.then_typecheck(|typ_expr_arg, _| match typ_expr_arg.data() {
-                    Some(typ_arg) => {
-                        TypecheckAnswer::success(if typ_arg == &Type::singleton_boolean(true) {
+                ans_arg.then_typecheck(|typ_expr_arg, c| match typ_expr_arg.data() {
+                    Some(typ_arg) => TypecheckAnswer::success_with_capability(
+                        if typ_arg == &Type::singleton_boolean(true) {
                             ExprBuilder::with_data(Some(Type::singleton_boolean(false)))
                                 .with_same_source_loc(unary_expr)
                                 .not(typ_expr_arg)
@@ -2225,8 +2239,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                             ExprBuilder::with_data(Some(Type::primitive_boolean()))
                                 .with_same_source_loc(unary_expr)
                                 .not(typ_expr_arg)
-                        })
-                    }
+                        },
+                        c.negate(),
+                    ),
                     None => TypecheckAnswer::fail(
                         ExprBuilder::with_data(Some(Type::primitive_boolean()))
                             .with_same_source_loc(unary_expr)
