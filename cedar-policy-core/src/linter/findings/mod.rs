@@ -497,6 +497,24 @@ pub enum SchemaFinding {
     #[diagnostic(transparent)]
     #[error(transparent)]
     SharedAttributes(#[from] SharedAttributes),
+
+    /// Two entity types applicable in the same position for one action declare an
+    /// attribute of the same name with incompatible types.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ConflictingAppliesToAttr(#[from] ConflictingAppliesToAttr),
+
+    /// Two actions declare a `context` attribute of the same name with
+    /// incompatible types.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ConflictingContextAttr(#[from] ConflictingContextAttr),
+
+    /// Two entity types applicable in the same position for one action carry tags
+    /// of incompatible types.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ConflictingTagType(#[from] ConflictingTagType),
 }
 
 impl SchemaFinding {
@@ -511,6 +529,9 @@ impl SchemaFinding {
             SchemaFinding::DuplicateMemberOf(_) => Lint::DuplicateMemberOf,
             SchemaFinding::DuplicateEnumChoice(_) => Lint::DuplicateEnumChoice,
             SchemaFinding::SharedAttributes(_) => Lint::SharedAttributes,
+            SchemaFinding::ConflictingAppliesToAttr(_) => Lint::ConflictingAppliesToAttr,
+            SchemaFinding::ConflictingContextAttr(_) => Lint::ConflictingContextAttr,
+            SchemaFinding::ConflictingTagType(_) => Lint::ConflictingTagType,
         }
     }
 

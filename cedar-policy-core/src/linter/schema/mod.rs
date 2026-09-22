@@ -39,6 +39,8 @@ use crate::{
 mod shared;
 
 mod attribute_should_be_tags;
+mod conflicting_applies_to_attr;
+mod conflicting_tag_type;
 mod duplicate_enum_choice;
 mod duplicate_member_of;
 mod shared_attributes;
@@ -75,6 +77,9 @@ impl SchemaLinter {
             Lint::DuplicateMemberOf,
             Lint::DuplicateEnumChoice,
             Lint::SharedAttributes,
+            Lint::ConflictingAppliesToAttr,
+            Lint::ConflictingContextAttr,
+            Lint::ConflictingTagType,
         ])
     }
 
@@ -101,6 +106,15 @@ impl SchemaLinter {
                 (Lint::DuplicateMemberOf, duplicate_member_of::lint),
                 (Lint::DuplicateEnumChoice, duplicate_enum_choice::lint),
                 (Lint::SharedAttributes, shared_attributes::lint),
+                (
+                    Lint::ConflictingAppliesToAttr,
+                    conflicting_applies_to_attr::lint_applies_to_attr,
+                ),
+                (
+                    Lint::ConflictingContextAttr,
+                    conflicting_applies_to_attr::lint_context_attr,
+                ),
+                (Lint::ConflictingTagType, conflicting_tag_type::lint),
             ] {
                 if self.runs(lint) {
                     run(ns, def, &mut findings);

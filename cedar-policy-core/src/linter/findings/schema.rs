@@ -214,3 +214,95 @@ impl Diagnostic for SharedAttributes {
         }))
     }
 }
+
+/// Two entity types applicable in the same position (principal or resource) for
+/// one action each declare an attribute of the same name but with different types.
+/// A policy scoped to that action reading `principal.attr` (or `resource.attr`)
+/// therefore sees a different type depending on which entity is supplied — a
+/// latent bug, and the schema-side of the union-type footgun.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`{position}` types `{type_a}` and `{type_b}` of action `{action}` both declare attribute `{attribute}` with different types")]
+pub struct ConflictingAppliesToAttr {
+    pub(crate) loc: Option<Loc>,
+    /// The action whose `appliesTo` lists both types, e.g. ``Action::"view"``.
+    pub(crate) action: String,
+    /// Which scope position they share: `principal` or `resource`.
+    pub(crate) position: &'static str,
+    /// The two conflicting entity types, in sorted order.
+    pub(crate) type_a: String,
+    pub(crate) type_b: String,
+    /// The attribute they disagree on.
+    pub(crate) attribute: SmolStr,
+}
+
+impl Diagnostic for ConflictingAppliesToAttr {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "a policy for `{action}` that reads `{position}.{attribute}` gets a different type depending on which entity is the {position}; give the attribute one type across both, or rename one",
+            action = self.action,
+            position = self.position,
+            attribute = self.attribute,
+        )))
+    }
+}
+
+/// Two actions declare a `context` attribute of the same name but with different
+/// types (up to entity types). A policy not scoped to a single action — or a
+/// shared condition over several — reads `context.attr` without knowing which
+/// action's context is in play, so the access is type-ambiguous.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("actions `{action_a}` and `{action_b}` declare context attribute `{attribute}` with different types")]
+pub struct ConflictingContextAttr {
+    pub(crate) loc: Option<Loc>,
+    /// The two actions whose contexts disagree, in sorted order.
+    pub(crate) action_a: String,
+    pub(crate) action_b: String,
+    /// The context attribute they disagree on.
+    pub(crate) attribute: SmolStr,
+}
+
+impl Diagnostic for ConflictingContextAttr {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "a policy that reads `context.{attribute}` without pinning the action gets a different type depending on which action is in play; give the attribute one type across both, or rename one",
+            attribute = self.attribute,
+        )))
+    }
+}
+
+/// Two entity types applicable in the same position (principal or resource) for
+/// one action carry tags of different types (up to entity types). A policy scoped
+/// to that action calling `principal.getTag(k)` (or `resource.getTag(k)`) sees a
+/// different tag type depending on which entity is supplied — the tag-side of the
+/// union-type footgun.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`{position}` types `{type_a}` and `{type_b}` of action `{action}` carry tags of different types")]
+pub struct ConflictingTagType {
+    pub(crate) loc: Option<Loc>,
+    /// The action whose `appliesTo` lists both types, e.g. ``Action::"view"``.
+    pub(crate) action: String,
+    /// Which scope position they share: `principal` or `resource`.
+    pub(crate) position: &'static str,
+    /// The two conflicting entity types, in sorted order.
+    pub(crate) type_a: String,
+    pub(crate) type_b: String,
+}
+
+impl Diagnostic for ConflictingTagType {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "a policy for `{action}` that calls `{position}.getTag(..)` gets a different type depending on which entity is the {position}; give the tags one type across both",
+            action = self.action,
+            position = self.position,
+        )))
+    }
+}

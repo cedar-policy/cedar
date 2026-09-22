@@ -390,6 +390,22 @@ declare_lints! {
     /// (Schema) Several entity types sharing many attributes (fully or partly),
     /// which a common type could factor out.
     SharedAttributes => "shared-attributes", Schema, true;
+
+    /// (Schema) Two entity types applicable in the same scope position for one
+    /// action declare an attribute of the same name with different types, so
+    /// `principal.attr`/`resource.attr` in a policy for that action is
+    /// type-ambiguous.
+    ConflictingAppliesToAttr => "conflicting-applies-to-attr", Schema, true;
+
+    /// (Schema) Two actions declare a `context` attribute of the same name with
+    /// different types, so `context.attr` in a policy not scoped to one action is
+    /// type-ambiguous.
+    ConflictingContextAttr => "conflicting-context-attr", Schema, true;
+
+    /// (Schema) Two entity types applicable in the same scope position for one
+    /// action carry tags of different types, so `principal.getTag`/
+    /// `resource.getTag` in a policy for that action is type-ambiguous.
+    ConflictingTagType => "conflicting-tag-type", Schema, true;
 }
 
 impl std::fmt::Display for Lint {
@@ -1090,7 +1106,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 31);
+        assert_eq!(Lint::all().count(), 34);
         assert_eq!(LintGroup::all().count(), 6);
     }
 
