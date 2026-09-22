@@ -256,6 +256,21 @@ declare_lints! {
     /// reasoning tools cannot analyze.
     NonLinearArithmetic => "non-linear-arithmetic", Analyzability, false;
 
+    /// Policies that apply to every request — unconstrained scope, no
+    /// conditions — and so make other policies in the set redundant or
+    /// unreachable. A policy set consisting of one such policy is not reported:
+    /// that is a deliberately open, or closed, policy set.
+    ///
+    /// Off by default: a policy set may legitimately contain a blanket policy.
+    UniversalPolicy => "universal-policy", Correctness, false;
+
+    /// `forbid` policies in a policy set that contains no `permit`, so nothing
+    /// is ever allowed regardless of the `forbid`s.
+    ///
+    /// Off by default: a policy set is often linted in fragments, so a missing
+    /// `permit` may simply live elsewhere.
+    ForbidWithoutPermit => "forbid-without-permit", Correctness, false;
+
     /// `like` patterns that are almost certainly not what was meant: one with
     /// no wildcard, or one that is only wildcards.
     LikePatterns => "like-patterns", Style, true;
@@ -570,6 +585,12 @@ impl Linter {
             .collect();
 
         // Lints that need to see the whole policy set.
+        if self.runs(Lint::UniversalPolicy) {
+            findings.extend(universal_policy::lint(policy_set));
+        }
+        if self.runs(Lint::ForbidWithoutPermit) {
+            findings.extend(forbid_without_permit::lint(policy_set));
+        }
 
         LintResult::new(findings)
     }
@@ -875,7 +896,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 8);
+        assert_eq!(Lint::all().count(), 10);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

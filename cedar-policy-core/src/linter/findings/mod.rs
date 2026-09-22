@@ -107,6 +107,26 @@ pub enum Finding {
     #[error(transparent)]
     CombinableLikePatterns(#[from] CombinableLikePatterns),
 
+    /// A universal `permit` that makes other `permit`s redundant.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    PermitAllSubsumesPermits(#[from] PermitAllSubsumesPermits),
+
+    /// A universal `permit` in a policy set with no `forbid`.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    PermitAllWithoutForbid(#[from] PermitAllWithoutForbid),
+
+    /// A universal `forbid` that makes every other policy dead.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ForbidAllSubsumesPolicies(#[from] ForbidAllSubsumesPolicies),
+
+    /// A `forbid` in a policy set containing no `permit`.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ForbidWithoutPermit(#[from] ForbidWithoutPermit),
+
     /// An attribute or tag access on an action, which no schema can declare.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -136,6 +156,10 @@ impl Finding {
             | Finding::LikeWithOnlyWildcards(_)
             | Finding::LikeWithConsecutiveWildcards(_)
             | Finding::CombinableLikePatterns(_) => Lint::LikePatterns,
+            Finding::PermitAllSubsumesPermits(_)
+            | Finding::PermitAllWithoutForbid(_)
+            | Finding::ForbidAllSubsumesPolicies(_) => Lint::UniversalPolicy,
+            Finding::ForbidWithoutPermit(_) => Lint::ForbidWithoutPermit,
             Finding::ImpossibleIsCheck(_) => Lint::Types,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -158,6 +182,10 @@ impl Finding {
             Finding::LikeWithOnlyWildcards(f) => f.loc.as_ref(),
             Finding::LikeWithConsecutiveWildcards(f) => f.loc.as_ref(),
             Finding::CombinableLikePatterns(f) => f.loc.as_ref(),
+            Finding::PermitAllSubsumesPermits(f) => f.loc.as_ref(),
+            Finding::PermitAllWithoutForbid(f) => f.loc.as_ref(),
+            Finding::ForbidAllSubsumesPolicies(f) => f.loc.as_ref(),
+            Finding::ForbidWithoutPermit(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
         }

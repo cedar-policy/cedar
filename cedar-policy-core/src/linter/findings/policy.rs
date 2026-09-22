@@ -282,6 +282,82 @@ impl Diagnostic for CombinableLikePatterns {
     }
 }
 
+/// A universal `permit` in a policy set that contains other `permit`s, which it
+/// makes redundant.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this `permit` applies to every request, making the other `permit` policies redundant")]
+pub struct PermitAllSubsumesPermits {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for PermitAllSubsumesPermits {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "it allows everything the other, constrained `permit` policies were written to allow selectively",
+        ))
+    }
+}
+
+/// A universal `permit` in a policy set with no `forbid`, so nothing can deny a
+/// request.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this `permit` applies to every request, and no `forbid` policy can deny one")]
+pub struct PermitAllWithoutForbid {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for PermitAllWithoutForbid {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "every request is allowed; add a `forbid` policy or constrain this one",
+        ))
+    }
+}
+
+/// A universal `forbid`, which denies every request and so makes every other
+/// policy in the set unreachable.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this `forbid` applies to every request, making every other policy unreachable")]
+pub struct ForbidAllSubsumesPolicies {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for ForbidAllSubsumesPolicies {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "`forbid` overrides every `permit`, so this denies all requests and the rest of the policy set has no effect",
+        ))
+    }
+}
+
+/// A `forbid` in a policy set containing no `permit`, so nothing is ever allowed
+/// regardless.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this `forbid` is in a policy set with no `permit` policy")]
+pub struct ForbidWithoutPermit {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for ForbidWithoutPermit {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "Cedar denies by default, so every request is already denied and this `forbid` changes nothing; the policy set may be missing a `permit`",
+        ))
+    }
+}
+
 /// Which kind of member was accessed on an action.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ActionMember {
