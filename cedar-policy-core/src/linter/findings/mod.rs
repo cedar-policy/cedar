@@ -77,6 +77,16 @@ pub enum Finding {
     #[error(transparent)]
     NonLinearArithmetic(#[from] NonLinearArithmetic),
 
+    /// Arithmetic in a `forbid` policy, which may cause it to be skipped.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ArithmeticInForbid(#[from] ArithmeticInForbid),
+
+    /// Arithmetic in a `permit` policy, which may cause it to be skipped.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ArithmeticInPermit(#[from] ArithmeticInPermit),
+
     /// An attribute or tag access on an action, which no schema can declare.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -99,6 +109,9 @@ impl Finding {
                 Lint::ExtConstructors
             }
             Finding::NonLinearArithmetic(_) => Lint::NonLinearArithmetic,
+            Finding::ArithmeticInForbid(_) | Finding::ArithmeticInPermit(_) => {
+                Lint::ErroringArithmetic
+            }
             Finding::ImpossibleIsCheck(_) => Lint::Types,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -115,6 +128,8 @@ impl Finding {
             Finding::NonLitExtConstructor(f) => f.loc.as_ref(),
             Finding::ExtConstructorError(f) => f.loc.as_ref(),
             Finding::NonLinearArithmetic(f) => f.loc.as_ref(),
+            Finding::ArithmeticInForbid(f) => f.loc.as_ref(),
+            Finding::ArithmeticInPermit(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
         }

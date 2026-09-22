@@ -157,6 +157,44 @@ impl Diagnostic for NonLinearArithmetic {
     }
 }
 
+/// Arithmetic in a `forbid` policy. Arithmetic errors on overflow, and a policy
+/// whose condition errors is skipped, so an overflow here silently drops the
+/// `forbid` and may allow a request that should have been denied.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("arithmetic in a `forbid` policy may cause the policy to be skipped")]
+pub struct ArithmeticInForbid {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for ArithmeticInForbid {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "arithmetic errors on overflow, and a policy whose condition errors is skipped, so this `forbid` may fail to deny a request; consider bounding the operands or moving the arithmetic into the data",
+        ))
+    }
+}
+
+/// Arithmetic in a `permit` policy. Same mechanism as [`ArithmeticInForbid`],
+/// but skipping a `permit` fails closed, so this is only a warning.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("arithmetic in a `permit` policy may cause the policy to be skipped")]
+pub struct ArithmeticInPermit {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for ArithmeticInPermit {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "arithmetic errors on overflow, and a policy whose condition errors is skipped, so this `permit` may fail to allow a request",
+        ))
+    }
+}
 /// Which kind of member was accessed on an action.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ActionMember {

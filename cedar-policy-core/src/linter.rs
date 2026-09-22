@@ -255,6 +255,13 @@ declare_lints! {
     /// Multiplication where neither operand is a constant, which automated
     /// reasoning tools cannot analyze.
     NonLinearArithmetic => "non-linear-arithmetic", Analyzability, false;
+
+    /// Arithmetic in a policy condition, which can overflow and cause the
+    /// policy to be skipped. Most dangerous in a `forbid`.
+    ///
+    /// Off by default: it rules out arithmetic in conditions altogether, which
+    /// is a real restriction on what you can express.
+    ErroringArithmetic => "erroring-arithmetic", Restriction, false;
 }
 
 impl std::fmt::Display for Lint {
@@ -569,7 +576,10 @@ impl Linter {
 
         // Linters that consume the whole `template` (they inspect the scope, or the
         // effect, or both).
-        
+        run_lints!(self, findings, template, {
+            Lint::ErroringArithmetic => type erroring_forbid::ErroringForbidLinter,
+        });
+
         // Linters that consume just the `when`/`unless` clauses, skipped when the
         // policy has none.
 
@@ -751,6 +761,46 @@ mod test {
         assert_eq!(result.into_iter().count(), n);
     }
 
+    /// `ErroringArithmetic` distinguishes `forbid` from `permit`, which requires
+    /// the policy's effect rather than just its condition.
+    #[test]
+    fn policy_level_lint_sees_the_effect() {
+        let linter = Linter::new([Lint::ErroringArithmetic]);
+
+        let forbid =
+            parse_policyset(r#"forbid(principal, action, resource) when { context.a + 1 > 0 };"#)
+                .unwrap();
+        let findings = linter.lint(&forbid).into_findings();
+        assert_eq!(findings.len(), 1);
+        assert!(matches!(
+            findings[0].finding(),
+            Finding::ArithmeticInForbid(_)
+        ));
+
+        let result = lint_condition(&linter, "context.a + 1 > 0");
+        let findings = result.into_findings();
+        assert_eq!(findings.len(), 1);
+        assert!(matches!(
+            findings[0].finding(),
+            Finding::ArithmeticInPermit(_)
+        ));
+    }
+
+    #[test]
+    fn findings_are_tagged_with_policy_id() {
+        let policies = parse_policyset(
+            r#"
+            forbid(principal, action, resource) when { context.a + 1 > 0 };
+            permit(principal, action, resource) when { [] == 1 };
+        "#,
+        )
+        .unwrap();
+        let result = Linter::all_lints().lint(&policies);
+        let ids: Vec<&PolicyID> = result.findings().filter_map(|f| f.policy_id()).collect();
+        assert!(ids.contains(&&PolicyID::from_string("policy0")));
+        assert!(ids.contains(&&PolicyID::from_string("policy1")));
+    }
+
     /// Every policy in the set is linted, and each is linted only once.
     #[test]
     fn lints_all_policies_once() {
@@ -820,7 +870,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 6);
+        assert_eq!(Lint::all().count(), 7);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

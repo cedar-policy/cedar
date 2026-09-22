@@ -20,6 +20,7 @@
 //! them.
 
 pub(crate) mod empty_set;
+pub(crate) mod erroring_forbid;
 pub(crate) mod ext_constructors;
 pub(crate) mod nonlinear;
 pub(crate) mod tags;
