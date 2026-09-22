@@ -1,0 +1,57 @@
+---
+source: cedar-policy-cli/tests/lint_samples.rs
+expression: rendered
+---
+  ⚠ for policy `policy0`, attribute `isPublic` is accessed in a `permit` policy without a `has` guard
+   ╭─[7:8]
+ 6 │ )
+ 7 │ when { resource.isPublic };
+   ·        ─────────────────
+ 8 │ 
+   ╰────
+  help: if `isPublic` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `resource has isPublic &&`
+
+  ⚠ for policy `policy1`, attribute `hasMFA` is accessed in a `permit` policy without a `has` guard
+    ╭─[15:8]
+ 14 │ )
+ 15 │ when { context.hasMFA && resource.owner == principal };
+    ·        ──────────────
+ 16 │ 
+    ╰────
+  help: if `hasMFA` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `context has hasMFA &&`
+
+  ⚠ for policy `policy1`, attribute `owner` is accessed in a `permit` policy without a `has` guard
+    ╭─[15:26]
+ 14 │ )
+ 15 │ when { context.hasMFA && resource.owner == principal };
+    ·                          ──────────────
+ 16 │ 
+    ╰────
+  help: if `owner` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `resource has owner &&`
+
+  ⚠ for policy `policy2`, attribute `hasMFA` is accessed in a `permit` policy without a `has` guard
+    ╭─[26:3]
+ 25 │ {
+ 26 │   context.hasMFA &&
+    ·   ──────────────
+ 27 │   resource.owner == principal &&
+    ╰────
+  help: if `hasMFA` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `context has hasMFA &&`
+
+  ⚠ for policy `policy2`, attribute `owner` is accessed in a `permit` policy without a `has` guard
+    ╭─[27:3]
+ 26 │   context.hasMFA &&
+ 27 │   resource.owner == principal &&
+    ·   ──────────────
+ 28 │   context.srcIP.isInRange(ip("1.1.1.0/24"))
+    ╰────
+  help: if `owner` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `resource has owner &&`
+
+  ⚠ for policy `policy2`, attribute `srcIP` is accessed in a `permit` policy without a `has` guard
+    ╭─[28:3]
+ 27 │   resource.owner == principal &&
+ 28 │   context.srcIP.isInRange(ip("1.1.1.0/24"))
+    ·   ─────────────────────────────────────────
+ 29 │ };
+    ╰────
+  help: if `srcIP` is absent the condition errors and the `permit` is skipped, so the request may be denied; guard the access with `context has srcIP &&`

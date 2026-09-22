@@ -1,0 +1,6 @@
+---
+source: cedar-policy-cli/tests/lint_samples.rs
+expression: rendered
+---
+  ⚠ every request for action `Action::"delete"`, and for action `Action::"edit"`, and for action `Action::"listPhotos"` is always denied
+  help: no policy allows this, so it is denied by default; this is request space the policy set never grants

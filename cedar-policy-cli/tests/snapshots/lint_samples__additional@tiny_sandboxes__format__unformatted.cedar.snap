@@ -1,0 +1,21 @@
+---
+source: cedar-policy-cli/tests/lint_samples.rs
+expression: rendered
+---
+  ⚠ for policy `policy0`, scope pins an entity literal: `principal` names `User::"alice"`, and `resource` names `Photo::"VacationPhoto94.jpg"`
+    ╭─[1:1]
+  1 │ ╭─▶ permit
+  2 │ │   
+  3 │ │   (
+  4 │ │         principal
+  5 │ │                               == User::"alice",
+  6 │ │     action    == Action::"update"
+  7 │ │   
+  8 │ │     ,
+  9 │ │     resource  == Photo::"VacationPhoto94.jpg"
+ 10 │ │   )
+ 11 │ │   
+ 12 │ ╰─▶ ;
+    ╰────
+  help: replace the literal(s) with slot(s) (`principal == ?principal`, `resource == ?resource`) and supply `User::"alice"`, `Photo::"VacationPhoto94.jpg"` as template links; the identities then
+        live in linking data that can be listed and reviewed, not in the policy text

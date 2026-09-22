@@ -1,0 +1,53 @@
+---
+source: cedar-policy-cli/tests/lint_samples.rs
+expression: rendered
+---
+  ⚠ for policy `policy0`, scope pins an entity literal: `principal` names `UserGroup::"alice_friends"`, and `resource` names `Account::"alice"`
+   ╭─[2:1]
+ 1 │     // Alice's friends can view all of her photos
+ 2 │ ╭─▶ @id("alice's friends view policy")
+ 3 │ │   permit (
+ 4 │ │     principal in UserGroup::"alice_friends",
+ 5 │ │     action == Action::"view",
+ 6 │ │     resource in Account::"alice"
+ 7 │ ╰─▶ );
+ 8 │     
+   ╰────
+  help: replace the literal(s) with slot(s) (`principal in ?principal`, `resource in ?resource`) and supply `UserGroup::"alice_friends"`, `Account::"alice"` as template links; the identities then
+        live in linking data that can be listed and reviewed, not in the policy text
+
+  ⚠ for policy `policy1`, attribute `account` is accessed in a `forbid` policy without a `has` guard
+    ╭─[14:10]
+ 13 │ when { resource.private }
+ 14 │ unless { resource.account has owner && resource.account.owner == principal };
+    ·          ────────────────
+    ╰────
+  help: if `account` is absent the condition errors and the `forbid` is skipped, so the request may be allowed; guard the access with `resource has account &&`
+
+  ⚠ for policy `policy1`, attribute `account` is accessed in a `forbid` policy without a `has` guard
+    ╭─[14:40]
+ 13 │ when { resource.private }
+ 14 │ unless { resource.account has owner && resource.account.owner == principal };
+    ·                                        ──────────────────────
+    ╰────
+  help: if `account` is absent the condition errors and the `forbid` is skipped, so the request may be allowed; guard the access with `resource has account &&`
+
+  ⚠ for policy `policy1`, attribute `private` is accessed in a `forbid` policy without a `has` guard
+    ╭─[13:8]
+ 12 │ forbid (principal, action, resource)
+ 13 │ when { resource.private }
+    ·        ────────────────
+ 14 │ unless { resource.account has owner && resource.account.owner == principal };
+    ╰────
+  help: if `private` is absent the condition errors and the `forbid` is skipped, so the request may be allowed; guard the access with `resource has private &&`
+
+  ⚠ for policy `policy1`, this forbid constrains nothing in its scope
+    ╭─[11:1]
+ 10 │     // account owner
+ 11 │ ╭─▶ @id("privacy rule")
+ 12 │ │   forbid (principal, action, resource)
+ 13 │ │   when { resource.private }
+ 14 │ ╰─▶ unless { resource.account has owner && resource.account.owner == principal };
+    ╰────
+  help: constrain at least one of `principal`, `action`, or `resource` in the scope (with `==`, `in`, or `is`), so the policy's reach is visible without reading the condition and a policy store can
+        slice on it; a deliberately global policy can suppress this

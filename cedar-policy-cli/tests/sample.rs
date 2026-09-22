@@ -24,8 +24,8 @@ use std::path::{Path, PathBuf};
 use cedar_policy::EvalResult;
 use cedar_policy::SlotId;
 use cedar_policy_cli::{
-    authorize, check_parse, evaluate, link, run_tests, validate, Arguments, AuthorizeArgs,
-    CedarExitCode, CheckParseArgs, EvaluateArgs, LinkArgs, OptionalPoliciesArgs,
+    authorize, check_parse, evaluate, link, lint, run_tests, validate, Arguments, AuthorizeArgs,
+    CedarExitCode, CheckParseArgs, EvaluateArgs, LinkArgs, LintArgs, OptionalPoliciesArgs,
     OptionalSchemaArgs, PoliciesArgs, PolicyFormat, RequestArgs, RunTestsArgs, SchemaArgs,
     SchemaFormat, ValidateArgs,
 };
@@ -2250,4 +2250,126 @@ fn auth_link_file_does_not_exist() {
         !linked.exists(),
         "authorize shouldn't create the missing link file"
     );
+}
+
+/// Build `LintArgs` for a policy file, with optional schema and lint selection.
+fn lint_args(
+    policies_file: &str,
+    schema_file: Option<&str>,
+    lints: Vec<String>,
+    deny_warnings: bool,
+    lint_schema: bool,
+) -> LintArgs {
+    LintArgs {
+        policies: PoliciesArgs {
+            policies_file: Some(policies_file.to_string()),
+            policy_format: PolicyFormat::Cedar,
+            template_linked_file: None,
+        },
+        schema: OptionalSchemaArgs {
+            schema_file: schema_file.map(Into::into),
+            schema_format: SchemaFormat::Cedar,
+        },
+        lints,
+        groups: vec![],
+        all: false,
+        lint_schema,
+        max_attribute_depth: None,
+        deny_warnings,
+    }
+}
+
+fn write_temp(contents: &str) -> tempfile::NamedTempFile {
+    let mut f = tempfile::NamedTempFile::new().expect("failed to create temp file");
+    f.write_all(contents.as_bytes()).expect("failed to write");
+    f
+}
+
+/// A clean policy set produces no findings and succeeds.
+#[test]
+fn lint_clean_policy_succeeds() {
+    let policies = write_temp("permit(principal, action, resource) when { context.mfa };");
+    let cmd = lint_args(
+        policies.path().to_str().unwrap(),
+        None,
+        vec![],
+        false,
+        false,
+    );
+    assert_eq!(lint(&cmd), CedarExitCode::Success);
+}
+
+/// A finding is reported; without `--deny-warnings` the command still succeeds.
+#[test]
+fn lint_reports_finding_but_succeeds() {
+    let policies = write_temp("permit(principal, action, resource) when { 1 > 2 };");
+    let cmd = lint_args(
+        policies.path().to_str().unwrap(),
+        None,
+        vec![],
+        false,
+        false,
+    );
+    assert_eq!(lint(&cmd), CedarExitCode::Success);
+}
+
+/// With `--deny-warnings`, a finding makes the command fail.
+#[test]
+fn lint_deny_warnings_fails_on_finding() {
+    let policies = write_temp("permit(principal, action, resource) when { 1 > 2 };");
+    let cmd = lint_args(policies.path().to_str().unwrap(), None, vec![], true, false);
+    assert_eq!(lint(&cmd), CedarExitCode::ValidationFailure);
+}
+
+/// An unknown lint name is an error.
+#[test]
+fn lint_unknown_lint_name_fails() {
+    let policies = write_temp("permit(principal, action, resource);");
+    let cmd = lint_args(
+        policies.path().to_str().unwrap(),
+        None,
+        vec!["no-such-lint".to_string()],
+        false,
+        false,
+    );
+    assert_eq!(lint(&cmd), CedarExitCode::Failure);
+}
+
+/// A schema-informed lint needs `--schema`, and `--lint-schema` lints the schema.
+#[test]
+fn lint_with_schema_and_schema_lints() {
+    let policies = write_temp(
+        r#"permit(principal, action == Action::"view", resource) when { principal is User };"#,
+    );
+    let schema = write_temp(
+        "entity User; entity Photo; entity Unused; action view appliesTo { principal: [User], resource: [Photo] };",
+    );
+    // `--deny-warnings` should trip on the typed-constant-condition finding, which
+    // only fires with a schema.
+    let cmd = lint_args(
+        policies.path().to_str().unwrap(),
+        Some(schema.path().to_str().unwrap()),
+        vec!["typed-constant-condition".to_string()],
+        true,
+        false,
+    );
+    assert_eq!(lint(&cmd), CedarExitCode::ValidationFailure);
+
+    // `--lint-schema` reports the unused entity type as a schema finding.
+    let cmd = lint_args(
+        policies.path().to_str().unwrap(),
+        Some(schema.path().to_str().unwrap()),
+        vec!["unused-entity-type".to_string()],
+        true,
+        true,
+    );
+    assert_eq!(lint(&cmd), CedarExitCode::ValidationFailure);
+}
+
+/// `--lint-schema` without a schema is an error.
+#[test]
+fn lint_schema_without_schema_fails() {
+    let policies = write_temp("permit(principal, action, resource);");
+    let cmd = lint_args(policies.path().to_str().unwrap(), None, vec![], false, true);
+    assert_eq!(lint(&cmd), CedarExitCode::Failure);
 }

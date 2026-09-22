@@ -1,0 +1,6 @@
+---
+source: cedar-policy-cli/tests/lint_samples.rs
+expression: rendered
+---
+  ⚠ entity type `Administrator` is declared but never used
+  help: no action's `appliesTo` names it and no other type references it, so no request can involve it; remove it or wire it up
