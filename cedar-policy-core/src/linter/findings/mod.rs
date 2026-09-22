@@ -183,6 +183,31 @@ pub enum Finding {
     #[error(transparent)]
     ImpossibleIsCheck(#[from] ImpossibleIsCheck),
 
+    /// A comparison whose two operands are identical.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    SelfComparison(#[from] SelfComparison),
+
+    /// A constant expression used as a condition.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ConstantCondition(#[from] ConstantCondition),
+
+    /// An `&&`/`||` whose two operands are identical.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    RepeatedLogicalOperand(#[from] RepeatedLogicalOperand),
+
+    /// An `if` whose branches are identical.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    IdenticalIfBranches(#[from] IdenticalIfBranches),
+
+    /// A set literal with a duplicated element.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    DuplicateSetElement(#[from] DuplicateSetElement),
+
     /// Arithmetic negation applied twice.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -232,6 +257,11 @@ impl Finding {
             Finding::SingletonSetIn(_) | Finding::PlusNegativeLiteral(_) => Lint::ExprStyle,
             Finding::DoubleNegation(_) => Lint::DoubleNegation,
             Finding::ImpossibleIsCheck(_) => Lint::Types,
+            Finding::SelfComparison(_) => Lint::SelfComparison,
+            Finding::ConstantCondition(_) => Lint::ConstantCondition,
+            Finding::RepeatedLogicalOperand(_)
+            | Finding::IdenticalIfBranches(_)
+            | Finding::DuplicateSetElement(_) => Lint::RedundantExpr,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
     }
@@ -268,6 +298,11 @@ impl Finding {
             Finding::SeparateIsAndIn(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
+            Finding::SelfComparison(f) => f.loc.as_ref(),
+            Finding::ConstantCondition(f) => f.loc.as_ref(),
+            Finding::RepeatedLogicalOperand(f) => f.loc.as_ref(),
+            Finding::IdenticalIfBranches(f) => f.loc.as_ref(),
+            Finding::DuplicateSetElement(f) => f.loc.as_ref(),
             Finding::DoubleNegation(f) => f.loc.as_ref(),
             Finding::SingletonSetIn(f) => f.loc.as_ref(),
             Finding::PlusNegativeLiteral(f) => f.loc.as_ref(),

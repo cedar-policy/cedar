@@ -242,6 +242,18 @@ declare_lints! {
     /// a missing left operand of a subtraction, or a logical `!` meant instead.
     DoubleNegation => "double-negation", Correctness, true;
 
+    /// A comparison whose two operands are syntactically identical, e.g.
+    /// `principal == principal`. Almost always a mistake.
+    SelfComparison => "self-comparison", Correctness, true;
+
+    /// A constant expression used where a condition is expected, e.g.
+    /// `when { false }`, which makes the policy dead code.
+    ConstantCondition => "constant-condition", Correctness, true;
+
+    /// Expressions with a redundant part: `a && a`, `if c then X else X`, and a
+    /// duplicated set element.
+    RedundantExpr => "redundant-expr", Correctness, true;
+
     /// `getTag` calls not guarded by a corresponding `hasTag`, which error if
     /// the tag is absent.
     Tags => "tags", Correctness, true;
@@ -691,6 +703,7 @@ impl Linter {
                 Lint::DoubleNegation => type double_negation::DoubleNegationLinter,
                 Lint::ExprStyle => type expr_style::ExprStyleLinter,
                 Lint::RedundantBoolean => type redundant_boolean::RedundantBooleanLinter,
+                Lint::ConstantCondition => type constant_condition::ConstantConditionLinter,
             });
         }
 
@@ -736,6 +749,8 @@ impl Linter {
             Lint::ExtConstructors => fn ext_constructors::lint,
             Lint::NonLinearArithmetic => fn nonlinear::lint,
             Lint::LikePatterns => fn like_patterns::lint,
+            Lint::SelfComparison => fn self_comparison::lint,
+            Lint::RedundantExpr => fn redundant_expr::lint,
         });
 
         findings
@@ -1028,7 +1043,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 18);
+        assert_eq!(Lint::all().count(), 21);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

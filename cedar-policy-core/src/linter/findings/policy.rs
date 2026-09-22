@@ -692,3 +692,102 @@ impl Diagnostic for ImpossibleIsCheck {
         ))
     }
 }
+
+/// A comparison whose two operands are syntactically identical, e.g.
+/// `principal == principal`. Almost always a mistake — one operand was likely
+/// meant to be something else. What it does at runtime varies (always true,
+/// always an error, or a type error), so the finding reports the shape.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("both operands of this comparison are the same expression")]
+pub struct SelfComparison {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for SelfComparison {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "comparing a value to itself is redundant; did you mean to compare it to something else?",
+        ))
+    }
+}
+
+/// A constant expression standing where a condition is expected, e.g.
+/// `when { false }`. It has the same value for every request, so it is dead code
+/// or a placeholder rather than a real condition.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this condition is constant")]
+pub struct ConstantCondition {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for ConstantCondition {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "it does not depend on the request, so it is the same for every one; remove it, or replace it with the intended condition",
+        ))
+    }
+}
+
+/// An `&&` or `||` whose two operands are syntactically identical, e.g.
+/// `a && a`, which is just `a`.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("both operands of `{op}` are the same expression")]
+pub struct RepeatedLogicalOperand {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) op: &'static str,
+}
+
+impl Diagnostic for RepeatedLogicalOperand {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "this is equivalent to the operand on its own; did you mean a different operand on one side?",
+        ))
+    }
+}
+
+/// An `if` whose `then` and `else` branches are syntactically identical, so the
+/// condition makes no difference.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("both branches of this `if` are the same expression")]
+pub struct IdenticalIfBranches {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for IdenticalIfBranches {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "the condition has no effect since both branches are identical; use the branch expression directly",
+        ))
+    }
+}
+
+/// A set literal containing an element equal to an earlier one, e.g. `[1, 2, 1]`.
+/// The duplicate does not change the set's value.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this set element is a duplicate")]
+pub struct DuplicateSetElement {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for DuplicateSetElement {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "it already appears earlier in the set, so it has no effect; remove it",
+        ))
+    }
+}
