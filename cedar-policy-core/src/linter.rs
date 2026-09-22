@@ -102,6 +102,8 @@ mod schema;
 // Schema-informed policy lints (typechecker as a service).
 mod schema_informed;
 // TPE-based lints (feature-gated).
+#[cfg(feature = "tpe")]
+mod tpe;
 
 // Shared infrastructure used across the lint groups.
 mod capability;
@@ -112,6 +114,8 @@ mod types;
 // them unqualified for brevity; bring them into scope here.
 use policy::*;
 // The TPE lints live in `tpe`; the driver refers to it by its old name.
+#[cfg(feature = "tpe")]
+use tpe as trivial_decision;
 
 /// Test-only helpers shared by the per-lint test modules.
 #[cfg(test)]
@@ -145,6 +149,8 @@ use crate::{
     fuzzy_match::fuzzy_search,
 };
 
+#[cfg(feature = "tpe")]
+pub use findings::{AlwaysErrors, TrivialDecision, TrivialOutcome, VacuousKind, VacuousPolicy};
 pub use findings::{Finding, LintFinding, SchemaFinding};
 pub use schema::SchemaLinter;
 
@@ -367,11 +373,41 @@ declare_lints! {
     /// already established, e.g. `x has a && x has a`. Schema-free.
     RedundantHas => "redundant-has", Correctness, true;
 
+    /// (Schema-informed, TPE) A request environment — a whole action, principal
+    /// type, or resource type — whose decision is fixed regardless of request
+    /// data: always allowed, or always denied as defeated intent (a blanket
+    /// forbid). Runs only with a schema and the `tpe` feature, via
+    /// [`Linter::trivial_decisions`].
+    TrivialDecision => "trivial-decision", Correctness, true;
+
+    /// (Schema-informed, TPE) A policy that errors for every request in some
+    /// reachable request environment, so it is silently skipped there — a
+    /// `forbid` fails open. One environment suffices. Runs only with a schema and
+    /// the `tpe` feature, via [`Linter::erroring_policies`].
+    PolicyAlwaysErrors => "policy-always-errors", Correctness, true;
+
+    /// (Schema-informed, TPE) A policy whose condition folds to the same constant
+    /// — always true or always false — in every request environment its scope
+    /// admits, so it either applies to every request (a vacuous `when`/`unless`)
+    /// or to none (dead code). Distinct from [`Lint::TrivialDecision`], which is
+    /// about the *decision*, not one policy's condition. Runs only with a schema
+    /// and the `tpe` feature, via [`Linter::vacuous_policies`].
+    VacuousPolicy => "vacuous-policy", Correctness, true;
+
     /// (Schema-informed) A sub-expression the typechecker proves is a constant
     /// boolean in every request environment the policy applies to, e.g.
     /// `principal is User` when every principal is a `User`. Runs only with a
     /// schema, via [`Linter::lint_with_schema`].
     TypedConstantCondition => "typed-constant-condition", Correctness, true;
+
+    /// (Schema-informed, TPE) A sub-expression that type-aware partial evaluation
+    /// folds to the same constant boolean in every request environment the policy
+    /// applies to — including ones the typechecker cannot, like an extension call
+    /// over literals (`ip("10.0.0.0").isInRange(ip("10.0.0.0/8"))`). Distinct from
+    /// `typed-constant-condition` (types only) and `constant-condition` (syntax
+    /// only). Runs only with a schema and the `tpe` feature, via
+    /// [`Linter::lint_with_schema`].
+    FoldedConstantCondition => "folded-constant-condition", Correctness, true;
 
     /// (Schema-informed) A `has` on an attribute the schema declares required, so
     /// the check is always true.
@@ -763,7 +799,75 @@ impl Linter {
             has_on_required: self.runs(Lint::HasOnRequiredAttr),
         };
         findings.extend(schema_informed::lint(policy_set, schema, enabled));
+        #[cfg(feature = "tpe")]
+        findings.extend(tpe::lint_all(
+            policy_set,
+            schema,
+            tpe::Enabled::from_linter(self),
+        ));
         LintResult::new(findings)
+    }
+
+    /// The trivial-decision findings for `policy_set` under `schema`: request
+    /// environments whose authorization decision is fixed regardless of request
+    /// data. See [`Lint::TrivialDecision`].
+    ///
+    /// This is a separate method rather than part of [`LintResult`] because its
+    /// findings are scoped to request environments — a `(principal, action,
+    /// resource)` triple — not to a single policy, so they carry no policy ID.
+    /// Empty unless this linter runs [`Lint::TrivialDecision`].
+    #[cfg(feature = "tpe")]
+    pub fn trivial_decisions(
+        &self,
+        policy_set: &PolicySet,
+        schema: &crate::validator::ValidatorSchema,
+    ) -> Vec<findings::TrivialDecision> {
+        if self.runs(Lint::TrivialDecision) {
+            trivial_decision::lint(policy_set, schema)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// The policies that error for every request in some reachable request
+    /// environment, tagged with the environment. See [`Lint::PolicyAlwaysErrors`].
+    ///
+    /// Like [`Linter::trivial_decisions`], a separate method: its findings are
+    /// scoped to a `(policy, request environment)` pair rather than to a policy
+    /// alone. Empty unless this linter runs [`Lint::PolicyAlwaysErrors`].
+    #[cfg(feature = "tpe")]
+    pub fn erroring_policies(
+        &self,
+        policy_set: &PolicySet,
+        schema: &crate::validator::ValidatorSchema,
+    ) -> Vec<findings::AlwaysErrors> {
+        if self.runs(Lint::PolicyAlwaysErrors) {
+            trivial_decision::lint_errors(policy_set, schema)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// The policies whose condition is fixed — always true (always applies) or
+    /// always false (never applies) — across every request environment their scope
+    /// admits. See [`Lint::VacuousPolicy`].
+    ///
+    /// A separate method for the same reason as [`Linter::trivial_decisions`]: a
+    /// vacuous-condition finding is a whole-policy property established only across
+    /// all of a policy's request environments, so it is computed with the schema
+    /// rather than in the per-policy [`LintResult`]. Empty unless this linter runs
+    /// [`Lint::VacuousPolicy`].
+    #[cfg(feature = "tpe")]
+    pub fn vacuous_policies(
+        &self,
+        policy_set: &PolicySet,
+        schema: &crate::validator::ValidatorSchema,
+    ) -> Vec<findings::VacuousPolicy> {
+        if self.runs(Lint::VacuousPolicy) {
+            trivial_decision::lint_vacuous(policy_set, schema)
+        } else {
+            Vec::new()
+        }
     }
 
     /// Lint policies from their source text, which additionally runs the lints
@@ -1150,7 +1254,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 37);
+        assert_eq!(Lint::all().count(), 41);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

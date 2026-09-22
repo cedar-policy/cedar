@@ -33,6 +33,10 @@ mod schema;
 pub use schema::*;
 mod schema_informed;
 pub use schema_informed::*;
+#[cfg(feature = "tpe")]
+mod tpe;
+#[cfg(feature = "tpe")]
+pub use tpe::*;
 
 /// A single problem the linter found.
 ///
@@ -251,6 +255,31 @@ pub enum Finding {
     #[diagnostic(transparent)]
     #[error(transparent)]
     PlusNegativeLiteral(#[from] PlusNegativeLiteral),
+
+    /// A request environment whose authorization decision is fixed (TPE).
+    #[cfg(feature = "tpe")]
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    TrivialDecision(#[from] TrivialDecision),
+
+    /// A policy that always errors in some environment, so it is skipped (TPE).
+    #[cfg(feature = "tpe")]
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    AlwaysErrors(#[from] AlwaysErrors),
+
+    /// A policy whose condition folds to a constant in every environment (TPE).
+    #[cfg(feature = "tpe")]
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    VacuousPolicy(#[from] VacuousPolicy),
+
+    /// A sub-expression that TPE folds to a constant boolean in every environment
+    /// its policy applies to (TPE).
+    #[cfg(feature = "tpe")]
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    FoldedConstantCondition(#[from] FoldedConstantCondition),
 }
 impl Finding {
     /// The lint that produced this finding.
@@ -297,6 +326,14 @@ impl Finding {
             Finding::RedundantHas(_) => Lint::RedundantHas,
             Finding::HasOnRequiredAttr(_) => Lint::HasOnRequiredAttr,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
+            #[cfg(feature = "tpe")]
+            Finding::TrivialDecision(_) => Lint::TrivialDecision,
+            #[cfg(feature = "tpe")]
+            Finding::AlwaysErrors(_) => Lint::PolicyAlwaysErrors,
+            #[cfg(feature = "tpe")]
+            Finding::VacuousPolicy(_) => Lint::VacuousPolicy,
+            #[cfg(feature = "tpe")]
+            Finding::FoldedConstantCondition(_) => Lint::FoldedConstantCondition,
         }
     }
 
@@ -345,6 +382,14 @@ impl Finding {
             Finding::DoubleNegation(f) => f.loc.as_ref(),
             Finding::SingletonSetIn(f) => f.loc.as_ref(),
             Finding::PlusNegativeLiteral(f) => f.loc.as_ref(),
+            #[cfg(feature = "tpe")]
+            Finding::TrivialDecision(f) => f.loc.as_ref(),
+            #[cfg(feature = "tpe")]
+            Finding::AlwaysErrors(_) => None,
+            #[cfg(feature = "tpe")]
+            Finding::VacuousPolicy(f) => f.loc.as_ref(),
+            #[cfg(feature = "tpe")]
+            Finding::FoldedConstantCondition(f) => f.loc.as_ref(),
         }
     }
 
