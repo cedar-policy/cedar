@@ -215,6 +215,32 @@ impl Diagnostic for SharedAttributes {
     }
 }
 
+/// An entity type that is referenced only as the type of an attribute — never a
+/// principal or resource of any action, never a member of a hierarchy, never
+/// otherwise referenced. Its only role is to give structure to that attribute,
+/// which a common-type record expresses inline without a separate entity.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("entity type `{entity_type}` is used only as an attribute type")]
+pub struct EntityAttrShouldBeCommonType {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) entity_type: String,
+    /// Where the attribute lives, e.g. ``attribute `address` on `User` ``, for
+    /// the message.
+    pub(crate) used_at: String,
+}
+
+impl Diagnostic for EntityAttrShouldBeCommonType {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "it appears only as {used_at}; a common-type record inlines that structure with no separate entity to store or dereference. This does not apply if the same entity is meant to be shared by reference across owners, or if a policy needs to test the entity's existence",
+            used_at = self.used_at,
+        )))
+    }
+}
+
 /// Two entity types applicable in the same position (principal or resource) for
 /// one action each declare an attribute of the same name but with different types.
 /// A policy scoped to that action reading `principal.attr` (or `resource.attr`)

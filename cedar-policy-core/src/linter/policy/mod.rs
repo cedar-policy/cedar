@@ -20,6 +20,7 @@
 //! them.
 
 pub(crate) mod attr_guards;
+pub(crate) mod attribute_depth;
 pub(crate) mod constant_condition;
 pub(crate) mod double_negation;
 pub(crate) mod duplicate_policy;
@@ -27,6 +28,7 @@ pub(crate) mod empty_set;
 pub(crate) mod erroring_forbid;
 pub(crate) mod expr_style;
 pub(crate) mod ext_constructors;
+pub(crate) mod forbid_guard;
 pub(crate) mod forbid_without_permit;
 pub(crate) mod like_patterns;
 pub(crate) mod nonlinear;
@@ -34,6 +36,8 @@ pub(crate) mod redundant_boolean;
 pub(crate) mod redundant_expr;
 pub(crate) mod redundant_has;
 pub(crate) mod scope_constraints;
+pub(crate) mod scope_literals;
+pub(crate) mod scope_required;
 pub(crate) mod self_comparison;
 pub(crate) mod sugar;
 pub(crate) mod syntax_style;

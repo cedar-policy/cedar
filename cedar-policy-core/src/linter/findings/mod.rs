@@ -256,6 +256,27 @@ pub enum Finding {
     #[error(transparent)]
     PlusNegativeLiteral(#[from] PlusNegativeLiteral),
 
+    /// A policy whose scope constrains none of principal, action, or resource.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    UnconstrainedScope(#[from] UnconstrainedScope),
+
+    /// An entity literal in the principal or resource scope.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ScopeEntityLiteral(#[from] ScopeEntityLiteral),
+
+    /// An attribute/tag access chain deeper than the configured bound.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    AttributeTooDeep(#[from] AttributeTooDeep),
+
+    /// A `forbid` guarded by `e has a && e.a`, which fails open on a missing
+    /// attribute.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ForbidGuardFailsOpen(#[from] ForbidGuardFailsOpen),
+
     /// A request environment whose authorization decision is fixed (TPE).
     #[cfg(feature = "tpe")]
     #[diagnostic(transparent)]
@@ -326,6 +347,10 @@ impl Finding {
             Finding::RedundantHas(_) => Lint::RedundantHas,
             Finding::HasOnRequiredAttr(_) => Lint::HasOnRequiredAttr,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
+            Finding::UnconstrainedScope(_) => Lint::NoUnconstrainedScope,
+            Finding::ScopeEntityLiteral(_) => Lint::NoScopeEntityLiterals,
+            Finding::AttributeTooDeep(_) => Lint::BoundedAttributeDepth,
+            Finding::ForbidGuardFailsOpen(_) => Lint::ForbidGuardFailsOpen,
             #[cfg(feature = "tpe")]
             Finding::TrivialDecision(_) => Lint::TrivialDecision,
             #[cfg(feature = "tpe")]
@@ -382,6 +407,10 @@ impl Finding {
             Finding::DoubleNegation(f) => f.loc.as_ref(),
             Finding::SingletonSetIn(f) => f.loc.as_ref(),
             Finding::PlusNegativeLiteral(f) => f.loc.as_ref(),
+            Finding::UnconstrainedScope(f) => f.loc.as_ref(),
+            Finding::ScopeEntityLiteral(f) => f.loc.as_ref(),
+            Finding::AttributeTooDeep(f) => f.loc.as_ref(),
+            Finding::ForbidGuardFailsOpen(f) => f.loc.as_ref(),
             #[cfg(feature = "tpe")]
             Finding::TrivialDecision(f) => f.loc.as_ref(),
             #[cfg(feature = "tpe")]
@@ -566,6 +595,12 @@ pub enum SchemaFinding {
     #[error(transparent)]
     SharedAttributes(#[from] SharedAttributes),
 
+    /// An entity type referenced only as an attribute type, which a common-type
+    /// record could express inline.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    EntityAttrShouldBeCommonType(#[from] EntityAttrShouldBeCommonType),
+
     /// Two entity types applicable in the same position for one action declare an
     /// attribute of the same name with incompatible types.
     #[diagnostic(transparent)]
@@ -597,6 +632,7 @@ impl SchemaFinding {
             SchemaFinding::DuplicateMemberOf(_) => Lint::DuplicateMemberOf,
             SchemaFinding::DuplicateEnumChoice(_) => Lint::DuplicateEnumChoice,
             SchemaFinding::SharedAttributes(_) => Lint::SharedAttributes,
+            SchemaFinding::EntityAttrShouldBeCommonType(_) => Lint::EntityAttrShouldBeCommonType,
             SchemaFinding::ConflictingAppliesToAttr(_) => Lint::ConflictingAppliesToAttr,
             SchemaFinding::ConflictingContextAttr(_) => Lint::ConflictingContextAttr,
             SchemaFinding::ConflictingTagType(_) => Lint::ConflictingTagType,

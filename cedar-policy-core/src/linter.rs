@@ -446,6 +446,42 @@ declare_lints! {
     /// which a common type could factor out.
     SharedAttributes => "shared-attributes", Schema, true;
 
+    /// A policy whose scope constrains none of `principal`, `action`, or
+    /// `resource` — the bare `permit(principal, action, resource)` form. The
+    /// restriction asks every policy to anchor somewhere in the request space so
+    /// its reach is visible from the scope and sliceable.
+    ///
+    /// Off by default: a deliberately global baseline `forbid` legitimately wants
+    /// a fully-open scope.
+    NoUnconstrainedScope => "no-unconstrained-scope", Restriction, false;
+
+    /// An entity literal in the `principal`/`resource` scope, e.g.
+    /// `permit(principal == User::"alice", ...)`. The identity belongs in a
+    /// linked template, not baked into policy text.
+    ///
+    /// Off by default: a genuine singleton system principal is sometimes a
+    /// legitimate policy-level constant.
+    NoScopeEntityLiterals => "no-scope-entity-literals", Restriction, false;
+
+    /// An attribute/tag access chain rooted at a request variable deeper than a
+    /// bound. Over-approximates the RFC 76 entity-dereference level, so it is a
+    /// schema-free preview of level validation.
+    ///
+    /// Off by default and configurable: deep chains are legal and sometimes
+    /// intended; see [`Linter::with_attribute_depth_bound`].
+    BoundedAttributeDepth => "bounded-attribute-depth", Restriction, false;
+
+    /// A `forbid` guarded by `e has a && e.a`, which fails open when `a` is
+    /// absent. Suggests the fail-closed `!(e has a) || e.a`.
+    ///
+    /// Off by default: the fail-closed form denies every entity lacking the
+    /// attribute, which is more restrictive.
+    ForbidGuardFailsOpen => "forbid-guard-fails-open", Restriction, false;
+
+    /// (Schema) An entity type referenced only as an attribute type, which a
+    /// common-type record could express inline.
+    EntityAttrShouldBeCommonType => "entity-attr-should-be-common-type", Schema, true;
+
     /// (Schema) Two entity types applicable in the same scope position for one
     /// action declare an attribute of the same name with different types, so
     /// `principal.attr`/`resource.attr` in a policy for that action is
@@ -692,6 +728,10 @@ impl IntoIterator for LintResult {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Linter {
     lints: BTreeSet<Lint>,
+    /// The bound for [`Lint::BoundedAttributeDepth`]: an access chain deeper than
+    /// this is reported. Defaults to [`DEFAULT_ATTRIBUTE_DEPTH_BOUND`]; set with
+    /// [`Linter::with_attribute_depth_bound`].
+    attribute_depth_bound: usize,
 }
 
 /// The default bound for [`Lint::BoundedAttributeDepth`]. Chains up to this depth
@@ -703,7 +743,15 @@ impl Linter {
     pub fn new(lints: impl IntoIterator<Item = Lint>) -> Self {
         Self {
             lints: lints.into_iter().collect(),
+            attribute_depth_bound: DEFAULT_ATTRIBUTE_DEPTH_BOUND,
         }
+    }
+
+    /// Set the bound for [`Lint::BoundedAttributeDepth`]: an attribute/tag access
+    /// chain deeper than `bound` is reported. Has no effect unless that lint runs.
+    pub fn with_attribute_depth_bound(mut self, bound: usize) -> Self {
+        self.attribute_depth_bound = bound;
+        self
     }
 
     /// A linter that runs the lints that are on by default, i.e. those for which
@@ -903,6 +951,7 @@ impl Linter {
         run_lints!(self, findings, template, {
             Lint::ErroringArithmetic => type erroring_forbid::ErroringForbidLinter,
             Lint::ScopeConstraints => type scope_constraints::ScopeConstraintLinter,
+            Lint::ForbidGuardFailsOpen => type forbid_guard::ForbidGuardLinter,
         });
 
         // Linters that consume just the `when`/`unless` clauses, skipped when the
@@ -917,8 +966,19 @@ impl Linter {
         }
 
         // Free-function lints over the whole template.
+        if self.runs(Lint::NoUnconstrainedScope) {
+            findings.extend(scope_required::lint(template));
+        }
+        if self.runs(Lint::NoScopeEntityLiterals) {
+            findings.extend(scope_literals::lint(template));
+        }
 
         // Lints with a non-`Default` constructor.
+        if self.runs(Lint::BoundedAttributeDepth) {
+            let mut linter = attribute_depth::AttributeDepthLinter::new(self.attribute_depth_bound);
+            linter.lint(template);
+            findings.extend(linter.into_findings());
+        }
         for (lint, effect) in [
             (Lint::ForbidAttrGuards, Effect::Forbid),
             (Lint::PermitAttrGuards, Effect::Permit),
@@ -1254,7 +1314,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 41);
+        assert_eq!(Lint::all().count(), 46);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

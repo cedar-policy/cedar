@@ -43,6 +43,7 @@ mod conflicting_applies_to_attr;
 mod conflicting_tag_type;
 mod duplicate_enum_choice;
 mod duplicate_member_of;
+mod entity_attr_should_be_common_type;
 mod shared_attributes;
 mod shared_prefix_namespace;
 mod unused_action;
@@ -77,6 +78,7 @@ impl SchemaLinter {
             Lint::DuplicateMemberOf,
             Lint::DuplicateEnumChoice,
             Lint::SharedAttributes,
+            Lint::EntityAttrShouldBeCommonType,
             Lint::ConflictingAppliesToAttr,
             Lint::ConflictingContextAttr,
             Lint::ConflictingTagType,
@@ -106,6 +108,10 @@ impl SchemaLinter {
                 (Lint::DuplicateMemberOf, duplicate_member_of::lint),
                 (Lint::DuplicateEnumChoice, duplicate_enum_choice::lint),
                 (Lint::SharedAttributes, shared_attributes::lint),
+                (
+                    Lint::EntityAttrShouldBeCommonType,
+                    entity_attr_should_be_common_type::lint,
+                ),
                 (
                     Lint::ConflictingAppliesToAttr,
                     conflicting_applies_to_attr::lint_applies_to_attr,

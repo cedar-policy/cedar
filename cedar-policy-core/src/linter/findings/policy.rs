@@ -583,6 +583,137 @@ impl Diagnostic for PlusNegativeLiteral {
     }
 }
 
+/// A policy whose scope constrains none of `principal`, `action`, or `resource`
+/// — the bare `permit(principal, action, resource)` form. The `no-unconstrained-
+/// scope` restriction asks every policy to anchor somewhere in the request space
+/// so its reach is visible from the scope alone.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this {effect} constrains nothing in its scope")]
+pub struct UnconstrainedScope {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) effect: &'static str,
+}
+
+impl Diagnostic for UnconstrainedScope {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "constrain at least one of `principal`, `action`, or `resource` in the scope (with `==`, `in`, or `is`), so the policy's reach is visible without reading the condition and a policy store can slice on it; a deliberately global policy can suppress this",
+        ))
+    }
+}
+
+/// One entity literal pinned in a scope position, with the exact slot rewrite
+/// that preserves its constraint operator.
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub(crate) struct ScopeLiteral {
+    /// The scope variable — `principal` or `resource`.
+    pub(crate) var: Var,
+    /// The entity named, e.g. ``User::"alice"``.
+    pub(crate) entity: String,
+    /// The scope form with the literal replaced by a slot, preserving the
+    /// operator: ``principal == ?principal``, ``resource in ?resource``, or
+    /// ``principal is User in ?principal``.
+    pub(crate) slot_form: String,
+}
+
+/// Entity literals in the `principal` and/or `resource` scope of one policy, e.g.
+/// `permit(principal == User::"alice", ...)`. The identities are data baked into
+/// policy text; a linked template keeps them in template-linking data instead. One
+/// finding per policy covers both positions when both are literals.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("{}", scope_literal_headline(&self.literals))]
+pub struct ScopeEntityLiteral {
+    pub(crate) loc: Option<Loc>,
+    /// The scope positions that name a literal, in scope order (principal before
+    /// resource). Never empty.
+    pub(crate) literals: Vec<ScopeLiteral>,
+}
+
+/// The headline naming the position(s) and entity(ies) a scope pins by literal.
+fn scope_literal_headline(literals: &[ScopeLiteral]) -> String {
+    let parts: Vec<String> = literals
+        .iter()
+        .map(|l| format!("`{}` names `{}`", l.var, l.entity))
+        .collect();
+    format!("scope pins an entity literal: {}", parts.join(", and "))
+}
+
+impl Diagnostic for ScopeEntityLiteral {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        // Suggest the operator-preserving slot rewrite for every pinned position.
+        let slots: Vec<String> = self
+            .literals
+            .iter()
+            .map(|l| format!("`{}`", l.slot_form))
+            .collect();
+        let links: Vec<String> = self
+            .literals
+            .iter()
+            .map(|l| format!("`{}`", l.entity))
+            .collect();
+        Some(Box::new(format!(
+            "replace the literal(s) with slot(s) ({slots}) and supply {links} as template links; the identities then live in linking data that can be listed and reviewed, not in the policy text",
+            slots = slots.join(", "),
+            links = links.join(", "),
+        )))
+    }
+}
+
+/// An attribute or tag access chain, rooted at a request variable, deeper than
+/// the configured bound. Each step is a store lookup and a hop the analyzer must
+/// follow; the bound caps both.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("access chain is {depth} levels deep, over the bound of {bound}")]
+pub struct AttributeTooDeep {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) depth: usize,
+    pub(crate) bound: usize,
+}
+
+impl Diagnostic for AttributeTooDeep {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "each attribute or tag access on an entity is a store lookup at evaluation time and a dereference the analyzer must follow; a shallower chain (e.g. denormalizing the value onto a nearer entity) keeps evaluation and analysis within a fixed bound. This counts syntactic access depth, so it is an upper bound on the RFC 76 entity-dereference level",
+        ))
+    }
+}
+
+/// A `forbid` whose condition, with attribute `attr` absent, evaluates to `false`
+/// — the `forbid` does not fire and fails open. The `has` guard that was meant to
+/// protect the access is what turns the missing attribute into `false` instead of
+/// an error; the fail-closed rewrite makes the missing attribute *fire* the forbid.
+///
+/// This is a semantic property, not a fixed syntactic shape: it holds for
+/// `e has a && e.a`, `if e has a then e.a else false`, `e has a && e.a == true`,
+/// and any other condition that folds to `false` when `a` is absent.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`forbid` fails open when `{attr}` is absent")]
+pub struct ForbidGuardFailsOpen {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) attr: SmolStr,
+}
+
+impl Diagnostic for ForbidGuardFailsOpen {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        let attr = &self.attr;
+        Some(Box::new(format!(
+            "when `{attr}` is absent this condition is `false`, so the `forbid` does not fire and a missing attribute fails open; restructure so a missing `{attr}` makes the condition true (e.g. `!(e has {attr}) || <uses {attr}>`, or `if e has {attr} then <uses {attr}> else true`) to fire the `forbid` instead. Note this denies every entity lacking `{attr}`, which may be more restrictive than intended",
+        )))
+    }
+}
+
 /// An `x is T && x in E` that the combined `x is T in E` form expresses directly.
 #[derive(Error, Debug, Clone, Eq, PartialEq)]
 #[error("`is` and `in` on the same operand can be combined")]
