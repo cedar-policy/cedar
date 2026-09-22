@@ -791,3 +791,46 @@ impl Diagnostic for DuplicateSetElement {
         ))
     }
 }
+
+/// A policy syntactically identical to an earlier one in the same set — same
+/// effect, same condition. The duplicate authorizes nothing the original does
+/// not, so it is dead weight, usually a copy-paste or merge artifact.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("this policy is a duplicate of `{original}`")]
+pub struct DuplicatePolicy {
+    pub(crate) loc: Option<Loc>,
+    /// The ID of the first policy with this effect and condition.
+    pub(crate) original: String,
+}
+
+impl Diagnostic for DuplicatePolicy {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(format!(
+            "it has the same effect and condition as `{original}`, so it has no additional effect; remove one of them",
+            original = self.original,
+        )))
+    }
+}
+
+/// A comparison with a literal on the left of `==`, e.g. `5 == context.n`, which
+/// reads more naturally with the literal on the right. Purely a readability
+/// finding: the two forms are identical.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("literal on the left of `==`")]
+pub struct YodaCondition {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for YodaCondition {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "put the variable first and the literal second, as in `x == 5`; the two are equivalent",
+        ))
+    }
+}

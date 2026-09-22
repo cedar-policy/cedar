@@ -208,6 +208,16 @@ pub enum Finding {
     #[error(transparent)]
     DuplicateSetElement(#[from] DuplicateSetElement),
 
+    /// A policy that duplicates an earlier one in the set.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    DuplicatePolicy(#[from] DuplicatePolicy),
+
+    /// A literal on the left of `==`.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    YodaCondition(#[from] YodaCondition),
+
     /// Arithmetic negation applied twice.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -262,6 +272,8 @@ impl Finding {
             Finding::RepeatedLogicalOperand(_)
             | Finding::IdenticalIfBranches(_)
             | Finding::DuplicateSetElement(_) => Lint::RedundantExpr,
+            Finding::DuplicatePolicy(_) => Lint::DuplicatePolicy,
+            Finding::YodaCondition(_) => Lint::YodaCondition,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
     }
@@ -303,6 +315,8 @@ impl Finding {
             Finding::RepeatedLogicalOperand(f) => f.loc.as_ref(),
             Finding::IdenticalIfBranches(f) => f.loc.as_ref(),
             Finding::DuplicateSetElement(f) => f.loc.as_ref(),
+            Finding::DuplicatePolicy(f) => f.loc.as_ref(),
+            Finding::YodaCondition(f) => f.loc.as_ref(),
             Finding::DoubleNegation(f) => f.loc.as_ref(),
             Finding::SingletonSetIn(f) => f.loc.as_ref(),
             Finding::PlusNegativeLiteral(f) => f.loc.as_ref(),

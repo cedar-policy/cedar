@@ -282,6 +282,14 @@ declare_lints! {
     /// Off by default: a policy set may legitimately contain a blanket policy.
     UniversalPolicy => "universal-policy", Correctness, false;
 
+    /// Policies that duplicate an earlier one in the set — same effect and
+    /// condition. A duplicate has no additional effect.
+    ///
+    /// Off by default: a policy set is often linted in fragments, so an apparent
+    /// duplicate may be intentional across files, and exact duplicates are rare
+    /// enough that the check is opt-in.
+    DuplicatePolicy => "duplicate-policy", Correctness, false;
+
     /// `forbid` policies in a policy set that contains no `permit`, so nothing
     /// is ever allowed regardless of the `forbid`s.
     ///
@@ -319,6 +327,10 @@ declare_lints! {
     /// them directly. Equivalent either way, but only a scope constraint lets a
     /// policy store slice on it.
     ScopeConstraints => "scope-constraints", Style, true;
+
+    /// A literal on the left of `==`, e.g. `5 == context.n`, which reads more
+    /// naturally with the literal on the right.
+    YodaCondition => "yoda-condition", Style, true;
 
     /// Arithmetic in a policy condition, which can overflow and cause the
     /// policy to be skipped. Most dangerous in a `forbid`.
@@ -657,6 +669,9 @@ impl Linter {
         if self.runs(Lint::ForbidWithoutPermit) {
             findings.extend(forbid_without_permit::lint(policy_set));
         }
+        if self.runs(Lint::DuplicatePolicy) {
+            findings.extend(duplicate_policy::lint_duplicate_policy(policy_set));
+        }
 
         LintResult::new(findings)
     }
@@ -750,6 +765,7 @@ impl Linter {
             Lint::NonLinearArithmetic => fn nonlinear::lint,
             Lint::LikePatterns => fn like_patterns::lint,
             Lint::SelfComparison => fn self_comparison::lint,
+            Lint::YodaCondition => fn yoda_condition::lint,
             Lint::RedundantExpr => fn redundant_expr::lint,
         });
 
@@ -1043,7 +1059,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 21);
+        assert_eq!(Lint::all().count(), 23);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

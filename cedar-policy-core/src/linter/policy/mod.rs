@@ -22,6 +22,7 @@
 pub(crate) mod attr_guards;
 pub(crate) mod constant_condition;
 pub(crate) mod double_negation;
+pub(crate) mod duplicate_policy;
 pub(crate) mod empty_set;
 pub(crate) mod erroring_forbid;
 pub(crate) mod expr_style;
@@ -37,3 +38,4 @@ pub(crate) mod sugar;
 pub(crate) mod syntax_style;
 pub(crate) mod tags;
 pub(crate) mod universal_policy;
+pub(crate) mod yoda_condition;
