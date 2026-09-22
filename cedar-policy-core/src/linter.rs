@@ -244,6 +244,13 @@ declare_lints! {
     /// schema, but no schema can declare attributes or tags on an action, so
     /// strict validation rejects them.
     ActionAttrs => "action-attrs", StrictMigration, true;
+
+    /// Extension constructor calls: a string literal that fails to parse, and
+    /// non-literal arguments, which strict validation rejects.
+    ExtConstructors => "ext-constructors", StrictMigration, true;
+
+    /// Empty set literals, which strict validation rejects.
+    EmptySet => "empty-set", StrictMigration, true;
 }
 
 impl std::fmt::Display for Lint {
@@ -590,6 +597,8 @@ impl Linter {
         // `fn` ones use the `scan` combinator, the `type` ones still carry state.
         run_lints!(self, findings, expr, {
             Lint::Tags => type tags::TagLinter,
+            Lint::EmptySet => fn empty_set::lint,
+            Lint::ExtConstructors => fn ext_constructors::lint,
         });
 
         findings
@@ -620,6 +629,23 @@ mod test {
     }
 
     #[test]
+    fn selecting_one_lint_excludes_others() {
+        // This condition trips both the empty-set and the type lints.
+        assert!(!lint_condition(&Linter::all_lints(), "[] == 1").is_empty());
+
+        let only_empty_set = lint_condition(&Linter::new([Lint::EmptySet]), "[] == 1");
+        assert_eq!(only_empty_set.len(), 1);
+        assert_eq!(
+            only_empty_set.findings().next().unwrap().lint(),
+            Lint::EmptySet
+        );
+
+        let only_types = lint_condition(&Linter::new([Lint::Types]), "[] == 1");
+        assert_eq!(only_types.len(), 1);
+        assert_eq!(only_types.findings().next().unwrap().lint(), Lint::Types);
+    }
+
+    #[test]
     fn with_and_without() {
         let linter = Linter::new([Lint::Types]).with(Lint::Tags);
         assert!(linter.runs(Lint::Types));
@@ -645,6 +671,29 @@ mod test {
         assert!(linter.runs(Lint::Types));
     }
 
+    /// Errors and warnings are separated, and `passed` tracks only errors.
+    #[test]
+    fn result_splits_by_severity() {
+        // A bad `ip` literal is an error; an empty set is a warning.
+        let linter = Linter::new([Lint::ExtConstructors, Lint::EmptySet]);
+        let result = lint_condition(&linter, r#"ip("bad") == ip("1.2.3.4") && [] == []"#);
+
+        assert!(!result.passed(), "a bad ip literal is an error");
+        assert_eq!(result.errors().count(), 1);
+        assert_eq!(result.warnings().count(), 2);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result.findings().count(), 3);
+    }
+
+    /// A run with only warnings still passes.
+    #[test]
+    fn warnings_alone_pass() {
+        let result = lint_condition(&Linter::new([Lint::EmptySet]), "[] == []");
+        assert!(!result.is_empty());
+        assert!(result.passed());
+        assert_eq!(result.errors().count(), 0);
+    }
+
     #[test]
     fn empty_result_passes() {
         // A policy that trips no lint: a scope anchor (so `no-unconstrained-scope`
@@ -661,6 +710,45 @@ mod test {
         assert!(result.is_empty());
         assert!(result.passed());
         assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn from_lint_filters() {
+        let linter = Linter::new([Lint::EmptySet, Lint::Types]);
+        let result = lint_condition(&linter, "[] == 1");
+        assert_eq!(result.from_lint(Lint::EmptySet).count(), 1);
+        assert_eq!(result.from_lint(Lint::Types).count(), 1);
+        assert_eq!(result.from_lint(Lint::Tags).count(), 0);
+    }
+
+    #[test]
+    fn result_into_iter() {
+        let result = lint_condition(&Linter::new([Lint::EmptySet]), "[] == []");
+        let n = result.len();
+        assert_eq!(result.into_iter().count(), n);
+    }
+
+    /// Every policy in the set is linted, and each is linted only once.
+    #[test]
+    fn lints_all_policies_once() {
+        let policies = parse_policyset(
+            r#"
+            permit(principal, action, resource) when { [] == 1 };
+            permit(principal, action, resource) when { [] == 1 };
+        "#,
+        )
+        .unwrap();
+        assert_eq!(Linter::new([Lint::EmptySet]).lint(&policies).len(), 2);
+    }
+
+    /// Templates are linted alongside static policies.
+    #[test]
+    fn lints_templates() {
+        let policies = parse_policyset(
+            r#"permit(principal == ?principal, action, resource) when { [] == 1 };"#,
+        )
+        .unwrap();
+        assert_eq!(Linter::new([Lint::EmptySet]).lint(&policies).len(), 1);
     }
 
     #[test]
@@ -685,6 +773,14 @@ mod test {
         assert!(LintGroup::from_str("no-such-group").is_err());
     }
 
+    /// A near-miss name suggests the intended lint.
+    #[test]
+    fn unknown_lint_name_suggests() {
+        let err = Lint::from_str("empty_set").unwrap_err();
+        let help = miette::Diagnostic::help(&err).unwrap().to_string();
+        assert!(help.contains("empty-set"), "unexpected help: {help}");
+    }
+
     /// Every lint is in exactly one group, and the groups partition `all`.
     #[test]
     fn groups_partition_all_lints() {
@@ -701,7 +797,7 @@ mod test {
     /// This pins the count so that adding a lint is a deliberate change.
     #[test]
     fn lint_count() {
-        assert_eq!(Lint::all().count(), 3);
+        assert_eq!(Lint::all().count(), 5);
         assert_eq!(LintGroup::all().count(), 6);
     }
 

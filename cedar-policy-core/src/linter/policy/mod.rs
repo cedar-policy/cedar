@@ -19,4 +19,6 @@
 //! one lint; the driver in [`Linter`](crate::linter::Linter) selects and runs
 //! them.
 
+pub(crate) mod empty_set;
+pub(crate) mod ext_constructors;
 pub(crate) mod tags;

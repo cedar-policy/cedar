@@ -57,6 +57,21 @@ pub enum Finding {
     #[error(transparent)]
     TagError(#[from] TagError),
 
+    /// An empty set literal.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    EmptySet(#[from] EmptySet),
+
+    /// An extension constructor called with a non-literal argument.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    NonLitExtConstructor(#[from] NonLitExtConstructor),
+
+    /// An extension constructor called with a literal that fails to parse.
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ExtConstructorError(#[from] ExtConstructorError),
+
     /// An attribute or tag access on an action, which no schema can declare.
     #[diagnostic(transparent)]
     #[error(transparent)]
@@ -74,6 +89,10 @@ impl Finding {
         match self {
             Finding::TypeError(_) | Finding::TypeMismatch(_) => Lint::Types,
             Finding::TagError(_) => Lint::Tags,
+            Finding::EmptySet(_) => Lint::EmptySet,
+            Finding::NonLitExtConstructor(_) | Finding::ExtConstructorError(_) => {
+                Lint::ExtConstructors
+            }
             Finding::ImpossibleIsCheck(_) => Lint::Types,
             Finding::ActionMemberAccess(_) => Lint::ActionAttrs,
         }
@@ -86,6 +105,9 @@ impl Finding {
             Finding::TypeError(f) => f.loc.as_ref(),
             Finding::TypeMismatch(f) => f.loc.as_ref(),
             Finding::TagError(f) => f.loc.as_ref(),
+            Finding::EmptySet(f) => f.loc.as_ref(),
+            Finding::NonLitExtConstructor(f) => f.loc.as_ref(),
+            Finding::ExtConstructorError(f) => f.loc.as_ref(),
             Finding::ActionMemberAccess(f) => f.loc.as_ref(),
             Finding::ImpossibleIsCheck(f) => f.loc.as_ref(),
         }

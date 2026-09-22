@@ -72,6 +72,69 @@ impl Diagnostic for TagError {
     impl_diagnostic_from_source_loc_opt_field!(loc);
 }
 
+/// An empty set literal. Legal today, but rejected by strict validation, which
+/// cannot assign the empty set an element type. Warned about to ease migration.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("empty set literal")]
+pub struct EmptySet {
+    pub(crate) loc: Option<Loc>,
+}
+
+impl Diagnostic for EmptySet {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "strict validation forbids empty set literals because it cannot infer their element type",
+        ))
+    }
+}
+
+/// An extension constructor called with a non-literal argument. Legal today,
+/// but rejected by strict validation, which can only check constructor
+/// arguments it can evaluate statically. Warned about to ease migration.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("extension constructor `{fn_name}` called with a non-literal argument")]
+pub struct NonLitExtConstructor {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) fn_name: Name,
+}
+
+impl Diagnostic for NonLitExtConstructor {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+    impl_diagnostic_warning!();
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "consider applying extension constructors inside attribute values when constructing entity or context data",
+        ))
+    }
+}
+
+/// An extension constructor called with a literal argument that fails to parse.
+/// Unlike the two warnings above, this is always a bug: the call is guaranteed
+/// to error at evaluation time.
+#[derive(Error, Debug, Clone, Eq, PartialEq)]
+#[error("`{fn_name}` cannot be constructed from `{arg}`: {err}")]
+pub struct ExtConstructorError {
+    pub(crate) loc: Option<Loc>,
+    pub(crate) fn_name: Name,
+    pub(crate) arg: String,
+    pub(crate) err: String,
+    pub(crate) err_help: Option<String>,
+}
+
+impl Diagnostic for ExtConstructorError {
+    impl_diagnostic_from_source_loc_opt_field!(loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.err_help
+            .as_ref()
+            .map(|h| Box::new(h) as Box<dyn std::fmt::Display + 'a>)
+    }
+}
+
 /// Which kind of member was accessed on an action.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum ActionMember {
