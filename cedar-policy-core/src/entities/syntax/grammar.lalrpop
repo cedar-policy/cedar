@@ -18,15 +18,15 @@ use std::sync::Arc;
 use smol_str::SmolStr;
 use crate::parser::{Node, Loc, unescape::to_unescaped_string};
 use crate::ast::{Annotations, AnyId};
-use crate::entities::cedar_syntax::ast::*;
-use crate::entities::cedar_syntax::err::UserError;
+use crate::entities::syntax::ast::*;
+use crate::entities::syntax::err::UserError;
 
 use lalrpop_util::ParseError;
 
 /// `errors` collects generated errors.
 ///
 /// `src` is the (full) original source being parsed, which the source locations l,r index into.
-grammar<'err, 's>(errors: &'err mut Vec<crate::entities::cedar_syntax::err::RawErrorRecovery<'input>>, src: &'s Arc<str>, keep_src: bool);
+grammar<'err, 's>(errors: &'err mut Vec<crate::entities::syntax::err::RawErrorRecovery<'input>>, src: &'s Arc<str>, keep_src: bool);
 
 extern {
     type Error = UserError;
@@ -34,7 +34,7 @@ extern {
 
 match {
     // Whitespace and comments
-    r"\s+" => { }, // The default whitespace skipping is disabled when an `ignore pattern` is specified
+    r"\s*" => { }, // The default whitespace skipping is disabled when an `ignore pattern` is specified
     r"//[^\n\r]*[\n\r]*" => { }, // Skip `// comments`
 
     // keywords
@@ -161,17 +161,15 @@ Value: Node<EntityValue> = {
         => Node::with_source_loc(EntityValue::Record(kvs), Loc::new(l..r, Arc::clone(src))),
     // Extension function call: fn_name(args)
     <l:@L> <name: FnName> "(" <args: Comma<Value>> ")" <r:@R>
-        => Node::with_source_loc(EntityValue::ExtensionCall { fn_name: name.node, args }, Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(EntityValue::ExtensionCall { fn_name: name, args }, Loc::new(l..r, Arc::clone(src))),
 }
 
-// A function name is an identifier path NOT followed by `::` STR (that would be an entity ref).
-// Since entity refs are parsed separately, a path followed by `(` is unambiguously a function call.
-FnName: Node<Vec<Node<SmolStr>>> = {
-    <l:@L> <first: Ident> <rest: ("::" <Ident>)*> <r:@R> => {
-        let mut segments = vec![first];
-        segments.extend(rest);
-        Node::with_source_loc(segments, Loc::new(l..r, Arc::clone(src)))
-    },
+// A function name is a single unqualified identifier (e.g. `ip`, `decimal`).
+// Extension function names are never namespaced; a multi-segment name is a
+// syntax error. (A single `Ident` followed by `::` STR is an entity ref, parsed
+// separately; a single `Ident` followed by `(` is unambiguously a call.)
+FnName: Node<SmolStr> = {
+    <l:@L> <name: Ident> <r:@R> => name,
 }
 
 // Record := '{' [KeyValue {',' KeyValue} [',']] '}'

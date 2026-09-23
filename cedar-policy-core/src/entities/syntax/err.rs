@@ -273,39 +273,94 @@ impl Diagnostic for ParseErrors {
 #[non_exhaustive]
 pub enum ConversionError {
     /// Unknown extension function
-    #[error("unknown extension function `{name}`")]
-    UnknownExtensionFunction {
-        /// The function name
-        name: String,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnknownExtensionFunction(#[from] conversion_errors::UnknownExtensionFunctionError),
 
     /// Unresolved entity type
-    #[error("could not resolve entity type `{name}`")]
-    UnresolvedType {
-        /// The unresolved type name
-        name: String,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UnresolvedType(#[from] conversion_errors::UnresolvedTypeError),
 
     /// Duplicate key in a record
-    #[error("duplicate key `{key}` in record")]
-    DuplicateRecordKey {
-        /// The duplicated key
-        key: String,
-    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    DuplicateRecordKey(#[from] conversion_errors::DuplicateRecordKeyError),
 
     /// Error evaluating an entity's attributes or tags, such as an unknown
     /// extension function or a wrong number of arguments to one. Wraps the
-    /// underlying [`EntityAttrEvaluationError`] so its entity/attribute context
-    /// and diagnostic are preserved.
+    /// underlying [`crate::ast::EntityAttrEvaluationError`] so its
+    /// entity/attribute context and diagnostic are preserved.
     #[error(transparent)]
     #[diagnostic(transparent)]
     EntityAttributeEvaluation(#[from] crate::ast::EntityAttrEvaluationError),
 }
 
+/// Error subtypes for [`ConversionError`]
+pub mod conversion_errors {
+    use crate::parser::Loc;
+    use miette::Diagnostic;
+    use thiserror::Error;
+
+    /// Unknown extension function
+    #[derive(Debug, Error)]
+    #[error("unknown extension function `{name}`")]
+    pub struct UnknownExtensionFunctionError {
+        /// The function name
+        pub(crate) name: String,
+        /// Source location of the function name
+        pub(crate) loc: Option<Loc>,
+    }
+
+    impl Diagnostic for UnknownExtensionFunctionError {
+        crate::impl_diagnostic_from_source_loc_opt_field!(loc);
+    }
+
+    /// Unresolved entity type
+    #[derive(Debug, Error)]
+    #[error("could not resolve entity type `{name}`")]
+    pub struct UnresolvedTypeError {
+        /// The unresolved type name
+        pub(crate) name: String,
+        /// Source location of the type
+        pub(crate) loc: Option<Loc>,
+    }
+
+    impl Diagnostic for UnresolvedTypeError {
+        crate::impl_diagnostic_from_source_loc_opt_field!(loc);
+    }
+
+    /// Duplicate key in a record. Wraps the shared [`DuplicateKeyError`] (whose
+    /// `key()` accessor exposes the offending key) and adds the source location
+    /// of the key in the entity-data input.
+    ///
+    /// [`DuplicateKeyError`]: crate::ast::expression_construction_errors::DuplicateKeyError
+    #[derive(Debug, Error)]
+    #[error("{err}")]
+    pub struct DuplicateRecordKeyError {
+        /// The underlying duplicate-key error, reused from expression
+        /// construction so the key and message stay consistent
+        pub(crate) err: crate::ast::expression_construction_errors::DuplicateKeyError,
+        /// Source location of the duplicated key
+        pub(crate) loc: Option<Loc>,
+    }
+
+    impl Diagnostic for DuplicateRecordKeyError {
+        crate::impl_diagnostic_from_source_loc_opt_field!(loc);
+    }
+
+    impl DuplicateRecordKeyError {
+        /// The key which occurred two or more times
+        pub fn key(&self) -> &str {
+            self.err.key()
+        }
+    }
+}
+
 /// A collection of conversion errors.
 ///
 /// Invariant: constructed only via [`ConversionErrors::new`] with a non-empty
-/// `Vec`, so [`ConversionErrors::first`] always returns `Some`.
+/// `Vec`, so the primary (first) error is always present.
 #[derive(Debug, Error)]
 pub struct ConversionErrors(pub(crate) Vec<ConversionError>);
 
@@ -383,19 +438,4 @@ impl Diagnostic for ConversionErrors {
     fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
         self.first().and_then(Diagnostic::diagnostic_source)
     }
-}
-
-/// Top-level error for parsing Cedar entity data syntax
-#[derive(Debug, Diagnostic, Error)]
-#[non_exhaustive]
-pub enum CedarEntitiesError {
-    /// Syntax error during parsing
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    SyntaxError(#[from] ParseErrors),
-
-    /// Error during AST → Entities conversion
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    ConversionError(#[from] ConversionErrors),
 }

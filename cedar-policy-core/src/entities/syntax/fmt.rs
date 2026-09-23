@@ -184,11 +184,11 @@ fn format_value(value: &Value, ns: Option<&str>) -> Result<String, FormatError> 
         ValueKind::Record(record) => format_record(record, ns),
         ValueKind::ExtensionValue(ext) => {
             let args: Vec<String> = ext
-                .args
+                .args()
                 .iter()
                 .map(|a| format_restricted_expr_arg(a, ns))
                 .collect::<Result<_, _>>()?;
-            Ok(format!("{}({})", ext.func, args.join(", ")))
+            Ok(format!("{}({})", ext.func(), args.join(", ")))
         }
     }
 }

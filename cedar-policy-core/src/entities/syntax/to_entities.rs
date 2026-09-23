@@ -16,17 +16,33 @@
 
 //! Convert entity data AST to internal Entities representation
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use smol_str::SmolStr;
 
-use crate::ast::{Eid, Entity, EntityType, EntityUID, Name, RestrictedExpr};
+use crate::ast::{
+    expression_construction_errors::DuplicateKeyError, Eid, Entity, EntityType, EntityUID,
+    ExpressionConstructionError, Name, RestrictedExpr,
+};
 use crate::extensions::Extensions;
 use crate::from_normalized_str::FromNormalizedStr;
-use crate::parser::Node;
+use crate::parser::{Loc, Node};
 
 use super::ast::*;
-use super::err::{ConversionError, ConversionErrors};
+use super::err::{conversion_errors, ConversionError, ConversionErrors};
+
+/// Build a single `Loc` spanning a sequence of nodes (e.g. the `::`-separated
+/// segments of a type path or extension-function name), from the start of the
+/// first located node to the end of the last. Returns `None` if no node in the
+/// slice carries a location.
+fn combined_loc(nodes: &[Node<SmolStr>]) -> Option<Loc> {
+    let mut located = nodes.iter().filter_map(|n| n.loc.as_ref());
+    let first = located.next()?;
+    let start = first.start();
+    // The end is the end of the last located node (fall back to the first).
+    let end = located.next_back().map_or_else(|| first.end(), Loc::end);
+    Some(first.span(start..end))
+}
 
 /// Convert parsed entity data AST into a Vec of internal [`Entity`] values.
 ///
@@ -56,7 +72,7 @@ pub fn cedar_entities_to_entities(
         for annotated_inst in &annotated_ns.data.instances {
             match convert_instance(
                 &annotated_inst.data.node,
-                &namespace_prefix,
+                namespace_prefix.as_deref(),
                 &declared_types,
                 extensions,
             ) {
@@ -90,7 +106,7 @@ fn collect_declared_types(ast: &EntityDataAst) -> HashSet<EntityType> {
         for annotated_inst in &annotated_ns.data.instances {
             if let Ok(ty) = resolve_decl_type(
                 &annotated_inst.data.node.entity_ref.node.type_path,
-                &namespace_prefix,
+                namespace_prefix.as_deref(),
             ) {
                 declared.insert(ty);
             }
@@ -102,7 +118,7 @@ fn collect_declared_types(ast: &EntityDataAst) -> HashSet<EntityType> {
 /// Convert a single EntityInstance AST node to an Entity
 fn convert_instance(
     inst: &EntityInstance,
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
     declared_types: &HashSet<EntityType>,
     extensions: &Extensions<'_>,
 ) -> Result<Entity, ConversionError> {
@@ -119,13 +135,13 @@ fn convert_instance(
 
     // 3. Convert attributes (rejecting duplicate keys)
     let attrs = match &inst.attrs {
-        Some(record) => convert_record_no_dups(&record.node, namespace_prefix, declared_types)?,
+        Some(record) => convert_record(&record.node, namespace_prefix, declared_types)?,
         None => Vec::new(),
     };
 
     // 4. Convert tags (rejecting duplicate keys)
     let tags = match &inst.tags {
-        Some(record) => convert_record_no_dups(&record.node, namespace_prefix, declared_types)?,
+        Some(record) => convert_record(&record.node, namespace_prefix, declared_types)?,
         None => Vec::new(),
     };
 
@@ -137,31 +153,42 @@ fn convert_instance(
         .map_err(ConversionError::EntityAttributeEvaluation)
 }
 
-/// Convert a top-level attribute or tag record to `(key, value)` pairs,
-/// rejecting duplicate keys.
+/// Convert a record's entries to validated `(key, value)` pairs, rejecting
+/// duplicate keys.
 ///
-/// Duplicate keys inside a nested record are caught by `RestrictedExpr::record`
-/// (via [`convert_value`]). A top-level attribute/tag record, however, is handed
-/// to `Entity::new` as a `Vec` and collected into a `BTreeMap`, which would
-/// silently keep the last value for a repeated key; this helper rejects the
-/// duplicate before that happens.
-fn convert_record_no_dups(
+/// Values are recursively converted and accumulated into a `BTreeMap`, so a
+/// repeated key is detected on insertion (and reported with the offending key's
+/// source location, reusing the shared [`DuplicateKeyError`]). The map is
+/// returned as a `Vec` of pairs. Using a `BTreeMap` also gives deterministic
+/// key order, matching how `Entity::new` stores attributes/tags.
+fn convert_record(
     record: &[(Node<SmolStr>, Node<EntityValue>)],
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
     declared_types: &HashSet<EntityType>,
 ) -> Result<Vec<(SmolStr, RestrictedExpr)>, ConversionError> {
-    let mut seen: HashSet<&str> = HashSet::with_capacity(record.len());
-    let mut out: Vec<(SmolStr, RestrictedExpr)> = Vec::with_capacity(record.len());
+    let mut map: BTreeMap<SmolStr, RestrictedExpr> = BTreeMap::new();
     for (k, v) in record {
-        if !seen.insert(k.node.as_str()) {
-            return Err(ConversionError::DuplicateRecordKey {
-                key: k.node.to_string(),
-            });
-        }
         let val = convert_value(&v.node, namespace_prefix, declared_types)?;
-        out.push((k.node.clone(), val));
+        if map.insert(k.node.clone(), val).is_some() {
+            return Err(dup_key_conversion_error(k));
+        }
     }
-    Ok(out)
+    Ok(map.into_iter().collect())
+}
+
+/// Build a [`ConversionError`] for a duplicate record key `k`, reusing the
+/// shared [`DuplicateKeyError`] (so the key and message stay consistent with
+/// record construction elsewhere) and attaching the key's source location.
+fn dup_key_conversion_error(k: &Node<SmolStr>) -> ConversionError {
+    let err = DuplicateKeyError {
+        key: k.node.clone(),
+        context: "in record literal",
+    };
+    conversion_errors::DuplicateRecordKeyError {
+        err,
+        loc: k.loc.clone(),
+    }
+    .into()
 }
 
 /// Resolve an EntityReference in *declaration* position (the instance's own
@@ -169,7 +196,7 @@ fn convert_record_no_dups(
 /// namespace, so the type is qualified unconditionally.
 fn resolve_decl_ref(
     eref: &EntityReference,
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
 ) -> Result<EntityUID, ConversionError> {
     let entity_type = resolve_decl_type(&eref.type_path, namespace_prefix)?;
     Ok(EntityUID::from_components(
@@ -183,7 +210,7 @@ fn resolve_decl_ref(
 /// value) to an EntityUID, using conditional (current-ns-then-root) resolution.
 fn resolve_ref(
     eref: &EntityReference,
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
     declared_types: &HashSet<EntityType>,
 ) -> Result<EntityUID, ConversionError> {
     let entity_type = resolve_ref_type(&eref.type_path, namespace_prefix, declared_types)?;
@@ -195,12 +222,14 @@ fn resolve_ref(
 }
 
 /// Build an [`EntityType`] from already-resolved path segments.
-fn make_entity_type(segments: &[&str]) -> Result<EntityType, ConversionError> {
+fn make_entity_type(segments: &[&str], loc: Option<Loc>) -> Result<EntityType, ConversionError> {
     let type_name = segments.join("::");
-    let name =
-        Name::from_normalized_str(&type_name).map_err(|_| ConversionError::UnresolvedType {
-            name: type_name.clone(),
-        })?;
+    let name = Name::from_normalized_str(&type_name).map_err(|_| {
+        ConversionError::from(conversion_errors::UnresolvedTypeError {
+            name: type_name,
+            loc,
+        })
+    })?;
     Ok(EntityType::from(name))
 }
 
@@ -209,7 +238,7 @@ fn make_entity_type(segments: &[&str]) -> Result<EntityType, ConversionError> {
 /// - Multi-segment path (e.g., "OtherApp::User") → use as-is (already qualified)
 fn resolve_decl_type(
     type_path: &[Node<SmolStr>],
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
 ) -> Result<EntityType, ConversionError> {
     let full_path: Vec<&str> = match type_path {
         // Single-segment (unqualified) — qualify with the current namespace.
@@ -224,7 +253,7 @@ fn resolve_decl_type(
         // Multi-segment (already qualified) — use as-is.
         segments => segments.iter().map(|s| s.node.as_str()).collect(),
     };
-    make_entity_type(&full_path)
+    make_entity_type(&full_path, combined_loc(type_path))
 }
 
 /// Resolve an entity type in *reference* position:
@@ -238,13 +267,14 @@ fn resolve_decl_type(
 /// which implements the same resolution strategy for schema names.
 fn resolve_ref_type(
     type_path: &[Node<SmolStr>],
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
     declared_types: &HashSet<EntityType>,
 ) -> Result<EntityType, ConversionError> {
     match type_path {
         // Single-segment (unqualified): resolve current-namespace-then-root.
         [single] => {
             let name = single.node.as_str();
+            let loc = single.loc.clone();
             match namespace_prefix {
                 Some(ns) => {
                     // Candidate 1 (highest priority): current namespace.
@@ -253,9 +283,9 @@ fn resolve_ref_type(
                         .map(|s| s.as_str())
                         .chain(std::iter::once(name))
                         .collect();
-                    let qualified = make_entity_type(&qualified_segments)?;
+                    let qualified = make_entity_type(&qualified_segments, loc.clone())?;
                     // Candidate 2: root / empty namespace.
-                    let bare = make_entity_type(&[name])?;
+                    let bare = make_entity_type(&[name], loc)?;
 
                     if declared_types.contains(&qualified) {
                         Ok(qualified)
@@ -266,13 +296,13 @@ fn resolve_ref_type(
                         Ok(qualified)
                     }
                 }
-                None => make_entity_type(&[name]),
+                None => make_entity_type(&[name], loc),
             }
         }
         // Multi-segment (already qualified) — use as-is.
         segments => {
             let full_path: Vec<&str> = segments.iter().map(|s| s.node.as_str()).collect();
-            make_entity_type(&full_path)
+            make_entity_type(&full_path, combined_loc(type_path))
         }
     }
 }
@@ -280,7 +310,7 @@ fn resolve_ref_type(
 /// Convert an EntityValue AST node to a RestrictedExpr
 fn convert_value(
     value: &EntityValue,
-    namespace_prefix: &Option<Vec<SmolStr>>,
+    namespace_prefix: Option<&[SmolStr]>,
     declared_types: &HashSet<EntityType>,
 ) -> Result<RestrictedExpr, ConversionError> {
     match value {
@@ -300,27 +330,19 @@ fn convert_value(
             Ok(RestrictedExpr::set(exprs))
         }
         EntityValue::Record(entries) => {
-            let pairs: Vec<(SmolStr, RestrictedExpr)> = entries
-                .iter()
-                .map(|(k, v)| {
-                    let val = convert_value(&v.node, namespace_prefix, declared_types)?;
-                    Ok((k.node.clone(), val))
-                })
-                .collect::<Result<_, ConversionError>>()?;
-            RestrictedExpr::record(pairs)
-                .map_err(|e| ConversionError::DuplicateRecordKey { key: e.to_string() })
+            let pairs = convert_record(entries, namespace_prefix, declared_types)?;
+            RestrictedExpr::record(pairs).map_err(|e| match e {
+                ExpressionConstructionError::DuplicateKey(err) => {
+                    conversion_errors::DuplicateRecordKeyError { err, loc: None }.into()
+                }
+            })
         }
         EntityValue::ExtensionCall { fn_name, args } => {
-            // Resolve function name — extension functions are unqualified names
-            let name_str = fn_name
-                .iter()
-                .map(|s| s.node.as_str())
-                .collect::<Vec<_>>()
-                .join("::");
-            let name = Name::from_normalized_str(&name_str).map_err(|_| {
-                ConversionError::UnknownExtensionFunction {
-                    name: name_str.clone(),
-                }
+            let name = Name::from_normalized_str(fn_name.node.as_str()).map_err(|_| {
+                ConversionError::from(conversion_errors::UnknownExtensionFunctionError {
+                    name: fn_name.node.to_string(),
+                    loc: fn_name.loc.clone(),
+                })
             })?;
 
             // Convert arguments

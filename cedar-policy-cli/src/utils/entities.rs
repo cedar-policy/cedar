@@ -72,7 +72,7 @@ pub struct OptionalEntitiesArgs {
     pub entities_file: Option<PathBuf>,
     /// Entities format
     #[cfg(feature = "cedar-entity-syntax")]
-    #[arg(long, value_enum, default_value_t)]
+    #[arg(long, value_enum, default_value_t, requires = "entities_file")]
     pub entities_format: EntitiesFormat,
 }
 

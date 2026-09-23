@@ -887,16 +887,15 @@ impl Entities {
     ///   entities do not conform to the provided schema
     #[cfg(feature = "cedar-entity-syntax")]
     pub fn from_cedar_str(src: &str, schema: Option<&Schema>) -> Result<Self, CedarEntitiesError> {
-        use cedar_policy_core::entities::cedar_syntax;
+        use cedar_policy_core::entities::syntax;
         let extensions = Extensions::all_available();
 
         // Parse the Cedar entity syntax
-        let ast =
-            cedar_syntax::parser::parse_entities(src).map_err(|e| CedarEntitiesError::Syntax(e))?;
+        let ast = syntax::parser::parse_entities(src).map_err(CedarEntitiesError::Syntax)?;
 
         // Convert AST to entities
-        let entity_vec = cedar_syntax::to_entities::cedar_entities_to_entities(ast, extensions)
-            .map_err(|e| CedarEntitiesError::Conversion(e))?;
+        let entity_vec = syntax::to_entities::cedar_entities_to_entities(ast, extensions)
+            .map_err(CedarEntitiesError::Conversion)?;
 
         // Construct Entities with TC computation and optional schema validation
         let schema = schema.map(|s| cedar_policy_core::validator::CoreSchema::new(&s.0));
@@ -907,7 +906,7 @@ impl Entities {
             extensions,
         )
         .map(Entities)
-        .map_err(|e| CedarEntitiesError::Entities(e))
+        .map_err(CedarEntitiesError::Entities)
     }
 
     /// Is entity `a` an ancestor of entity `b`?
@@ -975,7 +974,7 @@ impl Entities {
     /// which cannot be represented in Cedar syntax.
     #[cfg(feature = "cedar-entity-syntax")]
     pub fn to_cedar_string(&self) -> Result<String, CedarEntitiesFormatError> {
-        cedar_policy_core::entities::cedar_syntax::fmt::format_entities(&self.0)
+        cedar_policy_core::entities::syntax::fmt::format_entities(&self.0)
             .map_err(CedarEntitiesFormatError)
     }
 

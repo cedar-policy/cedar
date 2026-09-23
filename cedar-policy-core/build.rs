@@ -34,6 +34,6 @@ fn generate_parsers() {
 
     #[cfg(feature = "cedar-entity-syntax")]
     lalrpop::Configuration::new()
-        .process_dir("src/entities/cedar_syntax/")
+        .process_dir("src/entities/syntax/")
         .expect("failed to run lalrpop");
 }

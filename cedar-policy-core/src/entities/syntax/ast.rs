@@ -84,8 +84,8 @@ pub enum EntityValue {
     Record(Vec<(Node<SmolStr>, Node<EntityValue>)>),
     /// An extension function call
     ExtensionCall {
-        /// Function name path (e.g., ["ip"] or ["decimal"])
-        fn_name: Vec<Node<SmolStr>>,
+        /// Function name, an unqualified identifier (e.g. `ip`, `decimal`)
+        fn_name: Node<SmolStr>,
         /// Arguments
         args: Vec<Node<EntityValue>>,
     },

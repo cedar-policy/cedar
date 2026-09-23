@@ -286,8 +286,7 @@ fn value_extension_call() {
     let attrs = inst.attrs.as_ref().unwrap();
     match &attrs.node[0].1.node {
         EntityValue::ExtensionCall { fn_name, args } => {
-            assert_eq!(fn_name.len(), 1);
-            assert_eq!(fn_name[0].node.as_str(), "ip");
+            assert_eq!(fn_name.node.as_str(), "ip");
             assert_eq!(args.len(), 1);
         }
         _ => panic!("expected extension call value"),
@@ -302,7 +301,7 @@ fn value_extension_call_multi_arg() {
     let attrs = inst.attrs.as_ref().unwrap();
     match &attrs.node[0].1.node {
         EntityValue::ExtensionCall { fn_name, args } => {
-            assert_eq!(fn_name[0].node.as_str(), "offset");
+            assert_eq!(fn_name.node.as_str(), "offset");
             assert_eq!(args.len(), 2);
         }
         _ => panic!("expected extension call value"),
@@ -409,8 +408,8 @@ fn string_key_in_record() {
 }
 
 mod conversion_tests {
-    use crate::entities::cedar_syntax::parser::parse_entities;
-    use crate::entities::cedar_syntax::to_entities::cedar_entities_to_entities;
+    use crate::entities::syntax::parser::parse_entities;
+    use crate::entities::syntax::to_entities::cedar_entities_to_entities;
     use crate::entities::{Entities, NoEntitiesSchema, TCComputation};
     use crate::extensions::Extensions;
 
@@ -575,9 +574,9 @@ mod conversion_tests {
 }
 
 mod test_pairs {
-    use crate::entities::cedar_syntax::parser::parse_entities;
-    use crate::entities::cedar_syntax::to_entities::cedar_entities_to_entities;
     use crate::entities::json::EntityJsonParser;
+    use crate::entities::syntax::parser::parse_entities;
+    use crate::entities::syntax::to_entities::cedar_entities_to_entities;
     use crate::entities::{Entities, NoEntitiesSchema, TCComputation};
     use crate::extensions::Extensions;
 
@@ -632,8 +631,8 @@ mod test_pairs {
 }
 
 mod error_tests {
-    use crate::entities::cedar_syntax::parser::parse_entities;
-    use crate::entities::cedar_syntax::to_entities::cedar_entities_to_entities;
+    use crate::entities::syntax::parser::parse_entities;
+    use crate::entities::syntax::to_entities::cedar_entities_to_entities;
     use crate::extensions::Extensions;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use cool_asserts::assert_matches;
@@ -785,8 +784,6 @@ mod error_tests {
         );
     }
 
-    /// A duplicate key in a top-level attribute record is rejected, matching the
-    /// behavior for duplicate keys in a nested record.
     #[test]
     fn error_duplicate_toplevel_attr() {
         let input = r#"instance U::"1" = { a: 1, a: 2 };"#;
@@ -798,7 +795,6 @@ mod error_tests {
         );
     }
 
-    /// A duplicate key in a top-level tags record is rejected.
     #[test]
     fn error_duplicate_toplevel_tag() {
         let input = r#"instance U::"1" tags { a: 1, a: 2 };"#;
@@ -810,12 +806,41 @@ mod error_tests {
         );
     }
 
-    /// An unknown extension function is rejected, and the error names the function
-    /// and describes the problem rather than being flattened into an opaque
-    /// message.
+    #[test]
+    fn error_duplicate_key_toplevel_attr() {
+        use crate::entities::syntax::err::ConversionError;
+        let input = r#"instance U::"1" = { dup: 1, dup: 2 };"#;
+        let ast = parse_entities(input).unwrap();
+        let err = cedar_entities_to_entities(ast, Extensions::all_available())
+            .expect_err("duplicate top-level attribute key should be rejected");
+        assert!(
+            err.iter().any(|e| matches!(
+                e,
+                ConversionError::DuplicateRecordKey(e) if e.key() == "dup"
+            )),
+            "expected a duplicate-key error naming `dup`, got: {err}"
+        );
+    }
+
+    #[test]
+    fn error_duplicate_key_nested_record() {
+        use crate::entities::syntax::err::ConversionError;
+        let input = r#"instance U::"1" = { outer: { dup: 1, dup: 2 } };"#;
+        let ast = parse_entities(input).unwrap();
+        let err = cedar_entities_to_entities(ast, Extensions::all_available())
+            .expect_err("duplicate key in a nested record should be rejected");
+        assert!(
+            err.iter().any(|e| matches!(
+                e,
+                ConversionError::DuplicateRecordKey(e) if e.key() == "dup"
+            )),
+            "nested-record duplicate key should name `dup`, got: {err}"
+        );
+    }
+
     #[test]
     fn error_unknown_extension_function_variant() {
-        use crate::entities::cedar_syntax::err::ConversionError;
+        use crate::entities::syntax::err::ConversionError;
         let input = r#"instance U::"1" = { a: nonexistent("arg") };"#;
         let ast = parse_entities(input).unwrap();
         let err = cedar_entities_to_entities(ast, Extensions::all_available())
@@ -836,12 +861,10 @@ mod error_tests {
         );
     }
 
-    /// Calling a known extension function with the wrong number of arguments is
-    /// rejected with a message describing the arity mismatch.
     #[cfg(feature = "ipaddr")]
     #[test]
     fn error_wrong_arg_count_variant() {
-        use crate::entities::cedar_syntax::err::ConversionError;
+        use crate::entities::syntax::err::ConversionError;
         let input = r#"instance U::"1" = { a: ip("1.2.3.4", "extra") };"#;
         let ast = parse_entities(input).unwrap();
         let err = cedar_entities_to_entities(ast, Extensions::all_available())
@@ -857,13 +880,128 @@ mod error_tests {
             "error should describe the arg-count problem for `ip`; got: {rendered}"
         );
     }
+
+    #[test]
+    fn error_namespaced_extension_function() {
+        assert!(
+            parse_entities(r#"instance U::"1" = { a: NS::ip("1.2.3.4") };"#).is_err(),
+            "a namespaced extension function name should be a parse error"
+        );
+    }
+
+    #[cfg(feature = "ipaddr")]
+    #[test]
+    fn unqualified_extension_function_still_ok() {
+        let input = r#"instance U::"1" = { a: ip("1.2.3.4") };"#;
+        let ast = parse_entities(input).unwrap();
+        cedar_entities_to_entities(ast, Extensions::all_available())
+            .expect("an unqualified extension function call should convert successfully");
+    }
+
+    #[track_caller]
+    fn assert_convert_error(input: &str, expected: &crate::test_utils::ExpectedErrorMessage<'_>) {
+        let ast = parse_entities(input).expect("input should parse; the error is at conversion");
+        assert_matches!(
+            cedar_entities_to_entities(ast, Extensions::all_available()),
+            Err(e) => {
+                expect_err(input, &miette::Report::new(e), expected);
+            }
+        );
+    }
+
+    #[test]
+    fn span_duplicate_record_key() {
+        // The second `dup` key is the offending token.
+        assert_convert_error(
+            r#"instance U::"1" = { dup: 1, dup: 2 };"#,
+            &ExpectedErrorMessageBuilder::error("duplicate key `dup` in record literal")
+                .exactly_one_underline("dup")
+                .build(),
+        );
+    }
+
+    #[cfg(feature = "ipaddr")]
+    #[test]
+    fn span_unresolved_type() {
+        assert_convert_error(
+            r#"instance U::"1" in __cedar::"p";"#,
+            &ExpectedErrorMessageBuilder::error("could not resolve entity type `__cedar`")
+                .exactly_one_underline("__cedar")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn error_duplicate_annotations() {
+        assert_parse_error(
+            r#"@doc("a") @doc("b") instance User::"alice";"#,
+            &ExpectedErrorMessageBuilder::error("duplicate annotations: `doc`")
+                .exactly_one_underline("doc")
+                .build(),
+        );
+    }
+
+    #[test]
+    fn multiple_conversion_errors() {
+        // Both instances reference a reserved (`__cedar`) type, which parses but
+        // fails to resolve at conversion — so we get two conversion errors.
+        let input = r#"
+            instance U::"1" in __cedar::"p";
+            instance U::"2" in __cedar::"q";
+        "#;
+        let ast = parse_entities(input).expect("input parses; errors are at conversion");
+        let errs = cedar_entities_to_entities(ast, Extensions::all_available())
+            .expect_err("both instances should fail conversion");
+        assert!(
+            errs.iter().count() >= 2,
+            "expected 2+ conversion errors, got: {}",
+            errs.iter().count()
+        );
+
+        // Display delegates to the first error (not a count summary).
+        let rendered = errs.to_string();
+        assert!(
+            rendered.contains("could not resolve entity type"),
+            "multi-error Display should show the primary error; got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("conversion failed"),
+            "multi-error Display must not be a bare count; got: {rendered}"
+        );
+
+        // related() surfaces the 2nd..Nth errors.
+        let related_count =
+            miette::Diagnostic::related(&errs).map_or(0, std::iter::Iterator::count);
+        assert!(
+            related_count >= 1,
+            "expected at least one related error, got: {related_count}"
+        );
+    }
+
+    #[test]
+    fn multiple_parse_errors_diagnostic() {
+        // Two malformed instances; the parser recovers and collects both.
+        let input = r#"instance ; instance ;"#;
+        let errs = parse_entities(input).expect_err("malformed input should not parse");
+        // Exercise the Diagnostic delegations on ParseErrors.
+        let _ = miette::Diagnostic::labels(&errs);
+        let _ = miette::Diagnostic::source_code(&errs);
+        let _ = miette::Diagnostic::help(&errs);
+        let _ = miette::Diagnostic::severity(&errs);
+        // Display delegates to the first error and is non-empty.
+        assert!(
+            !errs.to_string().is_empty(),
+            "ParseErrors Display should be non-empty"
+        );
+        assert!(errs.iter().count() >= 1);
+    }
 }
 
 mod roundtrip_tests {
-    use crate::entities::cedar_syntax::fmt::format_entities;
-    use crate::entities::cedar_syntax::parser::parse_entities;
-    use crate::entities::cedar_syntax::to_entities::cedar_entities_to_entities;
     use crate::entities::json::EntityJsonParser;
+    use crate::entities::syntax::fmt::format_entities;
+    use crate::entities::syntax::parser::parse_entities;
+    use crate::entities::syntax::to_entities::cedar_entities_to_entities;
     use crate::entities::{Entities, NoEntitiesSchema, TCComputation};
     use crate::extensions::Extensions;
 

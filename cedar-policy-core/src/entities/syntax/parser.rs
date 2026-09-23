@@ -33,7 +33,7 @@ lalrpop_mod!(
     #[allow(clippy::allow_attributes, reason = "lalrpop allows this, and we are trusting lalrpop to generate correct code")]
     #[allow(clippy::allow_attributes_without_reason, reason = "lalrpop allows this, and we are trusting lalrpop to generate correct code")]
     pub grammar,
-    "/src/entities/cedar_syntax/grammar.rs"
+    "/src/entities/syntax/grammar.rs"
 );
 
 // Thread-safe "global" parser, initialized at first use
