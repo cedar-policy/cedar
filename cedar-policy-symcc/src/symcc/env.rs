@@ -616,7 +616,10 @@ impl<'a> Environment<'a> {
 
     /// Returns the type of the context.
     pub fn context_type(&self) -> Type {
-        Type::record_with_attributes(self.req_ty.context.clone(), OpenTag::ClosedAttributes)
+        Type::Record {
+            attrs: self.req_ty.context.clone(),
+            open_attributes: OpenTag::ClosedAttributes,
+        }
     }
 }
 

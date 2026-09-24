@@ -916,15 +916,16 @@ pub(crate) fn try_record_type_into_validator_type(
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         let attrs = parse_record_attributes(rty.attributes, extensions, common_type_defs)?;
+        let open_attributes = if rty.additional_attributes {
+            OpenTag::OpenAttributes
+        } else {
+            OpenTag::ClosedAttributes
+        };
         Ok(LocatedType::new_with_loc(
-            Type::record_with_attributes(
+            Type::Record {
                 attrs,
-                if rty.additional_attributes {
-                    OpenTag::OpenAttributes
-                } else {
-                    OpenTag::ClosedAttributes
-                },
-            ),
+                open_attributes,
+            },
             loc,
         ))
     }
