@@ -18,7 +18,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use crate::{
@@ -76,9 +76,15 @@ impl ResidualPolicy {
 
 impl From<ResidualPolicy> for Policy {
     fn from(value: ResidualPolicy) -> Self {
+        Self::from(&value)
+    }
+}
+
+impl From<&ResidualPolicy> for Policy {
+    fn from(value: &ResidualPolicy) -> Self {
         Self::from_when_clause_annos(
             value.policy.effect(),
-            Arc::new(Expr::from(value.residual.as_ref().clone())),
+            Arc::new(Expr::from(value.residual.as_ref())),
             value.policy.id().clone(),
             None,
             value.policy.annotations_arc().clone(),
@@ -160,6 +166,8 @@ pub struct Response<'a> {
     entities: &'a PartialEntities,
     // schema
     schema: &'a ValidatorSchema,
+    // the residuals as a `PolicySet`, built on first use
+    policy_set: OnceLock<PolicySet>,
 }
 
 impl<'a> Response<'a> {
@@ -231,6 +239,7 @@ impl<'a> Response<'a> {
             request,
             entities,
             schema,
+            policy_set: OnceLock::new(),
         }
     }
 
@@ -358,7 +367,7 @@ impl<'a> Response<'a> {
         self.request.check_consistency(request)?;
 
         let authorizer = Authorizer::new();
-        Ok(authorizer.is_authorized(request.clone(), &self.policy_set(), entities))
+        Ok(authorizer.is_authorized(request.clone(), self.cached_policy_set(), entities))
     }
 
     /// Get all policies (including concrete true/false/error residuals)
@@ -374,9 +383,14 @@ impl<'a> Response<'a> {
                 clippy::unwrap_used,
                 reason = "`PolicySet::add` only fails on duplicate ids, but all residual policies will have unique ids"
             )]
-            ps.add(p.clone().into()).unwrap()
+            ps.add(p.into()).unwrap()
         }
         ps
+    }
+
+    // The residuals never change, so reauthorization borrows this instead of rebuilding it
+    fn cached_policy_set(&self) -> &PolicySet {
+        self.policy_set.get_or_init(|| self.policy_set())
     }
 }
 
@@ -386,15 +400,18 @@ mod tests {
     use std::sync::Arc;
 
     use crate::ast::{
-        ActionConstraint, Policy, PolicySet, PrincipalConstraint, ResourceConstraint,
+        ActionConstraint, Context, Policy, PolicySet, PrincipalConstraint, Request,
+        ResourceConstraint,
     };
+    use crate::authorizer::Decision;
+    use crate::entities::{Entities, EntityJsonParser, TCComputation};
     use crate::extensions::Extensions;
     use crate::parser::{parse_euid, parse_policyset};
     use crate::tpe::entities::PartialEntities;
     use crate::tpe::is_authorized;
     use crate::tpe::request::PartialRequest;
     use crate::tpe::test_utils::parse_partial_euid;
-    use crate::validator::ValidatorSchema;
+    use crate::validator::{CoreSchema, ValidatorSchema};
 
     fn schema() -> ValidatorSchema {
         ValidatorSchema::from_cedarschema_str(
@@ -448,6 +465,39 @@ mod tests {
                 }
             ]),
             &schema(),
+        )
+        .unwrap()
+    }
+
+    fn concrete_entities() -> Entities {
+        let schema = schema();
+        let core_schema = CoreSchema::new(&schema);
+        EntityJsonParser::new(
+            Some(&core_schema),
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        )
+        .from_json_value(serde_json::json!([
+            {
+                "uid": { "type": "Auth::User", "id": "1" },
+                "attrs": {},
+                "parents": []
+            }
+        ]))
+        .unwrap()
+    }
+
+    fn concrete_request(role_id: &str, schema: &ValidatorSchema) -> Request {
+        Request::new(
+            (parse_euid(r#"Auth::User::"1""#).unwrap(), None),
+            (parse_euid(r#"Auth::Action::"AssumeRole""#).unwrap(), None),
+            (
+                parse_euid(&format!(r#"Auth::Role::"{role_id}""#)).unwrap(),
+                None,
+            ),
+            Context::empty(),
+            Some(schema),
+            Extensions::all_available(),
         )
         .unwrap()
     }
@@ -510,7 +560,7 @@ mod tests {
 
         let mut expected = PolicySet::new();
         for p in res.policies() {
-            expected.add(p.clone().into()).unwrap();
+            expected.add(p.into()).unwrap();
         }
 
         assert_eq!(policy_set.policies().count(), expected.policies().count());
@@ -533,5 +583,31 @@ mod tests {
             );
             assert_eq!(actual.condition(), expected_policy.condition());
         }
+    }
+
+    #[test]
+    fn reauthorize_decides_per_request() {
+        let policies = policies();
+        let schema = schema();
+        let request = request();
+        let entities = entities();
+
+        let res = is_authorized(&policies, &request, &entities, &schema).unwrap();
+
+        let concrete_entities = concrete_entities();
+        // `Auth::Role::"2"` is the resource the forbid policy names
+        assert_eq!(
+            res.reauthorize(&concrete_request("2", &schema), &concrete_entities)
+                .unwrap()
+                .decision,
+            Decision::Deny
+        );
+        // reauthorizing the same response again shares the cached `PolicySet`
+        assert_eq!(
+            res.reauthorize(&concrete_request("3", &schema), &concrete_entities)
+                .unwrap()
+                .decision,
+            Decision::Allow
+        );
     }
 }

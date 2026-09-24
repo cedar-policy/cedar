@@ -621,7 +621,7 @@ impl TpeResponse<'_> {
         self.0
             .residual_permits()
             .chain(self.0.residual_forbids())
-            .map(|p| Policy::from_ast(p.clone().into()))
+            .map(|p| Policy::from_ast(p.into()))
     }
 
     /// Return all residuals as [`Policy`]s, including concretely `true`, `false`, and error residuals.
@@ -635,9 +635,7 @@ impl TpeResponse<'_> {
     ///
     /// See [`TpeResponse::residual_policies`] for documentation on how to inspect policies using the PST.
     pub fn policies(&self) -> impl Iterator<Item = Policy> + '_ {
-        self.0
-            .policies()
-            .map(|p| Policy::from_ast(p.clone().into()))
+        self.0.policies().map(|p| Policy::from_ast(p.into()))
     }
 
     /// Return all residuals as a [`PolicySet`], including concretely `true`, `false`, and error residuals.
@@ -662,7 +660,7 @@ impl TpeResponse<'_> {
     pub fn get_policy(&self, id: &PolicyId) -> Option<Policy> {
         self.0
             .get_residual_policy(id.as_ref())
-            .map(|p| Policy::from_ast(p.clone().into()))
+            .map(|p| Policy::from_ast(p.into()))
     }
 }
 
