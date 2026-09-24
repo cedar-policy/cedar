@@ -247,25 +247,13 @@ impl<'e> RestrictedEvaluator<'e> {
     ///
     /// INVARIANT: If this returns a residual, the residual expression must be a valid restricted expression.
     pub fn partial_interpret(&self, expr: BorrowedRestrictedExpr<'_>) -> Result<PartialValue> {
+        // This is the only non-recursive entry into the evaluation machine, so
+        // this is the only place the native stack can grow without bound (via
+        // re-entrant calls). The recursive cycle itself keeps its frames on the
+        // heap and needs no check per node.
         stack_size_check()?;
 
-        let res = self.partial_interpret_internal(expr);
-
-        // set the returned value's source location to the same source location
-        // as the input expression had.
-        // we do this here so that we don't have to set/propagate the source
-        // location in every arm of the big `match` in `partial_interpret_internal()`.
-        // also, if there is an error, set its source location to the source
-        // location of the input expression as well, unless it already had a
-        // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
-            .map_err(|err| {
-                if err.source_loc().is_none() {
-                    err.with_maybe_source_loc(expr.source_loc().cloned())
-                } else {
-                    err
-                }
-            })
+        with_node_source_loc(self.partial_interpret_internal(expr), expr.source_loc())
     }
 
     /// Internal function to interpret a `RestrictedExpr`. (External callers,
@@ -288,7 +276,9 @@ impl<'e> RestrictedEvaluator<'e> {
                 for idx in 0..items.len() {
                     // assuming the invariant holds for `e`, it will hold here
                     let item = &items[idx];
-                    let val = self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(item))?;
+                    let res =
+                        self.partial_interpret_internal(BorrowedRestrictedExpr::new_unchecked(item));
+                    let val = with_node_source_loc(res, items[idx].source_loc())?;
                     vals.push(val);
                 }
                 match split(vals) {
@@ -304,7 +294,9 @@ impl<'e> RestrictedEvaluator<'e> {
                 for idx in 0..entries.len() {
                     // assuming the invariant holds for `e`, it will hold here
                     let (k, v) = entries[idx];
-                    let val = self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(v))?;
+                    let res =
+                        self.partial_interpret_internal(BorrowedRestrictedExpr::new_unchecked(v));
+                    let val = with_node_source_loc(res, entries[idx].1.source_loc())?;
                     names.push(k.clone());
                     attrs.push(val);
                 }
@@ -325,7 +317,9 @@ impl<'e> RestrictedEvaluator<'e> {
                 for idx in 0..args.len() {
                     // assuming the invariant holds for `e`, it will hold here
                     let arg = &args[idx];
-                    let val = self.partial_interpret(BorrowedRestrictedExpr::new_unchecked(arg))?;
+                    let res =
+                        self.partial_interpret_internal(BorrowedRestrictedExpr::new_unchecked(arg));
+                    let val = with_node_source_loc(res, args[idx].source_loc())?;
                     evalled_args.push(val);
                 }
                 match split(evalled_args) {
@@ -489,25 +483,16 @@ impl<'e> Evaluator<'e> {
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
     pub fn partial_interpret(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        // This is the only non-recursive entry into the evaluation machine, so
+        // this is the only place the native stack can grow without bound (via
+        // `partial_interpret_reentrant`). The recursive cycle itself keeps its
+        // frames on the heap and needs no check per node.
         stack_size_check()?;
 
-        let res = self.partial_interpret_internal(expr, slots);
-
-        // set the returned value's source location to the same source location
-        // as the input expression had.
-        // we do this here so that we don't have to set/propagate the source
-        // location in every arm of the big `match` in `partial_interpret_internal()`.
-        // also, if there is an error, set its source location to the source
-        // location of the input expression as well, unless it already had a
-        // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
-            .map_err(|err| {
-                if err.source_loc().is_none() {
-                    err.with_maybe_source_loc(expr.source_loc().cloned())
-                } else {
-                    err
-                }
-            })
+        with_node_source_loc(
+            self.partial_interpret_internal(expr, slots),
+            expr.source_loc(),
+        )
     }
 
     /// Internal function to interpret an `Expr`. (External callers, use
@@ -540,27 +525,34 @@ impl<'e> Evaluator<'e> {
                 else_expr,
             } => self.eval_if(test_expr.as_ref(), then_expr, else_expr, slots),
             ExprKind::And { left, right } => {
-                match self.partial_interpret(left.as_ref(), slots)? {
+                let lhs_res = self.partial_interpret_internal(left.as_ref(), slots);
+                match with_node_source_loc(lhs_res, left.source_loc())? {
                     // PE Case: Try to partial interpret right expression in best-effort.
                     // If it fails, fall back to original right expression.
                     PartialValue::Residual(e) => {
-                        let rhs = self
-                            .partial_interpret(right.as_ref(), slots)
+                        // parked in the machine frame across the call below, so keep
+                        // the frame small: one pointer instead of a whole `Expr`
+                        let boxed_lhs = Box::new(e);
+                        let rhs_res = self.partial_interpret_internal(right.as_ref(), slots);
+                        let rhs = with_node_source_loc(rhs_res, right.source_loc())
                             .map_or_else(|_| right.as_ref().clone(), Into::into);
-                        Ok(PartialValue::Residual(Expr::and(e, rhs)))
+                        Ok(PartialValue::Residual(Expr::and(*boxed_lhs, rhs)))
                     }
                     // Full eval case
                     PartialValue::Value(v) => {
                         if v.get_as_bool()? {
-                            match self.partial_interpret(right.as_ref(), slots)? {
+                            let rhs_res = self.partial_interpret_internal(right.as_ref(), slots);
+                            // deliberately not shadowing `right`/`v`: a shadowed name
+                            // keeps the outer binding parked in the machine frame
+                            match with_node_source_loc(rhs_res, right.source_loc())? {
                                 // you might think that `true && <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `true && <residual>` to ensure
                                 // type check happens
-                                PartialValue::Residual(right) => {
-                                    Ok(PartialValue::Residual(Expr::and(Expr::val(true), right)))
-                                }
+                                PartialValue::Residual(rhs_residual) => Ok(PartialValue::Residual(
+                                    Expr::and(Expr::val(true), rhs_residual),
+                                )),
                                 // If it's an actual value, compute and
-                                PartialValue::Value(v) => Ok(v.get_as_bool()?.into()),
+                                PartialValue::Value(rhs_val) => Ok(rhs_val.get_as_bool()?.into()),
                             }
                         } else {
                             // We can short circuit here
@@ -570,14 +562,18 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Or { left, right } => {
-                match self.partial_interpret(left.as_ref(), slots)? {
+                let lhs_res = self.partial_interpret_internal(left.as_ref(), slots);
+                match with_node_source_loc(lhs_res, left.source_loc())? {
                     // PE Case: Try to partial interpret right expression in best-effort.
                     // If it fails, fall back to original right expression.
                     PartialValue::Residual(r) => {
-                        let rhs = self
-                            .partial_interpret(right.as_ref(), slots)
+                        // parked in the machine frame across the call below, so keep
+                        // the frame small: one pointer instead of a whole `Expr`
+                        let boxed_lhs = Box::new(r);
+                        let rhs_res = self.partial_interpret_internal(right.as_ref(), slots);
+                        let rhs = with_node_source_loc(rhs_res, right.source_loc())
                             .map_or_else(|_| right.as_ref().clone(), Into::into);
-                        Ok(PartialValue::Residual(Expr::or(r, rhs)))
+                        Ok(PartialValue::Residual(Expr::or(*boxed_lhs, rhs)))
                     }
                     // Full eval case
                     PartialValue::Value(lhs) => {
@@ -585,7 +581,8 @@ impl<'e> Evaluator<'e> {
                             // We can short circuit here
                             Ok(true.into())
                         } else {
-                            match self.partial_interpret(right.as_ref(), slots)? {
+                            let rhs_res = self.partial_interpret_internal(right.as_ref(), slots);
+                            match with_node_source_loc(rhs_res, right.source_loc())? {
                                 PartialValue::Residual(rhs) =>
                                 // you might think that `false || <residual>` can be optimized to `<residual>`, but this isn't true because
                                 // <residual> must be boolean, or else it needs to type error. So return `false || <residual>` to ensure
@@ -599,20 +596,36 @@ impl<'e> Evaluator<'e> {
                     }
                 }
             }
-            ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg.as_ref(), slots)? {
-                PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
-                // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
-                // Could be a nice target for fault injection
-                PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
-            },
-            ExprKind::BinaryApp { op, arg1, arg2 } => {
+            ExprKind::UnaryApp { op, arg } => {
+                let arg_res = self.partial_interpret_internal(arg.as_ref(), slots);
+                match with_node_source_loc(arg_res, arg.source_loc())? {
+                    PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
+                    // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
+                    // Could be a nice target for fault injection
+                    PartialValue::Residual(r) => {
+                        Ok(PartialValue::Residual(Expr::unary_app(*op, r)))
+                    }
+                }
+            }
+            ExprKind::BinaryApp {
+                op,
+                arg1: arg1_expr,
+                arg2: arg2_expr,
+            } => {
                 // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
                 // Current limitations:
                 //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
                 //   implemented in short_circuit_*
-                let pval1 = self.partial_interpret(arg1.as_ref(), slots)?;
-                let pval2 = self.partial_interpret(arg2.as_ref(), slots)?;
-                let (arg1, arg2) = match (pval1, pval2) {
+                //
+                // `arg1_expr`/`arg2_expr` are spelled differently from the `arg1`/`arg2`
+                // values below on purpose: a shadowed name keeps the outer binding
+                // parked in the machine frame across the calls.
+                let res1 = self.partial_interpret_internal(arg1_expr.as_ref(), slots);
+                // boxed because it is parked in the machine frame across the `arg2` call
+                let pval1 = Box::new(with_node_source_loc(res1, arg1_expr.source_loc())?);
+                let res2 = self.partial_interpret_internal(arg2_expr.as_ref(), slots);
+                let pval2 = with_node_source_loc(res2, arg2_expr.source_loc())?;
+                let (arg1, arg2) = match (*pval1, pval2) {
                     (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
                     (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
                         if let Some(val) = self.short_circuit_value_and_residual(&v1, &e2, *op) {
@@ -738,13 +751,17 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let mut evalled_args: Vec<PartialValue> = Vec::with_capacity(args.len());
+                // boxed because the accumulator is parked in the machine frame on
+                // every iteration of this loop
+                let mut evalled_args: Box<Vec<PartialValue>> =
+                    Box::new(Vec::with_capacity(args.len()));
                 for idx in 0..args.len() {
                     let arg = &args[idx];
-                    let val = self.partial_interpret(arg, slots)?;
+                    let res = self.partial_interpret_internal(arg, slots);
+                    let val = with_node_source_loc(res, args[idx].source_loc())?;
                     evalled_args.push(val);
                 }
-                match split(evalled_args) {
+                match split(*evalled_args) {
                     Either::Left(vals) => {
                         let vals: Vec<_> = vals.collect();
                         let efunc = self.extensions.func(fn_name)?;
@@ -756,41 +773,45 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
-            ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr.as_ref(), slots)? {
-                PartialValue::Value(Value {
-                    value: ValueKind::Record(record),
-                    ..
-                }) => Ok(record.get(attr).is_some().into()),
-                PartialValue::Value(Value {
-                    value: ValueKind::Lit(Literal::EntityUID(uid)),
-                    ..
-                }) => match self.entities.entity(&uid) {
-                    Dereference::NoSuchEntity => Ok(false.into()),
-                    Dereference::Residual(r) => {
-                        Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
-                    }
-                    Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
-                },
-                PartialValue::Value(val) => Err(err::EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
-                    ],
-                    &val,
-                )),
-                PartialValue::Residual(r) => match r.expr_kind() {
-                    // If the residual is a known record and is projectable (it’s guaranteed to never error on evaluation),
-                    // then check for the attribute existency.
-                    ExprKind::Record(rec) if r.is_projectable() => {
-                        Ok(rec.contains_key(attr).into())
-                    }
-                    // Otherwise, leave the expression as is.
-                    _ => Ok(Expr::has_attr(r, attr.clone()).into()),
-                },
-            },
+            ExprKind::HasAttr { expr, attr } => {
+                let sub_res = self.partial_interpret_internal(expr.as_ref(), slots);
+                match with_node_source_loc(sub_res, expr.source_loc())? {
+                    PartialValue::Value(Value {
+                        value: ValueKind::Record(record),
+                        ..
+                    }) => Ok(record.get(attr).is_some().into()),
+                    PartialValue::Value(Value {
+                        value: ValueKind::Lit(Literal::EntityUID(uid)),
+                        ..
+                    }) => match self.entities.entity(&uid) {
+                        Dereference::NoSuchEntity => Ok(false.into()),
+                        Dereference::Residual(r) => {
+                            Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
+                        }
+                        Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+                    },
+                    PartialValue::Value(val) => Err(err::EvaluationError::type_error(
+                        nonempty![
+                            Type::Record,
+                            Type::entity_type(names::ANY_ENTITY_TYPE.clone())
+                        ],
+                        &val,
+                    )),
+                    PartialValue::Residual(r) => match r.expr_kind() {
+                        // If the residual is a known record and is projectable (it’s guaranteed to never error on evaluation),
+                        // then check for the attribute existency.
+                        ExprKind::Record(rec) if r.is_projectable() => {
+                            Ok(rec.contains_key(attr).into())
+                        }
+                        // Otherwise, leave the expression as is.
+                        _ => Ok(Expr::has_attr(r, attr.clone()).into()),
+                    },
+                }
+            }
             ExprKind::ExtHasAttr { expr, attrs } => self.eval_extended_has_attr(expr, attrs, slots),
             ExprKind::Like { expr, pattern } => {
-                let v = self.partial_interpret(expr.as_ref(), slots)?;
+                let sub_res = self.partial_interpret_internal(expr.as_ref(), slots);
+                let v = with_node_source_loc(sub_res, expr.source_loc())?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((pattern.wildcard_match(v.get_as_string()?)).into())
@@ -799,7 +820,8 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Is { expr, entity_type } => {
-                let v = self.partial_interpret(expr.as_ref(), slots)?;
+                let sub_res = self.partial_interpret_internal(expr.as_ref(), slots);
+                let v = with_node_source_loc(sub_res, expr.source_loc())?;
                 match v {
                     PartialValue::Value(v) => {
                         Ok((v.get_as_entity()?.entity_type() == entity_type).into())
@@ -820,27 +842,33 @@ impl<'e> Evaluator<'e> {
                 }
             }
             ExprKind::Set(items) => {
-                let mut vals: Vec<PartialValue> = Vec::with_capacity(items.len());
+                // boxed because the accumulator is parked in the machine frame on
+                // every iteration of this loop
+                let mut vals: Box<Vec<PartialValue>> = Box::new(Vec::with_capacity(items.len()));
                 for idx in 0..items.len() {
                     let item = &items[idx];
-                    let val = self.partial_interpret(item, slots)?;
+                    let res = self.partial_interpret_internal(item, slots);
+                    let val = with_node_source_loc(res, items[idx].source_loc())?;
                     vals.push(val);
                 }
-                match split(vals) {
+                match split(*vals) {
                     Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
                     Either::Right(r) => Ok(Expr::set(r).into()),
                 }
             }
             ExprKind::Record(map) => {
-                let entries: Vec<(&SmolStr, &Expr)> = map.iter().collect();
-                let mut names: Vec<SmolStr> = Vec::with_capacity(entries.len());
-                let mut evalled: Vec<PartialValue> = Vec::with_capacity(entries.len());
-                for idx in 0..entries.len() {
-                    let (k, v) = entries[idx];
-                    let val = self.partial_interpret(v, slots)?;
-                    names.push(k.clone());
-                    evalled.push(val);
+                // the three accumulators live behind one pointer because they are
+                // parked in the machine frame on every iteration of this loop, and
+                // this call site is what sets the frame stride for the whole machine
+                let mut acc = Box::new(RecordAcc::new(map.iter().collect()));
+                for idx in 0..acc.entries.len() {
+                    let (k, v) = acc.entries[idx];
+                    let res = self.partial_interpret_internal(v, slots);
+                    let val = with_node_source_loc(res, acc.entries[idx].1.source_loc())?;
+                    acc.names.push(k.clone());
+                    acc.evalled.push(val);
                 }
+                let RecordAcc { names, evalled, .. } = *acc;
                 match split(evalled) {
                     Either::Left(vals) => {
                         Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
@@ -871,29 +899,36 @@ impl<'e> Evaluator<'e> {
         alternative: &Arc<Expr>,
         slots: &SlotEnv,
     ) -> Result<PartialValue> {
-        match self.partial_interpret(guard, slots)? {
+        let guard_res = self.partial_interpret_internal(guard, slots);
+        match with_node_source_loc(guard_res, guard.source_loc())? {
             PartialValue::Value(v) => {
                 if v.get_as_bool()? {
-                    self.partial_interpret(consequent.as_ref(), slots)
+                    let res = self.partial_interpret_internal(consequent.as_ref(), slots);
+                    with_node_source_loc(res, consequent.source_loc())
                 } else {
-                    self.partial_interpret(alternative.as_ref(), slots)
+                    let res = self.partial_interpret_internal(alternative.as_ref(), slots);
+                    with_node_source_loc(res, alternative.source_loc())
                 }
             }
             PartialValue::Residual(residual_guard) => {
+                // `Expr::ite_arc` wants an `Arc<Expr>` anyway, and wrapping it here
+                // rather than at the end means the machine frames for the two calls
+                // below park one pointer instead of a whole `Expr`
+                let residual_guard = Arc::new(residual_guard);
                 // Try to partial interpret both branches in best-effort:
                 // if a branch partial evaluation fails, then fallback to the original branch expression.
-                let consequent_res = self.partial_interpret(consequent.as_ref(), slots);
+                let consequent_res = self.partial_interpret_internal(consequent.as_ref(), slots);
+                let consequent_res = with_node_source_loc(consequent_res, consequent.source_loc());
                 let new_consequent = consequent_res
                     .map(|r| Arc::new(r.into()))
                     .unwrap_or_else(|_| consequent.clone());
-                let alternative_res = self.partial_interpret(alternative.as_ref(), slots);
+                let alternative_res = self.partial_interpret_internal(alternative.as_ref(), slots);
+                let alternative_res =
+                    with_node_source_loc(alternative_res, alternative.source_loc());
                 let new_alternative = alternative_res
                     .map(|r| Arc::new(r.into()))
                     .unwrap_or_else(|_| alternative.clone());
-                Ok(
-                    Expr::ite_arc(Arc::new(residual_guard), new_consequent, new_alternative)
-                        .into(),
-                )
+                Ok(Expr::ite_arc(residual_guard, new_consequent, new_alternative).into())
             }
         }
     }
@@ -908,7 +943,8 @@ impl<'e> Evaluator<'e> {
         attrs: &nonempty::NonEmpty<SmolStr>,
         slots: &SlotEnv,
     ) -> Result<PartialValue> {
-        match self.partial_interpret(expr, slots)? {
+        let sub_res = self.partial_interpret_internal(expr, slots);
+        match with_node_source_loc(sub_res, expr.source_loc())? {
             PartialValue::Value(initial_val) => {
                 self.eval_extended_has_attr_value(&initial_val, attrs)
             }
@@ -994,7 +1030,8 @@ impl<'e> Evaluator<'e> {
         slots: &SlotEnv,
         source_loc: Option<&Loc>,
     ) -> Result<PartialValue> {
-        match self.partial_interpret(expr, slots)? {
+        let sub_res = self.partial_interpret_internal(expr, slots);
+        match with_node_source_loc(sub_res, expr.source_loc())? {
             // PE Cases
             PartialValue::Residual(res) => {
                 match res.expr_kind() {
@@ -1092,7 +1129,6 @@ impl<'e> Evaluator<'e> {
             )),
         }
     }
-
 }
 
 impl Evaluator<'_> {
@@ -1280,6 +1316,65 @@ impl Value {
             .iter()
             .map(Value::get_as_entity)
             .collect()
+    }
+}
+
+/// The three accumulators of the `Record` arm's loop in
+/// `Evaluator::partial_interpret_internal()`, in one allocation.
+///
+/// `#[stack_safe]` parks every local that is live across a recursive call in the
+/// machine's frame, and the frame is a single enum whose size is that of its
+/// largest variant. Three separate `Vec`s here would be 72 bytes of that one
+/// variant, and would set the stride of the frame stack for the whole machine.
+struct RecordAcc<'a> {
+    /// The record's entries, in iteration order.
+    entries: Vec<(&'a SmolStr, &'a Expr)>,
+    /// The keys of the entries evaluated so far.
+    names: Vec<SmolStr>,
+    /// The values of the entries evaluated so far.
+    evalled: Vec<PartialValue>,
+}
+
+impl<'a> RecordAcc<'a> {
+    /// Empty accumulators, sized for the given entries.
+    fn new(entries: Vec<(&'a SmolStr, &'a Expr)>) -> Self {
+        let len = entries.len();
+        Self {
+            entries,
+            names: Vec::with_capacity(len),
+            evalled: Vec::with_capacity(len),
+        }
+    }
+}
+
+/// Apply the source location of the expression that produced `res` to the
+/// result, exactly as `partial_interpret()` used to do for every node before it
+/// was taken out of the recursive cycle.
+///
+/// We do this instead of setting/propagating the source location in every arm of
+/// the big `match` in `partial_interpret_internal()`. On the error path the
+/// location is only filled in when the error does not already carry a more
+/// specific one.
+/// The error path is split out and marked cold so that the per-node fix-up
+/// inlines into the machine body, as it did when it lived in the body of
+/// `partial_interpret()`.
+#[inline(always)]
+fn with_node_source_loc(res: Result<PartialValue>, loc: Option<&Loc>) -> Result<PartialValue> {
+    match res {
+        Ok(pval) => Ok(pval.with_maybe_source_loc(loc.cloned())),
+        Err(err) => Err(err_with_node_source_loc(err, loc)),
+    }
+}
+
+/// The error half of [`with_node_source_loc`]: set the location of an error that
+/// does not already carry a more specific one.
+#[cold]
+#[inline(never)]
+fn err_with_node_source_loc(err: EvaluationError, loc: Option<&Loc>) -> EvaluationError {
+    if err.source_loc().is_none() {
+        err.with_maybe_source_loc(loc.cloned())
+    } else {
+        err
     }
 }
 

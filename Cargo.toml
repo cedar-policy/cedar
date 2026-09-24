@@ -126,3 +126,7 @@ string_slice = "deny"
 panic = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+[patch.crates-io]
+yaspar-macros = { path = "/Users/zhonhu/workplace/yaspar-org/yaspar-macros" }
+yaspar-macros-defs = { path = "/Users/zhonhu/workplace/yaspar-org/yaspar-macros/defs" }
