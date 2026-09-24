@@ -1,0 +1,19 @@
+instance Photo::"vacation.jpg" in Album::"summer" = {
+    "owner": User::"alice",
+    "viewers": [User::"bob", User::"carol"],
+    "tags_list": ["vacation", "beach", "sunset"],
+    "scores": [10, 20, 30],
+    "flags": [true, false, true],
+    "empty_set": [],
+    "nested": [[1, 2], [3, 4]]
+};
+
+instance Album::"summer" = {
+    "owner": Account::"alice",
+    "shared_with": [User::"bob"],
+    "admins": [User::"alice", User::"carol"]
+};
+
+instance Account::"alice" = {
+    "primary_user": User::"alice"
+};

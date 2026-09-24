@@ -1,0 +1,98 @@
+[
+    {
+        "uid": {
+            "type": "User",
+            "id": "alice"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "UserGroup",
+                "id": "admins"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "User",
+            "id": "bob"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "UserGroup",
+                "id": "editors"
+            },
+            {
+                "type": "UserGroup",
+                "id": "viewers"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "User",
+            "id": "carol"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "UserGroup",
+            "id": "admins"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "UserGroup",
+            "id": "editors"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "UserGroup",
+            "id": "viewers"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Photo",
+            "id": "sunset.jpg"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "Album",
+                "id": "vacation"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "Album",
+            "id": "vacation"
+        },
+        "attrs": {},
+        "parents": [
+            {
+                "type": "Account",
+                "id": "alice"
+            }
+        ]
+    },
+    {
+        "uid": {
+            "type": "Account",
+            "id": "alice"
+        },
+        "attrs": {},
+        "parents": []
+    }
+]
