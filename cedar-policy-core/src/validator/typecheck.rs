@@ -1341,7 +1341,10 @@ impl<'a> SingleEnvTypechecker<'a> {
             }
             None => {
                 let all_attrs = actual_type.all_attributes(self.schema);
-                let borrowed = all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                let borrowed = all_attrs
+                    .iter()
+                    .map(|(s, _)| s.as_str())
+                    .collect::<Vec<_>>();
                 let suggestion = fuzzy_search(attr, &borrowed);
                 type_errors.push(ValidationError::unsafe_attribute_access(
                     expr.source_loc().cloned(),

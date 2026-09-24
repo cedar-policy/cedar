@@ -27,7 +27,7 @@ pub use request_env::*;
 use itertools::Itertools;
 use smol_str::SmolStr;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Display,
     sync::Arc,
 };
@@ -330,8 +330,9 @@ impl Type {
                 // record even though neither is subtype of the other.
                 let open_attributes = if open0.is_open()
                     || open1.is_open()
-                    || (attrs.keys().collect::<BTreeSet<_>>()
-                        != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
+                    || (!mode.is_strict() // In strict mode we know the key sets must be equal if a LUB exists, so we skip this check.
+                        && attrs.keys().collect::<BTreeSet<_>>()
+                            != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
                 {
                     OpenTag::OpenAttributes
                 } else {
@@ -1055,8 +1056,7 @@ impl Attributes {
     // subtyping. This forbids width subtyping, so there may not be attributes
     // present in the subtype that do not exist in the super type.
     pub(crate) fn is_subtype_depth_only(&self, other: &Attributes, mode: ValidationMode) -> bool {
-        other.attrs.keys().collect::<HashSet<_>>() == self.attrs.keys().collect::<HashSet<_>>()
-            && self.is_subtype(other, mode)
+        other.attrs.len() == self.attrs.len() && self.is_subtype(other, mode)
     }
 
     pub(crate) fn least_upper_bound(
@@ -1086,7 +1086,7 @@ impl Attributes {
         attrs0: &Attributes,
         attrs1: &Attributes,
     ) -> Result<Attributes, LubHelp> {
-        if attrs0.keys().collect::<HashSet<_>>() != attrs1.keys().collect::<HashSet<_>>() {
+        if attrs0.attrs.len() != attrs1.attrs.len() {
             return Err(LubHelp::RecordWidth);
         }
         Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Strict)
