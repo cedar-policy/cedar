@@ -1,0 +1,12 @@
+[
+  {
+    "uid": { "type": "User", "id": "Alice" },
+    "attrs": {
+      "name": "Alice"
+    },
+    "parents": [],
+    "knowledge": {
+      "attrs": { "nickname": "present" }
+    }
+  }
+]

@@ -1723,6 +1723,80 @@ fn test_tpe() {
 
 #[test]
 #[cfg(feature = "tpe")]
+fn test_tpe_partial_context() {
+    let dir = "sample-data/tpe_partial_context";
+    let run = |request: &str| {
+        cargo::cargo_bin_cmd!("cedar")
+            .arg("tpe")
+            .arg("--request-json")
+            .arg(format!("{dir}/{request}"))
+            .arg("-p")
+            .arg(format!("{dir}/policies.cedar"))
+            .arg("--entities")
+            .arg(format!("{dir}/entities.json"))
+            .arg("-s")
+            .arg(format!("{dir}/schema.cedarschema"))
+            .assert()
+    };
+
+    run("request_absent.json")
+        .stdout(predicate::str::contains("DENY"))
+        .code(2);
+    run("request_present.json")
+        .stdout(predicate::str::contains("ALLOW"))
+        .code(0);
+    run("request_unstated.json")
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                "permit(principal, action, resource) when { context has mfa };",
+            )),
+        )
+        .code(4);
+}
+
+#[test]
+#[cfg(feature = "tpe")]
+fn test_tpe_partial_attributes() {
+    let dir = "sample-data/tpe_partial_attrs";
+    let run = |entities: &str| {
+        cargo::cargo_bin_cmd!("cedar")
+            .arg("tpe")
+            .arg("--principal-type")
+            .arg("User")
+            .arg("--principal-eid")
+            .arg("Alice")
+            .arg("-a")
+            .arg(r#"Action::"View""#)
+            .arg("--resource-type")
+            .arg("Document")
+            .arg("-p")
+            .arg(format!("{dir}/policies.cedar"))
+            .arg("--entities")
+            .arg(format!("{dir}/{entities}"))
+            .arg("-s")
+            .arg(format!("{dir}/schema.cedarschema"))
+            .assert()
+    };
+
+    run("entities_absent.json")
+        .stdout(predicate::str::contains("DENY"))
+        .code(2);
+
+    run("entities_present.json")
+        .stdout(predicate::str::contains("ALLOW"))
+        .code(0);
+
+    run("entities_unstated.json")
+        .stdout(
+            predicate::str::contains("UNKNOWN").and(predicate::str::contains(
+                r#"permit(principal, action, resource) when { User::"Alice" has nickname };"#,
+            )),
+        )
+        .code(4);
+}
+
+#[test]
+#[cfg(feature = "tpe")]
 fn test_tpe_link() {
     let entities: &str = "sample-data/tpe_rfc/entities.json";
     let schema: &str = "sample-data/tpe_rfc/schema.cedarschema";

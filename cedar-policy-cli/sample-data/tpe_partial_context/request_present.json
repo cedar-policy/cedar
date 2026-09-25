@@ -1,0 +1,9 @@
+{
+  "principal_type": "User",
+  "principal_eid": "alice",
+  "action": "Action::\"read\"",
+  "resource_type": "Doc",
+  "resource_eid": "d",
+  "context": { "level": 5 },
+  "knowledge": { "context": { "mfa": "present" } }
+}
