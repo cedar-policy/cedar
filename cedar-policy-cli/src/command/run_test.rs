@@ -25,7 +25,7 @@ use std::path::Path;
 
 use cedar_policy::*;
 
-use crate::{CedarExitCode, OptionalSchemaArgs, PoliciesArgs, RequestJSON};
+use crate::{load_entities, CedarExitCode, OptionalSchemaArgs, PoliciesArgs, RequestJSON};
 
 #[derive(Args, Debug)]
 pub struct RunTestsArgs {
@@ -111,10 +111,14 @@ fn run_one_test(
     policies: &PolicySet,
     test: &serde_json::Value,
     validator: Option<&Validator>,
+    test_file_dir: &Path,
 ) -> Result<TestResult> {
-    let test = CheckedTestCaseSeed(validator.map(Validator::schema))
-        .deserialize(test.into_deserializer())
-        .into_diagnostic()?;
+    let test = CheckedTestCaseSeed {
+        schema: validator.map(Validator::schema),
+        test_file_dir,
+    }
+    .deserialize(test.into_deserializer())
+    .into_diagnostic()?;
     if let Some(validator) = validator {
         let val_res = validator.validate(policies, cedar_policy::ValidationMode::Strict);
         if !val_res.validation_passed_without_warnings() {
@@ -130,6 +134,10 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
     let tests = load_partial_tests(&args.tests)?;
     let validator = args.schema.get_schema()?.map(Validator::new);
 
+    let test_file_dir = Path::new(&args.tests)
+        .parent()
+        .unwrap_or_else(|| Path::new("."));
+
     let mut total_fails: usize = 0;
 
     println!("running {} test(s)", tests.len());
@@ -140,7 +148,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
             print!("  test (unnamed) ... ");
         }
         std::io::stdout().flush().into_diagnostic()?;
-        match run_one_test(&policies, test, validator.as_ref()) {
+        match run_one_test(&policies, test, validator.as_ref(), &test_file_dir) {
             Ok(TestResult::Pass) => {
                 println!(
                     "{}",
@@ -235,7 +243,10 @@ struct TestCase {
     num_errors: usize,
 }
 
-struct CheckedTestCaseSeed<'a>(Option<&'a Schema>);
+struct CheckedTestCaseSeed<'a> {
+    schema: Option<&'a Schema>,
+    test_file_dir: &'a Path,
+}
 
 impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
     type Value = TestCase;
@@ -273,7 +284,7 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
             serde::de::Error::custom(format!("failed to parse resource `{resource}`: {e}",))
         })?;
 
-        let context = Context::from_json_value(request.context.clone(), self.0.zip(Some(&action)))
+        let context = Context::from_json_value(request.context.clone(), self.schema.zip(Some(&action)))
             .map_err(|e| {
                 serde::de::Error::custom(format!(
                     "failed to parse context `{}`: {}",
@@ -281,11 +292,46 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
                 ))
             })?;
 
-        let request = Request::new(principal, action, resource, context, self.0)
+        let request = Request::new(principal, action, resource, context, self.schema)
             .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))?;
 
-        let entities = Entities::from_json_value(entities, self.0)
-            .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))?;
+        let entities = if let Some(entities_file) = entities.as_str() {
+            let entities_path = self.test_file_dir.join(entities_file);
+
+            let canonical_path = entities_path
+                .canonicalize()
+                .map_err(|e| {
+                    serde::de::Error::custom(format!(
+                        "failed to canonicalize path `{}`: {e}",
+                        entities_path.display()
+                    ))
+                })?;
+    
+            let canonical_dir = self.test_file_dir.canonicalize().map_err(|e| {
+                serde::de::Error::custom(format!(
+                    "failed to canonicalize test file directory `{}`: {e}",
+                    self.test_file_dir.display()
+                ))
+            })?;
+
+            if !canonical_path.starts_with(&canonical_dir) {
+                return Err(serde::de::Error::custom(format!(
+                    "entities file `{}` is outside of the test file directory `{}`",
+                    canonical_path.display(),
+                    canonical_dir.display()
+                )));
+            }
+
+            load_entities(canonical_path, self.schema).map_err(|e| {
+                serde::de::Error::custom(format!(
+                    "failed to load entities from file `{}`: {e}",
+                    entities_file
+                ))
+            })?
+        } else {
+            Entities::from_json_value(entities, self.schema)
+                .map_err(|e| serde::de::Error::custom(format!("failed to parse entities: {e}")))?
+        };
 
         Ok(TestCase {
             request,
@@ -345,10 +391,13 @@ mod tests {
             "reason": [],
             "num_errors": 0,
         });
-        CheckedTestCaseSeed(schema)
-            .deserialize(test.into_deserializer())
-            .into_diagnostic()
-            .map_err(|e| render_err(&e))
+        CheckedTestCaseSeed {
+            schema,
+            test_file_dir: &std::path::Path::new("."),
+        }
+        .deserialize(test.into_deserializer())
+        .into_diagnostic()
+        .map_err(|e| render_err(&e))
     }
 
     #[test]
@@ -438,5 +487,166 @@ mod tests {
             deserialize(Some(&schema()), request).unwrap_err(),
             @"  × failed to parse context `{\"unexpected\":true}`: while parsing context, record attribute `unexpected` should not exist according to the schema"
         );
+    }
+
+    #[test]
+    fn entities_from_file_not_found() {
+        let request = serde_json::json!({
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"pic\"",
+            "context": {},
+        });
+        let test = serde_json::json!({
+            "request": request,
+            "entities": "nonexistent.json",
+            "decision": "deny",
+            "reason": [],
+            "num_errors": 0,
+        });
+        let result = CheckedTestCaseSeed {
+            schema: None,
+            test_file_dir: &std::path::Path::new("."),
+        }
+        .deserialize(test.into_deserializer());
+
+        assert!(result.is_err());
+        let err_msg = result
+            .unwrap_err()
+            .to_string();
+        assert!(err_msg.contains("nonexistent.json"));
+    }
+
+    #[test]
+    fn entities_path_traversal_attack() {
+        use std::fs;
+        use std::fs::File;
+        use std::io::Write;
+
+        let request = serde_json::json!({
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"pic\"",
+            "context": {},
+        });
+
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+
+        // Create a nested test directory to simulate real test file organization
+        let test_subdir = temp_dir.path().join("tests");
+        fs::create_dir(&test_subdir).expect("failed to create test subdir");
+
+        // Create a file outside the test subdirectory but inside temp_dir
+        let outside_file = temp_dir.path().join("outside.json");
+        let mut file = File::create(&outside_file).expect("failed to create outside file");
+        writeln!(file, "[]").expect("failed to write outside file");
+
+        // Try to reference the file outside the test subdirectory via relative path
+        let test = serde_json::json!({
+            "request": request,
+            "entities": "../outside.json",
+            "decision": "deny",
+            "reason": [],
+            "num_errors": 0,
+        });
+
+        let result = CheckedTestCaseSeed {
+            schema: None,
+            test_file_dir: test_subdir.as_path(),
+        }
+        .deserialize(test.into_deserializer());
+
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("outside of the test file directory"));
+    }
+
+    #[test]
+    fn entities_from_file_valid() {
+        use std::fs::File;
+        use std::io::Write;
+
+        let request = serde_json::json!({
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"pic\"",
+            "context": {},
+        });
+        let test = serde_json::json!({
+            "request": request,
+            "entities": "entities.json",
+            "decision": "deny",
+            "reason": [],
+            "num_errors": 0,
+        });
+
+        let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
+        let entities_path = temp_dir.path().join("entities.json");
+        let mut file = File::create(&entities_path).expect("failed to create entities file");
+        writeln!(file, "[]").expect("failed to write entities file");
+
+        let result = CheckedTestCaseSeed {
+            schema: None,
+            test_file_dir: temp_dir.path(),
+        }
+        .deserialize(test.into_deserializer());
+
+        assert!(result.is_ok());
+        let test_case = result.unwrap();
+        assert_eq!(test_case.reason, Vec::<String>::new());
+        assert_eq!(test_case.num_errors, 0);
+    }
+
+    #[test]
+    fn entities_from_inline_json() {
+        let request = serde_json::json!({
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"pic\"",
+            "context": {},
+        });
+        let test = serde_json::json!({
+            "request": request,
+            "entities": [],
+            "decision": "deny",
+            "reason": [],
+            "num_errors": 0,
+        });
+
+        let result = CheckedTestCaseSeed {
+            schema: None,
+            test_file_dir: &std::path::Path::new("."),
+        }
+        .deserialize(test.into_deserializer());
+
+        assert!(result.is_ok());
+        let test_case = result.unwrap();
+        assert_eq!(test_case.reason, Vec::<String>::new());
+        assert_eq!(test_case.num_errors, 0);
+    }
+
+    #[test]
+    fn entities_from_inline_json_with_schema() {
+        let request = serde_json::json!({
+            "principal": "User::\"alice\"",
+            "action": "Action::\"view\"",
+            "resource": "Photo::\"pic\"",
+            "context": {},
+        });
+        let test = serde_json::json!({
+            "request": request,
+            "entities": [],
+            "decision": "deny",
+            "reason": [],
+            "num_errors": 0,
+        });
+
+        let result = CheckedTestCaseSeed {
+            schema: Some(&schema()),
+            test_file_dir: &std::path::Path::new("."),
+        }
+        .deserialize(test.into_deserializer());
+
+        assert!(result.is_ok());
     }
 }
