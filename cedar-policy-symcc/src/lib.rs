@@ -161,6 +161,21 @@ impl CompiledPolicy {
         })
     }
 
+    /// Compile a policy for the given `RequestEnv`, using a precompiled schema.
+    pub fn compile_with_compiled_schema(
+        policy: &Policy,
+        env: &RequestEnv,
+        compiled_schema: &CompiledSchema,
+    ) -> Result<Self> {
+        Ok(Self {
+            policy: symccopt::CompiledPolicy::compile_with_compiled_schema(
+                policy.as_ref(),
+                env,
+                compiled_schema,
+            )?,
+        })
+    }
+
     /// Compile a policy for the given `RequestEnv`, using a custom `SymEnv`
     /// rather than the one that would naturally be derived from this
     /// `RequestEnv`.
@@ -225,6 +240,24 @@ impl CompiledPolicySet {
     pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
         Ok(Self {
             policies: symccopt::CompiledPolicySet::compile(pset.as_ref(), env, schema)?,
+        })
+    }
+
+    /// Compile a policyset for the given `RequestEnv` using a precompiled schema.
+    ///
+    /// This avoids re-compiling the schema and is a useful optimization when the
+    /// same schema is reused across multiple policyset compilations.
+    pub fn compile_with_compiled_schema(
+        pset: &PolicySet,
+        env: &RequestEnv,
+        compiled_schema: &CompiledSchema,
+    ) -> Result<Self> {
+        Ok(Self {
+            policies: symccopt::CompiledPolicySet::compile_with_compiled_schema(
+                pset.as_ref(),
+                env,
+                compiled_schema,
+            )?,
         })
     }
 

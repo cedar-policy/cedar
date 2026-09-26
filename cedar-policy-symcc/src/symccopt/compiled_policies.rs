@@ -63,6 +63,34 @@ impl CompiledPolicy {
         Self::compile_with_custom_symenv(policy, env, schema, SymEnv::new(schema, env)?)
     }
 
+    /// Compile a policy for the given `RequestEnv` using a precompiled schema.
+    ///
+    /// This function calls the Cedar typechecker to obtain a policy that is
+    /// semantically equivalent to `policy` and well-typed with respect to
+    /// `env`. Then, it runs the symbolic compiler to produce a compiled
+    /// policy, reusing the precomputed symbolic entities from the
+    /// `CompiledSchema`.
+    ///
+    /// This is more efficient than `compile()` when compiling multiple
+    /// policies with the same schema, as it avoids redundant symbolic entity
+    /// computation.
+    ///
+    /// This function ensures well-typedness for you. You need not (and should
+    /// not) call `well_typed_policy()` or `WellTypedPolicy::from_policy()`
+    /// prior to calling this.
+    pub fn compile_with_compiled_schema(
+        policy: &Policy,
+        env: &RequestEnv,
+        compiled_schema: &symcc::CompiledSchema,
+    ) -> Result<Self> {
+        Self::compile_with_custom_symenv(
+            policy,
+            env,
+            compiled_schema.schema(),
+            compiled_schema.sym_env(&env)?
+        )
+    }
+
     /// Compile a policy for the given `RequestEnv`, using a custom `SymEnv`
     /// rather than the one that would naturally be derived from this
     /// `RequestEnv`.
@@ -163,6 +191,34 @@ impl CompiledPolicySet {
         // In Lean, `compile_with_custom_symenv()` does not exist, and is
         // instead inlined here, as of this writing.
         Self::compile_with_custom_symenv(pset, env, schema, SymEnv::new(schema, env)?)
+    }
+
+    /// Compile a policy set for the given `RequestEnv` using a precompiled schema.
+    ///
+    /// This function calls the Cedar typechecker on each policy to obtain a
+    /// policy that is semantically equivalent to the original policy and
+    /// well-typed with respect to `env`. Then, it runs the symbolic compiler to
+    /// produce a compiled policy set, reusing the precomputed symbolic entities
+    /// from the `CompiledSchema`.
+    ///
+    /// This is more efficient than `compile()` when compiling multiple policy
+    /// sets with the same schema, as it avoids redundant symbolic entity
+    /// computation.
+    ///
+    /// This function ensures well-typedness for you. You need not (and should
+    /// not) call `well_typed_policies()` or `WellTypedPolicies::from_policies()`
+    /// prior to calling this.
+    pub fn compile_with_compiled_schema(
+        pset: &PolicySet,
+        env: &RequestEnv,
+        compiled_schema: &symcc::CompiledSchema,
+    ) -> Result<Self> {
+        Self::compile_with_custom_symenv(
+            pset,
+            env,
+            compiled_schema.schema(),
+            compiled_schema.sym_env(&env)?
+        )
     }
 
     /// Compile a set of policies for the given `RequestEnv`, using a custom
@@ -317,5 +373,68 @@ mod test {
             &schema,
             &env,
         );
+    }
+
+    #[test]
+    fn compile_with_compiled_schema_produces_same_result_as_compile() {
+        use crate::symcc::CompiledSchema;
+
+        let schema = Schema::from_cedarschema_str(
+            "entity E; action A appliesTo { principal: E, resource: E};",
+        )
+        .unwrap()
+        .0;
+        let env = RequestEnv::new(
+            "E".parse().unwrap(),
+            r#"Action::"A""#.parse().unwrap(),
+            "E".parse().unwrap(),
+        );
+        let policy: Policy = parse_policy(None, "permit(principal, action, resource);")
+            .unwrap()
+            .into();
+
+        let compiled_schema = CompiledSchema::new(&schema).unwrap();
+
+        let result_from_compile = CompiledPolicy::compile(&policy, &env, &schema).unwrap();
+        let result_from_compiled_schema =
+            CompiledPolicy::compile_with_compiled_schema(&policy, &env, &compiled_schema).unwrap();
+
+        assert_eq!(result_from_compile, result_from_compiled_schema);
+    }
+
+    #[test]
+    fn compile_with_compiled_schema_reuses_entities() {
+        use crate::symcc::CompiledSchema;
+        use std::sync::Arc;
+
+        let schema = Schema::from_cedarschema_str(
+            "entity E; action A appliesTo { principal: E, resource: E};",
+        )
+        .unwrap()
+        .0;
+        let env1 = RequestEnv::new(
+            "E".parse().unwrap(),
+            r#"Action::"A""#.parse().unwrap(),
+            "E".parse().unwrap(),
+        );
+        let env2 = RequestEnv::new(
+            "E".parse().unwrap(),
+            r#"Action::"A""#.parse().unwrap(),
+            "E".parse().unwrap(),
+        );
+        let policy: Policy = parse_policy(None, "permit(principal, action, resource);")
+            .unwrap()
+            .into();
+
+        let compiled_schema = CompiledSchema::new(&schema).unwrap();
+
+        let compiled1 =
+            CompiledPolicy::compile_with_compiled_schema(&policy, &env1, &compiled_schema)
+                .unwrap();
+        let compiled2 =
+            CompiledPolicy::compile_with_compiled_schema(&policy, &env2, &compiled_schema)
+                .unwrap();
+
+        assert!(Arc::ptr_eq(&compiled1.symenv.entities, &compiled2.symenv.entities));
     }
 }
