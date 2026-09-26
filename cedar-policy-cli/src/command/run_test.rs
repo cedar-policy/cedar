@@ -531,12 +531,17 @@ mod tests {
         });
 
         let temp_dir = tempfile::tempdir().expect("failed to create temp dir");
-        let sibling_dir = temp_dir.path().parent().unwrap();
-        let outside_file = sibling_dir.join("outside.json");
+
+        // Create a nested test directory to simulate real test file organization
+        let test_subdir = temp_dir.path().join("tests");
+        fs::create_dir(&test_subdir).expect("failed to create test subdir");
+
+        // Create a file outside the test subdirectory but inside temp_dir
+        let outside_file = temp_dir.path().join("outside.json");
         let mut file = File::create(&outside_file).expect("failed to create outside file");
         writeln!(file, "[]").expect("failed to write outside file");
 
-        // Now try to reference the file outside the test directory via relative path
+        // Try to reference the file outside the test subdirectory via relative path
         let test = serde_json::json!({
             "request": request,
             "entities": "../outside.json",
@@ -547,16 +552,13 @@ mod tests {
 
         let result = CheckedTestCaseSeed {
             schema: None,
-            test_file_dir: temp_dir.path(),
+            test_file_dir: test_subdir.as_path(),
         }
         .deserialize(test.into_deserializer());
 
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("outside of the test file directory"));
-
-        // Cleanup
-        let _ = fs::remove_file(&outside_file);
     }
 
     #[test]
