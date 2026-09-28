@@ -26,12 +26,15 @@ fn main() {
     reason = "panics in build.rs are acceptable, they just fail the build"
 )]
 fn generate_schemas() {
-    prost_build::compile_protos(
-        &[
-            "./protobuf_schema/core.proto",
-            "./protobuf_schema/validator.proto",
-        ],
-        &["./protobuf_schema"],
-    )
-    .expect("failed to compile `.proto` schema files");
+    let mut config = prost_build::Config::new();
+    config.btree_map([".cedar_policy_core.Expr.Record.items"]);
+    config
+        .compile_protos(
+            &[
+                "./protobuf_schema/core.proto",
+                "./protobuf_schema/validator.proto",
+            ],
+            &["./protobuf_schema"],
+        )
+        .expect("failed to compile `.proto` schema files");
 }
