@@ -107,8 +107,15 @@ pub enum Op {
     SetMember,
     SetSubset,
 
+    /// `string.like` — undelimited. Matches per the standard `like` operator.
     StringLike(OrdPattern), // Core ADT operator with trusted mapping to SMT
-    Uuf(Arc<Uuf>),          // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    /// `string.likeExtended` — delimiter-aware `like(pattern, delim)`.
+    ///
+    /// In the pattern, `PatternElem::Wildcard` does not cross the delimiter;
+    /// `PatternElem::MultiWildcard` (produced only from `**` in delimited
+    /// patterns) does cross it.
+    StringLikeExtended(OrdPattern, char), // Core ADT operator with trusted mapping to SMT
+    Uuf(Arc<Uuf>), // SMTLib core theory of equality with uninterpreted functions (`UF`)
     ZeroExtend(u32), // allowed to be 0. This is from the `BV` theory, like the variants that begin with `Bv`
 }
 
@@ -170,6 +177,7 @@ impl Op {
             Op::OptionGet => "option.get",
             Op::RecordGet(_) => "record.get",
             Op::StringLike(_) => "string.like",
+            Op::StringLikeExtended(_, _) => "string.likeExtended",
             Op::Ext(_) => "ext",
         }
     }

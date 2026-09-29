@@ -23,7 +23,18 @@ pub enum PatternElem {
     /// A character literal
     Char(char),
     /// The wildcard `*`
+    ///
+    /// In undelimited `like`, matches any run of characters.
+    /// In delimited `like(pattern, delim)`, matches any run of characters
+    /// that does not include the delimiter.
     Wildcard,
+    /// The double wildcard `**`
+    ///
+    /// Only produced by the delimited parser. Matches any run of characters
+    /// including the delimiter. In undelimited patterns, `**` remains two
+    /// adjacent `Wildcard`s (the language is the same, so behaviour is
+    /// preserved).
+    MultiWildcard,
 }
 
 /// Represent a pattern literal (the RHS of the like operator)
@@ -86,6 +97,7 @@ impl std::fmt::Display for Pattern {
                 PatternElem::Char('*') => write!(f, r#"\*"#)?,
                 PatternElem::Char(c) => write!(f, "{}", c.escape_debug())?,
                 PatternElem::Wildcard => write!(f, r#"*"#)?,
+                PatternElem::MultiWildcard => write!(f, r#"**"#)?,
             }
         }
         Ok(())
@@ -97,14 +109,42 @@ impl PatternElem {
         match self {
             PatternElem::Char(c) => text_char == c,
             PatternElem::Wildcard => true,
+            // MultiWildcard is only produced by the delimited parser; when
+            // encountered in an undelimited context (e.g. legacy `wildcard_match`
+            // being called on a pattern that somehow contains one), treat as
+            // any-character just like Wildcard.
+            PatternElem::MultiWildcard => true,
         }
     }
     fn is_wildcard(self) -> bool {
-        matches!(self, PatternElem::Wildcard)
+        matches!(self, PatternElem::Wildcard | PatternElem::MultiWildcard)
     }
 }
 
 impl Pattern {
+    /// Find if the argument text matches the pattern under a delimiter.
+    ///
+    /// Uses the same memoised dynamic-programming algorithm as the Lean spec
+    /// `wildcardMatchDelimitedIdx` in
+    /// `cedar-spec/cedar-lean/Cedar/Spec/WildcardDelimited.lean`.
+    ///
+    /// Semantics:
+    /// - `PatternElem::MultiWildcard` (`**`) matches any run of characters,
+    ///   including the delimiter.
+    /// - `PatternElem::Wildcard` (`*`) matches any run of characters that does
+    ///   *not* include the delimiter.
+    /// - `PatternElem::Char(c)` matches exactly `c`.
+    ///
+    /// Complexity: O(|text| × |pattern|) time and space (each `(i, j)` cell
+    /// is computed at most once).
+    pub fn wildcard_match_delimited(&self, text: &str, delim: char) -> bool {
+        let pattern = self.get_elems();
+        let text: Vec<char> = text.chars().collect();
+        let mut cache: std::collections::HashMap<(usize, usize), bool> =
+            std::collections::HashMap::new();
+        wildcard_match_delimited_idx(&text, pattern, 0, 0, delim, &mut cache)
+    }
+
     /// Find if the argument text matches the pattern
     pub fn wildcard_match(&self, text: &str) -> bool {
         let pattern = self.get_elems();
@@ -163,6 +203,67 @@ impl Pattern {
 
         j == pattern_len
     }
+}
+
+/// Memoised DP for delimiter-aware wildcard matching.
+///
+/// This is a direct port of `wildcardMatchDelimitedIdx` in the Lean spec
+/// (`cedar-spec/cedar-lean/Cedar/Spec/WildcardDelimited.lean`). Each `(i, j)`
+/// cell of the memo table is computed at most once.
+fn wildcard_match_delimited_idx(
+    text: &[char],
+    pattern: &[PatternElem],
+    i: usize,
+    j: usize,
+    delim: char,
+    cache: &mut std::collections::HashMap<(usize, usize), bool>,
+) -> bool {
+    if let Some(&b) = cache.get(&(i, j)) {
+        return b;
+    }
+    let result = if j == pattern.len() {
+        // Pattern exhausted: match iff text is also exhausted.
+        i == text.len()
+    } else if i == text.len() {
+        // Text exhausted, pattern non-empty: only wildcards may match empty tail.
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "j < pattern.len() by the else branch above"
+        )]
+        match pattern[j] {
+            PatternElem::MultiWildcard | PatternElem::Wildcard => {
+                wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
+            }
+            PatternElem::Char(_) => false,
+        }
+    } else {
+        // Both non-exhausted: case-split on pattern head.
+        #[expect(
+            clippy::indexing_slicing,
+            reason = "i < text.len() and j < pattern.len()"
+        )]
+        match pattern[j] {
+            PatternElem::MultiWildcard => {
+                // `**`: skip pattern OR consume one arbitrary char.
+                wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
+                    || wildcard_match_delimited_idx(text, pattern, i + 1, j, delim, cache)
+            }
+            PatternElem::Wildcard => {
+                // `*`: skip pattern OR consume one non-delimiter char.
+                let c = text[i];
+                wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
+                    || (c != delim
+                        && wildcard_match_delimited_idx(text, pattern, i + 1, j, delim, cache))
+            }
+            PatternElem::Char(k) => {
+                // Literal: consume iff exact match.
+                text[i] == k
+                    && wildcard_match_delimited_idx(text, pattern, i + 1, j + 1, delim, cache)
+            }
+        }
+    };
+    cache.insert((i, j), result);
+    result
 }
 
 #[cfg(test)]

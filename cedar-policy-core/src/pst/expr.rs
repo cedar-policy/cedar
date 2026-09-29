@@ -652,6 +652,8 @@ pub enum PatternElem {
     Char(char),
     /// A wildcard (`*`) matching zero or more characters
     Wildcard,
+    /// The double wildcard `**` (only produced by the delimited `like` form).
+    MultiWildcard,
 }
 
 /// PST Expression — the core expression type for Cedar policy conditions.
@@ -734,6 +736,9 @@ pub enum Expr {
         expr: Arc<Expr>,
         /// Pattern to match against
         pattern: Vec<PatternElem>,
+        /// Optional single-character delimiter for the delimiter-aware
+        /// `like(pattern, delim)` form.  RFC #115.
+        delim: Option<char>,
     },
     /// Entity type test, optionally combined with a hierarchy check.
     ///
@@ -1262,6 +1267,15 @@ impl ExprBuilder for PstBuilder {
         Expr::Like {
             expr: Arc::new(expr),
             pattern: pattern.into(),
+            delim: None,
+        }
+    }
+
+    fn like_delimited(self, expr: Expr, pattern: ast::Pattern, delim: char) -> Expr {
+        Expr::Like {
+            expr: Arc::new(expr),
+            pattern: pattern.into(),
+            delim: Some(delim),
         }
     }
 

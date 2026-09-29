@@ -251,6 +251,8 @@ Relation: Node<Option<cst::Relation>> = {
 
         Node::with_source_loc(Some(cst::Relation::Has{target: t, field: id6}), Loc::new(l..r, Arc::clone(src)))
     },
+    <l:@L> <t:Add> LIKE "(" <p:Add> "," <d:Str> ")" <r:@R>
+        => Node::with_source_loc(Some(cst::Relation::LikeDelimited{target: t, pattern: p, delimiter: d}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <t:Add> LIKE <p:Add> <r:@R>
         => Node::with_source_loc(Some(cst::Relation::Like{target: t, pattern: p}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <t:Add> IS <n:Add> <e: (IN <Add>)?> <r:@R>

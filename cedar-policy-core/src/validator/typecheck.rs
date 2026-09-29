@@ -1101,6 +1101,34 @@ impl<'a> SingleEnvTypechecker<'a> {
                 })
             }
 
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => {
+                // `like(pattern, delim)` applies to a string — RFC #115.
+                let actual = self.expect_type(
+                    prior_capability,
+                    expr,
+                    Type::primitive_string(),
+                    type_errors,
+                    |actual| match actual {
+                        Type::Entity(EntityKind::AnyEntity | EntityKind::Entity(_)) => {
+                            Some(UnexpectedTypeHelp::TryUsingIs)
+                        }
+                        _ => None,
+                    },
+                );
+                let delim = *delim;
+                actual.then_typecheck(|actual_expr_ty, _| {
+                    TypecheckAnswer::success(
+                        ExprBuilder::with_data(Some(Type::primitive_boolean()))
+                            .with_same_source_loc(e)
+                            .like_delimited(actual_expr_ty, pattern.clone(), delim),
+                    )
+                })
+            }
+
             ExprKind::Is { expr, entity_type } => {
                 self.expect_type(
                     prior_capability,

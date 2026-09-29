@@ -460,7 +460,18 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     ty_enc,
                     &format_smolstr!(
                         "(str.in_re {args} {})",
-                        encode_pattern(p)
+                        encode_pattern(p, None)
+                            .ok_or_else(|| EncodeError::EncodePatternFailed(p.clone()))?
+                    ),
+                )
+                .await
+            }
+            Op::StringLikeExtended(p, delim) => {
+                self.define_term(
+                    ty_enc,
+                    &format_smolstr!(
+                        "(str.in_re {args} {})",
+                        encode_pattern(p, Some(*delim))
                             .ok_or_else(|| EncodeError::EncodePatternFailed(p.clone()))?
                     ),
                 )
@@ -727,16 +738,86 @@ fn encode_op(op: &Op) -> SmolStr {
     }
 }
 
-fn encode_pat_elem(pat_elem: PatternElem) -> Option<SmolStr> {
-    Some(match pat_elem {
-        PatternElem::Wildcard => SmolStr::new_static("(re.* re.allchar)"),
-        PatternElem::Char(c) => {
+/// Encode the regular expression `nonDelim(d)` — the set of single characters
+/// other than `d` — as a union of two SMT-LIB `re.range` intervals.
+///
+/// From RFC #115 (Analyzability):
+/// ```smt2
+/// (re.union (re.range "\u{0}"    "\u{d-1}")
+///           (re.range "\u{d+1}"  "\u{2ffff}"))
+/// ```
+///
+/// - When `d == U+0000`, the low range `[0, d-1]` is empty and omitted;
+///   result is just the high range.
+/// - When `d == SMT_LIB_MAX_CODE_POINT`, the high range is empty and omitted.
+/// - The result is a **union of ranges**, deliberately NOT `(re.inter re.allchar
+///   (re.comp (str.to_re "d")))`. The complement form makes cvc5 time out
+///   (cvc5#12815) because `re.comp` forces NFA→DFA determinization; the
+///   union-of-ranges form stays deterministic and is what the cvc5 maintainers
+///   recommend.
+///
+/// Returns `None` if `d`'s code point exceeds `SMT_LIB_MAX_CODE_POINT` (this
+/// mirrors what `encode_string` does for other out-of-range chars).
+fn encode_non_delim(delim: char) -> Option<String> {
+    let d = delim as u32;
+    if d > SMT_LIB_MAX_CODE_POINT {
+        return None;
+    }
+    let max = SMT_LIB_MAX_CODE_POINT;
+    // Low range: [0, d-1]. Empty when d == 0.
+    let low = if d == 0 {
+        None
+    } else {
+        Some(format!("(re.range \"\\u{{0}}\" \"\\u{{{:x}}}\")", d - 1))
+    };
+    // High range: [d+1, max]. Empty when d == max.
+    let high = if d == max {
+        None
+    } else {
+        Some(format!(
+            "(re.range \"\\u{{{:x}}}\" \"\\u{{{:x}}}\")",
+            d + 1,
+            max
+        ))
+    };
+    match (low, high) {
+        (Some(l), Some(h)) => Some(format!("(re.union {l} {h})")),
+        (Some(l), None) => Some(l),
+        (None, Some(h)) => Some(h),
+        // Both ranges empty is only possible for max == 0, which we know isn't the case.
+        (None, None) => Some(String::from("re.none")),
+    }
+}
+
+/// Encode a `PatternElem` to an SMT-LIB regex fragment.
+///
+/// `delim` is:
+/// - `None` — undelimited `like`: `Wildcard` matches anything (`(re.* re.allchar)`).
+/// - `Some(d)` — delimited `like(pattern, d)`: `Wildcard` matches only non-`d`
+///   characters, using the union-of-ranges encoding described in the RFC and
+///   in [`encode_non_delim`].
+///
+/// `MultiWildcard` (`**`) always encodes as `(re.* re.allchar)` regardless of
+/// delimiter — it's the same language.
+fn encode_pat_elem(pat_elem: PatternElem, delim: Option<char>) -> Option<SmolStr> {
+    Some(match (pat_elem, delim) {
+        // `**`: any run of characters, delimiter included.
+        (PatternElem::MultiWildcard, _) => SmolStr::new_static("(re.* re.allchar)"),
+        // `*` in an undelimited pattern: same as `**`.
+        (PatternElem::Wildcard, None) => SmolStr::new_static("(re.* re.allchar)"),
+        // `*` in a delimited pattern: any run of non-delimiter characters.
+        (PatternElem::Wildcard, Some(d)) => {
+            let nd = encode_non_delim(d)?;
+            format_smolstr!("(re.* {nd})")
+        }
+        // Literal character: escape it and wrap in `str.to_re`.
+        (PatternElem::Char(c), _) => {
             format_smolstr!("(str.to_re \"{}\")", encode_string(&c.to_smolstr())?)
         }
     })
 }
 
-fn encode_pattern(pattern: &OrdPattern) -> Option<SmolStr> {
+fn encode_pattern(pattern: &OrdPattern, delim: Option<char>) -> Option<SmolStr> {
     if pattern.get_elems().is_empty() {
         Some(SmolStr::new_static("(str.to_re \"\")"))
     } else if pattern.get_elems().len() == 1 {
@@ -744,14 +825,14 @@ fn encode_pattern(pattern: &OrdPattern) -> Option<SmolStr> {
             clippy::indexing_slicing,
             reason = "Slice of length 1 can be indexed by 0"
         )]
-        encode_pat_elem(pattern.get_elems()[0])
+        encode_pat_elem(pattern.get_elems()[0], delim)
     } else {
         Some(format_smolstr!(
             "(re.++ {})",
             pattern
                 .iter()
                 .copied()
-                .map(encode_pat_elem)
+                .map(|e| encode_pat_elem(e, delim))
                 .collect::<Option<Vec<_>>>()?
                 .into_iter()
                 .join(" ")
@@ -771,6 +852,156 @@ mod unit_tests {
     use crate::symcc::term_type::TermType;
     use std::collections::BTreeMap;
     use std::sync::Arc;
+
+    /// Unit tests for the delimiter-aware pattern encoding described in RFC #115.
+    ///
+    /// These verify that:
+    /// - `Wildcard` under a delimiter encodes as a union of two `re.range`s
+    ///   (never `re.comp` or `re.inter`).
+    /// - Boundary delimiters (`\u{0}` and `\u{2ffff}`) elide the empty side.
+    /// - `MultiWildcard` encodes as `(re.* re.allchar)` regardless of delimiter.
+    /// - Undelimited encoding is unchanged.
+    mod encoding {
+        use super::super::{encode_pat_elem, encode_pattern};
+        use crate::symcc::type_abbrevs::OrdPattern;
+        use cedar_policy_core::ast::{Pattern, PatternElem};
+
+        fn pat(elems: Vec<PatternElem>) -> OrdPattern {
+            OrdPattern::from(Pattern::from(elems))
+        }
+
+        #[test]
+        fn undelimited_wildcard_unchanged() {
+            let s = encode_pat_elem(PatternElem::Wildcard, None).unwrap();
+            assert_eq!(s.as_str(), "(re.* re.allchar)");
+        }
+
+        #[test]
+        fn multi_wildcard_always_allchar() {
+            let s1 = encode_pat_elem(PatternElem::MultiWildcard, None).unwrap();
+            let s2 = encode_pat_elem(PatternElem::MultiWildcard, Some('.')).unwrap();
+            let s3 = encode_pat_elem(PatternElem::MultiWildcard, Some('/')).unwrap();
+            assert_eq!(s1.as_str(), "(re.* re.allchar)");
+            assert_eq!(s2.as_str(), "(re.* re.allchar)");
+            assert_eq!(s3.as_str(), "(re.* re.allchar)");
+        }
+
+        #[test]
+        fn delimited_wildcard_dot_is_union_of_ranges() {
+            // Delimiter '.' is U+002E — union should exclude only that code point.
+            let s = encode_pat_elem(PatternElem::Wildcard, Some('.')).unwrap();
+            assert_eq!(
+                s.as_str(),
+                "(re.* (re.union (re.range \"\\u{0}\" \"\\u{2d}\") (re.range \"\\u{2f}\" \"\\u{2ffff}\")))"
+            );
+        }
+
+        #[test]
+        fn delimited_wildcard_slash_is_union_of_ranges() {
+            // Delimiter '/' is U+002F.
+            let s = encode_pat_elem(PatternElem::Wildcard, Some('/')).unwrap();
+            assert_eq!(
+                s.as_str(),
+                "(re.* (re.union (re.range \"\\u{0}\" \"\\u{2e}\") (re.range \"\\u{30}\" \"\\u{2ffff}\")))"
+            );
+        }
+
+        #[test]
+        fn delimited_wildcard_never_uses_re_comp_or_re_inter() {
+            // Try a bunch of delimiters — none should produce `re.comp` or `re.inter`.
+            // (cvc5#12815 — those forms make cvc5 time out.)
+            for d in ['.', '/', ':', '\\', ' ', 'a', '\u{1f}', '\u{ffff}'] {
+                let s = encode_pat_elem(PatternElem::Wildcard, Some(d)).unwrap();
+                assert!(
+                    !s.as_str().contains("re.comp"),
+                    "delimiter {d:?} produced re.comp: {s}"
+                );
+                assert!(
+                    !s.as_str().contains("re.inter"),
+                    "delimiter {d:?} produced re.inter: {s}"
+                );
+                assert!(
+                    s.as_str().contains("re.union") || s.as_str().contains("re.range"),
+                    "delimiter {d:?} did not produce a range union: {s}"
+                );
+            }
+        }
+
+        #[test]
+        fn delimited_wildcard_at_zero_omits_low_range() {
+            // Delimiter U+0000 → the low range [0, -1] is empty; only the high range remains.
+            let s = encode_pat_elem(PatternElem::Wildcard, Some('\u{0}')).unwrap();
+            assert_eq!(s.as_str(), "(re.* (re.range \"\\u{1}\" \"\\u{2ffff}\"))");
+        }
+
+        #[test]
+        fn delimited_wildcard_at_max_omits_high_range() {
+            // Delimiter U+2FFFF → high range empty; only low range remains.
+            let s = encode_pat_elem(PatternElem::Wildcard, Some('\u{2ffff}')).unwrap();
+            assert_eq!(s.as_str(), "(re.* (re.range \"\\u{0}\" \"\\u{2fffe}\"))");
+        }
+
+        #[test]
+        fn literal_char_encoding_unchanged_by_delimiter() {
+            // Literal chars encode the same way regardless of delimiter.
+            let s1 = encode_pat_elem(PatternElem::Char('a'), None).unwrap();
+            let s2 = encode_pat_elem(PatternElem::Char('a'), Some('.')).unwrap();
+            assert_eq!(s1, s2);
+            assert_eq!(s1.as_str(), "(str.to_re \"a\")");
+        }
+
+        #[test]
+        fn hostname_pattern_encoding() {
+            // `*.example.com` with delimiter `.` — the canonical hostname case.
+            let elems = vec![
+                PatternElem::Wildcard,
+                PatternElem::Char('.'),
+                PatternElem::Char('e'),
+                PatternElem::Char('x'),
+                PatternElem::Char('a'),
+                PatternElem::Char('m'),
+                PatternElem::Char('p'),
+                PatternElem::Char('l'),
+                PatternElem::Char('e'),
+                PatternElem::Char('.'),
+                PatternElem::Char('c'),
+                PatternElem::Char('o'),
+                PatternElem::Char('m'),
+            ];
+            let s = encode_pattern(&pat(elems), Some('.')).unwrap();
+            assert!(
+                s.as_str().starts_with("(re.++ (re.* (re.union"),
+                "unexpected encoding: {s}"
+            );
+            assert!(!s.as_str().contains("re.comp"));
+            assert!(!s.as_str().contains("re.inter"));
+        }
+
+        #[test]
+        fn double_star_pattern_encoding() {
+            // `**.example.com` with delimiter `.` — `**` encodes as `(re.* re.allchar)`.
+            let elems = vec![
+                PatternElem::MultiWildcard,
+                PatternElem::Char('.'),
+                PatternElem::Char('c'),
+                PatternElem::Char('o'),
+                PatternElem::Char('m'),
+            ];
+            let s = encode_pattern(&pat(elems), Some('.')).unwrap();
+            assert!(
+                s.as_str().starts_with("(re.++ (re.* re.allchar)"),
+                "unexpected encoding for **: {s}"
+            );
+        }
+
+        #[test]
+        fn empty_pattern_still_matches_empty_string() {
+            let s = encode_pattern(&pat(vec![]), None).unwrap();
+            assert_eq!(s.as_str(), "(str.to_re \"\")");
+            let s = encode_pattern(&pat(vec![]), Some('.')).unwrap();
+            assert_eq!(s.as_str(), "(str.to_re \"\")");
+        }
+    }
 
     #[tokio::test]
     async fn declare_type() {

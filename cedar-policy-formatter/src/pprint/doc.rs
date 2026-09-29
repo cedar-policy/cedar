@@ -326,6 +326,31 @@ impl Doc for Node<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
+            // Delimiter-aware `like(pattern, delim)` — RFC #115.
+            Relation::LikeDelimited {
+                target,
+                pattern,
+                delimiter,
+            } => Some(
+                target
+                    .to_doc(context)?
+                    .append(RcDoc::line())
+                    .append(add_comment(
+                        RcDoc::text("like"),
+                        get_comment_after_end(
+                            target.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    ))
+                    .append(RcDoc::text("("))
+                    .append(pattern.to_doc(context)?.nest(context.config.indent_width))
+                    .append(RcDoc::text(","))
+                    .append(RcDoc::line())
+                    .append(delimiter.to_doc(context)?)
+                    .append(RcDoc::text(")"))
+                    .group(),
+            ),
             Relation::IsIn {
                 target,
                 entity_type,

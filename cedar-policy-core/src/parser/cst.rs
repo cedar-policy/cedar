@@ -211,6 +211,15 @@ pub enum Relation {
         /// pattern to match on
         pattern: Node<Add>,
     },
+    /// Built-in 'like(pattern, delimiter)' operation — delimiter-aware form
+    LikeDelimited {
+        /// element to test
+        target: Node<Add>,
+        /// pattern to match on
+        pattern: Node<Add>,
+        /// single-character delimiter string literal
+        delimiter: Node<Str>,
+    },
     /// Built-in '.. is .. (in ..)?' operation
     IsIn {
         /// element that may be an entity type and `in` an entity

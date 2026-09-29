@@ -361,7 +361,9 @@ impl TryFrom<Expr> for ValueKind {
             ExprKind::HasAttr { .. } | ExprKind::ExtHasAttr { .. } => {
                 Err(NotValue::NotValue { loc })
             }
-            ExprKind::Like { .. } => Err(NotValue::NotValue { loc }),
+            ExprKind::Like { .. } | ExprKind::LikeDelimited { .. } => {
+                Err(NotValue::NotValue { loc })
+            }
             ExprKind::Is { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::Set(members) => members
                 .iter()

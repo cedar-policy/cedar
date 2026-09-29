@@ -71,6 +71,11 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             | ExprKind::HasAttr { expr, attr: _ }
             | ExprKind::ExtHasAttr { expr, attrs: _ }
             | ExprKind::Like { expr, pattern: _ }
+            | ExprKind::LikeDelimited {
+                expr,
+                pattern: _,
+                delim: _,
+            }
             | ExprKind::Is {
                 expr,
                 entity_type: _,

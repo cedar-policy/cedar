@@ -256,6 +256,12 @@ pub enum ToASTErrorKind {
     /// Returned when the right hand side of a `like` expression is not a constant pattern literal
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
+    /// Returned when the delimiter of a `like(pattern, delim)` expression is not a single character
+    #[error("delimiter of a `like` expression must be a single character, but got `{0}`")]
+    #[diagnostic(help(
+        "the delimiter must be exactly one Unicode scalar value, e.g. `like(\"*\", \".\")`"
+    ))]
+    InvalidLikeDelimiter(String),
     /// Returned when the right hand side of a `is` expression is not an entity type name
     #[error("right hand side of an `is` expression must be an entity type name, but got `{rhs}`")]
     #[diagnostic(help("{}", invalid_is_help(lhs, rhs)))]

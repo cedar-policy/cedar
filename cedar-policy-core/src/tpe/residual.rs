@@ -248,6 +248,16 @@ impl Residual {
             ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 pattern: pattern.clone(),
+                delim: None,
+            },
+            ast::ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => ResidualKind::Like {
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
+                pattern: pattern.clone(),
+                delim: Some(*delim),
             },
             ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
@@ -383,6 +393,8 @@ pub enum ResidualKind {
         /// To match a literal `*` in the test expression, users can use `\*`.
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
+        /// Optional single-character delimiter for `like(pattern, delim)`.  RFC #115.
+        delim: Option<char>,
     },
     /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.
@@ -546,8 +558,16 @@ impl From<Residual> for Expr {
                     ResidualKind::Is { expr, entity_type } => {
                         builder.is_entity_type(expr.as_ref().clone().into(), entity_type)
                     }
-                    ResidualKind::Like { expr, pattern } => {
-                        builder.like(expr.as_ref().clone().into(), pattern)
+                    ResidualKind::Like {
+                        expr,
+                        pattern,
+                        delim,
+                    } => {
+                        let target = expr.as_ref().clone().into();
+                        match delim {
+                            None => builder.like(target, pattern),
+                            Some(d) => builder.like_delimited(target, pattern, d),
+                        }
                     }
                     ResidualKind::Or { left, right } => {
                         builder.or(left.as_ref().clone().into(), right.as_ref().clone().into())

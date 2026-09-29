@@ -371,6 +371,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.with_expr_kind(ExprKind::Like {
             expr: Arc::new(expr),
             pattern,
+            delim: None,
         })
     }
 

@@ -719,10 +719,23 @@ impl<'e> Evaluator<'e> {
             ExprKind::Like { expr, pattern } => {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {
-                    PartialValue::Value(v) => {
-                        Ok((pattern.wildcard_match(v.get_as_string()?)).into())
-                    }
+                    PartialValue::Value(v) => Ok(pattern.wildcard_match(v.get_as_string()?).into()),
                     PartialValue::Residual(r) => Ok(Expr::like(r, pattern.clone()).into()),
+                }
+            }
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => {
+                let v = self.partial_interpret(expr, slots)?;
+                match v {
+                    PartialValue::Value(v) => Ok(pattern
+                        .wildcard_match_delimited(v.get_as_string()?, *delim)
+                        .into()),
+                    PartialValue::Residual(r) => {
+                        Ok(Expr::like_delimited(r, pattern.clone(), *delim).into())
+                    }
                 }
             }
             ExprKind::Is { expr, entity_type } => {

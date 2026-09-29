@@ -374,13 +374,23 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
-                ast::Expr::like(
-                    ast::Expr::try_from(arg)?,
-                    msg.pattern
-                        .into_iter()
-                        .map(ast::PatternElem::try_from)
-                        .collect::<Result<_, _>>()?,
-                )
+                let target = ast::Expr::try_from(arg)?;
+                let pattern: ast::Pattern = msg
+                    .pattern
+                    .into_iter()
+                    .map(ast::PatternElem::try_from)
+                    .collect::<Result<_, _>>()?;
+                match msg.delim {
+                    None => ast::Expr::like(target, pattern),
+                    Some(s) => {
+                        let d = s.chars().exactly_one().map_err(|e| {
+                            ProtobufConversionError::InvalidValue(format!(
+                                "{e} in `like` delimiter"
+                            ))
+                        })?;
+                        ast::Expr::like_delimited(target, pattern, d)
+                    }
+                }
             }
 
             models::expr::ExprKind::Is(msg) => {
@@ -498,7 +508,11 @@ impl From<&ast::Expr> for models::Expr {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
             }
-            ast::ExprKind::Like { expr, pattern } => {
+            ast::ExprKind::Like {
+                expr,
+                pattern,
+                delim,
+            } => {
                 let mut ppattern: Vec<models::expr::like::PatternElem> =
                     Vec::with_capacity(pattern.len());
                 for value in pattern.iter() {
@@ -507,6 +521,7 @@ impl From<&ast::Expr> for models::Expr {
                 models::expr::ExprKind::Like(Box::new(models::expr::Like {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                     pattern: ppattern,
+                    delim: delim.map(|c| c.to_string()),
                 }))
             }
             ast::ExprKind::Is { expr, entity_type } => {
@@ -707,6 +722,19 @@ impl TryFrom<models::expr::like::PatternElem> for ast::PatternElem {
                     }
                 }
             }
+            models::expr::like::pattern_elem::Data::MultiWildcard(unit) => {
+                match models::expr::like::pattern_elem::MultiWildcard::try_from(unit).map_err(
+                    |e| {
+                        ProtobufConversionError::InvalidValue(format!(
+                            "invalid multi-wildcard: {e}"
+                        ))
+                    },
+                )? {
+                    models::expr::like::pattern_elem::MultiWildcard::Unit => {
+                        Ok(ast::PatternElem::MultiWildcard)
+                    }
+                }
+            }
         }
     }
 }
@@ -720,6 +748,11 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
             ast::PatternElem::Wildcard => Self {
                 data: Some(models::expr::like::pattern_elem::Data::Wildcard(
                     models::expr::like::pattern_elem::Wildcard::Unit.into(),
+                )),
+            },
+            ast::PatternElem::MultiWildcard => Self {
+                data: Some(models::expr::like::pattern_elem::Data::MultiWildcard(
+                    models::expr::like::pattern_elem::MultiWildcard::Unit.into(),
                 )),
             },
         }
@@ -1348,6 +1381,7 @@ mod test {
                     expr_kind: Some(models::expr::ExprKind::Like(Box::new(models::expr::Like {
                         expr: None,
                         pattern: vec![],
+                        delim: None,
                     }))),
                 },
                 "expr",

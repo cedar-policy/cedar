@@ -312,6 +312,14 @@ impl Term {
                     factory::string_like(arg.interpret_memoized(interp, cache), ord_pattern.clone())
                 }
 
+                (Op::StringLikeExtended(ord_pattern, delim), [arg]) => {
+                    factory::string_like_extended(
+                        arg.interpret_memoized(interp, cache),
+                        ord_pattern.clone(),
+                        *delim,
+                    )
+                }
+
                 (Op::Ext(ext_op), [arg]) => {
                     let arg = arg.interpret_memoized(interp, cache);
                     match ext_op {

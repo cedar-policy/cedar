@@ -429,7 +429,7 @@ impl Node<Option<cst::Relation>> {
                     None::<String>,
                 ))
                 .into()),
-            cst::Relation::Like { .. } => Err(self
+            cst::Relation::Like { .. } | cst::Relation::LikeDelimited { .. } => Err(self
                 .to_ast_err(ToASTErrorKind::wrong_node(
                     T::err_str(),
                     "a `like` expression",

@@ -228,16 +228,27 @@ impl Evaluator<'_> {
                     Residual::Error(_) => mk_error(),
                 }
             }
-            ResidualKind::Like { expr, pattern } => {
+            ResidualKind::Like {
+                expr,
+                pattern,
+                delim,
+            } => {
                 let expr = self.interpret(expr);
                 match &expr {
                     Residual::Concrete { value, .. } => match value.get_as_string() {
-                        Ok(s) => mk_concrete(pattern.wildcard_match(s).into()),
+                        Ok(s) => {
+                            let matched = match delim {
+                                Some(d) => pattern.wildcard_match_delimited(s, *d),
+                                None => pattern.wildcard_match(s),
+                            };
+                            mk_concrete(matched.into())
+                        }
                         Err(_) => mk_error(), // <error> like <pattern> => <error>
                     },
                     Residual::Partial { .. } => mk_residual(ResidualKind::Like {
                         expr: Arc::new(expr),
                         pattern: pattern.clone(),
+                        delim: *delim,
                     }),
                     Residual::Error(_) => mk_error(),
                 }

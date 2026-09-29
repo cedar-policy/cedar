@@ -132,6 +132,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
         | ExprKind::ExtHasAttr { expr, .. }
         | ExprKind::UnaryApp { arg: expr, .. }
         | ExprKind::Like { expr, .. }
+        | ExprKind::LikeDelimited { expr, .. }
         | ExprKind::Is { expr, .. } => footprint(expr, env),
         ExprKind::ExtensionFunctionApp { args: exprs, .. } | ExprKind::Set(exprs) => {
             Box::new(exprs.iter().flat_map(|x| footprint(x, env)))

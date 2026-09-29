@@ -38,7 +38,7 @@ use crate::{
         bvadd, bvmul, bvneg, bvnego, bvsaddo, bvsle, bvslt, bvsmulo, bvssubo, bvsub, eq,
         ext_datetime_val, ext_duration_val, if_all_some, if_false, if_some, is_some, ite, not,
         option_get, record_get, record_of, set_intersects, set_is_empty, set_member, set_of,
-        set_subset, some_of, string_like,
+        set_subset, some_of, string_like, string_like_extended,
     },
     term_type::TermType,
     type_abbrevs::*,
@@ -247,6 +247,20 @@ fn compile_app1(op1: UnaryOp, arg: CompileResult) -> Result<CompileResult> {
 fn compile_like(arg: CompileResult, pat: OrdPattern) -> Result<CompileResult> {
     match arg.term.type_of() {
         TermType::String => Ok(arg.map_term(|term| some_of(string_like(term, pat)))),
+        _ => Err(CompileError::TypeError),
+    }
+}
+
+/// Delimiter-aware `like(pattern, delim)`.
+fn compile_like_extended(
+    arg: CompileResult,
+    pat: OrdPattern,
+    delim: char,
+) -> Result<CompileResult> {
+    match arg.term.type_of() {
+        TermType::String => {
+            Ok(arg.map_term(|term| some_of(string_like_extended(term, pat, delim))))
+        }
         _ => Err(CompileError::TypeError),
     }
 }
@@ -1074,6 +1088,17 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res1 = compile(expr, env)?;
             let res1_term = res1.term.clone();
             let res = compile_like(res1.map_term(option_get), pattern.clone().into())?;
+            Ok(res.map_term(|term| if_some(res1_term, term)))
+        }
+        ExprKind::LikeDelimited {
+            expr,
+            pattern,
+            delim,
+        } => {
+            let res1 = compile(expr, env)?;
+            let res1_term = res1.term.clone();
+            let res =
+                compile_like_extended(res1.map_term(option_get), pattern.clone().into(), *delim)?;
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
         ExprKind::Is { expr, entity_type } => {

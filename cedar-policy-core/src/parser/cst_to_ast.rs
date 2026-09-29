@@ -35,7 +35,7 @@
 
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::node::Node;
-use super::unescape::{to_pattern, to_unescaped_string};
+use super::unescape::{to_pattern, to_pattern_delimited, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use super::{cst, Loc};
 #[cfg(feature = "tolerant-ast")]
@@ -1236,6 +1236,29 @@ where
                 .into()),
         }
     }
+
+    /// Convert to a delimited pattern (collapses `**` into MultiWildcard).
+    pub(crate) fn into_pattern_delimited(self) -> Result<Vec<PatternElem>> {
+        match &self {
+            Self::StrLit { lit, .. } => to_pattern_delimited(lit).map_err(|escape_errs| {
+                ParseErrors::new_from_nonempty(
+                    escape_errs.map(|e| self.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                )
+            }),
+            Self::Var { var, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(var.to_string()))
+                .into()),
+            Self::Name { name, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(name.to_string()))
+                .into()),
+            Self::Expr { expr, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(expr.to_string()))
+                .into()),
+            Self::BoolLit { val, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(val.to_string()))
+                .into()),
+        }
+    }
     /// to string literal
     fn into_string_literal(self) -> Result<SmolStr> {
         match &self {
@@ -1432,6 +1455,59 @@ impl Node<Option<cst::Relation>> {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_ref())
                         .like(target, pattern.into()),
+                    loc: self.loc.clone(),
+                })
+            }
+            cst::Relation::LikeDelimited {
+                target,
+                pattern,
+                delimiter,
+            } => {
+                // Validate and extract the delimiter character.
+                let delim_str = delimiter.as_valid_string()?;
+                let delim_unescaped = to_unescaped_string(delim_str).map_err(|escape_errs| {
+                    ParseErrors::new_from_nonempty(
+                        escape_errs
+                            .map(|e| delimiter.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                    )
+                })?;
+                let mut chars = delim_unescaped.chars();
+                let delim_char = match (chars.next(), chars.next()) {
+                    (Some(c), None) => c,
+                    _ => {
+                        return Err(delimiter
+                            .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
+                                delim_unescaped.to_string(),
+                            ))
+                            .into())
+                    }
+                };
+                if delim_char == '*' {
+                    return Err(delimiter
+                        .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
+                            delim_unescaped.to_string(),
+                        ))
+                        .into());
+                }
+                // RFC #115: reject delimiters above SMT-LIB's max code point (U+2FFFF).
+                // Otherwise the symbolic compiler would fail to encode this pattern.
+                // Rust's `char` allows up to U+10FFFF, so this range is reachable.
+                if (delim_char as u32) > 0x2FFFF {
+                    return Err(delimiter
+                        .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
+                            delim_unescaped.to_string(),
+                        ))
+                        .into());
+                }
+                let maybe_target = target.to_expr::<Build>();
+                let maybe_pattern = pattern
+                    .to_expr_or_special::<Build>()?
+                    .into_pattern_delimited();
+                let (target, pattern) = flatten_tuple_2(maybe_target, maybe_pattern)?;
+                Ok(ExprOrSpecial::Expr {
+                    expr: Build::new()
+                        .with_maybe_source_loc(self.loc.as_ref())
+                        .like_delimited(target, pattern.into(), delim_char),
                     loc: self.loc.clone(),
                 })
             }

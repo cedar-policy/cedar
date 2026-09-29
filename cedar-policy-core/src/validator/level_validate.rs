@@ -374,7 +374,7 @@ impl LevelChecker<'_> {
                     }
                 }
             }
-            ExprKind::Like { expr, .. } => {
+            ExprKind::Like { expr, .. } | ExprKind::LikeDelimited { expr, .. } => {
                 self.check_expr_level(expr, env);
             }
             ExprKind::Is { expr, .. } => {

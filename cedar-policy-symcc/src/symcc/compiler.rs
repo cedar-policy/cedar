@@ -117,6 +117,14 @@ fn compile_like(t: Term, pat: OrdPattern) -> Result<Term> {
     }
 }
 
+/// Delimiter-aware `like(pattern, delim)`.
+fn compile_like_extended(t: Term, pat: OrdPattern, delim: char) -> Result<Term> {
+    match t.type_of() {
+        TermType::String => Ok(some_of(factory::string_like_extended(t, pat, delim))),
+        _ => Err(CompileError::TypeError),
+    }
+}
+
 /// In Lean, `compileApp₁` handles this case, but in Rust, `Is` is a separate
 /// `Expr` variant and not part of `UnaryApp`.
 fn compile_is(t: &Term, ety1: &EntityType) -> Result<Term> {
@@ -777,6 +785,17 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
             Ok(if_some(
                 t1.clone(),
                 compile_like(option_get(t1), pattern.clone().into())?,
+            ))
+        }
+        ExprKind::LikeDelimited {
+            expr,
+            pattern,
+            delim,
+        } => {
+            let t1 = compile(expr, env)?;
+            Ok(if_some(
+                t1.clone(),
+                compile_like_extended(option_get(t1), pattern.clone().into(), *delim)?,
             ))
         }
         ExprKind::Is { expr, entity_type } => {

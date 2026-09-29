@@ -149,11 +149,17 @@ impl PartialOrd for OrdPatternElem {
 impl Ord for OrdPatternElem {
     fn cmp(&self, other: &Self) -> Ordering {
         use cedar_policy_core::ast::PatternElem;
+        // Order: Char < Wildcard < MultiWildcard
         match (self.0, other.0) {
             (PatternElem::Char(c1), PatternElem::Char(c2)) => c1.cmp(&c2),
             (PatternElem::Wildcard, PatternElem::Wildcard) => Ordering::Equal,
+            (PatternElem::MultiWildcard, PatternElem::MultiWildcard) => Ordering::Equal,
             (PatternElem::Char(_), PatternElem::Wildcard) => Ordering::Less,
+            (PatternElem::Char(_), PatternElem::MultiWildcard) => Ordering::Less,
+            (PatternElem::Wildcard, PatternElem::MultiWildcard) => Ordering::Less,
             (PatternElem::Wildcard, PatternElem::Char(_)) => Ordering::Greater,
+            (PatternElem::MultiWildcard, PatternElem::Char(_)) => Ordering::Greater,
+            (PatternElem::MultiWildcard, PatternElem::Wildcard) => Ordering::Greater,
         }
     }
 }

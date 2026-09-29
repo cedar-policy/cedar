@@ -153,6 +153,23 @@ pub enum ExprKind<T = ()> {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
+    /// Delimiter-aware regex-like string matching, `like(pattern, delimiter)` (RFC #115).
+    ///
+    /// Semantically distinct from [`ExprKind::Like`]: the pattern's `*` cannot
+    /// cross `delim`, and the pattern may contain a `PatternElem::MultiWildcard`
+    /// (`**`) that can.  Modeled as a separate variant for parity with the Lean
+    /// spec's `UnaryOp.likeDelimited` and the SymCC `Op::StringLikeExtended`,
+    /// and following the `ExtHasAttr`/`HasAttr` precedent.
+    LikeDelimited {
+        /// Expression to test. Must evaluate to String type.
+        expr: Arc<Expr<T>>,
+        /// Pattern to match on.  `*` matches runs of non-delimiter chars;
+        /// `**` (as `PatternElem::MultiWildcard`) matches runs of any chars
+        /// including the delimiter.
+        pattern: Pattern,
+        /// The single-character delimiter.
+        delim: char,
+    },
     /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.
     Is {
@@ -196,6 +213,10 @@ impl<T> ExprKind<T> {
             ExprKind::HasAttr { .. } => 11,
             ExprKind::ExtHasAttr { .. } => 12,
             ExprKind::Like { .. } => 13,
+            // Keep LikeDelimited at a stable discriminant above the existing
+            // kinds so pre-RFC-115 serializations that use discriminants 0-20
+            // don't collide.  RFC #115.
+            ExprKind::LikeDelimited { .. } => 21,
             ExprKind::Set(_) => 14,
             ExprKind::Record(_) => 15,
             ExprKind::Is { .. } => 16,
@@ -433,6 +454,7 @@ impl<T> Expr<T> {
             ExprKind::HasAttr { .. } => Some(Type::Bool),
             ExprKind::ExtHasAttr { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
+            ExprKind::LikeDelimited { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
             ExprKind::Record(_) => Some(Type::Record),
@@ -502,6 +524,15 @@ impl<T> Expr<T> {
             ExprKind::Like { expr, pattern } => {
                 Ok(builder.like(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, pattern))
             }
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => Ok(builder.like_delimited(
+                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+                pattern,
+                delim,
+            )),
             ExprKind::Is { expr, entity_type } => Ok(builder.is_entity_type(
                 Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
                 entity_type,
@@ -767,6 +798,11 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
+    /// Create a delimiter-aware `like(pattern, delim)` expression.
+    pub fn like_delimited(expr: Expr, pattern: Pattern, delim: char) -> Self {
+        ExprBuilder::new().like_delimited(expr, pattern, delim)
+    }
+
     /// Create an `is` expression.
     pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
         ExprBuilder::new().is_entity_type(expr, entity_type)
@@ -875,10 +911,27 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 attrs.clone(),
             )),
-            ExprKind::Like { expr, pattern } => Ok(Expr::like(
-                expr.substitute_general::<T>(definitions)?,
-                pattern.clone(),
-            )),
+            ExprKind::Like { expr, pattern } => Ok(Expr {
+                expr_kind: ExprKind::Like {
+                    expr: Arc::new(expr.substitute_general::<T>(definitions)?),
+                    pattern: pattern.clone(),
+                },
+                source_loc: self.source_loc.clone(),
+                data: self.data.clone(),
+            }),
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => Ok(Expr {
+                expr_kind: ExprKind::LikeDelimited {
+                    expr: Arc::new(expr.substitute_general::<T>(definitions)?),
+                    pattern: pattern.clone(),
+                    delim: *delim,
+                },
+                source_loc: self.source_loc.clone(),
+                data: self.data.clone(),
+            }),
             ExprKind::Set(members) => {
                 let members = members
                     .iter()
@@ -1410,6 +1463,15 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         })
     }
 
+    /// Create a delimiter-aware `like(pattern, delim)` expression.
+    fn like_delimited(self, expr: Expr<T>, pattern: Pattern, delim: char) -> Expr<T> {
+        self.with_expr_kind(ExprKind::LikeDelimited {
+            expr: Arc::new(expr),
+            pattern,
+            delim,
+        })
+    }
+
     /// Create an 'is' expression.
     fn is_entity_type_arc(self, expr: Arc<Expr<T>>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is { expr, entity_type })
@@ -1664,6 +1726,18 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern == pattern1 && expr.eq_shape(expr1),
+            (
+                LikeDelimited {
+                    expr,
+                    pattern,
+                    delim,
+                },
+                LikeDelimited {
+                    expr: expr1,
+                    pattern: pattern1,
+                    delim: delim1,
+                },
+            ) => delim == delim1 && pattern == pattern1 && expr.eq_shape(expr1),
             (Set(elems), Set(elems1)) => {
                 elems.len() == elems1.len()
                     && elems
@@ -1750,6 +1824,15 @@ impl<T> Expr<T> {
             ExprKind::Like { expr, pattern } => {
                 expr.hash_shape(state);
                 pattern.hash(state);
+            }
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => {
+                expr.hash_shape(state);
+                pattern.hash(state);
+                delim.hash(state);
             }
             ExprKind::Set(elems) => {
                 state.write_usize(elems.len());
@@ -1888,6 +1971,21 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern.cmp(pattern1).then_with(|| expr.cmp_shape(expr1)),
+            (
+                LikeDelimited {
+                    expr,
+                    pattern,
+                    delim,
+                },
+                LikeDelimited {
+                    expr: expr1,
+                    pattern: pattern1,
+                    delim: delim1,
+                },
+            ) => delim
+                .cmp(delim1)
+                .then_with(|| pattern.cmp(pattern1))
+                .then_with(|| expr.cmp_shape(expr1)),
             (Set(elems), Set(elems1)) => elems.len().cmp(&elems1.len()).then_with(|| {
                 for (e, e1) in elems.iter().zip(elems1.iter()) {
                     match e.cmp_shape(e1) {
