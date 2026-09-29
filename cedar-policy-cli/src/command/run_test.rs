@@ -284,13 +284,14 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
             serde::de::Error::custom(format!("failed to parse resource `{resource}`: {e}",))
         })?;
 
-        let context = Context::from_json_value(request.context.clone(), self.schema.zip(Some(&action)))
-            .map_err(|e| {
-                serde::de::Error::custom(format!(
-                    "failed to parse context `{}`: {}",
-                    request.context, e
-                ))
-            })?;
+        let context =
+            Context::from_json_value(request.context.clone(), self.schema.zip(Some(&action)))
+                .map_err(|e| {
+                    serde::de::Error::custom(format!(
+                        "failed to parse context `{}`: {}",
+                        request.context, e
+                    ))
+                })?;
 
         let request = Request::new(principal, action, resource, context, self.schema)
             .map_err(|e| serde::de::Error::custom(format!("failed to create request: {e}")))?;
@@ -298,15 +299,13 @@ impl<'de, 'a> DeserializeSeed<'de> for CheckedTestCaseSeed<'a> {
         let entities = if let Some(entities_file) = entities.as_str() {
             let entities_path = self.test_file_dir.join(entities_file);
 
-            let canonical_path = entities_path
-                .canonicalize()
-                .map_err(|e| {
-                    serde::de::Error::custom(format!(
-                        "failed to canonicalize path `{}`: {e}",
-                        entities_path.display()
-                    ))
-                })?;
-    
+            let canonical_path = entities_path.canonicalize().map_err(|e| {
+                serde::de::Error::custom(format!(
+                    "failed to canonicalize path `{}`: {e}",
+                    entities_path.display()
+                ))
+            })?;
+
             let canonical_dir = self.test_file_dir.canonicalize().map_err(|e| {
                 serde::de::Error::custom(format!(
                     "failed to canonicalize test file directory `{}`: {e}",
@@ -511,9 +510,7 @@ mod tests {
         .deserialize(test.into_deserializer());
 
         assert!(result.is_err());
-        let err_msg = result
-            .unwrap_err()
-            .to_string();
+        let err_msg = result.unwrap_err().to_string();
         assert!(err_msg.contains("nonexistent.json"));
     }
 
