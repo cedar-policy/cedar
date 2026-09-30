@@ -507,65 +507,65 @@ impl Residual {
 /// Conversion from `Residual` to `Expr` so that we can use the concrete evaluator for re-authorization
 impl From<Residual> for Expr {
     fn from(value: Residual) -> Expr {
+        Expr::from(&value)
+    }
+}
+
+/// Conversion from `&Residual` to `Expr`, which avoids cloning the residual tree
+impl From<&Residual> for Expr {
+    fn from(value: &Residual) -> Expr {
         match value {
             Residual::Partial { kind, .. } => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
                 match kind {
                     ResidualKind::And { left, right } => {
-                        builder.and(left.as_ref().clone().into(), right.as_ref().clone().into())
+                        builder.and(left.as_ref().into(), right.as_ref().into())
                     }
-                    ResidualKind::BinaryApp { op, arg1, arg2 } => builder.binary_app(
-                        op,
-                        arg1.as_ref().clone().into(),
-                        arg2.as_ref().clone().into(),
-                    ),
+                    ResidualKind::BinaryApp { op, arg1, arg2 } => {
+                        builder.binary_app(*op, arg1.as_ref().into(), arg2.as_ref().into())
+                    }
                     ResidualKind::ExtensionFunctionApp { fn_name, args } => builder
-                        .call_extension_fn(
-                            fn_name,
-                            args.as_ref().clone().into_iter().map(|arg| arg.into()),
-                        )
+                        .call_extension_fn(fn_name.clone(), args.iter().map(Expr::from))
                         .unwrap_infallible(),
                     ResidualKind::GetAttr { expr, attr } => {
-                        builder.get_attr(expr.as_ref().clone().into(), attr)
+                        builder.get_attr(expr.as_ref().into(), attr.clone())
                     }
                     ResidualKind::HasAttr { expr, attr } => {
-                        builder.has_attr(expr.as_ref().clone().into(), attr)
+                        builder.has_attr(expr.as_ref().into(), attr.clone())
                     }
                     ResidualKind::ExtHasAttr { expr, attrs } => {
-                        builder.extended_has_attr(expr.as_ref().clone().into(), attrs)
+                        builder.extended_has_attr(expr.as_ref().into(), attrs.clone())
                     }
                     ResidualKind::If {
                         test_expr,
                         then_expr,
                         else_expr,
                     } => builder.ite(
-                        test_expr.as_ref().clone().into(),
-                        then_expr.as_ref().clone().into(),
-                        else_expr.as_ref().clone().into(),
+                        test_expr.as_ref().into(),
+                        then_expr.as_ref().into(),
+                        else_expr.as_ref().into(),
                     ),
                     ResidualKind::Is { expr, entity_type } => {
-                        builder.is_entity_type(expr.as_ref().clone().into(), entity_type)
+                        builder.is_entity_type(expr.as_ref().into(), entity_type.clone())
                     }
                     ResidualKind::Like { expr, pattern } => {
-                        builder.like(expr.as_ref().clone().into(), pattern)
+                        builder.like(expr.as_ref().into(), pattern.clone())
                     }
                     ResidualKind::Or { left, right } => {
-                        builder.or(left.as_ref().clone().into(), right.as_ref().clone().into())
+                        builder.or(left.as_ref().into(), right.as_ref().into())
                     }
                     #[expect(clippy::expect_used, reason = "record construction should succeed")]
                     ResidualKind::Record(map) => builder
-                        .record(map.as_ref().clone().into_iter().map(|(k, v)| (k, v.into())))
+                        .record(map.iter().map(|(k, v)| (k.clone(), v.into())))
                         .expect("should succeed"),
-                    ResidualKind::Set(set) => {
-                        builder.set(set.as_ref().clone().into_iter().map(|v| v.into()))
-                    }
+                    ResidualKind::Set(set) => builder.set(set.iter().map(Expr::from)),
                     ResidualKind::UnaryApp { op, arg } => {
-                        builder.unary_app(op, arg.as_ref().clone().into())
+                        builder.unary_app(*op, arg.as_ref().into())
                     }
-                    ResidualKind::Var(v) => builder.var(v),
+                    ResidualKind::Var(v) => builder.var(*v),
                 }
             }
-            Residual::Concrete { value, .. } => value.into(),
+            Residual::Concrete { value, .. } => value.clone().into(),
             Residual::Error(_) => {
                 let builder: ast::ExprBuilder<()> = ExprBuilder::with_data(());
                 builder
@@ -862,5 +862,9 @@ pub(super) mod test {
         assert_eq_expr(
             r#"(if principal.foo then {a: User::"alice", b: true} else {a: User::"jane", b: false}).a.foo"#,
         );
+        assert_eq_expr(r#"!principal.foo"#);
+        assert_eq_expr(r#"-principal.num"#);
+        assert_eq_expr(r#"principal is User"#);
+        assert_eq_expr(r#"principal.period.toMilliseconds()"#);
     }
 }
