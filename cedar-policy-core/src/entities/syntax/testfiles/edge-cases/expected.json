@@ -1,0 +1,109 @@
+[
+    {
+        "uid": {
+            "type": "User",
+            "id": "alice smith"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "User",
+            "id": "bob\tbuilder"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "User",
+            "id": "carol \"C\" davis"
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "User",
+            "id": ""
+        },
+        "attrs": {},
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Document",
+            "id": "escapes"
+        },
+        "attrs": {
+            "tab": "col1\tcol2",
+            "newline": "line1\nline2",
+            "quote": "she said \"hello\"",
+            "backslash": "path\\to\\file",
+            "unicode": "エモジ: 😀",
+            "empty": ""
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Config",
+            "id": "settings"
+        },
+        "attrs": {
+            "in": "production",
+            "type": "service",
+            "instance": "primary",
+            "namespace": "default",
+            "tags": "metadata",
+            "true": false,
+            "false": true
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Metrics",
+            "id": "extremes"
+        },
+        "attrs": {
+            "max_long": 9223372036854775807,
+            "min_long": -9223372036854775808,
+            "zero": 0,
+            "negative": -42
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Collection",
+            "id": "singles"
+        },
+        "attrs": {
+            "one_item_set": [
+                42
+            ],
+            "one_item_record": {
+                "only_key": "only_value"
+            },
+            "one_parent_list": [
+                {
+                    "__entity": {
+                        "type": "User",
+                        "id": "alice"
+                    }
+                }
+            ]
+        },
+        "parents": []
+    },
+    {
+        "uid": {
+            "type": "Empty",
+            "id": "no_attrs"
+        },
+        "attrs": {},
+        "parents": []
+    }
+]
