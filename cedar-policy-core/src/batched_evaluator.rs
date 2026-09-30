@@ -72,7 +72,7 @@ fn concrete_request_to_partial(
     let context = match &request.context {
         Some(crate::ast::Context::Value(attrs)) => Some(
             PartialRecord::concrete_context_for_action(attrs, &action, schema)
-                .ok_or(PartialRequestError {})?,
+                .map_err(|_| PartialRequestError {})?,
         ),
         Some(crate::ast::Context::RestrictedResidual(_)) => {
             return Err(PartialRequestError {}.into())

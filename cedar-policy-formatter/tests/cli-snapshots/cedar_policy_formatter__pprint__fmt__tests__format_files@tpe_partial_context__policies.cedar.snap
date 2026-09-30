@@ -1,0 +1,12 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tpe_partial_context/policies.cedar
+---
+@id("has-mfa")
+permit (
+  principal,
+  action == Action::"read",
+  resource
+)
+when { context has mfa };
