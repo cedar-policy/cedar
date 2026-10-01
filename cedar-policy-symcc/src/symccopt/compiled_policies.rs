@@ -87,7 +87,7 @@ impl CompiledPolicy {
             policy,
             env,
             compiled_schema.schema(),
-            compiled_schema.sym_env(&env)?
+            compiled_schema.sym_env(&env)?,
         )
     }
 
@@ -217,7 +217,7 @@ impl CompiledPolicySet {
             pset,
             env,
             compiled_schema.schema(),
-            compiled_schema.sym_env(&env)?
+            compiled_schema.sym_env(&env)?,
         )
     }
 
@@ -429,12 +429,13 @@ mod test {
         let compiled_schema = CompiledSchema::new(&schema).unwrap();
 
         let compiled1 =
-            CompiledPolicy::compile_with_compiled_schema(&policy, &env1, &compiled_schema)
-                .unwrap();
+            CompiledPolicy::compile_with_compiled_schema(&policy, &env1, &compiled_schema).unwrap();
         let compiled2 =
-            CompiledPolicy::compile_with_compiled_schema(&policy, &env2, &compiled_schema)
-                .unwrap();
+            CompiledPolicy::compile_with_compiled_schema(&policy, &env2, &compiled_schema).unwrap();
 
-        assert!(Arc::ptr_eq(&compiled1.symenv.entities, &compiled2.symenv.entities));
+        assert!(Arc::ptr_eq(
+            &compiled1.symenv.entities,
+            &compiled2.symenv.entities
+        ));
     }
 }
