@@ -902,27 +902,19 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 attrs.clone(),
             )),
-            ExprKind::Like { expr, pattern } => Ok(Expr {
-                expr_kind: ExprKind::Like {
-                    expr: Arc::new(expr.substitute_general::<T>(definitions)?),
-                    pattern: pattern.clone(),
-                },
-                source_loc: self.source_loc.clone(),
-                data: self.data.clone(),
-            }),
+            ExprKind::Like { expr, pattern } => Ok(Expr::like(
+                expr.substitute_general::<T>(definitions)?,
+                pattern.clone(),
+            )),
             ExprKind::LikeDelimited {
                 expr,
                 pattern,
                 delim,
-            } => Ok(Expr {
-                expr_kind: ExprKind::LikeDelimited {
-                    expr: Arc::new(expr.substitute_general::<T>(definitions)?),
-                    pattern: pattern.clone(),
-                    delim: *delim,
-                },
-                source_loc: self.source_loc.clone(),
-                data: self.data.clone(),
-            }),
+            } => Ok(Expr::like_delimited(
+                expr.substitute_general::<T>(definitions)?,
+                pattern.clone(),
+                *delim,
+            )),
             ExprKind::Set(members) => {
                 let members = members
                     .iter()

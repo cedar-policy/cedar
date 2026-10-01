@@ -508,7 +508,19 @@ impl From<&ast::Expr> for models::Expr {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
             }
-            ast::ExprKind::Like {
+            ast::ExprKind::Like { expr, pattern } => {
+                let mut ppattern: Vec<models::expr::like::PatternElem> =
+                    Vec::with_capacity(pattern.len());
+                for value in pattern.iter() {
+                    ppattern.push(models::expr::like::PatternElem::from(value));
+                }
+                models::expr::ExprKind::Like(Box::new(models::expr::Like {
+                    expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
+                    pattern: ppattern,
+                    delim: None,
+                }))
+            }
+            ast::ExprKind::LikeDelimited {
                 expr,
                 pattern,
                 delim,
@@ -521,7 +533,7 @@ impl From<&ast::Expr> for models::Expr {
                 models::expr::ExprKind::Like(Box::new(models::expr::Like {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                     pattern: ppattern,
-                    delim: delim.map(|c| c.to_string()),
+                    delim: Some(delim.to_string()),
                 }))
             }
             ast::ExprKind::Is { expr, entity_type } => {

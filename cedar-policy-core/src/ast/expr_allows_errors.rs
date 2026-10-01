@@ -371,7 +371,15 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self.with_expr_kind(ExprKind::Like {
             expr: Arc::new(expr),
             pattern,
-            delim: None,
+        })
+    }
+
+    /// Create a delimiter-aware `like(pattern, delim)` expression.
+    fn like_delimited(self, expr: Expr<T>, pattern: Pattern, delim: char) -> Expr<T> {
+        self.with_expr_kind(ExprKind::LikeDelimited {
+            expr: Arc::new(expr),
+            pattern,
+            delim,
         })
     }
 
