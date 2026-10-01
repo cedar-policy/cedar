@@ -153,21 +153,15 @@ pub enum ExprKind<T = ()> {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
-    /// Delimiter-aware regex-like string matching, `like(pattern, delimiter)` (RFC #115).
-    ///
-    /// Semantically distinct from [`ExprKind::Like`]: the pattern's `*` cannot
-    /// cross `delim`, and the pattern may contain a `PatternElem::MultiWildcard`
-    /// (`**`) that can.  Modeled as a separate variant for parity with the Lean
-    /// spec's `UnaryOp.likeDelimited` and the SymCC `Op::StringLikeExtended`,
-    /// and following the `ExtHasAttr`/`HasAttr` precedent.
+    /// Delimiter-aware regex-like string matching, `like(pattern, delimiter)`.
+    /// `*` in the pattern does not match the delimiter; `**` does.
     LikeDelimited {
-        /// Expression to test. Must evaluate to String type.
+        /// Expression to test. Must evaluate to String type
         expr: Arc<Expr<T>>,
-        /// Pattern to match on.  `*` matches runs of non-delimiter chars;
-        /// `**` (as `PatternElem::MultiWildcard`) matches runs of any chars
-        /// including the delimiter.
+        /// Pattern to match on. `*` matches any run of non-delimiter chars;
+        /// `**` (as `PatternElem::MultiWildcard`) matches any run of chars.
         pattern: Pattern,
-        /// The single-character delimiter.
+        /// Single-character delimiter.
         delim: char,
     },
     /// Entity type test. Does the first argument have the entity type
@@ -213,9 +207,6 @@ impl<T> ExprKind<T> {
             ExprKind::HasAttr { .. } => 11,
             ExprKind::ExtHasAttr { .. } => 12,
             ExprKind::Like { .. } => 13,
-            // Keep LikeDelimited at a stable discriminant above the existing
-            // kinds so pre-RFC-115 serializations that use discriminants 0-20
-            // don't collide.  RFC #115.
             ExprKind::LikeDelimited { .. } => 21,
             ExprKind::Set(_) => 14,
             ExprKind::Record(_) => 15,
@@ -798,7 +789,7 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
-    /// Create a delimiter-aware `like(pattern, delim)` expression.
+    /// Create a delimited 'like' expression.
     pub fn like_delimited(expr: Expr, pattern: Pattern, delim: char) -> Self {
         ExprBuilder::new().like_delimited(expr, pattern, delim)
     }
@@ -1463,7 +1454,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         })
     }
 
-    /// Create a delimiter-aware `like(pattern, delim)` expression.
+    /// Create a delimited 'like' expression.
     fn like_delimited(self, expr: Expr<T>, pattern: Pattern, delim: char) -> Expr<T> {
         self.with_expr_kind(ExprKind::LikeDelimited {
             expr: Arc::new(expr),

@@ -262,17 +262,15 @@ message Expr {
     message Like {
         Expr expr = 1;
         repeated PatternElem pattern = 2;
-        // RFC #115: single-character delimiter for `like(pattern, delim)`.
-        // Absent = undelimited `like`. When present, must be exactly one
-        // Unicode scalar value (Rust `char`, encoded here as UTF-8).
+        // Single-character delimiter for the delimited 'like' form.
+        // Absent for the undelimited form. Must be exactly one Unicode scalar
+        // value, encoded as UTF-8.
         optional string delim = 3;
 
         message PatternElem {
             oneof data {
                 Wildcard wildcard = 1;
                 string c = 2;
-                // RFC #115: `**` matches any run of characters, delimiter included.
-                // Only produced under a delimited `like(pattern, delim)` form.
                 MultiWildcard multi_wildcard = 3;
             }
 

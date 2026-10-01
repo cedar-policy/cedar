@@ -326,7 +326,6 @@ impl Doc for Node<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
-            // Delimiter-aware `like(pattern, delim)` — RFC #115.
             Relation::LikeDelimited {
                 target,
                 pattern,

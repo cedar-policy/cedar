@@ -211,7 +211,7 @@ pub enum Relation {
         /// pattern to match on
         pattern: Node<Add>,
     },
-    /// Built-in 'like(pattern, delimiter)' operation — delimiter-aware form
+    /// Built-in 'like(pattern, delimiter)' operation
     LikeDelimited {
         /// element to test
         target: Node<Add>,

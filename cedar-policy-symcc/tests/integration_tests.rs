@@ -2720,16 +2720,8 @@ mod bool_tags {
     }
 }
 
-/// End-to-end SMT-solver tests for delimiter-aware `like(pattern, delim)`.
-///
-/// These tests exercise the union-of-ranges encoding from RFC #115. They verify
-/// two things:
-///
-/// 1. **Correctness of the encoding.** cvc5 agrees with the intuition — e.g.
-///    `*.example.com` under `.` really is stricter than `**.example.com`.
-/// 2. **Performance.** The union-of-ranges form should let cvc5 dispatch every
-///    query in well under a second. If any of these blows up, we've fallen into
-///    the `re.comp` / NFA-determinization trap from cvc5#12815.
+/// SMT-solver tests for delimited `like(pattern, delim)`. The per-query
+/// timeout guards against the cvc5#12815 regression under `re.comp`.
 mod delimited_like_smt {
     use std::time::Instant;
 
@@ -2758,8 +2750,6 @@ mod delimited_like_smt {
         )
     }
 
-    /// Guardrail: no query in this module should take more than 5 seconds.
-    /// If it does, that's the `re.comp` performance regression from cvc5#12815.
     const PER_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
     async fn time_check<F, Fut>(label: &str, f: F)
@@ -2773,16 +2763,11 @@ mod delimited_like_smt {
         eprintln!("[delimited_like_smt] {label}: {elapsed:?}");
         assert!(
             elapsed < PER_QUERY_TIMEOUT,
-            "SMT query `{label}` took {elapsed:?}, which exceeds the {PER_QUERY_TIMEOUT:?} \
-             guardrail. This is the symptom of the `re.comp` cvc5#12815 regression; \
-             the union-of-ranges encoding should complete promptly."
+            "SMT query `{label}` took {elapsed:?} (over the {PER_QUERY_TIMEOUT:?} limit)"
         );
     }
 
-    /// `*.example.com` matches strictly less than `**.example.com` under delimiter `.`,
-    /// so the first implies the second but not vice versa.
-    ///
-    /// Under `re.comp`, this query was one of the slow ones in cvc5#12815.
+    /// `*.example.com` under `.` implies `**.example.com` under `.`.
     #[tokio::test]
     async fn star_implies_double_star_hostname() {
         let schema = string_context_schema();
@@ -2790,13 +2775,11 @@ mod delimited_like_smt {
         let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
         let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
 
-        // Strict: exactly one subdomain segment.
         let strict = utils::pset_from_text(
             r#"permit(principal, action, resource)
             when { context.host like("*.example.com", ".") };"#,
             &validator,
         );
-        // Permissive: any number of subdomain segments.
         let permissive = utils::pset_from_text(
             r#"permit(principal, action, resource)
             when { context.host like("**.example.com", ".") };"#,
@@ -2813,9 +2796,7 @@ mod delimited_like_smt {
         .await;
     }
 
-    /// Delimited `*.example.com` (with `.`) is STRICTLY stronger than
-    /// undelimited `*.example.com` — the delimited form excludes multi-level
-    /// hosts that the undelimited form admits.
+    /// Delimited `*.example.com` is strictly stronger than undelimited.
     #[tokio::test]
     async fn delimited_stronger_than_undelimited() {
         let schema = string_context_schema();
@@ -2844,8 +2825,7 @@ mod delimited_like_smt {
         .await;
     }
 
-    /// `**` under any delimiter is the same regex as undelimited `*` (both are
-    /// `(re.* re.allchar)`), so the two forms should be equivalent as policies.
+    /// Delimited `**` is equivalent to undelimited `*`.
     #[tokio::test]
     async fn double_star_equivalent_to_undelimited_star() {
         let schema = string_context_schema();
@@ -2870,8 +2850,7 @@ mod delimited_like_smt {
         .await;
     }
 
-    /// Two different delimiters — the hostname wildcard is not equivalent to
-    /// the path wildcard, because they exclude different characters.
+    /// The same pattern under different delimiters is not equivalent.
     #[tokio::test]
     async fn different_delimiters_not_equivalent() {
         let schema = string_context_schema();
@@ -2879,7 +2858,6 @@ mod delimited_like_smt {
         let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
         let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
 
-        // Same pattern text, different delimiters — different regexes.
         let dot_delim = utils::pset_from_text(
             r#"permit(principal, action, resource)
             when { context.host like("*", ".") };"#,
@@ -2897,9 +2875,7 @@ mod delimited_like_smt {
         .await;
     }
 
-    /// A path pattern with two internal `*`s under `/`. This is the kind of
-    /// query cvc5#12815 was filed on — multiple non-delimiter wildcards
-    /// alternating with literals.
+    /// Path pattern with multiple non-delimiter wildcards.
     #[tokio::test]
     async fn multi_wildcard_path_pattern() {
         let schema = string_context_schema();
@@ -2907,7 +2883,6 @@ mod delimited_like_smt {
         let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
         let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
 
-        // Two independent path patterns; second is strictly narrower.
         let broad = utils::pset_from_text(
             r#"permit(principal, action, resource)
             when { context.path like("/repos/*/pulls/*/reviews", "/") };"#,

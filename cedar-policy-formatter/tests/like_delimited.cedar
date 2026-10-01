@@ -1,4 +1,4 @@
-// Delimiter-aware `like(pattern, delim)` from RFC #115.
+// Delimiter-aware `like(pattern, delim)`.
 permit(principal, action, resource) when {
   context.host like("*.example.com", ".")
 };

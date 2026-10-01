@@ -117,7 +117,7 @@ impl<'de> Deserialize<'de> for Expr {
 pub enum PatternElem {
     /// The wildcard asterisk
     Wildcard,
-    /// The double wildcard `**` (only produced by the delimited `like` form).
+    /// The double wildcard `**`
     MultiWildcard,
     /// A string without any wildcards
     Literal(SmolStr),
@@ -369,9 +369,7 @@ pub enum ExprNoExt {
         left: Arc<Expr>,
         /// Pattern
         pattern: Vec<PatternElem>,
-        /// Optional single-character delimiter for the delimiter-aware
-        /// `like(pattern, delim)` form. When absent, this is the standard
-        /// undelimited `like`.  RFC #115.
+        /// Optional single-character delimiter for the delimited 'like' form.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         delim: Option<char>,
     },

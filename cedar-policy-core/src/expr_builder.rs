@@ -245,7 +245,7 @@ pub trait ExprBuilder: Clone {
     /// Create a 'like' expression.
     fn like(self, expr: Self::Expr, pattern: Pattern) -> Self::Expr;
 
-    /// Create a delimiter-aware 'like' expression.
+    /// Create a delimited 'like' expression.
     fn like_delimited(self, expr: Self::Expr, pattern: Pattern, delim: char) -> Self::Expr;
 
     /// Create an 'is' expression.

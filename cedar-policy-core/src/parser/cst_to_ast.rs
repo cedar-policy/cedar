@@ -1237,7 +1237,6 @@ where
         }
     }
 
-    /// Convert to a delimited pattern (collapses `**` into MultiWildcard).
     pub(crate) fn into_pattern_delimited(self) -> Result<Vec<PatternElem>> {
         match &self {
             Self::StrLit { lit, .. } => to_pattern_delimited(lit).map_err(|escape_errs| {
@@ -1463,7 +1462,6 @@ impl Node<Option<cst::Relation>> {
                 pattern,
                 delimiter,
             } => {
-                // Validate and extract the delimiter character.
                 let delim_str = delimiter.as_valid_string()?;
                 let delim_unescaped = to_unescaped_string(delim_str).map_err(|escape_errs| {
                     ParseErrors::new_from_nonempty(
@@ -1489,9 +1487,8 @@ impl Node<Option<cst::Relation>> {
                         ))
                         .into());
                 }
-                // RFC #115: reject delimiters above SMT-LIB's max code point (U+2FFFF).
-                // Otherwise the symbolic compiler would fail to encode this pattern.
-                // Rust's `char` allows up to U+10FFFF, so this range is reachable.
+                // Delimiters above SMT-LIB's max code point can't be encoded by
+                // the symbolic compiler.
                 if (delim_char as u32) > 0x2FFFF {
                     return Err(delimiter
                         .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(

@@ -236,11 +236,9 @@ pub trait ExprVisitor {
         self.visit_expr(expr)
     }
 
-    /// Visits a delimiter-aware pattern-matching expression
-    /// (e.g., `expr like("pat", ".")`).  RFC #115.
+    /// Visits a delimited pattern-matching expression (e.g., `expr like("pat", ".")`).
     ///
-    /// Recursively visits the target expression.  Default implementation
-    /// ignores the delimiter; override to inspect it.
+    /// Recursively visits the target expression.
     fn visit_like_delimited(
         &mut self,
         expr: &Arc<Expr>,

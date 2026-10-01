@@ -1024,16 +1024,12 @@ mod tests {
 
     #[test]
     fn test_like_delimited_roundtrip() {
-        // Delimited `like(pattern, delim)` — RFC #115. Round-trip must
-        // preserve the delimiter through ast -> pst -> ast.
         let cases = [
             r#""api.example.com" like("*.example.com", ".")"#,
             r#""deep.api.example.com" like("**.example.com", ".")"#,
             r#""/v1/chat" like("/v1/**", "/")"#,
             r#""/repos/o/pulls/1/reviews" like("/repos/*/pulls/*/reviews", "/")"#,
-            // Non-ASCII delimiter (escape sequence).
             r#""a\tb" like("a\tb", "\t")"#,
-            // Windows-style backslash delimiter.
             r#""C:\\foo" like("C:*", "\\")"#,
         ];
 

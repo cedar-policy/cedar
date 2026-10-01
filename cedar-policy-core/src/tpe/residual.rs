@@ -393,7 +393,7 @@ pub enum ResidualKind {
         /// To match a literal `*` in the test expression, users can use `\*`.
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
-        /// Optional single-character delimiter for `like(pattern, delim)`.  RFC #115.
+        /// Optional single-character delimiter for the delimited 'like' form.
         delim: Option<char>,
     },
     /// Entity type test. Does the first argument have the entity type

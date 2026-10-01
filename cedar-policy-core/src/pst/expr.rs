@@ -652,7 +652,7 @@ pub enum PatternElem {
     Char(char),
     /// A wildcard (`*`) matching zero or more characters
     Wildcard,
-    /// The double wildcard `**` (only produced by the delimited `like` form).
+    /// The double wildcard `**`
     MultiWildcard,
 }
 
@@ -736,8 +736,7 @@ pub enum Expr {
         expr: Arc<Expr>,
         /// Pattern to match against
         pattern: Vec<PatternElem>,
-        /// Optional single-character delimiter for the delimiter-aware
-        /// `like(pattern, delim)` form.  RFC #115.
+        /// Optional single-character delimiter for the delimited 'like' form.
         delim: Option<char>,
     },
     /// Entity type test, optionally combined with a hierarchy check.

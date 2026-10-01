@@ -4,7 +4,7 @@ assertion_line: 270
 expression: formatted
 input_file: cedar-policy-formatter/tests/like_delimited.cedar
 ---
-// Delimiter-aware `like(pattern, delim)` from RFC #115.
+// Delimiter-aware `like(pattern, delim)`.
 permit (principal, action, resource)
 when { context.host like("*.example.com", ".") };
 

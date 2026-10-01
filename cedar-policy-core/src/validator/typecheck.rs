@@ -1106,7 +1106,6 @@ impl<'a> SingleEnvTypechecker<'a> {
                 pattern,
                 delim,
             } => {
-                // `like(pattern, delim)` applies to a string — RFC #115.
                 let actual = self.expect_type(
                     prior_capability,
                     expr,

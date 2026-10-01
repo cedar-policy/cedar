@@ -22,18 +22,11 @@ use std::sync::Arc;
 pub enum PatternElem {
     /// A character literal
     Char(char),
-    /// The wildcard `*`
-    ///
-    /// In undelimited `like`, matches any run of characters.
-    /// In delimited `like(pattern, delim)`, matches any run of characters
-    /// that does not include the delimiter.
+    /// The wildcard `*`. Matches any run of characters, excluding the
+    /// delimiter under a delimited `like`.
     Wildcard,
-    /// The double wildcard `**`
-    ///
-    /// Only produced by the delimited parser. Matches any run of characters
-    /// including the delimiter. In undelimited patterns, `**` remains two
-    /// adjacent `Wildcard`s (the language is the same, so behaviour is
-    /// preserved).
+    /// The double wildcard `**`. Only produced by the delimited parser;
+    /// matches any run of characters.
     MultiWildcard,
 }
 
@@ -108,12 +101,7 @@ impl PatternElem {
     fn match_char(self, text_char: char) -> bool {
         match self {
             PatternElem::Char(c) => text_char == c,
-            PatternElem::Wildcard => true,
-            // MultiWildcard is only produced by the delimited parser; when
-            // encountered in an undelimited context (e.g. legacy `wildcard_match`
-            // being called on a pattern that somehow contains one), treat as
-            // any-character just like Wildcard.
-            PatternElem::MultiWildcard => true,
+            PatternElem::Wildcard | PatternElem::MultiWildcard => true,
         }
     }
     fn is_wildcard(self) -> bool {
@@ -123,20 +111,8 @@ impl PatternElem {
 
 impl Pattern {
     /// Find if the argument text matches the pattern under a delimiter.
-    ///
-    /// Uses the same memoised dynamic-programming algorithm as the Lean spec
-    /// `wildcardMatchDelimitedIdx` in
-    /// `cedar-spec/cedar-lean/Cedar/Spec/WildcardDelimited.lean`.
-    ///
-    /// Semantics:
-    /// - `PatternElem::MultiWildcard` (`**`) matches any run of characters,
-    ///   including the delimiter.
-    /// - `PatternElem::Wildcard` (`*`) matches any run of characters that does
-    ///   *not* include the delimiter.
-    /// - `PatternElem::Char(c)` matches exactly `c`.
-    ///
-    /// Complexity: O(|text| × |pattern|) time and space (each `(i, j)` cell
-    /// is computed at most once).
+    /// `*` matches any run of non-delimiter characters, `**` matches any
+    /// run of characters.
     pub fn wildcard_match_delimited(&self, text: &str, delim: char) -> bool {
         let pattern = self.get_elems();
         let text: Vec<char> = text.chars().collect();
@@ -206,10 +182,6 @@ impl Pattern {
 }
 
 /// Memoised DP for delimiter-aware wildcard matching.
-///
-/// This is a direct port of `wildcardMatchDelimitedIdx` in the Lean spec
-/// (`cedar-spec/cedar-lean/Cedar/Spec/WildcardDelimited.lean`). Each `(i, j)`
-/// cell of the memo table is computed at most once.
 fn wildcard_match_delimited_idx(
     text: &[char],
     pattern: &[PatternElem],
@@ -222,10 +194,8 @@ fn wildcard_match_delimited_idx(
         return b;
     }
     let result = if j == pattern.len() {
-        // Pattern exhausted: match iff text is also exhausted.
         i == text.len()
     } else if i == text.len() {
-        // Text exhausted, pattern non-empty: only wildcards may match empty tail.
         #[expect(
             clippy::indexing_slicing,
             reason = "j < pattern.len() by the else branch above"
@@ -237,26 +207,22 @@ fn wildcard_match_delimited_idx(
             PatternElem::Char(_) => false,
         }
     } else {
-        // Both non-exhausted: case-split on pattern head.
         #[expect(
             clippy::indexing_slicing,
             reason = "i < text.len() and j < pattern.len()"
         )]
         match pattern[j] {
             PatternElem::MultiWildcard => {
-                // `**`: skip pattern OR consume one arbitrary char.
                 wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
                     || wildcard_match_delimited_idx(text, pattern, i + 1, j, delim, cache)
             }
             PatternElem::Wildcard => {
-                // `*`: skip pattern OR consume one non-delimiter char.
                 let c = text[i];
                 wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
                     || (c != delim
                         && wildcard_match_delimited_idx(text, pattern, i + 1, j, delim, cache))
             }
             PatternElem::Char(k) => {
-                // Literal: consume iff exact match.
                 text[i] == k
                     && wildcard_match_delimited_idx(text, pattern, i + 1, j + 1, delim, cache)
             }

@@ -606,7 +606,6 @@ mod tests {
 
     #[test]
     fn test_est_expr_like_delimited() {
-        // Delimited `like("**.example.com", ".")` — RFC #115 JSON form.
         let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"MultiWildcard": null}, {"Literal": ".example.com"}], "delim": "."}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
@@ -622,7 +621,6 @@ mod tests {
 
     #[test]
     fn test_est_expr_like_delim_absent_defaults_to_none() {
-        // Backward compat: an EST without the `delim` field parses as undelimited.
         let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"Wildcard": null}]}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         assert_matches!(
@@ -633,8 +631,6 @@ mod tests {
 
     #[test]
     fn test_est_expr_like_undelimited_serializes_without_delim_field() {
-        // Undelimited EST must serialize byte-identically to pre-RFC output
-        // (no `delim` field in the JSON).
         use crate::ast;
         let ast_expr = ast::Expr::like(
             ast::Expr::val("x"),
@@ -664,7 +660,6 @@ mod tests {
             json.contains("\"delim\":\".\""),
             "expected `delim` field in JSON: {json}"
         );
-        // Round-trip: parse it back and check the delimiter survives.
         let parsed: est::Expr = serde_json::from_str(&json).unwrap();
         assert_matches!(
             &parsed,
