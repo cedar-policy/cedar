@@ -274,13 +274,14 @@ message Expr {
                 MultiWildcard multi_wildcard = 3;
             }
 
-            // Zero-arity constructors represented as enums with only one member
+            // Zero-arity constructors represented as enums with only one
+            // member each. Proto3 hoists enum values to the parent scope, so
+            // the two markers must have distinct names.
             enum Wildcard {
-                // the one option for the enum
-                unit = 0;
+                WILDCARD_UNIT = 0;
             }
             enum MultiWildcard {
-                unit = 0;
+                MULTI_WILDCARD_UNIT = 0;
             }
         }
     }
