@@ -19,6 +19,7 @@
 //! A symbolic environment is _literal_ when it consists of literal terms and
 //! interpreted functions (UDFs).
 
+use super::arc_ord::ArcOrd;
 use super::function::{
     self,
     UnaryFunction::{self, Udf, Uuf},
@@ -67,7 +68,7 @@ impl SymRequest {
                 id: "resource".into(),
                 ty: TermType::Bool,
             }),
-            context: Term::Record(Arc::new(BTreeMap::new())),
+            context: Term::Record(ArcOrd::new(BTreeMap::new())),
         }
     }
 
@@ -194,13 +195,13 @@ impl SymEntityData {
         match EntitySchemaEntry::of_schema(ety, validator_ety, schema) {
             // Corresponds to `SymEntityData.ofStandardEntityType` in Lean
             EntitySchemaEntry::Standard(sch) => {
-                let attrs_uuf = Uuf(Arc::new(op::Uuf {
+                let attrs_uuf = Uuf(ArcOrd::new(op::Uuf {
                     id: format_smolstr!("attrs[{ety}]"),
                     arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                     out: TermType::of_type(&record(sch.attrs))?,
                 }));
                 let ancs_uuf = |anc_ty: &EntityType| {
-                    Uuf(Arc::new(op::Uuf {
+                    Uuf(ArcOrd::new(op::Uuf {
                         id: format_smolstr!("ancs[{ety}, {anc_ty}]"),
                         arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                         out: TermType::set_of(entity(anc_ty.clone())), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
@@ -208,12 +209,12 @@ impl SymEntityData {
                 };
                 let sym_tags = |tag_ty: Type| -> Result<SymTags, CompileError> {
                     Ok(SymTags {
-                        keys: Uuf(Arc::new(op::Uuf {
+                        keys: Uuf(ArcOrd::new(op::Uuf {
                             id: format_smolstr!("tagKeys[{ety}]"),
                             arg: entity(ety.clone()), // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                             out: TermType::set_of(TermType::String),
                         })),
-                        vals: Uuf(Arc::new(op::Uuf {
+                        vals: Uuf(ArcOrd::new(op::Uuf {
                             id: format_smolstr!("tagVals[{ety}]"),
                             arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
                             out: TermType::of_type(&tag_ty)?,
@@ -238,13 +239,13 @@ impl SymEntityData {
 
             // Corresponds to `SymEntityData.ofEnumEntityType` in Lean
             EntitySchemaEntry::Enum(eids) => {
-                let attrs_udf = Udf(Arc::new(function::Udf {
+                let attrs_udf = Udf(ArcOrd::new(function::Udf {
                     arg: entity(ety.clone()),
                     out: TermType::Record {
-                        rty: Arc::new(BTreeMap::new()),
+                        rty: ArcOrd::new(BTreeMap::new()),
                     },
-                    table: Arc::new(BTreeMap::new()),
-                    default: Term::Record(Arc::new(BTreeMap::new())),
+                    table: ArcOrd::new(BTreeMap::new()),
+                    default: Term::Record(ArcOrd::new(BTreeMap::new())),
                 }));
                 Ok(SymEntityData {
                     attrs: attrs_udf,
@@ -261,13 +262,13 @@ impl SymEntityData {
         act_tys: impl IntoIterator<Item = &'a EntityType>,
         actions: &ActionSchemaEntries,
     ) -> Self {
-        let attrs_udf = Udf(Arc::new(function::Udf {
+        let attrs_udf = Udf(ArcOrd::new(function::Udf {
             arg: entity(act_ty.clone()),
             out: TermType::Record {
-                rty: Arc::new(BTreeMap::new()),
+                rty: ArcOrd::new(BTreeMap::new()),
             },
-            table: Arc::new(BTreeMap::new()),
-            default: Term::Record(Arc::new(BTreeMap::new())),
+            table: ArcOrd::new(BTreeMap::new()),
+            default: Term::Record(ArcOrd::new(BTreeMap::new())),
         }));
         let term_of_type = |ety: EntityType, uid: EntityUID| -> Option<Term> {
             if uid.type_name() == &ety {
@@ -278,7 +279,7 @@ impl SymEntityData {
         };
         let ancs_term = |anc_ty: &EntityType, ancs: &BTreeSet<EntityUID>| -> Term {
             Term::Set {
-                elts: Arc::new(
+                elts: ArcOrd::new(
                     ancs.iter()
                         .filter_map(|anc| term_of_type(anc_ty.clone(), anc.clone()))
                         .collect(),
@@ -287,10 +288,10 @@ impl SymEntityData {
             }
         };
         let ancs_udf = |anc_ty: &EntityType| -> UnaryFunction {
-            Udf(Arc::new(function::Udf {
+            Udf(ArcOrd::new(function::Udf {
                 arg: entity(act_ty.clone()),
                 out: TermType::set_of(entity(anc_ty.clone())),
-                table: Arc::new(
+                table: ArcOrd::new(
                     actions
                         .iter()
                         .filter_map(|(uid, entry)| {
@@ -302,7 +303,7 @@ impl SymEntityData {
                         .collect(),
                 ),
                 default: Term::Set {
-                    elts: Arc::new(BTreeSet::new()),
+                    elts: ArcOrd::new(BTreeSet::new()),
                     elts_ty: entity(anc_ty.clone()),
                 },
             }))

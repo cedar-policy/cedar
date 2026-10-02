@@ -16,6 +16,7 @@
 
 //! Definitions of term types.
 
+use super::arc_ord::ArcOrd;
 use cedar_policy_core::validator::types::{AttributeType, Attributes, OpenTag, Type};
 use smol_str::SmolStr;
 
@@ -23,7 +24,6 @@ use super::result::CompileError;
 
 use super::{entity_tag::EntityTag, type_abbrevs::*};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 /// Types of the intermediate [`super::term::Term`] representation.
 //  Note: The declaration order of variants for this enum affects the derived definitions of `Ord`
@@ -32,7 +32,7 @@ use std::sync::Arc;
 #[expect(missing_docs, reason = "fields are self explanatory")]
 pub enum TermType {
     /// Option type
-    Option { ty: Arc<TermType> },
+    Option { ty: ArcOrd<TermType> },
     /// Bitvec type
     Bitvec { n: Width },
     /// Bool type
@@ -44,9 +44,9 @@ pub enum TermType {
     /// String type
     String,
     /// Record type
-    Record { rty: Arc<BTreeMap<Attr, TermType>> },
+    Record { rty: ArcOrd<BTreeMap<Attr, TermType>> },
     /// (Finite) set type
-    Set { ty: Arc<TermType> },
+    Set { ty: ArcOrd<TermType> },
 }
 
 impl TermType {
@@ -54,20 +54,20 @@ impl TermType {
     ///
     /// No corresponding Lean function; convenience constructor used in Rust.
     pub fn set_of(ty: TermType) -> Self {
-        Self::Set { ty: Arc::new(ty) }
+        Self::Set { ty: ArcOrd::new(ty) }
     }
 
     /// Constructs an option type with the given inner type.
     ///
     /// No corresponding Lean function; convenience constructor used in Rust.
     pub fn option_of(ty: TermType) -> Self {
-        Self::Option { ty: Arc::new(ty) }
+        Self::Option { ty: ArcOrd::new(ty) }
     }
 
     /// Returns the type of tag keys in the symbolic representation of tags.
     pub fn tag_for(ety: EntityType) -> Self {
         Self::Record {
-            rty: Arc::new(EntityTag::mk(TermType::Entity { ety }, TermType::String).0),
+            rty: ArcOrd::new(EntityTag::mk(TermType::Entity { ety }, TermType::String).0),
         }
     }
 
@@ -157,7 +157,7 @@ impl TermType {
             } => {
                 if *open_attributes == OpenTag::ClosedAttributes {
                     Ok(TermType::Record {
-                        rty: Arc::new(Self::of_record_type(attrs)?),
+                        rty: ArcOrd::new(Self::of_record_type(attrs)?),
                     })
                 } else {
                     // Attributes should be closed
