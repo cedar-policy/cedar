@@ -15,9 +15,7 @@
  */
 
 use crate::symcc::arc_ord::ArcOrd;
-use std::{
-    collections::{linked_list, LinkedList},
-};
+use std::collections::{linked_list, LinkedList};
 
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 

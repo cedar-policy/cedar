@@ -15,7 +15,7 @@
  */
 
 use super::arc_ord::ArcOrd;
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 use super::{op::Uuf, term::Term, term_type::TermType};
 

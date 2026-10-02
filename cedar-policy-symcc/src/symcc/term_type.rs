@@ -44,7 +44,9 @@ pub enum TermType {
     /// String type
     String,
     /// Record type
-    Record { rty: ArcOrd<BTreeMap<Attr, TermType>> },
+    Record {
+        rty: ArcOrd<BTreeMap<Attr, TermType>>,
+    },
     /// (Finite) set type
     Set { ty: ArcOrd<TermType> },
 }
@@ -54,14 +56,18 @@ impl TermType {
     ///
     /// No corresponding Lean function; convenience constructor used in Rust.
     pub fn set_of(ty: TermType) -> Self {
-        Self::Set { ty: ArcOrd::new(ty) }
+        Self::Set {
+            ty: ArcOrd::new(ty),
+        }
     }
 
     /// Constructs an option type with the given inner type.
     ///
     /// No corresponding Lean function; convenience constructor used in Rust.
     pub fn option_of(ty: TermType) -> Self {
-        Self::Option { ty: ArcOrd::new(ty) }
+        Self::Option {
+            ty: ArcOrd::new(ty),
+        }
     }
 
     /// Returns the type of tag keys in the symbolic representation of tags.
