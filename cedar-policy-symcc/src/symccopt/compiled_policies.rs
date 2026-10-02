@@ -71,7 +71,7 @@ impl CompiledPolicy {
             policy,
             env,
             compiled_schema.schema(),
-            compiled_schema.sym_env(&env)?,
+            compiled_schema.sym_env(env)?,
         )
     }
 
@@ -185,7 +185,7 @@ impl CompiledPolicySet {
             pset,
             env,
             compiled_schema.schema(),
-            compiled_schema.sym_env(&env)?,
+            compiled_schema.sym_env(env)?,
         )
     }
 
