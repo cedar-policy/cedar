@@ -337,11 +337,11 @@ impl Term {
                     );
                     Term::App {
                         op: op.clone(),
-                        args: 
+                        args: args
+                            .iter()
                             // `t` borrows from `self`'s `args`, not a temporary.
-                            args.iter()
-                                .map(|t| t.interpret_memoized(interp, cache))
-                                .collect(),
+                            .map(|t| t.interpret_memoized(interp, cache))
+                            .collect(),
                         ret_ty: ret_ty.clone(),
                     }
                 }
