@@ -41,7 +41,9 @@ fn policy_text() -> String {
         .map(|i| format!(r#"(((context.input).comment) like "{i}*")"#))
         .collect::<Vec<_>>()
         .join(" || ");
-    format!(r#"forbid(principal, action, resource) when {{ ((context.input) has comment) && ({d}) }};"#)
+    format!(
+        r#"forbid(principal, action, resource) when {{ ((context.input) has comment) && ({d}) }};"#
+    )
 }
 
 #[test]
@@ -85,7 +87,9 @@ fn encoding_a_deep_shared_subterm_terminates() {
     match rx.recv_timeout(TIMEOUT) {
         Ok(()) => {}
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            panic!("encoding {DISJUNCTS} shared-subterm disjuncts did not finish within {TIMEOUT:?}")
+            panic!(
+                "encoding {DISJUNCTS} shared-subterm disjuncts did not finish within {TIMEOUT:?}"
+            )
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => panic!("worker panicked; see output above"),
     }

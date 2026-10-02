@@ -463,7 +463,9 @@ impl SExpr {
                     TermType::Option { ty } => Some(ty.as_ref()),
                     _ => None,
                 };
-                let val = Term::Some(ArcOrd::new(val.decode_literal_expecting(id_maps, inner_ty)?));
+                let val = Term::Some(ArcOrd::new(
+                    val.decode_literal_expecting(id_maps, inner_ty)?,
+                ));
                 let val_ty = val.type_of();
 
                 if val_ty != ty {
@@ -942,12 +944,7 @@ pub fn decode_model<'a>(
 #[cfg(test)]
 mod test_decode {
     use crate::symcc::arc_ord::ArcOrd;
-    use std::{
-        collections::BTreeMap,
-        num::NonZeroU32,
-        str::FromStr,
-        sync::LazyLock,
-    };
+    use std::{collections::BTreeMap, num::NonZeroU32, str::FromStr, sync::LazyLock};
 
     use cedar_policy::{EntityId, EntityTypeName, EntityUid, RequestEnv, Schema};
     use smol_str::SmolStr;
@@ -1268,7 +1265,12 @@ mod test_decode {
             EntityTypeName::from_str("E0").unwrap(),
             EntityId::new("bob"),
         )));
-        let rec = |b| Term::Record(ArcOrd::new(BTreeMap::from([("admin".into(), Term::from(b))])));
+        let rec = |b| {
+            Term::Record(ArcOrd::new(BTreeMap::from([(
+                "admin".into(),
+                Term::from(b),
+            )])))
+        };
         assert_eq!(udf.table.get(&bob_key), Some(&rec(false)));
         assert_eq!(udf.default, rec(true));
     }

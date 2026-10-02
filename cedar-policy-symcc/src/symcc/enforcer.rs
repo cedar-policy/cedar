@@ -25,9 +25,7 @@
 //! For more technical details, see comments in SymCC/Enforcer.lean.
 
 use super::arc_ord::ArcOrd;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-};
+use std::collections::{BTreeMap, BTreeSet};
 
 use cedar_policy_core::ast::{Expr, ExprKind};
 

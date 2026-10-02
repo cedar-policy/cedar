@@ -27,7 +27,7 @@
 
 use super::arc_ord::ArcOrd;
 use std::borrow::Borrow;
-use std::{collections::BTreeSet};
+use std::collections::BTreeSet;
 
 use cedar_policy_core::ast::Expr;
 
