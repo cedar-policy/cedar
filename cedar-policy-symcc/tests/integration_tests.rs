@@ -2525,7 +2525,8 @@ async fn template_linked_policy_unsupported() {
     )
     .unwrap();
     let envs = Environments::new(validator.schema(), "User", r#"Action::"view""#, "Thing");
-    let result = CompiledPolicySet::compile(&pset, &envs.req_env, validator.schema());
+    let compiled_schema = CompiledSchema::new(validator.schema()).unwrap();
+    let result = CompiledPolicySet::compile(&pset, &envs.req_env, &compiled_schema);
     assert_matches!(
         result.err(),
         Some(cedar_policy_symcc::err::Error::CompileError(

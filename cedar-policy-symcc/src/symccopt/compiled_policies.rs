@@ -47,22 +47,6 @@ pub struct CompiledPolicy {
 }
 
 impl CompiledPolicy {
-    /// Compile a policy for the given `RequestEnv`.
-    ///
-    /// This function calls the Cedar typechecker to obtain a policy that is
-    /// semantically equivalent to `policy` and well-typed with respect to
-    /// `env`.  Then, it runs the symbolic compiler to produce a compiled
-    /// policy.
-    ///
-    /// This function ensures well-typedness for you. You need not (and should
-    /// not) call `well_typed_policy()` or `WellTypedPolicy::from_policy()`
-    /// prior to calling this.
-    pub fn compile(policy: &Policy, env: &RequestEnv, schema: &Schema) -> Result<Self> {
-        // In Lean, `compile_with_custom_symenv()` does not exist, and is
-        // instead inlined here, as of this writing.
-        Self::compile_with_custom_symenv(policy, env, schema, SymEnv::new(schema, env)?)
-    }
-
     /// Compile a policy for the given `RequestEnv` using a precompiled schema.
     ///
     /// This function calls the Cedar typechecker to obtain a policy that is
@@ -71,14 +55,14 @@ impl CompiledPolicy {
     /// policy, reusing the precomputed symbolic entities from the
     /// `CompiledSchema`.
     ///
-    /// This is more efficient than `compile()` when compiling multiple
-    /// policies with the same schema, as it avoids redundant symbolic entity
-    /// computation.
+    /// The `CompiledSchema` should be created for the given `schema` and `env`.
+    /// Building the compiled schema has minimal overhead and allows efficient
+    /// compilation when compiling multiple policies with the same schema.
     ///
     /// This function ensures well-typedness for you. You need not (and should
     /// not) call `well_typed_policy()` or `WellTypedPolicy::from_policy()`
     /// prior to calling this.
-    pub fn compile_with_compiled_schema(
+    pub fn compile(
         policy: &Policy,
         env: &RequestEnv,
         compiled_schema: &symcc::CompiledSchema,
@@ -177,23 +161,7 @@ pub struct CompiledPolicySet {
 }
 
 impl CompiledPolicySet {
-    /// Compile a set of policies for the given `RequestEnv`.
-    ///
-    /// This function calls the Cedar typechecker on each policy to obtain a
-    /// policy that is semantically equivalent to the original policy and
-    /// well-typed with respect to `env`. Then, it runs the symbolic compiler to
-    /// produce a compiled policy.
-    ///
-    /// This function ensures well-typedness for you. You need not (and should
-    /// not) call `well_typed_policies()` or `WellTypedPolicies::from_policies()`
-    /// prior to calling this.
-    pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
-        // In Lean, `compile_with_custom_symenv()` does not exist, and is
-        // instead inlined here, as of this writing.
-        Self::compile_with_custom_symenv(pset, env, schema, SymEnv::new(schema, env)?)
-    }
-
-    /// Compile a policy set for the given `RequestEnv` using a precompiled schema.
+    /// Compile a set of policies for the given `RequestEnv` using a precompiled schema.
     ///
     /// This function calls the Cedar typechecker on each policy to obtain a
     /// policy that is semantically equivalent to the original policy and
@@ -201,14 +169,14 @@ impl CompiledPolicySet {
     /// produce a compiled policy set, reusing the precomputed symbolic entities
     /// from the `CompiledSchema`.
     ///
-    /// This is more efficient than `compile()` when compiling multiple policy
-    /// sets with the same schema, as it avoids redundant symbolic entity
-    /// computation.
+    /// The `CompiledSchema` should be created for the given `schema` and `env`.
+    /// Building the compiled schema has minimal overhead and allows efficient
+    /// compilation when compiling multiple policy sets with the same schema.
     ///
     /// This function ensures well-typedness for you. You need not (and should
     /// not) call `well_typed_policies()` or `WellTypedPolicies::from_policies()`
     /// prior to calling this.
-    pub fn compile_with_compiled_schema(
+    pub fn compile(
         pset: &PolicySet,
         env: &RequestEnv,
         compiled_schema: &symcc::CompiledSchema,
@@ -333,11 +301,12 @@ mod test {
         env: &RequestEnv,
     ) {
         let p: Policy = parse_policy(None, p).unwrap().into();
+        let compiled_schema = crate::symcc::CompiledSchema::new(schema).unwrap();
         assert_eq!(
-            CompiledPolicy::compile(&p, &env, &schema)
+            CompiledPolicy::compile(&p, &env, &compiled_schema)
                 .unwrap()
                 .into_compiled_policyset(),
-            CompiledPolicySet::compile(&PolicySet::singleton(p), &env, &schema).unwrap()
+            CompiledPolicySet::compile(&PolicySet::singleton(p), &env, &compiled_schema).unwrap()
         );
     }
 
@@ -395,11 +364,10 @@ mod test {
 
         let compiled_schema = CompiledSchema::new(&schema).unwrap();
 
-        let result_from_compile = CompiledPolicy::compile(&policy, &env, &schema).unwrap();
-        let result_from_compiled_schema =
-            CompiledPolicy::compile_with_compiled_schema(&policy, &env, &compiled_schema).unwrap();
+        let result1 = CompiledPolicy::compile(&policy, &env, &compiled_schema).unwrap();
+        let result2 = CompiledPolicy::compile(&policy, &env, &compiled_schema).unwrap();
 
-        assert_eq!(result_from_compile, result_from_compiled_schema);
+        assert_eq!(result1, result2);
     }
 
     #[test]
@@ -428,10 +396,8 @@ mod test {
 
         let compiled_schema = CompiledSchema::new(&schema).unwrap();
 
-        let compiled1 =
-            CompiledPolicy::compile_with_compiled_schema(&policy, &env1, &compiled_schema).unwrap();
-        let compiled2 =
-            CompiledPolicy::compile_with_compiled_schema(&policy, &env2, &compiled_schema).unwrap();
+        let compiled1 = CompiledPolicy::compile(&policy, &env1, &compiled_schema).unwrap();
+        let compiled2 = CompiledPolicy::compile(&policy, &env2, &compiled_schema).unwrap();
 
         assert!(Arc::ptr_eq(
             &compiled1.symenv.entities,

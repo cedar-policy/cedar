@@ -150,29 +150,22 @@ pub struct CompiledPolicy {
 }
 
 impl CompiledPolicy {
-    /// Compile a policy for the given `RequestEnv`.
+    /// Compile a policy for the given `RequestEnv` using a precompiled schema.
     ///
     /// This does all the validating and well-typing that you need; you need not
     /// (and should not) call `WellTypedPolicy::from_policy()` prior to calling
     /// this.
-    pub fn compile(policy: &Policy, env: &RequestEnv, schema: &Schema) -> Result<Self> {
-        Ok(Self {
-            policy: symccopt::CompiledPolicy::compile(policy.as_ref(), env, schema)?,
-        })
-    }
-
-    /// Compile a policy for the given `RequestEnv`, using a precompiled schema.
-    pub fn compile_with_compiled_schema(
+    ///
+    /// The `CompiledSchema` should be created for the given `schema` and `env`.
+    /// Building the compiled schema has minimal overhead and allows efficient
+    /// compilation when compiling multiple policies with the same schema.
+    pub fn compile(
         policy: &Policy,
         env: &RequestEnv,
         compiled_schema: &CompiledSchema,
     ) -> Result<Self> {
         Ok(Self {
-            policy: symccopt::CompiledPolicy::compile_with_compiled_schema(
-                policy.as_ref(),
-                env,
-                compiled_schema,
-            )?,
+            policy: symccopt::CompiledPolicy::compile(policy.as_ref(), env, compiled_schema)?,
         })
     }
 
@@ -232,32 +225,22 @@ pub struct CompiledPolicySet {
 }
 
 impl CompiledPolicySet {
-    /// Compile a policyset for the given `RequestEnv`.
+    /// Compile a policyset for the given `RequestEnv` using a precompiled schema.
     ///
     /// This does all the validating and well-typing that you need; you need not
     /// (and should not) call `WellTypedPolicies::from_policies()` prior to
     /// calling this.
-    pub fn compile(pset: &PolicySet, env: &RequestEnv, schema: &Schema) -> Result<Self> {
-        Ok(Self {
-            policies: symccopt::CompiledPolicySet::compile(pset.as_ref(), env, schema)?,
-        })
-    }
-
-    /// Compile a policyset for the given `RequestEnv` using a precompiled schema.
     ///
-    /// This avoids re-compiling the schema and is a useful optimization when the
-    /// same schema is reused across multiple policyset compilations.
-    pub fn compile_with_compiled_schema(
+    /// The `CompiledSchema` should be created for the given `schema` and `env`.
+    /// Building the compiled schema has minimal overhead and allows efficient
+    /// compilation when compiling multiple policy sets with the same schema.
+    pub fn compile(
         pset: &PolicySet,
         env: &RequestEnv,
         compiled_schema: &CompiledSchema,
     ) -> Result<Self> {
         Ok(Self {
-            policies: symccopt::CompiledPolicySet::compile_with_compiled_schema(
-                pset.as_ref(),
-                env,
-                compiled_schema,
-            )?,
+            policies: symccopt::CompiledPolicySet::compile(pset.as_ref(), env, compiled_schema)?,
         })
     }
 

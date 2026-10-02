@@ -9,14 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Cedar Language Version: TBD
 
-### Added
-
-- `CompiledPolicy::compile_with_compiled_schema()` and `CompiledPolicySet::compile_with_compiled_schema()`,
-  convenience methods that accept a precompiled schema to avoid redundant symbolic entity computation
-  when compiling multiple policies or policy sets with the same schema (#2467).
-
 ### Changed
 
+- **BREAKING**: `CompiledPolicy::compile()` and `CompiledPolicySet::compile()` now require a 
+  `CompiledSchema` parameter instead of a `Schema`. This avoids redundant symbolic entity computation
+  when compiling multiple policies or policy sets with the same schema. The overhead of creating
+  a `CompiledSchema` is minimal, and it enables efficient reuse of precomputed symbolic entities (#2467).
 - Changed IP address ordering (via `Ord` and `PartialOrd`). A prefix-less address is now greater 
   than an otherwise equivalent address with a prefix (#2571).
 
