@@ -47,6 +47,7 @@ impl<T: ?Sized + Ord> PartialOrd for ArcOrd<T> {
 }
 
 impl<T> ArcOrd<T> {
+    /// Mirrors `Arc::new`.
     #[inline]
     pub fn new(t: T) -> Self {
         Self(Arc::new(t))
@@ -54,6 +55,7 @@ impl<T> ArcOrd<T> {
 }
 
 impl<T: Clone> ArcOrd<T> {
+    /// Mirrors `Arc::unwrap_or_clone`.
     #[inline]
     pub fn unwrap_or_clone(this: Self) -> T {
         Arc::unwrap_or_clone(this.0)
