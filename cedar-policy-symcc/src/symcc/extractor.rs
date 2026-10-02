@@ -25,8 +25,9 @@
 //! and transitive (assuming the suitable acyclicity and transitivity
 //! constraints are satisfied for the footprint).
 
+use super::arc_ord::ArcOrd;
 use std::borrow::Borrow;
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::BTreeSet};
 
 use cedar_policy_core::ast::Expr;
 
@@ -85,7 +86,7 @@ impl Uuf {
             if t.type_of() == udf.arg {
                 Some((
                     t.clone(),
-                    factory::app(UnaryFunction::Udf(Arc::new(udf.clone())), t),
+                    factory::app(UnaryFunction::Udf(ArcOrd::new(udf.clone())), t),
                 ))
             } else {
                 None
@@ -99,7 +100,7 @@ impl Uuf {
             .collect();
 
         Udf {
-            table: Arc::new(new_table),
+            table: ArcOrd::new(new_table),
             default: match &udf.out {
                 TermType::Set { ty } => factory::set_of([], (**ty).clone()),
                 _ => udf.default,

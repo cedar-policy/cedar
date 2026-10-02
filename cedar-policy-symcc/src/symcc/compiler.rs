@@ -24,7 +24,7 @@
 //! environment: using this reduction for verification will neither miss bugs
 //! (soundness) nor produce false positives (completeness).
 
-use std::sync::Arc;
+use super::arc_ord::ArcOrd;
 
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
@@ -270,7 +270,7 @@ pub fn compile_app2(op2: BinaryOp, t1: Term, t2: Term, es: &SymEntities) -> Resu
             es.ancestors_of_type(&ety1, &ety2).cloned(),
         ))),
         (In, Entity { ety: ety1 }, Set { ty }) if matches!(*ty, Entity { .. }) => {
-            match Arc::unwrap_or_clone(ty) {
+            match ArcOrd::unwrap_or_clone(ty) {
                 Entity { ety: ety2 } => Ok(some_of(compile_in_set(
                     t1,
                     t2,
@@ -891,7 +891,7 @@ mod decimal_tests {
     fn test_valid(str: &str, rep: i64) {
         assert_eq!(
             compile(&dec_lit(str), &sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Decimal {
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Ext(Ext::Decimal {
                 d: Decimal(rep)
             })))),
             "{str}"
@@ -916,7 +916,7 @@ mod decimal_tests {
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
             compile(&parse_expr(str), &sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
     }
@@ -1068,7 +1068,7 @@ mod datetime_tests {
     fn test_valid_datetime_constructor(str: &str, rep: i64) {
         assert_eq!(
             compile(&datetime_lit(str), &datetime_sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
                 dt: Datetime::from(rep)
             })))),
             "{str}"
@@ -1090,7 +1090,7 @@ mod datetime_tests {
     fn test_valid_duration_constructor(str: &str, rep: i64) {
         assert_eq!(
             compile(&duration_lit(str), &duration_sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Ext(Ext::Duration {
                 d: Duration::from(rep)
             })))),
             "{str}"
@@ -1271,7 +1271,7 @@ mod datetime_tests {
     fn test_valid_datetime_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
             compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Ext(Ext::Datetime {
                 dt: Datetime::from(rep)
             })))),
             "{str}"
@@ -1282,7 +1282,7 @@ mod datetime_tests {
     fn test_valid_duration_simpl_expr(str: &str, rep: i64) {
         assert_eq!(
             compile(&parse_expr(str), &duration_sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Ext(Ext::Duration {
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Ext(Ext::Duration {
                 d: Duration::from(rep)
             })))),
             "{str}"
@@ -1292,7 +1292,7 @@ mod datetime_tests {
     fn test_valid_bool_simpl_expr(str: &str, res: bool) {
         assert_eq!(
             compile(&parse_expr(str), &datetime_sym_env()).unwrap(),
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         )
     }
@@ -1600,31 +1600,31 @@ pub(crate) mod ext_has_attr_tests {
     fn test_ext_has_attr() {
         assert_compiles_to(
             "context has rec.x",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(true)))),
         );
         assert_compiles_to(
             "context has rec.sub.y",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(true)))),
         );
         assert_compiles_to(
             "context has rec.nonexistent",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(false)))),
         );
         assert_compiles_to(
             "context has nonexistent.x",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(false)))),
         );
         assert_compiles_to(
             "context has rec.sub.nonexistent",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(false)))),
         );
         assert_compiles_to(
             "context has rec.nonexistent.sub",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(false)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(false)))),
         );
         assert_compiles_to(
             "principal has thing2.id",
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(true)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(true)))),
         );
         // Terms that don't compile to true/false
         // entity base, optional then present

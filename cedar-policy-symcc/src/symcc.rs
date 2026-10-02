@@ -18,6 +18,7 @@
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
 pub(crate) mod authorizer;
+pub mod arc_ord;
 pub mod bitvec;
 pub(crate) mod compiler;
 pub(crate) mod concretizer;
