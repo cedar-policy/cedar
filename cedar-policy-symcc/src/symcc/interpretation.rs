@@ -133,7 +133,7 @@ impl Term {
 
             // Every `arg`/`argN` below is an element of `args.as_slice()`, i.e.
             // a borrow into `self`'s `Arc<Vec<Term>>`.
-            Term::App { op, args, ret_ty } => match (op, args.as_slice()) {
+            Term::App { op, args, ret_ty } => match (op, args.as_ref()) {
                 (Op::Not, [arg]) => factory::not(arg.interpret_memoized(interp, cache)),
                 (Op::And, [arg1, arg2]) => {
                     let a1 = arg1.interpret_memoized(interp, cache);
@@ -337,12 +337,11 @@ impl Term {
                     );
                     Term::App {
                         op: op.clone(),
-                        args: Arc::new(
+                        args: 
                             // `t` borrows from `self`'s `args`, not a temporary.
                             args.iter()
                                 .map(|t| t.interpret_memoized(interp, cache))
                                 .collect(),
-                        ),
                         ret_ty: ret_ty.clone(),
                     }
                 }
@@ -643,7 +642,7 @@ mod interpret_test {
         fn bv_app_without_folding(op: Op, t1: &Term, t2: &Term, ret_ty: TermType) -> Term {
             Term::App {
                 op,
-                args: Arc::new(vec![t1.clone(), t2.clone()]),
+                args: Arc::new([t1.clone(), t2.clone()]),
                 ret_ty,
             }
         }
