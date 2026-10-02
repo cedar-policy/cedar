@@ -421,9 +421,9 @@ impl SymEnv {
 // `RequestType` that are only used in `Cedar/SymCC/Env.lean`, so we define
 // them here.
 
-/// A [`Schema`] paired with its precomputed [`SymEntities`].
+/// A [`Schema`] paired with its precomputed `SymEntities`.
 ///
-/// Building [`SymEntities`] from a schema is expensive and depends only on the
+/// Building `SymEntities` from a schema is expensive and depends only on the
 /// schema, not on any particular request environment. [`CompiledSchema`] computes it
 /// once so it can be reused across many request environments via
 /// [`CompiledSchema::sym_env`], which is significantly cheaper than rebuilding the
@@ -448,7 +448,7 @@ impl CompiledSchema {
         &self.schema
     }
 
-    /// Returns a [`SymEnv`] for `req_env`, reusing the precomputed [`SymEntities`].
+    /// Returns a [`SymEnv`] for `req_env`, reusing the precomputed `SymEntities`.
     ///
     /// Only the (cheap) symbolic request is built per call; the (expensive)
     /// symbolic entities are shared via a reference-counted clone. The resulting
