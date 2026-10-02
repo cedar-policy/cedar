@@ -420,6 +420,7 @@ dependencies = [
  "arbitrary",
  "chrono",
  "cool_asserts",
+ "criterion",
  "educe",
  "either",
  "insta",
@@ -444,6 +445,8 @@ dependencies = [
  "tsify",
  "unicode-security",
  "wasm-bindgen",
+ "yaspar-macros",
+ "yaspar-macros-defs",
 ]
 
 [[package]]
@@ -3796,6 +3799,23 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "yaspar-macros"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "979058badee7b88c5710167429fd412ced74e185a725686b2d45fce9b4e0e60f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.5",
+]
+
+[[package]]
+name = "yaspar-macros-defs"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "724bf82a2d7baadc43152177bb5ae0fd12e02da93fb072198bc873ba1340d53d"
 
 [[package]]
 name = "yoke"
