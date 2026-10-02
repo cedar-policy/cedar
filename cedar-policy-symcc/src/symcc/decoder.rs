@@ -17,8 +17,8 @@
 //! This module defines the Cedar decoder, which is the inverse of the encoder
 //! that parses a subset of SMT-LIB terms and commands required for (get-model)
 
+use super::arc_ord::ArcOrd;
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::Arc;
 
 use cedar_policy::{EntityId, EntityUid};
 use miette::Diagnostic;
@@ -214,11 +214,11 @@ impl TermType {
             TermType::Option { ty } => Term::None(ty.as_ref().clone()),
 
             TermType::Set { ty } => Term::Set {
-                elts: Arc::new(BTreeSet::new()),
+                elts: ArcOrd::new(BTreeSet::new()),
                 elts_ty: ty.as_ref().clone(),
             },
 
-            TermType::Record { rty } => Term::Record(Arc::new(
+            TermType::Record { rty } => Term::Record(ArcOrd::new(
                 rty.iter()
                     .map(|(k, v)| (k.clone(), v.default_literal(env)))
                     .collect(),
@@ -233,7 +233,7 @@ impl Uuf {
         Udf {
             arg: self.arg.clone(),
             out: self.out.clone(),
-            table: Arc::new(BTreeMap::new()),
+            table: ArcOrd::new(BTreeMap::new()),
             default: self.out.default_literal(env),
         }
     }
@@ -372,7 +372,7 @@ impl SExpr {
                     record.insert(field_name.clone(), decoded_field);
                 }
 
-                Ok(Term::Record(Arc::new(record)))
+                Ok(Term::Record(ArcOrd::new(record)))
             }
 
             _ => Err(DecodeError::UnknownLiteral(self.clone())),
@@ -443,7 +443,7 @@ impl SExpr {
                 if as_tok == "as" && none == "none" =>
             {
                 match typ.decode_type(id_maps)? {
-                    TermType::Option { ty } => Ok(Term::None(Arc::unwrap_or_clone(ty))),
+                    TermType::Option { ty } => Ok(Term::None(ArcOrd::unwrap_or_clone(ty))),
                     _ => Err(DecodeError::InvalidOptionType(typ.clone())),
                 }
             }
@@ -463,7 +463,9 @@ impl SExpr {
                     TermType::Option { ty } => Some(ty.as_ref()),
                     _ => None,
                 };
-                let val = Term::Some(Arc::new(val.decode_literal_expecting(id_maps, inner_ty)?));
+                let val = Term::Some(ArcOrd::new(
+                    val.decode_literal_expecting(id_maps, inner_ty)?,
+                ));
                 let val_ty = val.type_of();
 
                 if val_ty != ty {
@@ -481,7 +483,7 @@ impl SExpr {
                     Some(_) => return Err(DecodeError::UnknownLiteral(self.clone())),
                 };
                 let val = val.decode_literal_expecting(id_maps, inner_ty)?;
-                Ok(Term::Some(Arc::new(val)))
+                Ok(Term::Some(ArcOrd::new(val)))
             }
 
             // (as set.empty <set_typ>)
@@ -492,8 +494,8 @@ impl SExpr {
 
                 match ty {
                     TermType::Set { ty } => Ok(Term::Set {
-                        elts: Arc::new(BTreeSet::new()),
-                        elts_ty: Arc::unwrap_or_clone(ty),
+                        elts: ArcOrd::new(BTreeSet::new()),
+                        elts_ty: ArcOrd::unwrap_or_clone(ty),
                     }),
                     _ => Err(DecodeError::InvalidSetType(typ.clone())),
                 }
@@ -509,7 +511,7 @@ impl SExpr {
                 let val = val.decode_literal_expecting(id_maps, elt_ty)?;
                 let val_ty = val.type_of();
                 Ok(Term::Set {
-                    elts: Arc::new(BTreeSet::from([val])),
+                    elts: ArcOrd::new(BTreeSet::from([val])),
                     elts_ty: val_ty,
                 })
             }
@@ -539,10 +541,10 @@ impl SExpr {
                         } else {
                             (elts2, elts1)
                         };
-                        let mut elts = Arc::unwrap_or_clone(elts);
-                        elts.extend(Arc::unwrap_or_clone(rest).into_iter());
+                        let mut elts = ArcOrd::unwrap_or_clone(elts);
+                        elts.extend(ArcOrd::unwrap_or_clone(rest).into_iter());
                         Ok(Term::Set {
-                            elts: Arc::new(elts),
+                            elts: ArcOrd::new(elts),
                             elts_ty,
                         })
                     }
@@ -593,7 +595,7 @@ impl SExpr {
                     _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                 };
                 let prefix = match prefix.decode_literal(id_maps)? {
-                    Term::Some(t) => match Arc::unwrap_or_clone(t) {
+                    Term::Some(t) => match ArcOrd::unwrap_or_clone(t) {
                         Term::Prim(TermPrim::Bitvec(bv)) => Some(bv),
                         _ => Err(DecodeError::UnknownLiteral(self.clone()))?,
                     },
@@ -789,7 +791,7 @@ impl SExpr {
             Udf {
                 arg: uuf.arg.clone(),
                 out: uuf.out.clone(),
-                table: Arc::new(table),
+                table: ArcOrd::new(table),
                 default,
             },
         ))
@@ -820,7 +822,7 @@ impl SExpr {
             Udf {
                 arg: uuf.arg.clone(),
                 out: uuf.out.clone(),
-                table: Arc::new(table),
+                table: ArcOrd::new(table),
                 default: Term::Prim(TermPrim::Bool(false)),
             },
         ))
@@ -839,7 +841,7 @@ impl SExpr {
             Udf {
                 arg: uuf.arg.clone(),
                 out: uuf.out.clone(),
-                table: Arc::new(BTreeMap::from([(
+                table: ArcOrd::new(BTreeMap::from([(
                     cond_lit_term,
                     Term::Prim(TermPrim::Bool(true)),
                 )])),
@@ -941,12 +943,8 @@ pub fn decode_model<'a>(
 
 #[cfg(test)]
 mod test_decode {
-    use std::{
-        collections::BTreeMap,
-        num::NonZeroU32,
-        str::FromStr,
-        sync::{Arc, LazyLock},
-    };
+    use crate::symcc::arc_ord::ArcOrd;
+    use std::{collections::BTreeMap, num::NonZeroU32, str::FromStr, sync::LazyLock};
 
     use cedar_policy::{EntityId, EntityTypeName, EntityUid, RequestEnv, Schema};
     use smol_str::SmolStr;
@@ -1052,10 +1050,10 @@ mod test_decode {
     #[test]
     fn decode_sets() {
         let expected_ty = TermType::Set {
-            ty: Arc::new(TermType::String),
+            ty: ArcOrd::new(TermType::String),
         };
         let mk_set = |strs: &[&'static str]| Term::Set {
-            elts: Arc::new(
+            elts: ArcOrd::new(
                 strs.iter()
                     .map(|s| SmolStr::new_static(*s).into())
                     .collect(),
@@ -1235,7 +1233,7 @@ mod test_decode {
             ety: EntityTypeName::from_str("E0").unwrap().clone(),
         };
         let record_ty = TermType::Record {
-            rty: Arc::new(BTreeMap::from([("admin".into(), TermType::Bool)])),
+            rty: ArcOrd::new(BTreeMap::from([("admin".into(), TermType::Bool)])),
         };
         let uuf = Uuf {
             id: "attrs".into(),
@@ -1267,7 +1265,12 @@ mod test_decode {
             EntityTypeName::from_str("E0").unwrap(),
             EntityId::new("bob"),
         )));
-        let rec = |b| Term::Record(Arc::new(BTreeMap::from([("admin".into(), Term::from(b))])));
+        let rec = |b| {
+            Term::Record(ArcOrd::new(BTreeMap::from([(
+                "admin".into(),
+                Term::from(b),
+            )])))
+        };
         assert_eq!(udf.table.get(&bob_key), Some(&rec(false)));
         assert_eq!(udf.default, rec(true));
     }
@@ -1349,7 +1352,7 @@ mod test_decode {
     fn decode_z3_bare_none_and_some() {
         let opt_str = TermType::option_of(TermType::String);
         let rty = TermType::Record {
-            rty: Arc::new(BTreeMap::from([("a".into(), opt_str.clone())])),
+            rty: ArcOrd::new(BTreeMap::from([("a".into(), opt_str.clone())])),
         };
         let type_id: SmolStr = "R0".into();
 
@@ -1372,7 +1375,7 @@ mod test_decode {
             .expect("bare none in record");
         assert_eq!(
             *interp.vars.get(&var).unwrap(),
-            Term::Record(Arc::new(BTreeMap::from([(
+            Term::Record(ArcOrd::new(BTreeMap::from([(
                 "a".into(),
                 Term::None(TermType::String)
             )])))
@@ -1393,9 +1396,9 @@ mod test_decode {
             .expect("bare some in record");
         assert_eq!(
             *interp.vars.get(&var).unwrap(),
-            Term::Record(Arc::new(BTreeMap::from([(
+            Term::Record(ArcOrd::new(BTreeMap::from([(
                 "a".into(),
-                Term::Some(Arc::new(Term::Prim(TermPrim::String("x".into()))))
+                Term::Some(ArcOrd::new(Term::Prim(TermPrim::String("x".into()))))
             )])))
         );
 
@@ -1425,6 +1428,7 @@ mod test_decode {
 
 #[cfg(test)]
 mod test_decode_type_mismatch {
+    use crate::symcc::arc_ord::ArcOrd;
     use std::{collections::BTreeMap, num::NonZeroU32, sync::LazyLock};
 
     use cedar_policy::{RequestEnv, Schema};
@@ -1557,9 +1561,8 @@ mod test_decode_type_mismatch {
     /// Record constructor with wrong number of fields.
     #[test]
     fn record_field_count_mismatch() {
-        use std::sync::Arc;
         let rty = TermType::Record {
-            rty: Arc::new(BTreeMap::from([
+            rty: ArcOrd::new(BTreeMap::from([
                 ("a".into(), TermType::Bool),
                 ("b".into(), TermType::Bool),
             ])),
@@ -1586,9 +1589,8 @@ mod test_decode_type_mismatch {
     /// Record field value has wrong type.
     #[test]
     fn record_field_type_mismatch() {
-        use std::sync::Arc;
         let rty = TermType::Record {
-            rty: Arc::new(BTreeMap::from([("name".into(), TermType::String)])),
+            rty: ArcOrd::new(BTreeMap::from([("name".into(), TermType::String)])),
         };
         let rty_id: SmolStr = "R0".into();
         let var = TermVar {

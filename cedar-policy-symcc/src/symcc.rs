@@ -17,6 +17,7 @@
 //! This module is as straightforward a translation as possible of
 //! <https://github.com/cedar-policy/cedar-spec/blob/main/cedar-lean/Cedar/SymCC.lean>.
 
+pub mod arc_ord;
 pub(crate) mod authorizer;
 pub mod bitvec;
 pub(crate) mod compiler;
