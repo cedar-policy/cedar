@@ -86,10 +86,13 @@ pub enum Term {
     Record(Arc<BTreeMap<Attr, Term>>),
     /// Sets
     Set {
+        /// Type shared by all elements of the set.
+        ///
+        /// Declared before `elts` so that the derived `Ord` compares the element
+        /// type first, matching `Term.lt` in the Lean model.
+        elts_ty: TermType,
         /// Elements of the set (as `Term`)
         elts: Arc<BTreeSet<Term>>,
-        /// Type shared by all elements of the set
-        elts_ty: TermType,
     },
     /// Some
     Some(Arc<Term>),
