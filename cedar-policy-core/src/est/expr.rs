@@ -1527,14 +1527,12 @@ fn display_cedarvaluejson(
             match style {
                 Some(ast::CallStyle::MethodStyle) => {
                     display_cedarvaluejson(f, arg, n)?;
-                    write!(f, ".{ext_fn}()")?;
-                    Ok(())
+                    write!(f, ".{ext_fn}()")
                 }
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
                     display_cedarvaluejson(f, arg, n)?;
-                    write!(f, ")")?;
-                    Ok(())
+                    write!(f, ")")
                 }
             }
         }
@@ -1571,8 +1569,7 @@ fn display_cedarvaluejson(
                             display_cedarvaluejson(f, last, n)?;
                         }
                     }
-                    write!(f, ")")?;
-                    Ok(())
+                    write!(f, ")")
                 }
                 Some(ast::CallStyle::FunctionStyle) | None => {
                     write!(f, "{ext_fn}(")?;
@@ -1586,8 +1583,7 @@ fn display_cedarvaluejson(
                             display_cedarvaluejson(f, last, n)?;
                         }
                     }
-                    write!(f, ")")?;
-                    Ok(())
+                    write!(f, ")")
                 }
             }
         }
@@ -1600,8 +1596,7 @@ fn display_cedarvaluejson(
                         display_cedarvaluejson(f, val, Some(n))?;
                         write!(f, ", ")?;
                     }
-                    write!(f, "..]")?;
-                    Ok(())
+                    write!(f, "..]")
                 }
                 _ => {
                     // no truncation
@@ -1612,8 +1607,7 @@ fn display_cedarvaluejson(
                             write!(f, ", ")?;
                         }
                     }
-                    write!(f, "]")?;
-                    Ok(())
+                    write!(f, "]")
                 }
             }
         }
@@ -1627,8 +1621,7 @@ fn display_cedarvaluejson(
                         display_cedarvaluejson(f, v, Some(n))?;
                         write!(f, ", ")?;
                     }
-                    write!(f, "..}}")?;
-                    Ok(())
+                    write!(f, "..}}")
                 }
                 _ => {
                     // no truncation
@@ -1640,14 +1633,12 @@ fn display_cedarvaluejson(
                             write!(f, ", ")?;
                         }
                     }
-                    write!(f, "}}")?;
-                    Ok(())
+                    write!(f, "}}")
                 }
             }
         }
         CedarValueJson::Null => {
-            write!(f, "null")?;
-            Ok(())
+            write!(f, "null")
         }
     }
 }
@@ -1866,8 +1857,7 @@ impl BoundedDisplay for ExprNoExt {
                             BoundedDisplay::fmt(element, f, Some(n))?;
                             write!(f, ", ")?;
                         }
-                        write!(f, "..]")?;
-                        Ok(())
+                        write!(f, "..]")
                     }
                     _ => {
                         // no truncation
@@ -1878,8 +1868,7 @@ impl BoundedDisplay for ExprNoExt {
                                 write!(f, ", ")?;
                             }
                         }
-                        write!(f, "]")?;
-                        Ok(())
+                        write!(f, "]")
                     }
                 }
             }
@@ -1897,8 +1886,7 @@ impl BoundedDisplay for ExprNoExt {
                             BoundedDisplay::fmt(v, f, Some(n))?;
                             write!(f, ", ")?;
                         }
-                        write!(f, "..}}")?;
-                        Ok(())
+                        write!(f, "..}}")
                     }
                     _ => {
                         // no truncation
@@ -1914,15 +1902,13 @@ impl BoundedDisplay for ExprNoExt {
                                 write!(f, ", ")?;
                             }
                         }
-                        write!(f, "}}")?;
-                        Ok(())
+                        write!(f, "}}")
                     }
                 }
             }
             #[cfg(feature = "tolerant-ast")]
             ExprNoExt::Error(e) => {
-                write!(f, "{e}")?;
-                Ok(())
+                write!(f, "{e}")
             }
         }
     }

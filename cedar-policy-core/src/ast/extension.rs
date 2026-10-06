@@ -452,6 +452,10 @@ pub struct RepresentableExtensionValue {
     /// constructed via [`RepresentableExtensionValue::new_lazy`] this is
     /// initially empty and filled on first access from
     /// [`ExtensionValue::canonical_repr`].
+    ///
+    /// This must not be compared for equality/ordering/hashing. `OnceLock` has internal mutability,
+    /// and an empty `OnceLock` compares as not equal one that is populated, meaning the semantics
+    /// of equality change across `OnceLock` initialization for an externally immutable object.
     repr: OnceLock<(Name, Vec<RestrictedExpr>)>,
     pub(crate) value: Arc<dyn InternalExtensionValue>,
 }
@@ -532,7 +536,10 @@ impl StaticallyTyped for RepresentableExtensionValue {
 
 impl PartialEq for RepresentableExtensionValue {
     fn eq(&self, other: &Self) -> bool {
-        // Values that are equal are equal regardless of which arguments made them
+        // Values that are equal are equal regardless of which arguments made them. This is correct
+        // for the semantics of Cedar since we want to compare values not representations. It is
+        // also important for correctness when this type is used as a map key since `repr` is a
+        // `OnceLock`, where equality depends on interior mutability.
         self.value.as_ref() == other.value.as_ref()
     }
 }
@@ -547,6 +554,10 @@ impl PartialOrd for RepresentableExtensionValue {
 
 impl Ord for RepresentableExtensionValue {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        // This intentional does not compare `repr` even though equal values may have non-equal
+        // representations. This is correct for the semantics of Cedar since we want to compare
+        // values not representations. It is also important for correctness when this type is used
+        // as a map key since `repr` is a `OnceLock`, where equality depends on interior mutability.
         self.value.cmp(&other.value)
     }
 }

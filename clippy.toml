@@ -1,3 +1,14 @@
 
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
+
+
+ignore-interior-mutability = [
+    # `Value` caches the representation of extension values in a `OnceLock`, but implementations of
+    # `Ord` and `Eq` compare only the value.
+    "cedar_policy_core::ast::value::Value",
+    # A map of this type is required by `tower_lsp_server`
+    "lsp_types::uri::Uri",
+    # Included from clippy's default list
+    "bytes::Bytes",
+]
