@@ -51,6 +51,7 @@ pub struct TermVar {
 
 /// Primitive terms.
 /// Variants must be defined in alphabetical order.
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum TermPrim {
     /// Literal bitvec
@@ -67,6 +68,7 @@ pub enum TermPrim {
 
 /// Intermediate representation of [`Term`]s.
 /// Variants must be defined in alphabetical order.
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum Term {
     /// Function calls
@@ -86,10 +88,13 @@ pub enum Term {
     Record(Arc<BTreeMap<Attr, Term>>),
     /// Sets
     Set {
+        /// Type shared by all elements of the set.
+        ///
+        /// Declared before `elts` so that the derived `Ord` compares the element
+        /// type first, matching `Term.lt` in the Lean model.
+        elts_ty: TermType,
         /// Elements of the set (as `Term`)
         elts: Arc<BTreeSet<Term>>,
-        /// Type shared by all elements of the set
-        elts_ty: TermType,
     },
     /// Some
     Some(Arc<Term>),
