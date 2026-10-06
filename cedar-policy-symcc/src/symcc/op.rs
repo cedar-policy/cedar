@@ -39,6 +39,7 @@ pub struct Uuf {
 /// Variants must be defined in alphabetical order, so that the derived `Ord`
 /// implementation matches the Lean ordering of the variants of this type.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[expect(missing_docs, reason = "self-explanatory")]
 pub enum ExtOp {
     DatetimeOfBitVec,
@@ -56,6 +57,7 @@ pub enum ExtOp {
 /// Variants must be defined in alphabetical order, so that the derived `Ord`
 /// implementation matches the Lean ordering of the variants of this type.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[expect(missing_docs, reason = "existing code")]
 pub enum Op {
     // Since the variants must be defined in alphabetical order (see above),

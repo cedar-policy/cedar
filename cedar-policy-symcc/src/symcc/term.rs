@@ -51,6 +51,7 @@ pub struct TermVar {
 
 /// Primitive terms.
 /// Variants must be defined in alphabetical order.
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum TermPrim {
     /// Literal bitvec
@@ -67,6 +68,7 @@ pub enum TermPrim {
 
 /// Intermediate representation of [`Term`]s.
 /// Variants must be defined in alphabetical order.
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
 pub enum Term {
     /// Function calls
