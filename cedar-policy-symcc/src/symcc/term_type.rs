@@ -43,11 +43,12 @@ pub enum TermType {
     Ext { xty: ExtType },
     /// String type
     String,
-    /// Record typ
+    /// Record type
     Record { rty: Arc<BTreeMap<Attr, TermType>> },
     /// (Finite) set type
     Set { ty: Arc<TermType> },
 }
+
 impl TermType {
     /// Constructs a set type with the given element type.
     ///
