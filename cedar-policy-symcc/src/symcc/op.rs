@@ -35,24 +35,29 @@ pub struct Uuf {
 }
 
 /// Extension ADT operators.
+///
+/// Variants must be defined in alphabetical order, so that the derived `Ord`
+/// implementation matches the Lean ordering of the variants of this type.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[expect(missing_docs, reason = "self-explanatory")]
 pub enum ExtOp {
-    DecimalVal,
-    IpaddrIsV4,
-    IpaddrAddrV4,
-    IpaddrPrefixV4,
-    IpaddrAddrV6,
-    IpaddrPrefixV6,
-    DatetimeVal,
     DatetimeOfBitVec,
-    DurationVal,
+    DatetimeVal,
+    DecimalVal,
     DurationOfBitVec,
+    DurationVal,
+    IpaddrAddrV4,
+    IpaddrAddrV6,
+    IpaddrIsV4,
+    IpaddrPrefixV4,
+    IpaddrPrefixV6,
 }
 
 /// Variants must be defined in alphabetical order, so that the derived `Ord`
 /// implementation matches the Lean ordering of the variants of this type.
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd)]
+#[deny(clippy::arbitrary_source_item_ordering)]
 #[expect(missing_docs, reason = "existing code")]
 pub enum Op {
     // Since the variants must be defined in alphabetical order (see above),
@@ -60,34 +65,34 @@ pub enum Op {
     And, // SMTLib core theory of equality with uninterpreted functions (`UF`)
 
     //   ---------- SMTLib theory of finite bitvectors (`BV`) ----------
-    Bvneg,
     Bvadd,
-    Bvsub,
-    Bvmul,
-    /// Signed bit-vector division.
-    Bvsdiv,
-    /// Unsigned bit-vector division.
-    Bvudiv,
-    /// Signed remainder (remainder of division rounded towards zero) (copies sign from dividend).
-    Bvsrem,
-    /// Signed modulus (remainder of division rounded towards negative infinity) (copies sign from divisor).
-    Bvsmod,
-    /// Unsigned modulus.
-    Bvurem,
-    Bvshl,
     Bvlshr,
-    Bvslt,
-    Bvsle,
-    Bvult,
-    Bvule,
+    Bvmul,
+    Bvneg,
     /// Bit-vector negation overflow predicate.
     Bvnego,
     /// Bit-vector signed addition overflow predicate.
     Bvsaddo,
-    /// Bit-vector signed subtraction overflow predicate.
-    Bvssubo,
+    /// Signed bit-vector division.
+    Bvsdiv,
+    Bvshl,
+    Bvsle,
+    Bvslt,
+    /// Signed modulus (remainder of division rounded towards negative infinity) (copies sign from divisor).
+    Bvsmod,
     /// Bit-vector signed multiplication overflow predicate.
     Bvsmulo,
+    /// Signed remainder (remainder of division rounded towards zero) (copies sign from dividend).
+    Bvsrem,
+    /// Bit-vector signed subtraction overflow predicate.
+    Bvssubo,
+    Bvsub,
+    /// Unsigned bit-vector division.
+    Bvudiv,
+    Bvule,
+    Bvult,
+    /// Unsigned modulus.
+    Bvurem,
 
     Eq,              // SMTLib core theory of equality with uninterpreted functions (`UF`)
     Ext(ExtOp),      // Extension ADT operator with trusted mapping to SMT
@@ -98,9 +103,9 @@ pub enum Op {
     RecordGet(Attr), // Core ADT operator with trusted mapping to SMT
 
     //   ---------- CVC theory of finite sets (`FS`) ----------
+    SetInter,
     SetMember,
     SetSubset,
-    SetInter,
 
     StringLike(OrdPattern), // Core ADT operator with trusted mapping to SMT
     Uuf(ArcOrd<Uuf>),       // SMTLib core theory of equality with uninterpreted functions (`UF`)
