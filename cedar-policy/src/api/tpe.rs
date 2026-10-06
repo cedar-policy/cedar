@@ -2401,7 +2401,7 @@ when { principal in resource.admins };
             Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId,
             PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
         };
-        use std::{i64, str::FromStr};
+        use std::str::FromStr;
 
         fn schema() -> Schema {
             Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
@@ -2694,7 +2694,7 @@ when { principal in resource.admins };
     }
 
     mod response_iterators {
-        use std::{i64, str::FromStr};
+        use std::str::FromStr;
 
         use cedar_policy_core::authorizer::Decision;
 

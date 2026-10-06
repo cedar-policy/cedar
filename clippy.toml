@@ -1,7 +1,9 @@
 
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
-
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-useless-vec-in-tests = true
 
 ignore-interior-mutability = [
     # `Value` caches the representation of extension values in a `OnceLock`, but implementations of
