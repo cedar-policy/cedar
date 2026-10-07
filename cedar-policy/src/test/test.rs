@@ -9239,6 +9239,62 @@ permit(
         // Neither can the whole policy set containing the linked policy
         assert_eq!(pset.to_cedar(), None);
     }
+
+    /// The JSON policy from #2116. Policy JSON doesn't distinguish function
+    /// and method calls, so this parses, but `offset` is a method and there is
+    /// no Cedar syntax for a method call without a receiver.
+    fn zero_arg_method_call_json() -> serde_json::Value {
+        serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "==", "entity": { "type": "User", "id": "bob" } },
+            "action": { "op": "All" },
+            "resource": { "op": "==", "entity": { "type": "User", "id": "bob" } },
+            "conditions": [{ "kind": "when", "body": { "offset": [] } }]
+        })
+    }
+
+    #[test]
+    fn json_zero_arg_method_call_is_none() {
+        let policy = Policy::from_json(None, zero_arg_method_call_json()).unwrap();
+        assert_eq!(policy.to_cedar(), None);
+
+        let pset = PolicySet::from_policies([policy]).unwrap();
+        assert_eq!(pset.to_cedar(), None);
+    }
+
+    #[test]
+    fn json_template_with_zero_arg_method_call_is_none() {
+        let mut template_json = zero_arg_method_call_json();
+        template_json["principal"] = serde_json::json!({ "op": "==", "slot": "?principal" });
+        let template = Template::from_json(None, template_json).unwrap();
+
+        let mut pset = PolicySet::new();
+        pset.add_template(template).unwrap();
+        assert_eq!(pset.to_cedar(), None);
+    }
+
+    #[test]
+    fn json_extended_has_with_non_identifier_is_none() {
+        // `context has a."b c"` does not parse: only the first attribute of an
+        // extended `has` may be a string literal.
+        let policy_json = serde_json::json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [{
+                "kind": "when",
+                "body": {
+                    "has": {
+                        "left": { "Var": "context" },
+                        "attr": ["a", "b c"]
+                    }
+                }
+            }]
+        });
+        let policy = Policy::from_json(None, policy_json).unwrap();
+        assert_eq!(policy.to_cedar(), None);
+    }
 }
 
 mod to_json {

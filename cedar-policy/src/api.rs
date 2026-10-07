@@ -2848,6 +2848,9 @@ impl PolicySet {
     /// only using this function to obtain a representation to display to human
     /// users.
     ///
+    /// It will also return `None` if any policy or template has no Cedar syntax
+    /// representation (see [`Policy::to_cedar`]).
+    ///
     /// This function does not format the policy according to any particular
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
@@ -2880,6 +2883,9 @@ impl PolicySet {
     /// only using this function to obtain a compact cedar representation,
     /// perhaps for storage purposes.
     ///
+    /// It will also return `None` if any policy or template has no Cedar syntax
+    /// representation (see [`Policy::to_cedar`]).
+    ///
     /// This function does not format the policy according to any particular
     /// rules.  Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
@@ -2897,8 +2903,8 @@ impl PolicySet {
             .templates
             .values()
             .sorted_by_key(|t| AsRef::<str>::as_ref(t.id()))
-            .map(Template::to_cedar)
-            .collect_vec();
+            .map(Template::to_cedar_checked)
+            .collect::<Option<Vec<_>>>()?;
 
         Some(StringifiedPolicySet {
             policies,
@@ -3723,12 +3729,29 @@ impl Template {
     /// It also does not format the policy according to any particular rules.
     /// Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
+    ///
+    /// Unlike [`Policy::to_cedar`], this function cannot report a template
+    /// that has no Cedar syntax representation, such as a JSON template
+    /// containing a method-style extension function call with no receiver.
+    /// The returned text will not parse in that case. [`PolicySet::to_cedar`]
+    /// does detect such templates.
     pub fn to_cedar(&self) -> String {
         match &self.lossless {
             LosslessTemplate::Empty | LosslessTemplate::Est(_) | LosslessTemplate::Pst(_) => {
                 self.ast.to_string()
             }
             LosslessTemplate::Text(text) => text.clone(),
+        }
+    }
+
+    /// Like [`Template::to_cedar`], but returns `None` if the template has no
+    /// Cedar syntax representation.
+    fn to_cedar_checked(&self) -> Option<String> {
+        match &self.lossless {
+            LosslessTemplate::Empty | LosslessTemplate::Est(_) | LosslessTemplate::Pst(_) => {
+                has_cedar_syntax(&self.ast).then(|| self.ast.to_string())
+            }
+            LosslessTemplate::Text(text) => Some(text.clone()),
         }
     }
 
@@ -4263,13 +4286,19 @@ impl Policy {
     /// important, then you will need to serialize the whole policy set
     /// containing the template and link to JSON (or protobuf).
     ///
+    /// It will also return `None` for a policy that has no Cedar syntax
+    /// representation at all. This can only happen for policies that were not
+    /// parsed from Cedar syntax. For example, the JSON format accepts a
+    /// method-style extension function call with no receiver
+    /// (`{"offset": []}`), which cannot be written in Cedar syntax.
+    ///
     /// It also does not format the policy according to any particular rules.
     /// Policy formatting can be done through the Cedar policy CLI or
     /// the `cedar-policy-formatter` crate.
     pub fn to_cedar(&self) -> Option<String> {
         match &self.lossless {
             LosslessPolicy::Empty | LosslessPolicy::Est(_) | LosslessPolicy::Pst(_) => {
-                Some(self.ast.to_string())
+                has_cedar_syntax(self.ast.template()).then(|| self.ast.to_string())
             }
             LosslessPolicy::Text { text, slots } => {
                 if slots.is_empty() {
@@ -4367,6 +4396,18 @@ impl FromStr for Policy {
     fn from_str(policy: &str) -> Result<Self, Self::Err> {
         Self::parse(None, policy)
     }
+}
+
+/// Returns `false` if `template` cannot be printed as Cedar syntax that parses.
+///
+/// Printing an AST that was not parsed from Cedar syntax (e.g., one built from
+/// JSON) may produce text the parser rejects, such as `offset()` for a
+/// method-style extension function call with no receiver.
+/// [`ast::Template::try_validate`] already checks the invariants the parser
+/// guarantees (it is used to validate decoded protobufs), so we reuse it here
+/// instead of duplicating those checks or re-parsing the printed text.
+fn has_cedar_syntax(template: &ast::Template) -> bool {
+    template.clone().try_validate().is_ok()
 }
 
 /// Lossless representation of a template (no slot values).
