@@ -6508,6 +6508,237 @@ mod issue_611 {
     }
 }
 
+mod issue_2504 {
+    //! When several entities, attributes, tags, or ancestors fail validation,
+    //! the reported error must not depend on `HashMap` iteration order.
+    use super::*;
+    use entities::err::EntitiesError;
+
+    /// `HashMap` iteration order differs between maps even within a single
+    /// process, so one call can report the expected error by luck. Repeating
+    /// the call makes an order-dependent result overwhelmingly likely to show.
+    const ITERATIONS: usize = 32;
+
+    fn schema() -> Schema {
+        r"
+            entity Group, Org, Team;
+            entity User in [Group] = {
+                name: String,
+                jobLevel: Long,
+            };
+            action view appliesTo { principal: User, resource: User };
+        "
+        .parse()
+        .expect("should be a valid schema")
+    }
+
+    /// Assert that every call to `f` fails, and always with an error whose
+    /// underlying cause is `expected`.
+    #[track_caller]
+    fn assert_same_error_every_time(
+        f: impl Fn() -> Result<Entities, EntitiesError>,
+        expected: &str,
+    ) {
+        for _ in 0..ITERATIONS {
+            let err = f().expect_err("entities should fail validation");
+            let cause = std::error::Error::source(&err).map(ToString::to_string);
+            assert_eq!(cause.as_deref(), Some(expected), "full error: {err}");
+        }
+    }
+
+    fn user(id: &str, attrs: &[(&str, RestrictedExpression)]) -> Entity {
+        Entity::new(
+            EntityUid::from_strs("User", id),
+            attrs
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), v.clone()))
+                .collect(),
+            HashSet::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn multiple_invalid_entities_json() {
+        let schema = schema();
+        // Each entity has a different attribute type error. They are listed
+        // out of order to show that the error does not follow input order.
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "charlie" },
+                "attrs": { "name": true, "jobLevel": 5 },
+                "parents": []
+            },
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice", "jobLevel": "eight" },
+                "parents": []
+            },
+            {
+                "uid": { "type": "User", "id": "bob" },
+                "attrs": { "name": 999, "jobLevel": 10 },
+                "parents": []
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"in attribute `jobLevel` on `User::"alice"`, type mismatch: value was expected to have type long, but it actually has type string: `"eight"`"#,
+        );
+    }
+
+    #[test]
+    fn multiple_invalid_entities_from_entities() {
+        let schema = schema();
+        // Each entity is missing a different required attribute
+        let name = || RestrictedExpression::new_string("name".into());
+        let job_level = || RestrictedExpression::new_long(1);
+        let entities = [
+            user("charlie", &[("name", name())]),
+            user("alice", &[("jobLevel", job_level())]),
+            user("bob", &[("name", name())]),
+        ];
+        assert_same_error_every_time(
+            || Entities::from_entities(entities.clone(), Some(&schema)),
+            r#"expected entity `User::"alice"` to have attribute `name`, but it does not"#,
+        );
+    }
+
+    #[test]
+    fn multiple_invalid_actions() {
+        let schema = schema();
+        let json = serde_json::json!([
+            { "uid": { "type": "Action", "id": "edit" }, "attrs": {}, "parents": [] },
+            { "uid": { "type": "Action", "id": "delete" }, "attrs": {}, "parents": [] }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"found action entity `Action::"delete"`, but it was not declared as an action in the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_superfluous_attrs_json() {
+        let schema = schema();
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": {
+                    "name": "Alice",
+                    "jobLevel": 8,
+                    "favoriteColor": "blue",
+                    "age": 30,
+                    "nickname": "ally"
+                },
+                "parents": []
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"attribute `age` on `User::"alice"` should not exist according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_superfluous_attrs_from_entities() {
+        let schema = schema();
+        let entity = user(
+            "alice",
+            &[
+                ("name", RestrictedExpression::new_string("Alice".into())),
+                ("jobLevel", RestrictedExpression::new_long(8)),
+                (
+                    "favoriteColor",
+                    RestrictedExpression::new_string("blue".into()),
+                ),
+                ("age", RestrictedExpression::new_long(30)),
+                ("nickname", RestrictedExpression::new_string("ally".into())),
+            ],
+        );
+        assert_same_error_every_time(
+            || Entities::from_entities([entity.clone()], Some(&schema)),
+            r#"attribute `age` on `User::"alice"` should not exist according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_unexpected_tags_json() {
+        let schema = schema();
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice", "jobLevel": 8 },
+                "parents": [],
+                "tags": { "zeta": "z", "alpha": "a", "mu": "m" }
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"found a tag `alpha` on `User::"alice"`, but no tags should exist on `User::"alice"` according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_unexpected_tags_from_entities() {
+        let schema = schema();
+        let entity = Entity::new_with_tags(
+            EntityUid::from_strs("User", "alice"),
+            [
+                (
+                    "name".into(),
+                    RestrictedExpression::new_string("Alice".into()),
+                ),
+                ("jobLevel".into(), RestrictedExpression::new_long(8)),
+            ],
+            [],
+            ["zeta", "alpha", "mu"].map(|t| (t.into(), RestrictedExpression::new_string(t.into()))),
+        )
+        .unwrap();
+        assert_same_error_every_time(
+            || Entities::from_entities([entity.clone()], Some(&schema)),
+            r#"found a tag `alpha` on `User::"alice"`, but no tags should exist on `User::"alice"` according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_invalid_ancestors() {
+        let schema = schema();
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice", "jobLevel": 8 },
+                "parents": [
+                    { "type": "Team", "id": "t" },
+                    { "type": "Org", "id": "o" }
+                ]
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"`User::"alice"` is not allowed to have an ancestor of type `Org` according to the schema"#,
+        );
+    }
+
+    #[cfg(feature = "ipaddr")]
+    #[test]
+    fn multiple_attr_evaluation_errors() {
+        // Without a schema, attribute values are evaluated while parsing
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": {
+                    "zeta": { "__extn": { "fn": "ip", "arg": "not an ip" } },
+                    "alpha": { "__extn": { "fn": "ip", "arg": "also not an ip" } }
+                },
+                "parents": []
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), None),
+            "failed to evaluate attribute `alpha` of `User::\"alice\"`: error while evaluating `ipaddr` extension function: invalid IP address: also not an ip",
+        );
+    }
+}
+
 mod decimal_ip_constructors {
     use cool_asserts::assert_matches;
 
