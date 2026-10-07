@@ -31,7 +31,7 @@ use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::sync::Arc;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     io::Read,
 };
 
@@ -53,16 +53,18 @@ pub struct EntityJson {
     /// (even nested).)
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
-    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in attribute values (including recursively)
-    attrs: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
+    // the annotation covers duplicates in this `BTreeMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in attribute values (including recursively)
+    // We use a `BTreeMap` so that attributes are parsed, and errors reported, in a deterministic order.
+    attrs: BTreeMap<SmolStr, JsonValueWithNoDuplicateKeys>,
     /// Parents of the entity, specified in any form accepted by `EntityUidJson`
     parents: Vec<EntityUidJson>,
     #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
     #[serde(default)]
-    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     #[cfg_attr(feature = "wasm", tsify(type = "Record<string, CedarValueJson>"))]
-    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in tag values (including recursively)
-    tags: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
+    // the annotation covers duplicates in this `BTreeMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in tag values (including recursively)
+    // Like for `attrs`, we use a `BTreeMap` for a deterministic order.
+    tags: BTreeMap<SmolStr, JsonValueWithNoDuplicateKeys>,
 }
 
 /// Struct used to parse entities from JSON.
@@ -297,7 +299,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
             }
         };
         let vparser = ValueParser::new(self.extensions);
-        let attrs: HashMap<SmolStr, RestrictedExpr> = ejson
+        let attrs: BTreeMap<SmolStr, RestrictedExpr> = ejson
             .attrs
             .into_iter()
             .map(|(k, v)| match &entity_schema_info {
@@ -346,7 +348,7 @@ impl<S: Schema> EntityJsonParser<'_, '_, S> {
                 }
             })
             .collect::<Result<_, JsonDeserializationError>>()?;
-        let tags: HashMap<SmolStr, RestrictedExpr> = ejson
+        let tags: BTreeMap<SmolStr, RestrictedExpr> = ejson
             .tags
             .into_iter()
             .map(|(k, v)| match &entity_schema_info {

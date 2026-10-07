@@ -24,6 +24,14 @@ Cedar Language Version: TBD
   parses the string and renders the result back out to check that the input was normalized. The same
   optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
 
+### Fixed
+
+- `Entities::from_json_value()`, `from_json_str()`, `from_json_file()`, and `from_entities()` now return the same
+  error every time for the same input when more than one entity, attribute, tag, or ancestor is invalid. Previously
+  the reported error depended on `HashMap` iteration order and could change between calls. Schema conformance errors
+  are now reported for the entity with the smallest `EntityUid`, and within an entity for the lexicographically
+  smallest attribute or tag name (#2504).
+
 ## [4.13.0] - 2026-09-15
 
 Cedar Language Version: 4.5
