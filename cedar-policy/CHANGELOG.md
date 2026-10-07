@@ -23,6 +23,9 @@ Cedar Language Version: TBD
 - `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
   parses the string and renders the result back out to check that the input was normalized. The same
   optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+- For the experimental `tpe` feature, `TpeResponse::reauthorize` is faster (~6x on a 1,000-policy
+  residual set), as it no longer rebuilds the residual `PolicySet` on every call. `TpeResponse` now
+  builds that `PolicySet` at most once and reauthorization borrows it.
 
 ## [4.13.0] - 2026-09-15
 
