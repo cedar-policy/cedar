@@ -16,6 +16,7 @@
 
 //! This module contains tests for the experimental `term` feature.
 
+use cedar_policy_symcc::arc_ord::ArcOrd;
 use std::{str::FromStr, sync::Arc};
 
 use cedar_policy::{Authorizer, Schema, Validator};
@@ -196,7 +197,7 @@ async fn term_cex_custom_symenv() {
     let default_envs =
         Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
     let mut symenv = default_envs.symenv.clone();
-    symenv.request.context = Term::Record(Arc::new(
+    symenv.request.context = Term::Record(ArcOrd::new(
         std::iter::once(("user".into(), default_envs.symenv.request.principal.clone())).collect(),
     ));
     let envs = Environments::new_with_custom_symenv(
@@ -243,11 +244,11 @@ async fn term_cex_custom_symenv_set() {
     let default_envs =
         Environments::new(validator.schema(), "User", "Action::\"view\"", "Document");
     let mut symenv = default_envs.symenv.clone();
-    symenv.request.context = Term::Record(Arc::new(
+    symenv.request.context = Term::Record(ArcOrd::new(
         std::iter::once((
             "users".into(),
             Term::Set {
-                elts: Arc::new(
+                elts: ArcOrd::new(
                     std::iter::once(default_envs.symenv.request.principal.clone()).collect(),
                 ),
                 elts_ty: default_envs.symenv.request.principal.type_of(),

@@ -27,6 +27,7 @@
 //!
 //! See `term_type.rs` and `op.rs` for definitions of Term types and operators.
 
+use super::arc_ord::ArcOrd;
 use smol_str::{format_smolstr, SmolStr};
 
 use super::bitvec::BitVec;
@@ -37,7 +38,6 @@ use super::type_abbrevs::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
     ops::Deref,
-    sync::Arc,
 };
 
 /// A typed variable.
@@ -76,7 +76,7 @@ pub enum Term {
         /// Function being called
         op: Op,
         /// Arguments
-        args: Arc<Vec<Term>>,
+        args: ArcOrd<Vec<Term>>,
         /// Return type of the function
         ret_ty: TermType,
     },
@@ -85,7 +85,7 @@ pub enum Term {
     /// Literal
     Prim(TermPrim),
     /// Records
-    Record(Arc<BTreeMap<Attr, Term>>),
+    Record(ArcOrd<BTreeMap<Attr, Term>>),
     /// Sets
     Set {
         /// Type shared by all elements of the set.
@@ -94,10 +94,10 @@ pub enum Term {
         /// type first, matching `Term.lt` in the Lean model.
         elts_ty: TermType,
         /// Elements of the set (as `Term`)
-        elts: Arc<BTreeSet<Term>>,
+        elts: ArcOrd<BTreeSet<Term>>,
     },
     /// Some
-    Some(Arc<Term>),
+    Some(ArcOrd<Term>),
     /// Variable
     Var(TermVar),
 }
@@ -185,7 +185,7 @@ impl Term {
             Term::Some(t) => TermType::option_of(t.type_of()),
             Term::Set { elts_ty, .. } => TermType::set_of(elts_ty.clone()),
             Term::Record(m) => {
-                let rty = Arc::new(m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect());
+                let rty = ArcOrd::new(m.iter().map(|(k, v)| (k.clone(), v.type_of())).collect());
                 TermType::Record { rty }
             }
             Term::App { ret_ty, .. } => ret_ty.clone(),
@@ -384,7 +384,7 @@ mod test {
             insta::assert_snapshot!(term.to_string(), @r#"datetime("1970-01-01").offset(duration("1293755159777ms"))"#);
         });
 
-        let term = Term::Some(Arc::new(factory::set_of(
+        let term = Term::Some(ArcOrd::new(factory::set_of(
             [Term::from(36), Term::from(-1240)],
             TermType::Bitvec { n: SIXTY_FOUR },
         )));
@@ -407,7 +407,7 @@ mod test {
         let context = Term::from(TermVar {
             id: SmolStr::new_static("context"),
             ty: TermType::Record {
-                rty: Arc::new(
+                rty: ArcOrd::new(
                     [
                         (SmolStr::new("foo"), TermType::Bitvec { n: SIXTY_FOUR }),
                         (SmolStr::new("abc"), TermType::Bool),

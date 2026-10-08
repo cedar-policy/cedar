@@ -16,7 +16,7 @@
 
 //! Various [`super::term::Term`] operations allowed in [`super::term::Term::App`].
 
-use std::sync::Arc;
+use super::arc_ord::ArcOrd;
 
 use smol_str::SmolStr;
 
@@ -108,7 +108,7 @@ pub enum Op {
     SetSubset,
 
     StringLike(OrdPattern), // Core ADT operator with trusted mapping to SMT
-    Uuf(Arc<Uuf>),          // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    Uuf(ArcOrd<Uuf>),       // SMTLib core theory of equality with uninterpreted functions (`UF`)
     ZeroExtend(u32), // allowed to be 0. This is from the `BV` theory, like the variants that begin with `Bv`
 }
 

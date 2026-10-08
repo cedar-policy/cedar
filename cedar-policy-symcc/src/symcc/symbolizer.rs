@@ -18,6 +18,7 @@
 //! concrete Cedar values, requests, and entities to
 //! (literal) symbolic terms or environments.
 
+use super::arc_ord::ArcOrd;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
@@ -208,10 +209,10 @@ impl SymEntityData {
             }
         }
 
-        Ok(UnaryFunction::Udf(Arc::new(function::Udf {
+        Ok(UnaryFunction::Udf(ArcOrd::new(function::Udf {
             arg: TermType::Entity { ety: ety.clone() },
             out: attrs_udf_out,
-            table: Arc::new(attrs_udf_table),
+            table: ArcOrd::new(attrs_udf_table),
             default: attrs_udf_default,
         })))
     }
@@ -248,10 +249,10 @@ impl SymEntityData {
         let ancs_udf_out = TermType::set_of(anc_term_ty);
         let ancs_udf_default = ancs_udf_out.default_literal(sym_env);
 
-        Ok(UnaryFunction::Udf(Arc::new(function::Udf {
+        Ok(UnaryFunction::Udf(ArcOrd::new(function::Udf {
             arg: TermType::Entity { ety: ety.clone() },
             out: ancs_udf_out,
-            table: Arc::new(ancs_udf_table),
+            table: ArcOrd::new(ancs_udf_table),
             default: ancs_udf_default,
         })))
     }
@@ -301,16 +302,16 @@ impl SymEntityData {
         }
 
         Ok(SymTags {
-            keys: UnaryFunction::Udf(Arc::new(function::Udf {
+            keys: UnaryFunction::Udf(ArcOrd::new(function::Udf {
                 arg: TermType::Entity { ety: ety.clone() }, // more efficient than the Lean: avoids `TermType::of_type()` and constructs the `TermType` directly
                 out: TermType::set_of(TermType::String),
-                table: Arc::new(keys_udf_table),
+                table: ArcOrd::new(keys_udf_table),
                 default: keys_udf_default,
             })),
-            vals: UnaryFunction::Udf(Arc::new(function::Udf {
+            vals: UnaryFunction::Udf(ArcOrd::new(function::Udf {
                 arg: TermType::tag_for(ety.clone()), // record representing the pair type (ety, .string)
                 out: TermType::of_type(tag_ty)?,
-                table: Arc::new(vals_udf_table),
+                table: ArcOrd::new(vals_udf_table),
                 default: vals_udf_default,
             })),
         })
@@ -352,13 +353,13 @@ impl SymEntityData {
             EntitySchemaEntry::Enum(eids) => {
                 // Same as `SymEntityData::of_entity_type` since it does not
                 // contain `UUF`s or variables.
-                let attrs_udf = UnaryFunction::Udf(Arc::new(function::Udf {
+                let attrs_udf = UnaryFunction::Udf(ArcOrd::new(function::Udf {
                     arg: TermType::Entity { ety: ety.clone() },
                     out: TermType::Record {
-                        rty: Arc::new(BTreeMap::new()),
+                        rty: ArcOrd::new(BTreeMap::new()),
                     },
-                    table: Arc::new(BTreeMap::new()),
-                    default: Term::Record(Arc::new(BTreeMap::new())),
+                    table: ArcOrd::new(BTreeMap::new()),
+                    default: Term::Record(ArcOrd::new(BTreeMap::new())),
                 }));
                 Ok(SymEntityData {
                     attrs: attrs_udf,
