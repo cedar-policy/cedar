@@ -19,8 +19,8 @@ use clap::Args;
 
 use crate::{PoliciesArgs, SchemaArgs};
 use cedar_policy::{
-    Context, Decision, EntityId, EntityUid, PartialEntities, PartialEntityUid, PartialRequest,
-    PolicySet, Schema,
+    Decision, EntityId, EntityUid, PartialContext, PartialEntities, PartialEntityUid,
+    PartialRequest, PolicySet, Schema,
 };
 use miette::{miette, IntoDiagnostic, Report, Result, WrapErr};
 use serde::Deserialize;
@@ -80,6 +80,7 @@ pub struct TpeRequestArgs {
 
 // This struct is the serde structure expected for --request-json
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TpeRequestJSON {
     // Principal for the request
     pub(self) principal_type: String,
@@ -92,6 +93,14 @@ struct TpeRequestJSON {
     // Optional resource eid
     pub(self) resource_eid: Option<String>,
     // Context for the request
+    pub(self) context: Option<serde_json::Value>,
+    // What is known about context fields that `context` gives no value for
+    pub(self) knowledge: Option<TpeRequestKnowledgeJSON>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct TpeRequestKnowledgeJSON {
     pub(self) context: Option<serde_json::Value>,
 }
 
@@ -137,12 +146,24 @@ impl TpeRequestArgs {
                             })
                     })
                     .transpose()?,
+                knowledge: None,
             },
         };
         let action: EntityUid = qjson
             .action
             .parse()
             .wrap_err("failed to parse `action` as an entity UID")?;
+        let knowledge = qjson.knowledge.unwrap_or_default().context;
+        let context = match (qjson.context, knowledge) {
+            (None, None) => PartialContext::unknown(),
+            (context, knowledge) => PartialContext::from_json_value(
+                context.unwrap_or_else(|| serde_json::json!({})),
+                knowledge,
+                &action,
+                schema,
+            )
+            .wrap_err("failed to parse request context")?,
+        };
         Ok(PartialRequest::new(
             PartialEntityUid::new(
                 qjson
@@ -151,7 +172,7 @@ impl TpeRequestArgs {
                     .wrap_err("failed to parse `principal_type` as an entity type name")?,
                 qjson.principal_eid.as_ref().map(EntityId::new),
             ),
-            action.clone(),
+            action,
             PartialEntityUid::new(
                 qjson
                     .resource_type
@@ -159,13 +180,7 @@ impl TpeRequestArgs {
                     .wrap_err("failed to parse `resource_type` as an entity type name")?,
                 qjson.resource_eid.as_ref().map(EntityId::new),
             ),
-            qjson
-                .context
-                .map(|val| {
-                    Context::from_json_value(val, Some((schema, &action)))
-                        .wrap_err("failed to parse request context")
-                })
-                .transpose()?,
+            context,
             schema,
         )?)
     }
@@ -199,7 +214,7 @@ pub fn tpe(args: &TpeArgs) -> CedarExitCode {
         Ok(entities) => entities,
         Err(e) => {
             errs.push(e);
-            PartialEntities::empty()
+            return ret(errs);
         }
     };
 
@@ -254,9 +269,7 @@ fn load_partial_entities(
     entities_filename: impl AsRef<Path>,
     schema: &Schema,
 ) -> Result<PartialEntities> {
-    let f = std::fs::OpenOptions::new()
-        .read(true)
-        .open(entities_filename.as_ref())
+    let json = std::fs::read_to_string(entities_filename.as_ref())
         .into_diagnostic()
         .wrap_err_with(|| {
             format!(
@@ -264,15 +277,7 @@ fn load_partial_entities(
                 entities_filename.as_ref().display()
             )
         })?;
-    let json = serde_json::from_reader(f)
-        .into_diagnostic()
-        .wrap_err_with(|| {
-            format!(
-                "failed to parse entities as JSON value from file {}",
-                entities_filename.as_ref().display()
-            )
-        })?;
-    PartialEntities::from_json_value(json, schema).wrap_err_with(|| {
+    PartialEntities::from_json_str(&json, schema).wrap_err_with(|| {
         format!(
             "failed to parse entities from file {}",
             entities_filename.as_ref().display()

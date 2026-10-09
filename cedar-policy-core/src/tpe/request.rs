@@ -414,8 +414,8 @@ mod invalid_requests {
             parse_partial_euid(principal),
             action.clone(),
             parse_partial_euid(resource),
-            context.and_then(|c| {
-                PartialRecord::concrete_context_for_action(c.as_ref(), &action, &schema)
+            context.map(|c| {
+                PartialRecord::concrete_context_for_action(c.as_ref(), &action, &schema).unwrap()
             }),
             &schema,
         )

@@ -20,11 +20,17 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use smol_str::SmolStr;
 
-use crate::ast::{self, EntityUID, Value};
+use crate::ast::{self, EntityUID, RestrictedExpr, Value};
 use crate::entities::conformance::{validate_euids_in_partial_value, ValidateEuidError};
 use crate::entities::Schema;
+use crate::tpe::entities::partial_record_from_exprs;
+use crate::tpe::err::{
+    ContextNonValueError, ContextNotValidError, ContextUndeclaredActionError,
+    JsonDeserializationError,
+};
 use crate::tpe::evaluator::normalize_ext_value;
 use crate::tpe::residual::Residual;
+use crate::validator::request_validation_errors::UndeclaredActionError;
 use crate::validator::types::{AttributeType, Attributes, Type};
 use crate::validator::ValidatorSchema;
 
@@ -170,7 +176,7 @@ impl PartialRecord {
     }
 
     /// The attributes this record explicitly states
-    pub(crate) fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &AttrState)> {
+    pub fn attrs(&self) -> impl Iterator<Item = (&SmolStr, &AttrState)> {
         self.0.iter()
     }
 
@@ -258,13 +264,45 @@ impl PartialRecord {
         attrs: &BTreeMap<SmolStr, Value>,
         action: &EntityUID,
         schema: &ValidatorSchema,
-    ) -> Option<Self> {
+    ) -> Result<Self, UndeclaredActionError> {
         let Some(Type::Record { attrs: atys, .. }) =
             schema.get_action_id(action).map(|a| a.context_type())
         else {
-            return None;
+            return Err(UndeclaredActionError {
+                action: Arc::new(action.clone()),
+            });
         };
-        Some(Self::from_concrete_record(attrs, atys))
+        Ok(Self::from_concrete_record(attrs, atys))
+    }
+
+    /// Build the partial context record for `action`
+    pub fn partial_context_from_exprs(
+        fields: impl IntoIterator<Item = (SmolStr, AttrState<RestrictedExpr>)>,
+        action: &EntityUID,
+        schema: &ValidatorSchema,
+    ) -> Result<Self, JsonDeserializationError> {
+        let Some(Type::Record {
+            attrs: attr_tys, ..
+        }) = schema.get_action_id(action).map(|a| a.context_type())
+        else {
+            return Err(ContextUndeclaredActionError {
+                action: action.clone(),
+            }
+            .into());
+        };
+        let fields = fields
+            .into_iter()
+            .map(|(k, state)| {
+                // Only a stated value needs a declared type.
+                if matches!(state, AttrState::Value(_) | AttrState::PartialRecord(_))
+                    && attr_tys.get_attr(&k).is_none()
+                {
+                    return Err(ContextNotValidError {}.into());
+                }
+                Ok((k, state))
+            })
+            .collect::<Result<Vec<_>, JsonDeserializationError>>()?;
+        partial_record_from_exprs(fields).map_err(|field| ContextNonValueError::new(field).into())
     }
 
     pub(crate) fn validate_euids(&self, schema: &impl Schema) -> Result<(), ValidateEuidError> {

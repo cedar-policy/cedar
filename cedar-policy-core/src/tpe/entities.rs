@@ -16,6 +16,8 @@
 
 //! This module contains partial entities.
 
+pub mod json;
+
 use crate::ast::{Entity, PartialValue, RestrictedExpr};
 use crate::entities::conformance::err::{AttrOrTag, EntitySchemaConformanceError};
 use crate::entities::conformance::typecheck_value_against_schematype;
@@ -27,62 +29,22 @@ use crate::entities::{Dereference, Entities, Schema, SchemaType, TCComputation};
 use crate::tpe::err::MismatchedActionAncestorsError;
 use crate::tpe::err::{
     AncestorValidationError, EntitiesConsistencyError, EntitiesError, EntityConsistencyError,
-    EntityValidationError, JsonDeserializationError, MismatchedAncestorError,
-    MismatchedAttributeError, MismatchedTagError, MissingEntityError, UnexpectedActionError,
-    UnknownAttributeError, UnknownEntityError, UnknownTagError,
+    EntityValidationError, MismatchedAncestorError, MismatchedAttributeError, MismatchedTagError,
+    MissingEntityError, UnknownAttributeError, UnknownEntityError, UnknownTagError,
 };
 use crate::tpe::value::{AttrState, PartialRecord};
 use crate::{
     ast::{EntityUID, Value},
-    entities::{
-        json::{err::JsonDeserializationErrorContext, ValueParser},
-        EntityTypeDescription, EntityUidJson,
-    },
+    entities::EntityTypeDescription,
     evaluator::RestrictedEvaluator,
     extensions::Extensions,
-    jsonvalue::JsonValueWithNoDuplicateKeys,
     transitive_closure::{compute_tc, enforce_tc_and_dag, repair_tc, TCNode, TcError},
     validator::{CoreSchema, ValidatorEntityType, ValidatorSchema},
 };
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
-use serde_with::serde_as;
 use smol_str::SmolStr;
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, HashMap, HashSet};
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde_as]
-#[serde(transparent)]
-struct DeduplicatedMap {
-    #[serde_as(as = "serde_with::MapPreventDuplicates<_,_>")]
-    pub map: HashMap<SmolStr, JsonValueWithNoDuplicateKeys>,
-}
-
-/// Serde JSON format for a single entity
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct EntityJson {
-    /// UID of the entity, specified in any form accepted by `EntityUidJson`
-    uid: EntityUidJson,
-    /// attributes, whose values can be any JSON value.
-    /// (Probably a `CedarValueJson`, but for schema-based parsing, it could for
-    /// instance be an `EntityUidJson` if we're expecting an entity reference,
-    /// so for now we leave it in its raw json-value form, albeit not allowing
-    /// any duplicate keys in any records that may occur in an attribute value
-    /// (even nested).)
-    #[serde(default)]
-    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in attribute values (including recursively)
-    attrs: Option<DeduplicatedMap>,
-    #[serde(default)]
-    /// Parents of the entity, specified in any form accepted by `EntityUidJson`
-    parents: Option<Vec<EntityUidJson>>,
-    #[serde(default)]
-    // the annotation covers duplicates in this `HashMap` itself, while the `JsonValueWithNoDuplicateKeys` covers duplicates in any records contained in tag values (including recursively)
-    // Note that unlike the concrete JSON entity format, when the `tags` field
-    // is missing, it means `tags` are unknown
-    // This is because we need to represent `tags` being unknowns
-    tags: Option<DeduplicatedMap>,
-}
 
 /// The partial entity
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -97,14 +59,16 @@ pub struct PartialEntity {
     tags: Option<PartialRecord>,
 }
 
-fn unexpected_attr(uid: EntityUID, attr: SmolStr) -> EntitiesError {
+/// The error for an attribute that `uid`'s entity type does not declare
+pub fn unexpected_attr(uid: EntityUID, attr: SmolStr) -> EntitiesError {
     EntityValidationError::Concrete(EntitySchemaConformanceError::unexpected_entity_attr(
         uid, attr,
     ))
     .into()
 }
 
-fn unexpected_tag(uid: EntityUID, tag: SmolStr) -> EntitiesError {
+/// The error for a tag on an entity whose type declares no tags
+pub fn unexpected_tag(uid: EntityUID, tag: SmolStr) -> EntitiesError {
     EntityValidationError::Concrete(EntitySchemaConformanceError::unexpected_entity_tag(
         uid, tag,
     ))
@@ -256,7 +220,7 @@ impl PartialEntity {
 }
 
 /// Build a `PartialRecord` from restricted expressions
-fn partial_record_from_exprs(
+pub fn partial_record_from_exprs(
     exprs: impl IntoIterator<Item = (SmolStr, AttrState<RestrictedExpr>)>,
 ) -> Result<PartialRecord, SmolStr> {
     exprs
@@ -306,108 +270,6 @@ fn lookup_entity_type<'a>(
             uid.clone(),
         ))
         .into()
-    })
-}
-
-/// Parse a JSON map of attribute/tag values into a [`PartialRecord`]
-///
-/// `type_of` returns the expected [`SchemaType`] for a given key (tag or attribute). If `uid`'s
-/// entity type is not declared in the schema, an `UnexpectedEntityType` error
-/// is raised.
-fn parse_value_map(
-    map: DeduplicatedMap,
-    uid: &EntityUID,
-    unexpected: impl Fn(SmolStr) -> EntitySchemaConformanceError,
-    vparser: &ValueParser<'_>,
-    type_of: impl Fn(&str) -> Option<SchemaType>,
-) -> Result<PartialRecord, JsonDeserializationError> {
-    let unexpected = |key: SmolStr| JsonDeserializationError::Concrete(unexpected(key).into());
-    let exprs = map
-        .map
-        .into_iter()
-        .map(|(k, v)| {
-            let schema_attr_ty = type_of(&k).ok_or_else(|| unexpected(k.clone()))?;
-            let expr =
-                vparser.val_into_restricted_expr(v.into(), Some(&schema_attr_ty), &|| {
-                    JsonDeserializationErrorContext::EntityAttribute {
-                        uid: uid.clone(),
-                        attr: k.clone(),
-                    }
-                })?;
-            // Concrete entity JSON states a fully known value for every listed attribute or tag.
-            Ok((k, AttrState::Value(expr)))
-        })
-        .collect::<std::result::Result<Vec<_>, JsonDeserializationError>>()?;
-    // Every key above already had to have a declared type, so nothing further to check.
-    partial_record_from_exprs(exprs).map_err(unexpected)
-}
-
-/// Parse an [`EntityJson`] into a [`PartialEntity`] according to `schema`
-pub fn parse_ejson(
-    e: EntityJson,
-    schema: &ValidatorSchema,
-) -> Result<PartialEntity, JsonDeserializationError> {
-    let uid = e
-        .uid
-        .into_euid(&|| JsonDeserializationErrorContext::EntityUid)?;
-    let core_schema = CoreSchema::new(schema);
-
-    if uid.is_action() {
-        return Err(UnexpectedActionError { action: uid }.into());
-    }
-    let vparser = ValueParser::new(Extensions::all_available());
-    let schema_ty = core_schema.entity_type(uid.entity_type()).ok_or_else(|| {
-        JsonDeserializationError::Concrete(
-            EntitySchemaConformanceError::unexpected_entity_type(&core_schema, uid.clone()).into(),
-        )
-    })?;
-    let attrs = e
-        .attrs
-        .map(|m| {
-            parse_value_map(
-                m,
-                &uid,
-                |k| EntitySchemaConformanceError::unexpected_entity_attr(uid.clone(), k),
-                &vparser,
-                |k| schema_ty.attr_type(k),
-            )
-        })
-        .transpose()?;
-
-    let ancestors = e
-        .parents
-        .map(|parents| {
-            parents
-                .into_iter()
-                .map(|parent| {
-                    parent
-                        .into_euid(&|| JsonDeserializationErrorContext::EntityParents {
-                            uid: uid.clone(),
-                        })
-                        .map_err(JsonDeserializationError::Concrete)
-                })
-                .collect::<Result<HashSet<_>, _>>()
-        })
-        .transpose()?;
-
-    let tags = e
-        .tags
-        .map(|m| {
-            parse_value_map(
-                m,
-                &uid,
-                |k| EntitySchemaConformanceError::unexpected_entity_tag(uid.clone(), k),
-                &vparser,
-                |_| schema_ty.tag_type(),
-            )
-        })
-        .transpose()?;
-
-    Ok(PartialEntity {
-        uid,
-        attrs,
-        ancestors,
-        tags,
     })
 }
 
@@ -914,20 +776,6 @@ impl PartialEntities {
         }
     }
 
-    /// Construct [`PartialEntities`] from a JSON list
-    pub fn from_json_value(
-        value: serde_json::Value,
-        schema: &ValidatorSchema,
-    ) -> Result<Self, EntitiesError> {
-        let entities: Vec<EntityJson> = serde_json::from_value(value)
-            .map_err(|e| JsonDeserializationError::Concrete(e.into()))?;
-        let parsed = entities
-            .into_iter()
-            .map(|e| parse_ejson(e, schema))
-            .collect::<Result<Vec<_>, _>>()?;
-        Self::from_entities_map(Self::collect_unique(parsed.into_iter())?, schema, true)
-    }
-
     /// Check if [`PartialEntities`] are consistent with [`Entities`]
     pub fn check_consistency(&self, concrete: &Entities) -> Result<(), EntitiesConsistencyError> {
         for (uid, e) in &self.entities {
@@ -958,10 +806,8 @@ mod tests {
     };
     use cool_asserts::assert_matches;
 
-    use super::{
-        parse_ejson, validate_concrete_ancestors_concrete, EntityJson, PartialEntities,
-        PartialEntity,
-    };
+    use super::json::{parse_ejson, EntityJson};
+    use super::{validate_concrete_ancestors_concrete, PartialEntities, PartialEntity};
 
     #[track_caller]
     fn basic_schema() -> ValidatorSchema {
@@ -1842,7 +1688,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(entity_json.clone()).unwrap(),
             &schema(),
         )
@@ -1868,7 +1714,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(partial_entity_json).unwrap(),
             &schema(),
         )
@@ -1894,7 +1740,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(partial_entity_json).unwrap(),
             &schema(),
         )
@@ -1920,7 +1766,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(partial_entity_json).unwrap(),
             &schema(),
         )
@@ -1945,7 +1791,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(partial_entity_json).unwrap(),
             &schema(),
         )
@@ -1973,7 +1819,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(partial_entity_json).unwrap(),
             &schema(),
         )
@@ -2001,7 +1847,7 @@ mod test_consistency {
                 "parents" : [ {"type": "A", "id": "bar"} ],  // Different parent
             }
         );
-        let partial_entity = tpe::entities::parse_ejson(
+        let partial_entity = tpe::entities::json::parse_ejson(
             serde_json::from_value(partial_entity_json).unwrap(),
             &schema(),
         )

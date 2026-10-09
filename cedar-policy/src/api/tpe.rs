@@ -15,9 +15,8 @@
  */
 
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::sync::Arc;
 
-use cedar_policy_core::ast::{self, RestrictedExpr, Value};
+use cedar_policy_core::ast::{self, RestrictedExpr};
 use cedar_policy_core::authorizer::Decision;
 use cedar_policy_core::batched_evaluator::is_authorized_batched;
 use cedar_policy_core::batched_evaluator::{
@@ -25,8 +24,7 @@ use cedar_policy_core::batched_evaluator::{
 };
 use cedar_policy_core::tpe;
 use cedar_policy_core::tpe::entities::partial_entity_from_exprs;
-use cedar_policy_core::tpe::value::{AttrState, PartialRecord};
-use cedar_policy_core::validator::request_validation_errors::InvalidContextError;
+use cedar_policy_core::tpe::value::AttrState;
 use itertools::Itertools;
 use ref_cast::RefCast;
 use smol_str::SmolStr;
@@ -83,41 +81,91 @@ impl AsRef<tpe::request::PartialRequest> for PartialRequest {
     }
 }
 
+/// Partial information about a request's context.
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartialContext(Option<cedar_policy_core::tpe::value::PartialRecord>);
+
+impl PartialContext {
+    /// A context about which nothing is known
+    pub fn unknown() -> Self {
+        Self(None)
+    }
+
+    /// A fully known context.
+    pub fn from_concrete(
+        context: Context,
+        action: &EntityUid,
+        schema: &Schema,
+    ) -> Result<Self, PartialRequestCreationError> {
+        match &context.0 {
+            ast::Context::RestrictedResidual(_) => {
+                Err(PartialRequestCreationError::ContextContainsUnknowns)
+            }
+            ast::Context::Value(concrete) => {
+                cedar_policy_core::tpe::value::PartialRecord::concrete_context_for_action(
+                    concrete,
+                    action.as_ref(),
+                    schema.as_ref(),
+                )
+                .map(|record| Self(Some(record)))
+                .map_err(|e| {
+                    PartialRequestCreationError::Validation(
+                        RequestValidationError::UndeclaredAction(e.into()),
+                    )
+                })
+            }
+        }
+    }
+
+    /// Construct a context for a partial record
+    pub fn from_partial_record(
+        record: PartialRecord,
+        action: &EntityUid,
+        schema: &Schema,
+    ) -> Result<Self, PartialRequestCreationError> {
+        let states = record
+            .into_states()
+            .map_err(tpe_err::ContextNonValueError::new)
+            .map_err(tpe_err::JsonDeserializationError::from)?;
+        tpe::value::PartialRecord::partial_context_from_exprs(
+            states,
+            action.as_ref(),
+            schema.as_ref(),
+        )
+        .map(|record| Self(Some(record)))
+        .map_err(Into::into)
+    }
+
+    /// Parse a partial context from JSON
+    pub fn from_json_value(
+        context: serde_json::Value,
+        knowledge: Option<serde_json::Value>,
+        action: &EntityUid,
+        schema: &Schema,
+    ) -> Result<Self, tpe_err::JsonDeserializationError> {
+        tpe::entities::json::parse_context_json(
+            context,
+            knowledge,
+            action.as_ref(),
+            schema.as_ref(),
+        )
+        .map(|record| Self(Some(record)))
+    }
+}
+
 impl PartialRequest {
     /// Construct a valid [`PartialRequest`] according to a [`Schema`]
     pub fn new(
         principal: PartialEntityUid,
         action: EntityUid,
         resource: PartialEntityUid,
-        context: Option<Context>,
+        context: PartialContext,
         schema: &Schema,
     ) -> Result<Self, PartialRequestCreationError> {
-        let context = Self::context_to_partial_record(context, &action, schema)?;
-        tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context, &schema.0)
+        tpe::request::PartialRequest::new(principal.0, action.0, resource.0, context.0, &schema.0)
             .map(Self)
             .map_err(|e| PartialRequestCreationError::Validation(e.into()))
-    }
-
-    /// Converts the concrete context to a partial record. We have this for the moment to keep the
-    /// current public TPE API. Future change will update `PartialRequest::new` to take a partial
-    /// context.
-    fn context_to_partial_record(
-        context: Option<Context>,
-        action: &EntityUid,
-        schema: &Schema,
-    ) -> Result<Option<PartialRecord>, PartialRequestCreationError> {
-        let Some(context) = context else {
-            return Ok(None);
-        };
-        let map = match context.0 {
-            ast::Context::RestrictedResidual(_) => {
-                return Err(PartialRequestCreationError::ContextContainsUnknowns)
-            }
-            ast::Context::Value(m) => m,
-        };
-        PartialRecord::concrete_context_for_action(map.as_ref(), action.as_ref(), &schema.0)
-            .map(Some)
-            .ok_or(PartialRequestCreationError::ContextContainsUnknowns)
     }
 }
 
@@ -144,9 +192,9 @@ impl ResourceQueryRequest {
     ) -> Result<Self, PartialRequestCreationError> {
         PartialRequest::new(
             PartialEntityUid(principal.0.into()),
-            action,
+            action.clone(),
             PartialEntityUid::new(resource, None),
-            Some(context.clone()),
+            PartialContext::from_concrete(context.clone(), &action, schema)?,
             schema,
         )
         .map(|request| Self { request, context })
@@ -207,9 +255,9 @@ impl PrincipalQueryRequest {
     ) -> Result<Self, PartialRequestCreationError> {
         PartialRequest::new(
             PartialEntityUid::new(principal, None),
-            action,
+            action.clone(),
             PartialEntityUid(resource.0.into()),
-            Some(context.clone()),
+            PartialContext::from_concrete(context.clone(), &action, schema)?,
             schema,
         )
         .map(|request| Self { request, context })
@@ -253,7 +301,7 @@ impl PrincipalQueryRequest {
 pub struct ActionQueryRequest {
     principal: PartialEntityUid,
     resource: PartialEntityUid,
-    context: Option<Arc<BTreeMap<SmolStr, Value>>>,
+    context: Option<Context>,
     schema: Schema,
 }
 
@@ -272,14 +320,9 @@ impl ActionQueryRequest {
         context: Option<Context>,
         schema: Schema,
     ) -> Result<Self, PartialRequestCreationError> {
-        let context = context
-            .map(|c| match c.0 {
-                ast::Context::RestrictedResidual(_) => {
-                    Err(PartialRequestCreationError::ContextContainsUnknowns)
-                }
-                ast::Context::Value(m) => Ok(m),
-            })
-            .transpose()?;
+        if matches!(&context, Some(c) if matches!(&c.0, ast::Context::RestrictedResidual(_))) {
+            return Err(PartialRequestCreationError::ContextContainsUnknowns);
+        }
         Ok(Self {
             principal,
             resource,
@@ -291,29 +334,104 @@ impl ActionQueryRequest {
     fn partial_request(
         &self,
         action: EntityUid,
-    ) -> Result<PartialRequest, cedar_policy_core::validator::RequestValidationError> {
-        let context = self
-            .context
-            .as_ref()
-            .map(|map| {
-                PartialRecord::concrete_context_for_action(
-                    map.as_ref(),
-                    action.as_ref(),
-                    &self.schema.0,
-                )
-                .ok_or_else(|| {
-                    InvalidContextError::new(ast::Context::Value(Arc::clone(map)), action.0.clone())
-                })
-            })
-            .transpose()?;
-        tpe::request::PartialRequest::new(
-            self.principal.0.clone(),
-            action.0,
-            self.resource.0.clone(),
+    ) -> Result<PartialRequest, PartialRequestCreationError> {
+        let context = match self.context.clone() {
+            Some(context) => PartialContext::from_concrete(context, &action, &self.schema)?,
+            None => PartialContext::unknown(),
+        };
+        PartialRequest::new(
+            self.principal.clone(),
+            action,
+            self.resource.clone(),
             context,
-            &self.schema.0,
+            &self.schema,
         )
-        .map(PartialRequest)
+    }
+}
+
+/// What is known about an attribute or tag of a [`PartialEntity`], or field of a [`PartialContext`].
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PartialAttribute {
+    /// The attribute exists and has this value.
+    Value(RestrictedExpression),
+    /// The attribute exists and is a record whose attributes may individualy have partial information.
+    Record(PartialRecord),
+    /// The attribute exists, but its value is unknown.
+    Present,
+    /// The attribute is known not to exist.
+    Absent,
+    /// The value is unknown, the attribute is not even known to exist.
+    Unknown,
+}
+
+impl PartialAttribute {
+    /// An attribute with a known concrete value.
+    pub fn value(value: impl Into<RestrictedExpression>) -> Self {
+        Self::Value(value.into())
+    }
+
+    /// An attribute whose value is a record with per-attribute partial information.
+    pub fn record(attrs: impl IntoIterator<Item = (impl Into<String>, Self)>) -> Self {
+        Self::Record(PartialRecord::new(attrs))
+    }
+
+    fn into_internal(self) -> Result<AttrState<RestrictedExpr>, SmolStr> {
+        match self {
+            Self::Value(e) => Ok(AttrState::Value(e.0)),
+            Self::Record(r) => r.into_internal().map(AttrState::PartialRecord),
+            Self::Present => Ok(AttrState::Present),
+            Self::Absent => Ok(AttrState::Absent),
+            Self::Unknown => Ok(AttrState::Unknown),
+        }
+    }
+}
+
+impl From<RestrictedExpression> for PartialAttribute {
+    fn from(value: RestrictedExpression) -> Self {
+        Self::Value(value)
+    }
+}
+
+/// A record whose attributes are individually known, unknown, or absent.
+///
+/// An attribute not present is implicitly `unknown`
+#[doc = include_str!("../../experimental_warning.md")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartialRecord(BTreeMap<SmolStr, PartialAttribute>);
+
+impl PartialRecord {
+    /// Construct a [`PartialRecord`] from attributes
+    pub fn new(attrs: impl IntoIterator<Item = (impl Into<String>, PartialAttribute)>) -> Self {
+        Self(
+            attrs
+                .into_iter()
+                .map(|(k, v)| (SmolStr::from(k.into()), v))
+                .collect(),
+        )
+    }
+
+    /// The attributes this record states
+    ///
+    /// Any attribute this does not list is implicity [`PartialAttribute::Unknown`].
+    pub fn attrs(&self) -> impl Iterator<Item = (&str, &PartialAttribute)> {
+        self.0.iter().map(|(k, v)| (k.as_str(), v))
+    }
+
+    fn into_internal(self) -> Result<cedar_policy_core::tpe::value::PartialRecord, SmolStr> {
+        let states = self
+            .0
+            .into_iter()
+            .map(|(k, v)| v.into_internal().map(|state| (k, state)))
+            .collect::<Result<Vec<_>, _>>()?;
+        tpe::entities::partial_record_from_exprs(states)
+    }
+
+    fn into_states(self) -> Result<Vec<(SmolStr, AttrState<RestrictedExpr>)>, SmolStr> {
+        self.0
+            .into_iter()
+            .map(|(k, v)| v.into_internal().map(|state| (k, state)))
+            .collect()
     }
 }
 
@@ -327,29 +445,25 @@ impl PartialEntity {
     /// Construct a [`PartialEntity`]
     pub fn new(
         uid: EntityUid,
-        attrs: Option<BTreeMap<SmolStr, RestrictedExpression>>,
+        attrs: Option<PartialRecord>,
         ancestors: Option<HashSet<EntityUid>>,
-        tags: Option<BTreeMap<SmolStr, RestrictedExpression>>,
+        tags: Option<PartialRecord>,
         schema: &Schema,
     ) -> Result<Self, PartialEntityError> {
+        let convert = |rec: Option<PartialRecord>,
+                       err: fn(ast::EntityUID, SmolStr) -> tpe_err::EntitiesError|
+         -> Result<_, PartialEntityError> {
+            rec.map(PartialRecord::into_states)
+                .transpose()
+                .map_err(|attr| PartialEntityError::from(err(uid.0.clone(), attr)))
+        };
         Ok(Self(partial_entity_from_exprs(
-            uid.0,
-            attrs.map(Self::concrete_attr_map_to_partial),
+            uid.0.clone(),
+            convert(attrs, tpe::entities::unexpected_attr)?,
             ancestors.map(|s| s.into_iter().map(|e| e.0).collect()),
-            tags.map(Self::concrete_attr_map_to_partial),
+            convert(tags, tpe::entities::unexpected_tag)?,
             &schema.0,
         )?))
-    }
-
-    /// Converts the concrete attributes (or tags) to a partial record. We have this for the moment
-    /// to keep the current public TPE API. Future change will update `PartialEntity::new` to take a
-    /// partial attributes and tags.
-    fn concrete_attr_map_to_partial(
-        map: BTreeMap<SmolStr, RestrictedExpression>,
-    ) -> Vec<(SmolStr, AttrState<RestrictedExpr>)> {
-        map.into_iter()
-            .map(|(k, v)| (k, AttrState::Value(v.0)))
-            .collect()
     }
 }
 
@@ -367,14 +481,48 @@ impl AsRef<tpe::entities::PartialEntities> for PartialEntities {
 }
 
 impl PartialEntities {
-    /// Construct [`PartialEntities`] from a JSON value
-    /// The `parent`, `attrs`, `tags` field must be either fully known or
-    /// unknown. And parent entities cannot have unknown parents.
+    /// Construct [`PartialEntities`] from JSON.
+    ///
+    /// The format is the concrete entity JSON format with an additational `knowledge` key providing
+    /// information about attributes whose values are not known.
+    ///
+    /// ```json
+    /// {
+    ///   "uid": { "type": "User", "id": "alice" },
+    ///   "attrs": { "name": "Alice", "meta": { "a": 1 } },
+    ///   "parents": [],
+    ///   "knowledge": {
+    ///     "attrs": {
+    ///       "nickname": "absent",
+    ///       "email": "present",
+    ///       "meta": { "b": "present" }
+    ///     },
+    ///     "tags": { "role": "present" }
+    ///   }
+    /// }
+    /// ```
+    ///
+    /// The `knowledge` key mirrors the usual `attrs` and `tags`, but specifiying each attribute as
+    /// only `present` or `absent`.
+    ///
+    /// Any concrete entity JSON is valid here since it simply has no `knowledge` key. Its meaning
+    /// is consistent, but not identical. An attribute omitted from `attrs` or `tags` is unknown
+    /// rather than absent. Include an `"absent"` entry in `knowledge` to recover the precision.
     pub fn from_json_value(
         value: serde_json::Value,
         schema: &Schema,
     ) -> Result<Self, tpe_err::EntitiesError> {
         tpe::entities::PartialEntities::from_json_value(value, &schema.0).map(Self)
+    }
+
+    /// Construct [`PartialEntities`] from a string of JSON
+    pub fn from_json_str(json: &str, schema: &Schema) -> Result<Self, tpe_err::EntitiesError> {
+        tpe::entities::PartialEntities::from_json_str(json, &schema.0).map(Self)
+    }
+
+    /// Serialize to JSON
+    pub fn to_json_value(&self) -> Result<serde_json::Value, tpe_err::EntitiesError> {
+        self.0.to_json_value()
     }
 
     /// Construct [`PartialEntities`] given a fully concrete [`Entities`]
@@ -386,8 +534,8 @@ impl PartialEntities {
     }
 
     /// Create a `PartialEntities` with no entities
-    pub fn empty() -> Self {
-        Self(tpe::entities::PartialEntities::new())
+    pub fn empty(schema: &Schema) -> Result<Self, tpe_err::EntitiesError> {
+        Self::from_partial_entities(std::iter::empty(), schema)
     }
 
     /// Construct [`PartialEntities`] from an iterator of [`PartialEntity`]
@@ -893,7 +1041,7 @@ impl PolicySet {
     /// #       context: { should_allow: Bool, }
     /// #     };
     /// # ").unwrap();
-    /// # let entities = PartialEntities::empty();
+    /// # let entities = PartialEntities::empty(&schema).unwrap();
     ///
     /// // Construct a request for a concrete principal and resource, but leaving the context unknown so
     /// // that we can see all actions that might be authorized for some context.
@@ -960,15 +1108,13 @@ impl PolicySet {
 
 #[cfg(test)]
 mod tpe_tests {
-    use std::{
-        collections::{BTreeMap, HashSet},
-        str::FromStr,
-    };
+    use std::collections::HashSet;
+    use std::str::FromStr;
 
     use cedar_policy_core::tpe::err::EntitiesError;
     use cool_asserts::assert_matches;
 
-    use crate::{PartialEntity, PartialEntityError, RestrictedExpression, Schema};
+    use crate::{PartialEntity, PartialEntityError, PartialRecord, RestrictedExpression, Schema};
 
     #[test]
     fn entity_construction() {
@@ -983,9 +1129,9 @@ mod tpe_tests {
             r#"A::"foo""#.parse().unwrap(),
             None,
             Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
-            Some(BTreeMap::from_iter([(
-                "".into(),
-                RestrictedExpression::new_long(1),
+            Some(PartialRecord::new([(
+                "",
+                RestrictedExpression::new_long(1).into(),
             )])),
             &schema,
         )
@@ -995,11 +1141,11 @@ mod tpe_tests {
                 r#"A::"foo""#.parse().unwrap(),
                 None,
                 Some(HashSet::from_iter([r#"C::"c""#.parse().unwrap()])),
-                Some(BTreeMap::from_iter([(
-                    "".into(),
-                    RestrictedExpression::new_long(1)
+                Some(PartialRecord::new([(
+                    "",
+                    RestrictedExpression::new_long(1).into()
                 )])),
-                &schema
+                &schema,
             ),
             Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
         );
@@ -1009,18 +1155,33 @@ mod tpe_tests {
                 r#"A::"foo""#.parse().unwrap(),
                 None,
                 Some(HashSet::from_iter([r#"B::"b""#.parse().unwrap()])),
-                Some(BTreeMap::from_iter([(
-                    "".into(),
-                    RestrictedExpression::new_bool(true)
+                Some(PartialRecord::new([(
+                    "",
+                    RestrictedExpression::new_bool(true).into()
                 )])),
-                &schema
+                &schema,
             ),
             Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+        );
+
+        assert_matches!(
+            PartialEntity::new(
+                r#"Undeclared::"foo""#.parse().unwrap(),
+                Some(PartialRecord::new([("attr", RestrictedExpression::new_long(1).into())])),
+                None,
+                None,
+                &schema,
+            ),
+            Err(PartialEntityError::Entities(EntitiesError::Validation(
+                cedar_policy_core::tpe::err::EntityValidationError::Concrete(
+                    cedar_policy_core::entities::conformance::err::EntitySchemaConformanceError::UnexpectedEntityType(_)
+                )
+            )))
         );
     }
 
     mod streaming_service {
-        use std::{collections::BTreeMap, str::FromStr};
+        use std::str::FromStr;
 
         use cedar_policy_core::{authorizer::Decision, tpe::err::EntitiesError};
         use cool_asserts::assert_matches;
@@ -1029,9 +1190,9 @@ mod tpe_tests {
 
         use crate::{
             ActionConstraint, ActionQueryRequest, Context, Entities, EntityId, EntityUid,
-            PartialEntities, PartialEntity, PartialEntityUid, PartialRequest, PolicySet,
-            PrincipalConstraint, PrincipalQueryRequest, Request, ResourceConstraint,
-            ResourceQueryRequest, RestrictedExpression, Schema,
+            PartialContext, PartialEntities, PartialEntity, PartialEntityError, PartialEntityUid,
+            PartialRecord, PartialRequest, PolicySet, PrincipalConstraint, PrincipalQueryRequest,
+            Request, ResourceConstraint, ResourceQueryRequest, RestrictedExpression, Schema,
         };
 
         #[test]
@@ -1047,15 +1208,15 @@ mod tpe_tests {
             .unwrap();
             PartialEntity::new(
                 r#"Show::"foo""#.parse().unwrap(),
-                Some(BTreeMap::from_iter([
-                    ("isFree".into(), RestrictedExpression::new_bool(true)),
+                Some(PartialRecord::new([
+                    ("isFree", RestrictedExpression::new_bool(true).into()),
                     (
                         "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01"),
+                        RestrictedExpression::new_datetime("2025-01-01").into(),
                     ),
                     (
                         "isEarlyAccess".into(),
-                        RestrictedExpression::new_bool(false),
+                        RestrictedExpression::new_bool(false).into(),
                     ),
                 ])),
                 None,
@@ -1064,35 +1225,48 @@ mod tpe_tests {
             )
             .unwrap();
 
-            // Omitting a declared attribute is now fine, it's just unknown
             assert_matches!(
                 PartialEntity::new(
                     r#"Show::"foo""#.parse().unwrap(),
-                    Some(BTreeMap::from_iter([
-                        ("isFree".into(), RestrictedExpression::new_bool(true)),
+                    Some(PartialRecord::new([
+                        ("isFree", RestrictedExpression::new_bool(true).into()),
                         (
                             "isEarlyAccess".into(),
-                            RestrictedExpression::new_bool(false)
-                        ),
+                            RestrictedExpression::new_bool(false).into()
+                        )
                     ])),
                     None,
                     None,
-                    &schema
+                    &schema,
                 ),
                 Ok(_)
             );
 
+            assert_matches!(
+                PartialEntity::new(
+                    r#"Show::"foo""#.parse().unwrap(),
+                    Some(PartialRecord::new([(
+                        "isFree",
+                        RestrictedExpression::new_string("not a bool".into()).into()
+                    )])),
+                    None,
+                    None,
+                    &schema,
+                ),
+                Err(PartialEntityError::Entities(EntitiesError::Validation(_)))
+            );
+
             let e1 = PartialEntity::new(
                 r#"Show::"foo""#.parse().unwrap(),
-                Some(BTreeMap::from_iter([
-                    ("isFree".into(), RestrictedExpression::new_bool(true)),
+                Some(PartialRecord::new([
+                    ("isFree", RestrictedExpression::new_bool(true).into()),
                     (
                         "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01"),
+                        RestrictedExpression::new_datetime("2025-01-01").into(),
                     ),
                     (
                         "isEarlyAccess".into(),
-                        RestrictedExpression::new_bool(false),
+                        RestrictedExpression::new_bool(false).into(),
                     ),
                 ])),
                 None,
@@ -1111,13 +1285,16 @@ mod tpe_tests {
             PartialEntities::from_partial_entities([e1.clone(), e2.clone()], &schema).unwrap();
             let e3 = PartialEntity::new(
                 r#"Show::"foo""#.parse().unwrap(),
-                Some(BTreeMap::from_iter([
-                    ("isFree".into(), RestrictedExpression::new_bool(true)),
+                Some(PartialRecord::new([
+                    ("isFree", RestrictedExpression::new_bool(true).into()),
                     (
                         "releaseDate".into(),
-                        RestrictedExpression::new_datetime("2025-01-01"),
+                        RestrictedExpression::new_datetime("2025-01-01").into(),
                     ),
-                    ("isEarlyAccess".into(), RestrictedExpression::new_bool(true)),
+                    (
+                        "isEarlyAccess".into(),
+                        RestrictedExpression::new_bool(true).into(),
+                    ),
                 ])),
                 None,
                 None,
@@ -1414,7 +1591,7 @@ unless
                 PartialEntityUid::from_concrete(r#"Subscriber::"Alice""#.parse().unwrap()),
                 r#"Action::"watch""#.parse().unwrap(),
                 PartialEntityUid::new("Movie".parse().unwrap(), None),
-                Some(
+                PartialContext::from_concrete(
                     Context::from_pairs([(
                         "now".into(),
                         RestrictedExpression::new_record([
@@ -1431,7 +1608,10 @@ unless
                         .unwrap(),
                     )])
                     .unwrap(),
-                ),
+                    &r#"Action::"watch""#.parse().unwrap(),
+                    &schema,
+                )
+                .unwrap(),
                 &schema,
             )
             .unwrap();
@@ -1536,7 +1716,7 @@ unless
                 r#"Action::"watch""#.parse().unwrap(),
                 // Unknown resource of type `Movie`.
                 PartialEntityUid::new("Movie".parse().unwrap(), None),
-                Some(
+                PartialContext::from_concrete(
                     Context::from_pairs([(
                         "now".into(),
                         RestrictedExpression::new_record([
@@ -1553,7 +1733,10 @@ unless
                         .unwrap(),
                     )])
                     .unwrap(),
-                ),
+                    &r#"Action::"watch""#.parse().unwrap(),
+                    &schema,
+                )
+                .unwrap(),
                 &schema,
             )
             .unwrap();
@@ -2395,8 +2578,8 @@ when { principal in resource.admins };
         use itertools::Itertools;
 
         use crate::{
-            Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId,
-            PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
+            Context, Entities, PartialContext, PartialEntities, PartialEntityUid, PartialRequest,
+            PolicyId, PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
         };
         use std::{i64, str::FromStr};
 
@@ -2424,7 +2607,7 @@ when { principal in resource.admins };
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
                 PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
+                PartialContext::unknown(),
                 &schema,
             )
             .unwrap();
@@ -2489,7 +2672,7 @@ when { principal in resource.admins };
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
                 PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
+                PartialContext::unknown(),
                 &schema,
             )
             .unwrap();
@@ -2558,7 +2741,7 @@ when { principal in resource.admins };
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
                 PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
+                PartialContext::unknown(),
                 &schema,
             )
             .unwrap();
@@ -2632,7 +2815,7 @@ when { principal in resource.admins };
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
                 PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
+                PartialContext::unknown(),
                 &schema,
             )
             .unwrap();
@@ -2696,7 +2879,8 @@ when { principal in resource.admins };
         use cedar_policy_core::authorizer::Decision;
 
         use crate::{
-            PartialEntities, PartialEntityUid, PartialRequest, PolicyId, PolicySet, Schema,
+            PartialContext, PartialEntities, PartialEntityUid, PartialRequest, PolicyId, PolicySet,
+            Schema,
         };
 
         #[test]
@@ -2709,7 +2893,7 @@ when { principal in resource.admins };
                 PartialEntityUid::new("P".parse().unwrap(), None),
                 r#"Action::"A""#.parse().unwrap(),
                 PartialEntityUid::new("R".parse().unwrap(), None),
-                None,
+                PartialContext::unknown(),
                 &schema,
             )
             .unwrap();
@@ -2730,7 +2914,7 @@ when { principal in resource.admins };
             ))
             .unwrap();
 
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
             let response = policies.tpe(&req, &entities, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
@@ -2872,7 +3056,7 @@ when { principal in resource.admins };
                 "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
             )
             .unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -2902,7 +3086,7 @@ when { principal in resource.admins };
                 "entity User, Photo; action view appliesTo { principal: User, resource: Photo, context: {should_allow: Bool}};",
             )
             .unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -2926,7 +3110,7 @@ when { principal in resource.admins };
                 "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
             )
             .unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -2947,7 +3131,7 @@ when { principal in resource.admins };
         fn invalid_permitted_action() {
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
             let schema = Schema::from_str("entity User, Photo, Other; action view appliesTo { principal: User, resource: Other};").unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -2968,7 +3152,7 @@ when { principal in resource.admins };
         fn invalid_context_permitted_action() {
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
             let schema = Schema::from_str("entity User, Photo; action view appliesTo { principal: User, resource: Photo, context: {a: Long}};").unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -2989,7 +3173,7 @@ when { principal in resource.admins };
         fn no_actions_in_schema() {
             let policies = PolicySet::from_str("permit(principal, action, resource);").unwrap();
             let schema = Schema::from_str("entity User, Photo;").unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -3013,7 +3197,7 @@ when { principal in resource.admins };
                 "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
             )
             .unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -3040,7 +3224,7 @@ when { principal in resource.admins };
                 "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
             )
             .unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -3071,7 +3255,7 @@ when { principal in resource.admins };
                 "entity User, Photo; action view appliesTo { principal: User, resource: Photo};",
             )
             .unwrap();
-            let entities = PartialEntities::empty();
+            let entities = PartialEntities::empty(&schema).unwrap();
 
             let request = ActionQueryRequest::new(
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
@@ -3089,10 +3273,6 @@ when { principal in resource.admins };
         }
     }
 
-    /// TPE produces `Residual::Error` when a concrete entity lacks an accessed
-    /// attribute. The residual policy should be convertible to PST via
-    /// `Policy::to_pst()`, with the error node represented as
-    /// `pst::Expr::ResidualError`.
     #[test]
     fn residual_error_to_pst_and_json() {
         use cedar_policy_core::pst;
@@ -3152,7 +3332,7 @@ when { principal in resource.admins };
             crate::PartialEntityUid::from_concrete(r#"User::"u1""#.parse().unwrap()),
             r#"Action::"RevealCredentials""#.parse().unwrap(),
             crate::PartialEntityUid::from_concrete(r#"Account::"a1""#.parse().unwrap()),
-            None,
+            crate::PartialContext::unknown(),
             &schema,
         )
         .unwrap();
@@ -3202,8 +3382,8 @@ when { principal in resource.admins };
         use std::{collections::HashMap, str::FromStr};
 
         use crate::{
-            pst, Decision, EntityUid, PartialEntities, PartialEntityUid, PartialRequest, Policy,
-            PolicyId, PolicySet, Schema, SlotId, Template,
+            pst, Decision, EntityUid, PartialContext, PartialEntities, PartialEntityUid,
+            PartialRequest, Policy, PolicyId, PolicySet, Schema, SlotId, Template,
         };
 
         fn schema() -> Schema {
@@ -3235,7 +3415,7 @@ when { principal in resource.admins };
                 PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
                 r#"Action::"view""#.parse().unwrap(),
                 PartialEntityUid::new("Photo".parse().unwrap(), None),
-                None,
+                PartialContext::unknown(),
                 &schema(),
             )
             .unwrap()
@@ -3257,7 +3437,7 @@ when { principal in resource.admins };
                 .unwrap();
 
             let request = partial_req();
-            let es = PartialEntities::empty();
+            let es = PartialEntities::empty(&schema).unwrap();
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Allow));
@@ -3277,7 +3457,7 @@ when { principal in resource.admins };
             let policies = template_policy_set();
 
             let request = partial_req();
-            let es = PartialEntities::empty();
+            let es = PartialEntities::empty(&schema).unwrap();
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
@@ -3303,7 +3483,7 @@ when { principal in resource.admins };
                 .unwrap();
 
             let request = partial_req();
-            let es = PartialEntities::empty();
+            let es = PartialEntities::empty(&schema).unwrap();
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             assert_eq!(response.decision(), Some(Decision::Deny));
@@ -3329,7 +3509,7 @@ when { principal in resource.admins };
                 .unwrap();
 
             let request = partial_req();
-            let es = PartialEntities::empty();
+            let es = PartialEntities::empty(&schema).unwrap();
             let response = policies.tpe(&request, &es, &schema).unwrap();
 
             let expected: pst::Policy = Policy::parse(
@@ -3345,6 +3525,258 @@ when { principal in resource.admins };
             assert_eq!(response.decision(), None);
             assert!(response.reason().is_none());
             assert_eq!(residuals.len(), 1);
+        }
+    }
+
+    mod partial_attributes {
+        use crate::{
+            Decision, PartialAttribute, PartialContext, PartialEntities, PartialEntity,
+            PartialEntityUid, PartialRecord, PartialRequest, PolicySet, RestrictedExpression,
+            Schema,
+        };
+        use cool_asserts::assert_matches;
+        use std::str::FromStr;
+
+        #[track_caller]
+        fn schema() -> Schema {
+            Schema::from_str(
+                r#"entity User { name: String, nickname?: String, meta: { level: Long, note?: String } };
+                   entity Doc;
+                   action read appliesTo { principal: User, resource: Doc, context: { mfa?: Bool } };"#,
+            )
+            .unwrap()
+        }
+
+        #[track_caller]
+        fn decide(alice: PartialEntity, cond: &str) -> Option<Decision> {
+            let schema = schema();
+            let req = PartialRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                r#"Action::"read""#.parse().unwrap(),
+                PartialEntityUid::new("Doc".parse().unwrap(), None),
+                PartialContext::unknown(),
+                &schema,
+            )
+            .unwrap();
+            let entities = PartialEntities::from_partial_entities([alice], &schema).unwrap();
+            let policies = PolicySet::from_str(&format!(
+                "permit(principal, action, resource) when {{ {cond} }};"
+            ))
+            .unwrap();
+            policies.tpe(&req, &entities, &schema).unwrap().decision()
+        }
+
+        /// `User::"alice"` with the given attribute states; ancestors and tags unknown.
+        #[track_caller]
+        fn alice(
+            attrs: impl IntoIterator<Item = (&'static str, PartialAttribute)>,
+        ) -> PartialEntity {
+            PartialEntity::new(
+                r#"User::"alice""#.parse().unwrap(),
+                Some(PartialRecord::new(attrs)),
+                None,
+                None,
+                &schema(),
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn absent_attr_reduces_has_to_false() {
+            let alice = alice([("nickname", PartialAttribute::Absent)]);
+            assert_matches!(
+                decide(alice, "principal has nickname"),
+                Some(Decision::Deny)
+            );
+        }
+
+        #[test]
+        fn exists_attr_reduces_has_to_true() {
+            let alice = alice([("nickname", PartialAttribute::Present)]);
+            assert_matches!(
+                decide(alice, "principal has nickname"),
+                Some(Decision::Allow)
+            );
+        }
+
+        #[test]
+        fn unstated_attr_stays_unknown() {
+            assert_matches!(decide(alice([]), "principal has nickname"), None);
+        }
+
+        #[test]
+        fn nested_record_field_known() {
+            let alice = alice([(
+                "meta",
+                PartialAttribute::record([
+                    ("level", RestrictedExpression::new_long(5).into()),
+                    ("note", PartialAttribute::Absent),
+                ]),
+            )]);
+            assert_matches!(
+                decide(alice.clone(), "principal.meta.level == 5"),
+                Some(Decision::Allow)
+            );
+            assert_matches!(
+                decide(alice, "principal.meta has note"),
+                Some(Decision::Deny)
+            );
+        }
+
+        #[test]
+        fn absent_required_attr_is_rejected() {
+            assert_matches!(
+                PartialEntity::new(
+                    r#"User::"alice""#.parse().unwrap(),
+                    Some(PartialRecord::new([("name", PartialAttribute::Absent)])),
+                    None,
+                    None,
+                    &schema(),
+                ),
+                Err(_)
+            );
+        }
+
+        #[test]
+        fn partial_context_field() {
+            let schema = schema();
+            let req = PartialRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                r#"Action::"read""#.parse().unwrap(),
+                PartialEntityUid::new("Doc".parse().unwrap(), None),
+                PartialContext::from_partial_record(
+                    PartialRecord::new([("mfa", PartialAttribute::Absent)]),
+                    &r#"Action::"read""#.parse().unwrap(),
+                    &schema,
+                )
+                .unwrap(),
+                &schema,
+            )
+            .unwrap();
+            let entities = PartialEntities::empty(&schema).unwrap();
+            let policies = PolicySet::from_str(
+                "permit(principal, action, resource) when { context has mfa };",
+            )
+            .unwrap();
+            assert_matches!(
+                policies.tpe(&req, &entities, &schema).unwrap().decision(),
+                Some(Decision::Deny)
+            );
+        }
+    }
+
+    /// The public JSON entry points, driving end-to-end TPE decisions through the markers.
+    mod partial_json {
+        use crate::{
+            Decision, EntityUid, PartialContext, PartialEntities, PartialEntityUid, PartialRequest,
+            PolicySet, Schema,
+        };
+        use std::str::FromStr;
+
+        #[track_caller]
+        fn schema() -> Schema {
+            Schema::from_str(
+                r#"entity User { name: String, nickname?: String, meta?: { a: Long, b?: Long } };
+                   entity Doc;
+                   action read appliesTo { principal: User, resource: Doc, context: { mfa?: Bool } };"#,
+            )
+            .unwrap()
+        }
+
+        #[track_caller]
+        fn action() -> EntityUid {
+            r#"Action::"read""#.parse().unwrap()
+        }
+
+        /// Evaluate `cond` against `entities` and the given context.
+        #[track_caller]
+        fn decide(
+            entities: PartialEntities,
+            context: PartialContext,
+            cond: &str,
+        ) -> Option<Decision> {
+            let schema = schema();
+            let req = PartialRequest::new(
+                PartialEntityUid::from_concrete(r#"User::"alice""#.parse().unwrap()),
+                action(),
+                PartialEntityUid::from_concrete(r#"Doc::"d""#.parse().unwrap()),
+                context,
+                &schema,
+            )
+            .unwrap();
+            let policies = PolicySet::from_str(&format!(
+                "permit(principal, action, resource) when {{ {cond} }};"
+            ))
+            .unwrap();
+            policies.tpe(&req, &entities, &schema).unwrap().decision()
+        }
+
+        #[track_caller]
+        fn alice(knowledge: Option<serde_json::Value>) -> PartialEntities {
+            let mut e = serde_json::json!({
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice" },
+                "parents": [],
+            });
+            if let Some(k) = knowledge {
+                e["knowledge"] = k;
+            }
+            {
+                let json = serde_json::json!([e]);
+                PartialEntities::from_json_value(json, &schema()).unwrap()
+            }
+        }
+
+        #[test]
+        fn absent_present_has_entity_attr() {
+            for (knowledge, expected) in [
+                // Known not to exist: `has` is `false`, so the permit cannot apply.
+                (
+                    Some(serde_json::json!({"attrs": {"nickname": "absent"}})),
+                    Some(Decision::Deny),
+                ),
+                // Exists, value unknown: `has` is `true`, which is enough.
+                (
+                    Some(serde_json::json!({"attrs": {"nickname": "present"}})),
+                    Some(Decision::Allow),
+                ),
+                // Unstated: nothing is known, so a residual survives.
+                (None, None),
+            ] {
+                assert_eq!(
+                    decide(
+                        alice(knowledge.clone()),
+                        PartialContext::unknown(),
+                        "principal has nickname"
+                    ),
+                    expected,
+                    "knowledge: {knowledge:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn absent_present_has_context_attr() {
+            for (knowledge, expected) in [
+                (
+                    Some(serde_json::json!({"mfa": "absent"})),
+                    Some(Decision::Deny),
+                ),
+                (
+                    Some(serde_json::json!({"mfa": "present"})),
+                    Some(Decision::Allow),
+                ),
+                (None, None),
+            ] {
+                let context = PartialContext::from_json_value(
+                    serde_json::json!({}),
+                    knowledge.clone(),
+                    &action(),
+                    &schema(),
+                )
+                .unwrap();
+                assert_eq!(decide(alice(None), context, "context has mfa"), expected,);
+            }
         }
     }
 }
