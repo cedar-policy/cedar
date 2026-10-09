@@ -310,11 +310,12 @@ impl Entities {
             // actions were already validated as part of constructing the
             // `Schema`
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
-            for entity in entity_map.values() {
-                if !entity.uid().entity_type().is_action() {
-                    checker.validate_entity(entity)?;
-                }
-            }
+            validate_entities(
+                &checker,
+                entity_map
+                    .values()
+                    .filter(|entity| !entity.uid().entity_type().is_action()),
+            )?;
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => {}
@@ -332,11 +333,12 @@ impl Entities {
         // can never be in the same hierarchy when using schema-based parsing.
         if let Some(schema) = schema {
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
-            for entity in entity_map.values() {
-                if entity.uid().entity_type().is_action() {
-                    checker.validate_entity(entity)?;
-                }
-            }
+            validate_entities(
+                &checker,
+                entity_map
+                    .values()
+                    .filter(|entity| entity.uid().entity_type().is_action()),
+            )?;
             // Add the action entities from the schema
             entity_map.extend(
                 schema
@@ -481,6 +483,30 @@ impl Entities {
         }
 
         Ok(self)
+    }
+}
+
+/// Validates each of `entities` against the schema.
+///
+/// `entities` typically come from a `HashMap`, whose iteration order is
+/// arbitrary. So that the same input always produces the same error, when
+/// several entities are invalid we report the error for the one with the
+/// smallest `EntityUID`, rather than the first one we happen to visit.
+fn validate_entities<'a, S: Schema>(
+    checker: &EntitySchemaConformanceChecker<'_, S>,
+    entities: impl Iterator<Item = &'a Arc<Entity>>,
+) -> Result<()> {
+    match entities
+        .filter_map(|entity| {
+            checker
+                .validate_entity(entity)
+                .err()
+                .map(|err| (entity.uid(), err))
+        })
+        .min_by_key(|(uid, _)| *uid)
+    {
+        Some((_, err)) => Err(err.into()),
+        None => Ok(()),
     }
 }
 

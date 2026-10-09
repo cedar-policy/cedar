@@ -26,6 +26,14 @@ Cedar Language Version: TBD
 - Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
   were previously accepted, but slots were not included in the manifest.
 
+### Fixed
+
+- `Entities::from_json_value()`, `from_json_str()`, `from_json_file()`, and `from_entities()` now return the same
+  error every time for the same input when more than one entity, attribute, tag, or ancestor is invalid. Previously
+  the reported error depended on `HashMap` iteration order and could change between calls. Schema conformance errors
+  are now reported for the entity with the smallest `EntityUid`, and within an entity for the lexicographically
+  smallest attribute or tag name (#2504).
+
 ## [4.13.0] - 2026-09-15
 
 Cedar Language Version: 4.5
