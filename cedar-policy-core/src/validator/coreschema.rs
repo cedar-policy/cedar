@@ -625,6 +625,14 @@ pub mod request_validation_errors {
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
+
+        /// Build an `InvalidContextError`
+        pub fn new(context: ast::Context, action: ast::EntityUID) -> InvalidContextError {
+            InvalidContextError {
+                context,
+                action: Arc::new(action),
+            }
+        }
     }
 }
 
