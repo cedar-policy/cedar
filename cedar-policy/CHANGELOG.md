@@ -23,6 +23,8 @@ Cedar Language Version: TBD
 - `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
   parses the string and renders the result back out to check that the input was normalized. The same
   optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+- Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
+  were previously accepted, but slots were not included in the manifest.
 
 ## [4.13.0] - 2026-09-15
 

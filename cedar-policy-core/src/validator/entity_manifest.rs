@@ -513,18 +513,10 @@ fn entity_manifest_from_expr(
     expr: &Expr<Option<Type>>,
 ) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
     match expr.expr_kind() {
-        ExprKind::Slot(slot_id) => {
-            if slot_id.is_principal() {
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Principal,
-                )))
-            } else {
-                assert!(slot_id.is_resource());
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Resource,
-                )))
-            }
+        ExprKind::Slot(_) => Err(UnsupportedCedarFeatureError {
+            feature: "policy templates".into(),
         }
+        .into()),
         ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
             *var,
         ))),
