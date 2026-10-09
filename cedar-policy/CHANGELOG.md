@@ -26,6 +26,13 @@ Cedar Language Version: TBD
 - Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
   were previously accepted, but slots were not included in the manifest.
 
+### Fixed
+
+- `Policy::to_cedar()` and `PolicySet::to_cedar()` now return `None` for policies and templates (e.g., from JSON)
+  that cannot be represented in Cedar syntax, such as a method-style extension function call with no receiver
+  (`{"offset": []}`) or an extended `has` with a non-identifier attribute. Previously they returned Cedar text that
+  failed to parse (#2116).
+
 ## [4.13.0] - 2026-09-15
 
 Cedar Language Version: 4.5
