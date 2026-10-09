@@ -969,10 +969,16 @@ mod tpe_tests {
         str::FromStr,
     };
 
+    use cedar_policy_core::ast;
     use cedar_policy_core::tpe::err::EntitiesError;
+    use cedar_policy_core::tpe::residual::Residual;
+    use cedar_policy_core::validator::types::Type;
     use cool_asserts::assert_matches;
 
-    use crate::{PartialEntity, PartialEntityError, RestrictedExpression, Schema};
+    use crate::{
+        PartialEntity, PartialEntityError, Policy, PolicySet, RestrictedExpression, Schema,
+        ValidationMode, Validator,
+    };
 
     #[test]
     fn entity_construction() {
@@ -3199,6 +3205,52 @@ when { principal in resource.admins };
             expr.has_error(),
             "residual expression should contain an error node"
         );
+    }
+
+    /// To allow round tripping residuals through protobuf, we allowed decoding the `error` extension
+    /// function from protobuf. We do not want to allow the same in JSON or text formats.
+    #[test]
+    fn residual_error_rejected_validation_and_parsing() {
+        fn render_err(err: &dyn miette::Diagnostic) -> String {
+            let mut buf = String::new();
+            miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor())
+                .render_report(&mut buf, err)
+                .unwrap();
+            buf
+        }
+        let policy = Policy::from_ast(Residual::Error(Type::primitive_boolean()).to_policy(
+            ast::PolicyID::from_string("policy0"),
+            ast::Effect::Permit,
+            ast::Annotations::new(),
+        ));
+
+        let (schema, _) = Schema::from_cedarschema_str(
+            "entity User; entity Doc; action a appliesTo { principal: [User], resource: [Doc] };",
+        )
+        .unwrap();
+        let mut policies = PolicySet::new();
+        policies.add(policy.clone()).unwrap();
+        let result = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        insta::assert_snapshot!(render_err(&result), @"  × for policy `policy0`, undefined extension function: error");
+
+        assert_matches!(Policy::from_str(&policy.to_string()), Err(e) => {
+            insta::assert_snapshot!(render_err(&e), @"
+             × `error` is not a valid function
+              ╭────
+            1 │ permit(principal, action, resource) when { error() };
+              ·                                            ───────
+              ╰────
+            ");
+        });
+
+        let json = policy.to_json().unwrap();
+        assert_matches!(Policy::from_json(None, json), Err(e) => {
+            insta::assert_snapshot!(render_err(&e), @"
+            × error deserializing a policy/template from JSON
+            ╰─▶ unknown variant `error`, expected one of `Value`, `Var`, `Slot`, `!`, `neg`, `==`, `!=`, `in`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `+`, `-`, `*`, `contains`, `containsAll`, `containsAny`,
+                `isEmpty`, `getTag`, `hasTag`, `.`, `has`, `like`, `is`, `if-then-else`, `Set`, `Record`
+            ");
+        });
     }
 
     mod template_links {

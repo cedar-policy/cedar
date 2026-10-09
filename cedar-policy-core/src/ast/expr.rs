@@ -928,6 +928,14 @@ impl Expr {
         for sub in self.subexpressions() {
             match sub.expr_kind() {
                 ExprKind::ExtensionFunctionApp { fn_name, args } => {
+                    // TPE residual error nodes are encoded as a call to the `error` extension
+                    // function, which isn't a real extensions function. Accept it so residual
+                    // policies can roundtrip through protobuf (text/JSON parsing and policy
+                    // validation still reject it)
+                    #[cfg(feature = "tpe")]
+                    if *fn_name == *crate::tpe::residual::ERROR_NAME {
+                        continue;
+                    }
                     // Invariant: fn_name must be a known extension function
                     let ext_fn = Extensions::all_available().func(fn_name).map_err(|_| {
                         ExprValidationError(format!("unknown extension function `{fn_name}`"))
