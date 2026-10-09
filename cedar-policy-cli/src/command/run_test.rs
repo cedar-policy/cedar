@@ -148,7 +148,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
             print!("  test (unnamed) ... ");
         }
         std::io::stdout().flush().into_diagnostic()?;
-        match run_one_test(&policies, test, validator.as_ref(), &test_file_dir) {
+        match run_one_test(&policies, test, validator.as_ref(), test_file_dir) {
             Ok(TestResult::Pass) => {
                 println!(
                     "{}",

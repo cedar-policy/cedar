@@ -223,9 +223,9 @@ impl Validator {
         }
     }
 
-    pub(crate) fn validate_linked_action_application<'a>(
+    pub(crate) fn validate_linked_action_application(
         &self,
-        p: &'a Policy,
+        p: &Policy,
     ) -> Result<(), ValidationWarning> {
         self.validate_action_application(
             p.loc(),
@@ -236,9 +236,9 @@ impl Validator {
         )
     }
 
-    pub(crate) fn validate_template_action_application<'a>(
+    pub(crate) fn validate_template_action_application(
         &self,
-        t: &'a Template,
+        t: &Template,
     ) -> Result<(), ValidationWarning> {
         self.validate_action_application(
             t.loc(),

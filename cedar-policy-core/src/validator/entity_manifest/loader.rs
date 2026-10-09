@@ -208,15 +208,12 @@ pub(crate) fn load_entities(
         .per_action
         .get(&request.to_request_type().ok_or(PartialRequestError {})?)
     else {
-        match Entities::from_entities(
+        return Ok(Entities::from_entities(
             vec![],
             None::<&NoEntitiesSchema>,
             TCComputation::AssumeAlreadyComputed,
             Extensions::all_available(),
-        ) {
-            Ok(entities) => return Ok(entities),
-            Err(err) => return Err(err.into()),
-        };
+        )?);
     };
 
     let context = request.context().ok_or(PartialRequestError {})?;
