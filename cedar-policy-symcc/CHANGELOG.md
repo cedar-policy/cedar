@@ -11,6 +11,10 @@ Cedar Language Version: TBD
 
 ### Changed
 
+- **BREAKING**: `CompiledPolicy::compile()` and `CompiledPolicySet::compile()` now require a 
+  `CompiledSchema` parameter instead of a `Schema`. This avoids redundant symbolic entity computation
+  when compiling multiple policies or policy sets with the same schema. The overhead of creating
+  a `CompiledSchema` is minimal, and it enables efficient reuse of precomputed symbolic entities (#2467).
 - Changed IP address ordering (via `Ord` and `PartialOrd`). A prefix-less address is now greater 
   than an otherwise equivalent address with a prefix (#2571).
 
