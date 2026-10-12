@@ -26,7 +26,10 @@ use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::sync::Arc;
-use std::{borrow::Cow, collections::HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 use crate::ast::UnwrapInfallible;
 use crate::validator::types::BoolType;
@@ -104,13 +107,11 @@ impl<'a> Typechecker<'a> {
     ///
     /// Pruning skips two kinds of work that cannot affect the result:
     ///
-    /// * Environments where the scope constraints alone typecheck to `false`
-    ///   with no errors. The condition is `principal && (action && (resource
-    ///   && body))`, and `&&` short-circuits on a `false` operand without
-    ///   typechecking what follows, so in such an environment the whole
-    ///   condition also has type `false` with no errors. That environment
-    ///   would contribute nothing to `type_errors`, would not clear
-    ///   `all_succ`, and would not clear `all_false`.
+    /// * Environments the scope constraints rule out (see
+    ///   [`Self::for_each_env_in_scope`]). In such an environment the whole
+    ///   condition has type `false` with no errors, so it would contribute
+    ///   nothing to `type_errors`, would not clear `all_succ`, and would not
+    ///   clear `all_false`.
     /// * Redundant template links. A slot constrained by `==`, `in` or
     ///   `is .. in` only occurs in its scope constraint, which has the same
     ///   type and no errors for every candidate link (see
@@ -128,34 +129,27 @@ impl<'a> Typechecker<'a> {
         // is computed, so peak live memory is O(one condition) rather than
         // O(envs * condition).
         let cond = t.condition();
-        let scope = prune.then(|| {
-            Expr::and(
-                t.principal_constraint().as_expr(),
-                Expr::and(
-                    t.action_constraint().as_expr(),
-                    t.resource_constraint().as_expr(),
-                ),
-            )
-        });
         let mut all_false = true;
         let mut all_succ = true;
-        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
-            for linked_e in self.link_request_env_pruned(unlinked_e, t, prune) {
-                if let Some(scope) = &scope {
-                    if self.scope_is_false(&linked_e, t.id(), scope) {
-                        continue;
-                    }
+        let mut check =
+            |env: &RequestEnv<'_>| match self.single_env_typechecking(env, t.id(), &cond) {
+                PolicyCheck::Success(_) => all_false = false,
+                PolicyCheck::Irrelevant(err, _) => {
+                    all_succ = all_succ && err.is_empty();
+                    type_errors.extend(err);
                 }
-                match self.single_env_typechecking(&linked_e, t.id(), &cond) {
-                    PolicyCheck::Success(_) => all_false = false,
-                    PolicyCheck::Irrelevant(err, _) => {
-                        all_succ = all_succ && err.is_empty();
-                        type_errors.extend(err);
-                    }
-                    PolicyCheck::Fail(err) => {
-                        type_errors.extend(err);
-                        all_false = false;
-                        all_succ = false;
+                PolicyCheck::Fail(err) => {
+                    type_errors.extend(err);
+                    all_false = false;
+                    all_succ = false;
+                }
+            };
+        match prune.then(|| ScopeConstraints::new(t)).flatten() {
+            Some(scope) => self.for_each_env_in_scope(t.id(), &scope, &mut check),
+            None => {
+                for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
+                    for linked_e in self.link_request_env_pruned(unlinked_e, t, prune) {
+                        check(&linked_e);
                     }
                 }
             }
@@ -219,14 +213,87 @@ impl<'a> Typechecker<'a> {
         Self::classify(ans, type_errors)
     }
 
-    /// Whether the scope constraints typecheck to `false`, with no errors, in
-    /// this environment. See [`Self::typecheck_policy_pruned`].
-    fn scope_is_false(
+    /// Call `check` on every linked request environment that the template's
+    /// scope does not rule out.
+    ///
+    /// A policy condition is `principal && (action && (resource && body))`,
+    /// where `principal`, `action` and `resource` are the scope constraints.
+    /// `&&` short-circuits: when its left operand has type `false` with no
+    /// errors, so does the `&&`, and its right operand is not typechecked.
+    /// When its left operand has any other boolean type with no errors and its
+    /// right operand has type `false` with no errors, the `&&` has type
+    /// `false` with no errors. So when, reading left to right, the first scope
+    /// constraint that is not [`ScopePart::Other`] is [`ScopePart::False`], the
+    /// whole condition has type `false` with no errors, whatever the body is,
+    /// and the environment is ruled out.
+    ///
+    /// Scope constraints set no capabilities, and each one's type depends
+    /// only on its own variable's type and, for a slot, the slot's link. With
+    /// one link per slot (see [`ScopeConstraints::new`]) the link is fixed by
+    /// the variable's type, so the principal constraint is typechecked once
+    /// per principal type, the action constraint once per action and the
+    /// resource constraint once per resource type. The schema's environments
+    /// are grouped by action and then principal, so a whole group is skipped
+    /// at once when its action or principal rules it out.
+    fn for_each_env_in_scope(
+        &self,
+        policy_id: &PolicyID,
+        scope: &ScopeConstraints,
+        check: &mut impl FnMut(&RequestEnv<'_>),
+    ) {
+        let mut principals = HashMap::new();
+        let mut resources = HashMap::new();
+        let envs = self.schema.unlinked_envs_owned();
+        for action_group in envs.chunk_by(|a, b| a.action == b.action) {
+            let mut action_part = None;
+            for principal_group in action_group.chunk_by(|a, b| a.principal == b.principal) {
+                let Some(first) = principal_group.first() else {
+                    continue;
+                };
+                let first_env = scope.link(first.as_request_env());
+                let principal = *principals
+                    .entry(&first.principal)
+                    .or_insert_with(|| self.scope_part(&first_env, policy_id, &scope.principal));
+                let action = match principal {
+                    ScopePart::False => continue,
+                    ScopePart::Fails => ScopePart::Fails,
+                    ScopePart::Other => *action_part.get_or_insert_with(|| {
+                        self.scope_part(&first_env, policy_id, &scope.action)
+                    }),
+                };
+                match action {
+                    ScopePart::False => continue,
+                    ScopePart::Fails => {
+                        for e in principal_group {
+                            check(&scope.link(e.as_request_env()));
+                        }
+                    }
+                    ScopePart::Other => {
+                        for e in principal_group {
+                            let env = scope.link(e.as_request_env());
+                            let resource = *resources.entry(&e.resource).or_insert_with(|| {
+                                self.scope_part(&env, policy_id, &scope.resource)
+                            });
+                            if resource != ScopePart::False {
+                                check(&env);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if self.mode.is_partial() {
+            check(&RequestEnv::UndeclaredAction);
+        }
+    }
+
+    /// Typecheck one scope constraint in `request_env`.
+    fn scope_part(
         &self,
         request_env: &RequestEnv<'_>,
         policy_id: &PolicyID,
-        scope: &Expr,
-    ) -> bool {
+        constraint: &Expr,
+    ) -> ScopePart {
         let mut type_errors = Vec::new();
         let single_env_typechecker = SingleEnvTypechecker {
             schema: self.schema,
@@ -237,17 +304,21 @@ impl<'a> Typechecker<'a> {
         };
         let ans = single_env_typechecker.expect_type(
             &CapabilitySet::new(),
-            scope,
+            constraint,
             Type::primitive_boolean(),
             &mut type_errors,
             |_| None,
         );
-        type_errors.is_empty()
-            && ans.typechecked()
-            && matches!(
-                ans.into_typed_expr().as_ref().map(|e| e.data()),
-                Some(Some(Type::Bool(BoolType::False)))
-            )
+        if !type_errors.is_empty() || !ans.typechecked() {
+            ScopePart::Fails
+        } else if matches!(
+            ans.into_typed_expr().as_ref().map(|e| e.data()),
+            Some(Some(Type::Bool(BoolType::False)))
+        ) {
+            ScopePart::False
+        } else {
+            ScopePart::Other
+        }
     }
 
     fn classify(ans: TypecheckAnswer<'_>, type_errors: Vec<ValidationError>) -> PolicyCheck {
@@ -411,6 +482,71 @@ impl<'a> Typechecker<'a> {
             // consider its links.
             Box::new(std::iter::once(None))
         }
+    }
+}
+
+/// How one scope constraint typechecks in a request environment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ScopePart {
+    /// Errors, or fails to typecheck.
+    Fails,
+    /// Type `false`, no errors.
+    False,
+    /// Any other boolean type, no errors.
+    Other,
+}
+
+/// A template's scope constraints as expressions, for
+/// [`Typechecker::for_each_env_in_scope`].
+struct ScopeConstraints {
+    principal: Expr,
+    action: Expr,
+    resource: Expr,
+    principal_slot: bool,
+    resource_slot: bool,
+}
+
+impl ScopeConstraints {
+    /// `None` when a slot of `t` needs more than one link: one constrained by
+    /// `is` alone or not constrained at all (see
+    /// [`Typechecker::possible_slot_links`]). The policy grammar allows
+    /// neither, so in practice this is always `Some`.
+    fn new(t: &Template) -> Option<Self> {
+        let one_link = |slot_id: SlotId, constraint: &PrincipalOrResourceConstraint| {
+            let has_slot = t.slots().any(|slot| slot.id == slot_id);
+            let one = !has_slot
+                || matches!(
+                    constraint,
+                    PrincipalOrResourceConstraint::Eq(_)
+                        | PrincipalOrResourceConstraint::In(_)
+                        | PrincipalOrResourceConstraint::IsIn(_, _)
+                );
+            one.then_some(has_slot)
+        };
+        Some(Self {
+            principal_slot: one_link(SlotId::principal(), t.principal_constraint().as_inner())?,
+            resource_slot: one_link(SlotId::resource(), t.resource_constraint().as_inner())?,
+            principal: t.principal_constraint().as_expr(),
+            action: t.action_constraint().as_expr(),
+            resource: t.resource_constraint().as_expr(),
+        })
+    }
+
+    /// Link each slot to its variable's own type, the one link
+    /// [`Typechecker::possible_slot_links`] gives it with pruning.
+    fn link<'b>(&self, env: RequestEnv<'b>) -> RequestEnv<'b> {
+        let (principal, resource) = match &env {
+            RequestEnv::DeclaredAction {
+                principal,
+                resource,
+                ..
+            } => (
+                self.principal_slot.then(|| (*principal).clone()),
+                self.resource_slot.then(|| (*resource).clone()),
+            ),
+            RequestEnv::UndeclaredAction => (None, None),
+        };
+        env.link(principal, resource)
     }
 }
 

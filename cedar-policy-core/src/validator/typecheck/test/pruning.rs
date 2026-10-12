@@ -26,7 +26,8 @@ use crate::parser::parse_policy_or_template;
 #[cfg(feature = "partial-validate")]
 use crate::validator::{json_schema, RawName};
 use crate::validator::{
-    typecheck::Typechecker, ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+    typecheck::{ScopeConstraints, ScopePart, Typechecker},
+    ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
 };
 
 use super::test_utils::SchemaProvider;
@@ -254,4 +255,35 @@ fn pruning_is_exact_with_partial_schema() {
     .unwrap();
     let schema = fragment.schema();
     assert_pruning_exact(&schema, ValidationMode::Partial).assert_all_kinds();
+}
+
+/// The corpus makes each scope constraint fail, type as `false` and type as
+/// something else in some environment, so every branch of
+/// `Typechecker::for_each_env_in_scope` runs.
+#[test]
+fn corpus_reaches_every_scope_outcome() {
+    let schema = SCHEMA.schema();
+    let typechecker = Typechecker::new(&schema, ValidationMode::Strict);
+    let mut seen = HashSet::new();
+    for (i, constraints) in [PRINCIPALS, ACTIONS, RESOURCES].into_iter().enumerate() {
+        for constraint in constraints {
+            let mut scope = ["principal", "action", "resource"].map(String::from);
+            if let Some(s) = scope.get_mut(i) {
+                *s = (*constraint).to_string();
+            }
+            let [p, a, r] = scope;
+            let t = parse_policy_or_template(None, &format!("permit({p}, {a}, {r});")).unwrap();
+            let scope = ScopeConstraints::new(&t).unwrap();
+            let expr = [&scope.principal, &scope.action, &scope.resource][i];
+            for e in schema.unlinked_envs_owned() {
+                let env = scope.link(e.as_request_env());
+                seen.insert((i, typechecker.scope_part(&env, t.id(), expr)));
+            }
+        }
+    }
+    for i in 0..3 {
+        for part in [ScopePart::Fails, ScopePart::False, ScopePart::Other] {
+            assert!(seen.contains(&(i, part)), "scope {i} never {part:?}");
+        }
+    }
 }
