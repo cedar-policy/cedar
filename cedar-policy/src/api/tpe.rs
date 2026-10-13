@@ -3244,8 +3244,9 @@ when { principal in resource.admins };
         });
 
         let json = policy.to_json().unwrap();
-        assert_matches!(Policy::from_json(None, json), Err(e) => {
-            insta::assert_snapshot!(render_err(&e), @"
+        assert_matches!(Policy::from_json(None, json), Err(_e) => {
+            #[cfg(not(feature = "tolerant-ast"))]
+            insta::assert_snapshot!(render_err(&_e), @"
             × error deserializing a policy/template from JSON
             ╰─▶ unknown variant `error`, expected one of `Value`, `Var`, `Slot`, `!`, `neg`, `==`, `!=`, `in`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `+`, `-`, `*`, `contains`, `containsAll`, `containsAny`,
                 `isEmpty`, `getTag`, `hasTag`, `.`, `has`, `like`, `is`, `if-then-else`, `Set`, `Record`
