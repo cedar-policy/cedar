@@ -21,7 +21,6 @@ use super::models;
 use cedar_policy_core::ast::{self, Eid};
 use cedar_policy_core::validator::{self, types};
 use nonempty::NonEmpty;
-use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -37,39 +36,27 @@ impl From<&validator::ValidatorSchema> for models::Schema {
 impl TryFrom<models::Schema> for validator::ValidatorSchema {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
-        let mut entity_type_names: HashSet<ast::EntityType> = HashSet::new();
         let entity_types = v
             .entity_decls
             .into_iter()
-            .map(|decl| {
-                let ety = validator::ValidatorEntityType::try_from(decl)?;
-                if !entity_type_names.insert(ety.name().clone()) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "duplicate entity type `{}` in `entity_decls`",
-                        ety.name()
-                    )));
-                }
-                Ok(ety)
-            })
+            .map(validator::ValidatorEntityType::try_from)
             .collect::<Result<Vec<_>, _>>()?;
 
-        let mut action_names: HashSet<ast::EntityUID> = HashSet::new();
         let action_ids = v
             .action_decls
             .into_iter()
-            .map(|decl| {
-                let action = validator::ValidatorActionId::try_from(decl)?;
-                if !action_names.insert(action.name().clone()) {
-                    return Err(ProtobufConversionError::InvalidValue(format!(
-                        "duplicate action `{}` in `action_decls`",
-                        action.name()
-                    )));
-                }
-                Ok(action)
-            })
+            .map(validator::ValidatorActionId::try_from)
             .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(Self::new(entity_types, action_ids))
+        // `try_new` detects duplicates types/actions
+        Self::try_new(entity_types.into_iter(), action_ids.into_iter()).map_err(|e| match e {
+            validator::DuplicateDeclError::EntityType(ty) => ProtobufConversionError::InvalidValue(
+                format!("duplicate entity type `{ty}` in `entity_decls`"),
+            ),
+            validator::DuplicateDeclError::Action(uid) => ProtobufConversionError::InvalidValue(
+                format!("duplicate action `{uid}` in `action_decls`"),
+            ),
+        })
     }
 }
 
@@ -132,15 +119,15 @@ impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
             v.principal_types
                 .into_iter()
                 .map(ast::EntityType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<HashSet<_>, _>>()?,
             v.resource_types
                 .into_iter()
                 .map(ast::EntityType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<HashSet<_>, _>>()?,
             v.descendants
                 .into_iter()
                 .map(ast::EntityUID::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
+                .collect::<Result<HashSet<_>, _>>()?,
             types::Type::Record {
                 attrs: model_to_attributes(v.context)?,
                 open_attributes: types::OpenTag::default(),
@@ -189,8 +176,8 @@ impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
             .descendants
             .into_iter()
             .map(ast::EntityType::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
+            .collect::<Result<HashSet<_>, _>>()?;
+        match NonEmpty::collect(v.enum_choices.into_iter().map(Eid::new)) {
             // `enum_choices` is empty, so `v` represents a standard entity type
             None => Ok(Self::new_standard(
                 name,
@@ -212,12 +199,7 @@ impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
                         "enum type {name} should not have tags"
                     )))
                 } else {
-                    Ok(Self::new_enum(
-                        name,
-                        descendants,
-                        enum_choices.map(Eid::new),
-                        None,
-                    ))
+                    Ok(Self::new_enum(name, descendants, enum_choices, None))
                 }
             }
         }

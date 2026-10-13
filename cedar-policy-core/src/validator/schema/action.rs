@@ -65,19 +65,16 @@ impl ValidatorActionId {
     /// That is, caller is responsible for TC.
     pub fn new(
         name: EntityUID,
-        principal_entity_types: impl IntoIterator<Item = ast::EntityType>,
-        resource_entity_types: impl IntoIterator<Item = ast::EntityType>,
-        descendants: impl IntoIterator<Item = EntityUID>,
+        principal_entity_types: HashSet<ast::EntityType>,
+        resource_entity_types: HashSet<ast::EntityType>,
+        descendants: HashSet<EntityUID>,
         context: Type,
         loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
-            applies_to: ValidatorApplySpec::new(
-                principal_entity_types.into_iter().collect(),
-                resource_entity_types.into_iter().collect(),
-            ),
-            descendants: descendants.into_iter().collect(),
+            applies_to: ValidatorApplySpec::new(principal_entity_types, resource_entity_types),
+            descendants,
             context,
             loc,
         }

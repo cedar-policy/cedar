@@ -316,31 +316,45 @@ impl TryFrom<json_schema::Fragment<RawName>> for ValidatorSchema {
     }
 }
 
+/// Error returned by [`ValidatorSchema::try_new`] when the input declares the same entity type or action twice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DuplicateDeclError {
+    /// Two entity types with the same name
+    EntityType(EntityType),
+    /// Two actions with the same name
+    Action(EntityUID),
+}
+
 impl ValidatorSchema {
     /// Construct a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s.
     ///
-    /// The caller must ensure that there are no duplicate entity type names or action names
-    /// in the input. Duplicates are silently collapsed (last entry wins).
-    pub fn new(
-        entity_types: impl IntoIterator<Item = ValidatorEntityType>,
-        action_ids: impl IntoIterator<Item = ValidatorActionId>,
-    ) -> Self {
-        let entity_types = entity_types
-            .into_iter()
-            .map(|ety| (ety.name().clone(), ety))
-            .collect();
-        let action_ids = action_ids
-            .into_iter()
-            .map(|id| (id.name().clone(), id))
-            .collect();
-        Self::new_from_maps(
-            entity_types,
-            action_ids,
+    /// Returns an error if there are duplicate entity type names or action names in the input.
+    pub fn try_new(
+        entity_types: impl Iterator<Item = ValidatorEntityType>,
+        action_ids: impl Iterator<Item = ValidatorActionId>,
+    ) -> std::result::Result<Self, DuplicateDeclError> {
+        let mut entity_type_map: HashMap<EntityType, ValidatorEntityType> =
+            HashMap::with_capacity(entity_types.size_hint().0);
+        for ety in entity_types {
+            if let Some(dup) = entity_type_map.insert(ety.name().clone(), ety) {
+                return Err(DuplicateDeclError::EntityType(dup.name().clone()));
+            }
+        }
+        let mut action_id_map: HashMap<EntityUID, ValidatorActionId> =
+            HashMap::with_capacity(action_ids.size_hint().0);
+        for id in action_ids {
+            if let Some(dup) = action_id_map.insert(id.name().clone(), id) {
+                return Err(DuplicateDeclError::Action(dup.name().clone()));
+            }
+        }
+        Ok(Self::new_from_maps(
+            entity_type_map,
+            action_id_map,
             #[cfg(feature = "extended-schema")]
             HashSet::new(),
             #[cfg(feature = "extended-schema")]
             HashSet::new(),
-        )
+        ))
     }
 
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
@@ -1801,6 +1815,31 @@ pub(crate) mod test {
 
     use super::*;
 
+    impl ValidatorSchema {
+        /// Test utility for building a new `ValidatorSchema` from a set of `ValidatorEntityType`s and `ValidatorActionId`s.
+        pub fn new(
+            entity_types: impl IntoIterator<Item = ValidatorEntityType>,
+            action_ids: impl IntoIterator<Item = ValidatorActionId>,
+        ) -> Self {
+            let entity_types = entity_types
+                .into_iter()
+                .map(|ety| (ety.name().clone(), ety))
+                .collect();
+            let action_ids = action_ids
+                .into_iter()
+                .map(|id| (id.name().clone(), id))
+                .collect();
+            Self::new_from_maps(
+                entity_types,
+                action_ids,
+                #[cfg(feature = "extended-schema")]
+                HashSet::new(),
+                #[cfg(feature = "extended-schema")]
+                HashSet::new(),
+            )
+        }
+    }
+
     pub(crate) mod utils {
         use super::{CedarSchemaError, SchemaError, ValidatorEntityType, ValidatorSchema};
         use crate::extensions::Extensions;
@@ -2401,7 +2440,7 @@ pub(crate) mod test {
         let schema = ValidatorSchema::new(
             [ValidatorEntityType::new_standard(
                 action_type,
-                [],
+                HashSet::new(),
                 Attributes::with_attributes([]),
                 OpenTag::ClosedAttributes,
                 None,
@@ -2429,7 +2468,7 @@ pub(crate) mod test {
         let schema = ValidatorSchema::new(
             [ValidatorEntityType::new_standard(
                 user_type,
-                [],
+                HashSet::new(),
                 Attributes::with_attributes([("last_action".into(), attr_type)]),
                 OpenTag::ClosedAttributes,
                 None,
@@ -2461,7 +2500,7 @@ pub(crate) mod test {
         let schema = ValidatorSchema::new(
             [ValidatorEntityType::new_standard(
                 user_type,
-                [],
+                HashSet::new(),
                 Attributes::with_attributes([("last_action".into(), attr_type)]),
                 OpenTag::ClosedAttributes,
                 None,
@@ -2469,9 +2508,9 @@ pub(crate) mod test {
             )],
             [ValidatorActionId::new(
                 action_uid,
-                [],
-                [],
-                [],
+                HashSet::new(),
+                HashSet::new(),
+                HashSet::new(),
                 context,
                 None,
             )],
@@ -2493,7 +2532,7 @@ pub(crate) mod test {
         let schema = ValidatorSchema::new(
             [ValidatorEntityType::new_standard(
                 entity_type,
-                [],
+                HashSet::new(),
                 Attributes::with_attributes([]),
                 OpenTag::ClosedAttributes,
                 Some(Type::named_entity_reference(action_type)),
@@ -2522,7 +2561,7 @@ pub(crate) mod test {
         let schema = ValidatorSchema::new(
             [ValidatorEntityType::new_standard(
                 user_type,
-                [],
+                HashSet::new(),
                 Attributes::with_attributes([("last_action".into(), attr_type)]),
                 OpenTag::ClosedAttributes,
                 None,
@@ -2553,7 +2592,7 @@ pub(crate) mod test {
 
         let entity_a = ValidatorEntityType::new_standard(
             type_a,
-            [type_b.clone()], // direct descendant: B only
+            HashSet::from([type_b.clone()]), // direct descendant: B only
             Attributes::with_attributes([]),
             OpenTag::ClosedAttributes,
             None,
@@ -2561,7 +2600,7 @@ pub(crate) mod test {
         );
         let entity_b = ValidatorEntityType::new_standard(
             type_b,
-            [type_enum_c.clone()], // direct descendant: EnumC
+            HashSet::from([type_enum_c.clone()]), // direct descendant: EnumC
             Attributes::with_attributes([]),
             OpenTag::ClosedAttributes,
             None,
@@ -2569,7 +2608,7 @@ pub(crate) mod test {
         );
         let entity_enum_c = ValidatorEntityType::new_enum(
             type_enum_c.clone(),
-            [],
+            HashSet::new(),
             NonEmpty::new(Eid::new("val1")),
             None,
         );

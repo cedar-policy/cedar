@@ -86,7 +86,7 @@ impl ValidatorEntityType {
     /// That is, caller is responsible for TC.
     pub fn new_standard(
         name: EntityType,
-        descendants: impl IntoIterator<Item = EntityType>,
+        descendants: HashSet<EntityType>,
         attributes: Attributes,
         open_attributes: OpenTag,
         tags: Option<Type>,
@@ -94,7 +94,7 @@ impl ValidatorEntityType {
     ) -> Self {
         Self {
             name,
-            descendants: descendants.into_iter().collect(),
+            descendants,
             attributes,
             kind: ValidatorEntityTypeKind::Standard(StandardValidatorEntityType {
                 open_attributes,
@@ -110,13 +110,13 @@ impl ValidatorEntityType {
     /// That is, caller is responsible for TC.
     pub fn new_enum(
         name: EntityType,
-        descendants: impl IntoIterator<Item = EntityType>,
+        descendants: HashSet<EntityType>,
         values: NonEmpty<Eid>,
         loc: Option<Loc>,
     ) -> Self {
         Self {
             name,
-            descendants: descendants.into_iter().collect(),
+            descendants,
             attributes: Attributes::with_attributes([]),
             kind: ValidatorEntityTypeKind::Enum(values),
             loc,
