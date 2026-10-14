@@ -81,9 +81,17 @@ cfg_tolerant_ast! {
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
 /// Note that this "template" may have no slots, in which case this `Template` represents a static policy
-#[derive(Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Educe, Clone, Debug)]
+#[educe(PartialEq, Eq, Hash)]
 pub struct Template {
     body: TemplateBody,
+    /// The condition expression of `body`, built once at construction so that
+    /// evaluating the template does not rebuild it on every request.
+    ///
+    /// INVARIANT (condition cache correctness): always equal to `body.condition()`
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
+    condition: Expr,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
     /// This is maintained by the only public constructors: `new()`, `new_shared()`, and `link_static_policy()`
     ///
@@ -116,12 +124,13 @@ impl Template {
         Ok(())
     }
 
-    /// Checks the invariant (slot cache correctness)
+    /// Checks the invariants (slot cache correctness) and (condition cache correctness)
     ///
-    /// This function is a no-op in release builds, but checks the invariant (and panics if it fails) in debug builds.
+    /// This function is a no-op in release builds, but checks the invariants (and panics if one fails) in debug builds.
     pub fn check_invariant(&self) {
         #[cfg(debug_assertions)]
         {
+            assert_eq!(self.condition, self.body.condition());
             assert!(self.check_slot_cache().is_ok());
         }
     }
@@ -246,6 +255,8 @@ impl Template {
     pub fn new_id(&self, id: PolicyID) -> Self {
         Template {
             body: self.body.new_id(id),
+            // The condition does not depend on the policy ID
+            condition: self.condition.clone(),
             slots: self.slots.clone(),
         }
     }
@@ -281,7 +292,13 @@ impl Template {
     /// principal, resource, and action); the template's "when" conditions; and
     /// the negation of each of the template's "unless" conditions.
     pub fn condition(&self) -> Expr {
-        self.body.condition()
+        self.condition.clone()
+    }
+
+    /// Like [`Template::condition`], but borrows the expression built when
+    /// the template was constructed instead of returning a copy of it.
+    pub fn condition_ref(&self) -> &Expr {
+        &self.condition
     }
 
     /// List of open slots in this template
@@ -356,11 +373,14 @@ impl Template {
     /// They will share the same ID
     pub fn link_static_policy(p: StaticPolicy) -> (Arc<Template>, Policy) {
         let body: TemplateBody = p.into();
+        // INVARIANT (condition cache correctness)
+        let condition = body.condition();
         // INVARIANT (slot cache correctness):
         // StaticPolicy by invariant (inline policy correctness)
         // can have no slots, so it is safe to make `slots` the empty vec
         let t = Arc::new(Self {
             body,
+            condition,
             slots: vec![],
         });
         t.check_invariant();
@@ -428,10 +448,16 @@ pub enum TemplateValidationError {
 
 impl From<TemplateBody> for Template {
     fn from(body: TemplateBody) -> Self {
+        // INVARIANT (condition cache correctness)
+        let condition = body.condition();
         // INVARIANT: (slot cache correctness)
         // Pull all the slots out of the template body's condition.
-        let slots = body.condition().slots().collect::<Vec<_>>();
-        Self { body, slots }
+        let slots = condition.slots().collect::<Vec<_>>();
+        Self {
+            body,
+            condition,
+            slots,
+        }
     }
 }
 
@@ -653,6 +679,12 @@ impl Policy {
         self.template.condition()
     }
 
+    /// Like [`Policy::condition`], but borrows the expression built when the
+    /// policy's template was constructed instead of returning a copy of it.
+    pub fn condition_ref(&self) -> &Expr {
+        self.template.condition_ref()
+    }
+
     /// Get the mapping from SlotIds to EntityUIDs for this policy. (This will
     /// be empty for inline policies.)
     pub fn env(&self) -> &SlotEnv {
@@ -702,7 +734,7 @@ impl Policy {
 
     /// Returns all the unknown entities in the policy during evaluation
     pub fn unknown_entities(&self) -> HashSet<EntityUID> {
-        self.condition()
+        self.condition_ref()
             .unknowns()
             .filter_map(
                 |Unknown {
@@ -2090,6 +2122,26 @@ mod test {
     }
 
     #[test]
+    fn cached_condition_matches_body() {
+        for template in all_templates() {
+            assert_eq!(template.condition_ref(), &template.body.condition());
+            assert_eq!(&template.condition(), template.condition_ref());
+            let renamed = template.new_id(PolicyID::from_string("renamed"));
+            assert_eq!(renamed.condition_ref(), &renamed.body.condition());
+        }
+
+        let static_policy = parse_policy(
+            Some(PolicyID::from_string("static")),
+            r#"permit(principal, action == Action::"a", resource) when { context.b };"#,
+        )
+        .expect("policy should parse");
+        let (template, policy) = Template::link_static_policy(static_policy);
+        assert_eq!(template.condition_ref(), &template.body.condition());
+        assert_eq!(policy.condition_ref(), template.condition_ref());
+        assert_eq!(&policy.condition(), policy.condition_ref());
+    }
+
+    #[test]
     fn test_template_rebuild() {
         for template in all_templates() {
             let id = template.id().clone();
@@ -2485,6 +2537,12 @@ mod test {
         // Check slots are empty
         assert!(error_template.slots().count() == 0);
 
+        // Check the cached condition is the error template body's
+        assert_eq!(
+            error_template.condition_ref(),
+            &error_template.body.condition()
+        );
+
         // Check body is an error template body
         assert_matches!(error_template.body,
             TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc == &error_loc
@@ -2609,8 +2667,10 @@ mod template_validate_test {
             None,
         );
         // Inject a fake slot into the cache that doesn't exist in the condition
+        let condition = body.condition();
         let t = Template {
             body,
+            condition,
             slots: vec![Slot {
                 id: SlotId::principal(),
                 loc: None,
