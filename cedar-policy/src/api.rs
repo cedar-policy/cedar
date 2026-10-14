@@ -1528,6 +1528,7 @@ impl Validator {
     /// that policy passed the validator. If the function `validation_passed`
     /// returns true, then there were no validation errors found, so all
     /// policies in the policy set have passed the validator.
+    /// Validation using schemas that contain `external` always fail.
     pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
@@ -1539,6 +1540,7 @@ impl Validator {
     /// appear in the output iterator, then that policy passed the validator. If the function
     /// `validation_passed` returns true, then there were no validation errors found, so
     /// all policies in the policy set have passed the validator.
+    /// Validation using schemas that contain `external` always fail.
     pub fn validate_with_level(
         &self,
         pset: &PolicySet,
@@ -2008,7 +2010,7 @@ impl Schema {
     }
 
     /// Extract from the schema an [`Entities`] containing the action entities
-    /// declared in the schema.
+    /// defined in the schema. External actions are excluded.
     pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
     }
@@ -2072,7 +2074,8 @@ impl Schema {
     ///
     /// ## Errors
     ///
-    /// Returns [`None`] if `action` is not found in the schema
+    /// Returns [`None`] if `action` is not found in the schema. An external
+    /// action is found, so this returns `Some` with an empty iterator.
     pub fn principals_for_action(
         &self,
         action: &EntityUid,
@@ -2086,7 +2089,8 @@ impl Schema {
     ///
     /// ## Errors
     ///
-    /// Returns [`None`] if `action` is not found in the schema
+    /// Returns [`None`] if `action` is not found in the schema. External
+    /// actions return `Some` with an empty iterator.
     pub fn resources_for_action(
         &self,
         action: &EntityUid,
@@ -2098,6 +2102,9 @@ impl Schema {
 
     /// Returns an iterator over all the [`RequestEnv`]s that are valid
     /// according to this schema.
+    ///
+    /// An external action contributes none, since what it applies to is
+    /// unknown.
     pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         self.0
             .unlinked_request_envs(cedar_policy_core::validator::ValidationMode::Strict)
@@ -2123,14 +2130,14 @@ impl Schema {
         self.0.action_groups().map(RefCast::ref_cast)
     }
 
-    /// Returns an iterator over all entity types defined in this schema
+    /// Returns an iterator over all entity types declared in this schema
     pub fn entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0
             .entity_types()
             .map(|ety| RefCast::ref_cast(ety.name()))
     }
 
-    /// Returns an iterator over all actions defined in this schema
+    /// Returns an iterator over all actions declared in this schema
     pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
         self.0.actions().map(RefCast::ref_cast)
     }
@@ -2146,6 +2153,43 @@ impl Schema {
         self.0
             .actions_for_principal_and_resource(&principal_type.0, &resource_type.0)
             .map(RefCast::ref_cast)
+    }
+
+    /// Returns an iterator over the external entity types.
+    pub fn external_entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .filter(|ety| ety.is_external())
+            .map(|ety| RefCast::ref_cast(ety.name()))
+    }
+
+    /// Returns an iterator over the non-external entity types.
+    pub fn defined_entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .filter(|ety| !ety.is_external())
+            .map(|ety| RefCast::ref_cast(ety.name()))
+    }
+
+    /// Returns an iterator over the external actions.
+    pub fn external_actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0
+            .action_ids()
+            .filter(|action| action.is_external())
+            .map(|action| RefCast::ref_cast(action.name()))
+    }
+
+    /// Returns an iterator over the non-external actions.
+    pub fn defined_actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0
+            .action_ids()
+            .filter(|action| !action.is_external())
+            .map(|action| RefCast::ref_cast(action.name()))
+    }
+
+    /// Returns true if all of the entity types or actions are not external.
+    pub fn is_complete(&self) -> bool {
+        self.0.is_complete()
     }
 }
 
@@ -2283,6 +2327,7 @@ mod test_schema_str_to_json_with_resolved_types {
         }
     }
 }
+
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug, Clone)]

@@ -264,6 +264,7 @@ impl Decl for TypeDecl {
 pub enum EntityDecl {
     Standard(StandardEntityDecl),
     Enum(EnumEntityDecl),
+    External(ExternalEntityDecl),
 }
 
 impl EntityDecl {
@@ -271,6 +272,7 @@ impl EntityDecl {
         match self {
             Self::Enum(d) => d.names.iter(),
             Self::Standard(d) => d.names.iter(),
+            Self::External(d) => d.names.iter(),
         }
     }
 }
@@ -289,7 +291,16 @@ pub struct StandardEntityDecl {
     pub tags: Option<Node<Type>>,
 }
 
-/// Declaration of an entity type
+/// Declaration of an external entity type.
+#[derive(Debug, Clone)]
+pub struct ExternalEntityDecl {
+    /// Entity type names bound by this declaration.
+    pub names: NonEmpty<Node<Id>>,
+    /// Known ancestor entity types.
+    pub member_of_types: Vec<Path>,
+}
+
+/// Declaration of an enumerated entity type.
 #[derive(Debug, Clone)]
 pub struct EnumEntityDecl {
     pub names: NonEmpty<Node<Id>>,
@@ -376,21 +387,42 @@ pub enum AppDecl {
     Context(Either<Path, Node<Vec<Node<Annotated<AttrDecl>>>>>),
 }
 
-/// An action declaration
+/// An action declaration.
 #[derive(Debug, Clone)]
-pub struct ActionDecl {
+pub enum ActionDecl {
+    /// A complete action definition.
+    Defined(DefinedActionDecl),
+    /// An external action declaration.
+    External(ExternalActionDecl),
+}
+
+/// A complete action definition.
+#[derive(Debug, Clone)]
+pub struct DefinedActionDecl {
     /// The names this declaration is binding.
     /// More than one name can be bound if they have the same definition, for convenience.
     pub names: NonEmpty<Node<SmolStr>>,
-    /// The parents of this action
+    /// The parents of this action.
     pub parents: Option<NonEmpty<Node<QualName>>>,
-    /// The constraining clauses in this declarations
+    /// The constraining clauses in this declaration.
     pub app_decls: Option<Node<NonEmpty<Node<AppDecl>>>>,
+}
+
+/// An external action declaration.
+#[derive(Debug, Clone)]
+pub struct ExternalActionDecl {
+    /// The names this declaration is binding.
+    pub names: NonEmpty<Node<SmolStr>>,
+    /// The known ancestors of this action.
+    pub parents: Option<NonEmpty<Node<QualName>>>,
 }
 
 impl Decl for ActionDecl {
     fn names(&self) -> Vec<Node<SmolStr>> {
-        self.names.iter().cloned().collect()
+        match self {
+            Self::Defined(decl) => decl.names.iter().cloned().collect(),
+            Self::External(decl) => decl.names.iter().cloned().collect(),
+        }
     }
 }
 

@@ -25,12 +25,23 @@ use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-impl From<&validator::ValidatorSchema> for models::Schema {
-    fn from(v: &validator::ValidatorSchema) -> Self {
-        Self {
-            entity_decls: v.entity_types().map(models::EntityDecl::from).collect(),
-            action_decls: v.action_ids().map(models::ActionDecl::from).collect(),
-        }
+/// The protobuf `Schema` message describes a complete schema, so an
+/// incomplete one (RFC 116) is refused rather than silently losing its
+/// declarations.
+impl TryFrom<&validator::ValidatorSchema> for models::Schema {
+    type Error = ProtobufConversionError;
+    fn try_from(v: &validator::ValidatorSchema) -> Result<Self, Self::Error> {
+        v.check_complete()?;
+        Ok(Self {
+            entity_decls: v
+                .entity_types()
+                .map(models::EntityDecl::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            action_decls: v
+                .action_ids()
+                .map(models::ActionDecl::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+        })
     }
 }
 
@@ -100,31 +111,45 @@ impl TryFrom<models::ValidationMode> for validator::ValidationMode {
     }
 }
 
-#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
-impl From<&validator::ValidatorActionId> for models::ActionDecl {
-    #[expect(clippy::panic, reason = "experimental feature")]
-    fn from(v: &validator::ValidatorActionId) -> Self {
-        let ctx_attrs = match v.context() {
+impl TryFrom<&validator::ValidatorActionId> for models::ActionDecl {
+    type Error = ProtobufConversionError;
+    fn try_from(v: &validator::ValidatorActionId) -> Result<Self, Self::Error> {
+        // `ActionDecl` has no field for a declaration: it carries `context`
+        // and the two `appliesTo` lists, none of which an external action has.
+        // `ValidatorSchema::try_from` above rejects such a schema first, so
+        // this is reached only by converting one action on its own.
+        let context = v.context().ok_or_else(|| {
+            ProtobufConversionError::InvalidValue(format!(
+                "action `{}` is declared `external`, so it has no context or `appliesTo` to convert",
+                v.name()
+            ))
+        })?;
+        let ctx_attrs = match context {
             types::Type::Record {
                 attrs,
                 open_attributes: types::OpenTag::ClosedAttributes,
             } => attrs,
-            ty => panic!("expected context to be a closed record, but got {ty:?}"),
+            ty => {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "expected context to be a closed record, but got {ty:?}"
+                )))
+            }
         };
-        Self {
+        Ok(Self {
             name: Some(models::EntityUid::from(v.name())),
             principal_types: v.applies_to_principals().map(models::Name::from).collect(),
             resource_types: v.applies_to_resources().map(models::Name::from).collect(),
             descendants: v.descendants().map(models::EntityUid::from).collect(),
             context: attributes_to_model(ctx_attrs),
-        }
+        })
     }
 }
 
 impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     type Error = ProtobufConversionError;
     fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
-        Ok(Self::new(
+        // Always a definition: there is no field that could carry a declaration.
+        Ok(Self::new_defined(
             ast::EntityUID::try_from(
                 v.name
                     .ok_or_else(|| ProtobufConversionError::missing("name"))?,
@@ -150,21 +175,22 @@ impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     }
 }
 
-impl From<&validator::ValidatorEntityType> for models::EntityDecl {
-    fn from(v: &validator::ValidatorEntityType) -> Self {
+impl TryFrom<&validator::ValidatorEntityType> for models::EntityDecl {
+    type Error = ProtobufConversionError;
+    fn try_from(v: &validator::ValidatorEntityType) -> Result<Self, Self::Error> {
         let name = Some(models::Name::from(v.name()));
         let descendants = v.descendants.iter().map(models::Name::from).collect();
         let attributes = attributes_to_model(v.attributes());
         let tags = v.tag_type().map(models::Type::from);
         match &v.kind {
-            validator::ValidatorEntityTypeKind::Standard(_) => Self {
+            validator::ValidatorEntityTypeKind::Standard(_) => Ok(Self {
                 name,
                 descendants,
                 attributes,
                 tags,
                 enum_choices: vec![],
-            },
-            validator::ValidatorEntityTypeKind::Enum(enum_choices) => Self {
+            }),
+            validator::ValidatorEntityTypeKind::Enum(enum_choices) => Ok(Self {
                 name,
                 descendants,
                 attributes,
@@ -173,7 +199,16 @@ impl From<&validator::ValidatorEntityType> for models::EntityDecl {
                     .into_iter()
                     .map(|eid| eid.as_ref().to_string())
                     .collect(),
-            },
+            }),
+            // The message has no representation for a declaration.
+            // `ValidatorSchema::try_from` above rejects such a schema first,
+            // so this is reached only by converting one entity type on its own.
+            validator::ValidatorEntityTypeKind::External => {
+                Err(ProtobufConversionError::InvalidValue(format!(
+                    "entity type `{}` is declared `external`, so it has no shape to convert",
+                    v.name()
+                )))
+            }
         }
     }
 }
@@ -444,13 +479,84 @@ mod test {
         let schema: ValidatorSchema = src.parse().expect("failed to parse cedar schema");
         assert_eq!(
             schema,
-            ValidatorSchema::try_from(models::Schema::from(&schema)).unwrap()
+            ValidatorSchema::try_from(models::Schema::try_from(&schema).unwrap()).unwrap()
         );
     }
 
     #[test]
     fn schema_roundtrip_empty() {
         assert_schema_roundtrip("");
+    }
+
+    /// The protobuf `Schema` message describes a complete schema, so a schema
+    /// that still declares a name `external` (RFC 116) is refused.
+    #[test]
+    fn schema_with_external_declaration_is_refused() {
+        use super::super::ast::ProtobufConversionError;
+        use crate::proto::traits::{EncodeError, Protobuf as _};
+        use cool_asserts::assert_matches;
+
+        for src in [
+            "external entity User;",
+            "external action audit;",
+            "external entity User; entity Document { owner: User };",
+        ] {
+            let schema: ValidatorSchema = src.parse().expect("failed to parse cedar schema");
+            assert_matches!(
+                models::Schema::try_from(&schema),
+                Err(ProtobufConversionError::IncompleteSchema(_)),
+                "expected `{src}` to be refused"
+            );
+            // And through the public API's encode path.
+            assert_matches!(
+                crate::Schema(schema).encode(),
+                Err(EncodeError::Conversion(
+                    ProtobufConversionError::IncompleteSchema(_)
+                ))
+            );
+        }
+
+        // A complete schema that merely mentions the keyword as an identifier
+        // is unaffected.
+        assert_schema_roundtrip("entity external; entity Foo in [external];");
+    }
+
+    /// Converting a single declaration on its own, bypassing the schema-level
+    /// refusal above, also errors.
+    #[test]
+    fn single_external_declaration_is_refused() {
+        use super::super::ast::ProtobufConversionError;
+        use cool_asserts::assert_matches;
+
+        let schema: ValidatorSchema = "external entity User; external action audit;"
+            .parse()
+            .expect("failed to parse cedar schema");
+
+        let ety = schema
+            .get_entity_type(&"User".parse().unwrap())
+            .expect("`User` should be in the schema");
+        assert_matches!(
+            models::EntityDecl::try_from(ety),
+            Err(ProtobufConversionError::InvalidValue(msg)) => {
+                assert_eq!(
+                    msg,
+                    "entity type `User` is declared `external`, so it has no shape to convert"
+                );
+            }
+        );
+
+        let action = schema
+            .get_action_id(&r#"Action::"audit""#.parse().unwrap())
+            .expect("`audit` should be in the schema");
+        assert_matches!(
+            models::ActionDecl::try_from(action),
+            Err(ProtobufConversionError::InvalidValue(msg)) => {
+                assert_eq!(
+                    msg,
+                    "action `Action::\"audit\"` is declared `external`, so it has no context or `appliesTo` to convert"
+                );
+            }
+        );
     }
 
     #[test]

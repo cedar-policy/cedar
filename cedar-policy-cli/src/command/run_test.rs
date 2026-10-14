@@ -452,7 +452,7 @@ mod tests {
 
         insta::assert_snapshot!(
             deserialize(Some(&schema()), request).unwrap_err(),
-            @r#"  × failed to parse context `{}`: action `Action::"delete"` does not exist in the supplied schema"#
+            @r#"  × failed to parse context `{}`: action `Action::"delete"` is not defined in the supplied schema"#
         );
     }
 

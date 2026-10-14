@@ -131,8 +131,10 @@ impl ContextKind {
     ) -> Vec<(&'a SmolStr, &'a AttributeType)> {
         self.actions_iter(schema)
             .map(ValidatorActionId::context_type)
+            // `None` is an action declared `external` (RFC 116), which
+            // contributes no context attributes.
             .filter_map(|c| match c {
-                Type::Record { attrs, .. } => Some(attrs),
+                Some(Type::Record { attrs, .. }) => Some(attrs),
                 _ => None,
             })
             .flat_map(Attributes::iter)

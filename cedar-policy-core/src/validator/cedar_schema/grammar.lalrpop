@@ -26,6 +26,7 @@ use crate::validator::cedar_schema::ast::{
     Path,
     EntityDecl,
     StandardEntityDecl,
+    ExternalEntityDecl,
     EnumEntityDecl,
     Declaration,
     Namespace,
@@ -33,6 +34,8 @@ use crate::validator::cedar_schema::ast::{
     Type as SType,
     AttrDecl,
     ActionDecl,
+    DefinedActionDecl,
+    ExternalActionDecl,
     PR,
     AppDecl,
     TypeDecl,
@@ -65,6 +68,7 @@ match {
 
     // keywords
     "namespace" => NAMESPACE,
+    "external" => EXTERNAL,
     "entity" => ENTITY,
     "in" => IN,
     "type" => TYPE,
@@ -129,8 +133,14 @@ Decl: Node<Declaration> = {
     <t:TypeDecl> => t,
 }
 
-// Entity := 'entity' Idents ['in' EntTypes] [['='] RecType] ';' <r:@R>
+// Entity := ExternalEntity | StandardEntity | EnumEntity
+// ExternalEntity := 'external' 'entity' Idents ['in' EntTypes] ';'
 Entity: Node<Declaration> = {
+    <l:@L> EXTERNAL ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl::External(ExternalEntityDecl {
+            names: ets,
+            member_of_types: ps.unwrap_or_default(),
+        })), Loc::new(l..r, Arc::clone(src))),
     <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
             names: ets,
@@ -144,10 +154,21 @@ Entity: Node<Declaration> = {
     })), Loc::new(l..r, Arc::clone(src))),
 }
 
-// Action := 'action' Names ['in' QualNameOrNames]
+// Action := ExternalAction | DefinedAction
+// ExternalAction := 'external' 'action' Names ['in' QualNameOrNames] ';'
+// DefinedAction := 'action' Names ['in' QualNameOrNames] ['appliesTo' '{' AppDecls '}'] ['attributes' '{' '}'] ';'
 Action: Node<Declaration> = {
+    <l:@L> EXTERNAL ACTION <ns:Names> <ps:(IN <QualNameOrQualNames>)?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Action(ActionDecl::External(ExternalActionDecl {
+            names: ns,
+            parents: ps,
+        })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ACTION <ns:Names> <ps:(IN <QualNameOrQualNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" "}")?>";" <r:@R>
-        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads}), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Declaration::Action(ActionDecl::Defined(DefinedActionDecl {
+            names: ns,
+            parents: ps,
+            app_decls: ads,
+        })), Loc::new(l..r, Arc::clone(src))),
 }
 
 TypeDecl: Node<Declaration> = {
@@ -238,6 +259,8 @@ Ident: Node<Id> = {
 AnyIdent: Node<AnyId> = {
     <l:@L> NAMESPACE <r:@R>
         => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> EXTERNAL <r:@R>
+        => Node::with_source_loc("external".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ENTITY <r:@R>
         => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
     <l:@L> SET <r:@R>

@@ -30,7 +30,7 @@ use crate::{
 };
 use educe::Educe;
 use itertools::Itertools;
-use namespace_def::EntityTypeFragment;
+use namespace_def::{ActionFragmentKind, EntityTypeFragment};
 use nonempty::NonEmpty;
 #[cfg(feature = "extended-schema")]
 use smol_str::SmolStr;
@@ -50,6 +50,7 @@ use crate::validator::{
 mod action;
 pub use action::ValidatorActionId;
 pub(crate) use action::ValidatorApplySpec;
+pub(crate) use action::{DefinedValidatorActionId, ValidatorActionIdKind};
 mod entity_type;
 pub use entity_type::{ValidatorEntityType, ValidatorEntityTypeKind};
 mod namespace_def;
@@ -244,6 +245,16 @@ pub struct LocatedNamespace {
     #[educe(PartialEq(ignore))]
     #[educe(Hash(ignore))]
     pub def_loc: Option<Loc>,
+}
+
+/// A name that a [`ValidatorSchema`] declares `external` (RFC 116) without
+/// defining it. See [`ValidatorSchema::unresolved_declarations`].
+#[derive(Clone, Copy, Debug)]
+pub enum UnresolvedDeclaration<'a> {
+    /// An entity type declared `external`
+    EntityType(&'a ValidatorEntityType),
+    /// An action declared `external`
+    Action(&'a ValidatorActionId),
 }
 
 /// Internal representation of the schema for use by the validator.
@@ -466,11 +477,14 @@ impl ValidatorSchema {
             // applies_to sets. The context type is shared (via `Arc`) across all
             // the P×R envs of a single action.
             self.action_ids()
-                .flat_map(|action| {
-                    let ctx = Arc::new(action.context.clone());
-                    action.applies_to_principals().flat_map(move |principal| {
+                // An external action contributes no request environments: it
+                // has no context type, and nothing is applicable to it.
+                .filter_map(|action| Some((action, action.defined()?)))
+                .flat_map(|(action, defined)| {
+                    let ctx = Arc::new(defined.context.clone());
+                    defined.applies_to_principals().flat_map(move |principal| {
                         let ctx = Arc::clone(&ctx);
-                        action
+                        defined
                             .applies_to_resources()
                             .map(move |resource| UnlinkedRequestEnv {
                                 principal: principal.clone(),
@@ -757,6 +771,16 @@ impl ValidatorSchema {
                 let descendants = entity_children.remove(&name).unwrap_or_default();
 
                 match entity_type {
+                    // `parents` was already inverted into `entity_children`
+                    // above, which is where `descendants` comes from.
+                    EntityTypeFragment::External { parents: _ } => Ok((
+                        name.clone(),
+                        ValidatorEntityType::new_external(
+                            name.clone(),
+                            descendants,
+                            name.loc().cloned(),
+                        ),
+                    )),
                     EntityTypeFragment::Enum(choices) => Ok((
                         name.clone(),
                         ValidatorEntityType::new_enum(
@@ -825,25 +849,36 @@ impl ValidatorSchema {
             .into_iter()
             .map(|(name, action)| -> Result<_> {
                 let descendants = action_children.remove(&name).unwrap_or_default();
-                let context = try_jsonschema_type_into_validator_type(
-                    action.context,
-                    extensions,
-                    &common_types,
-                )?
-                .ty;
-                let Type::Record { .. } = context else {
-                    return Err(ContextOrShapeNotRecordError {
-                        ctx_or_shape: ContextOrShape::ActionContext(name),
+                let kind = match action.kind {
+                    ActionFragmentKind::External => ValidatorActionIdKind::External,
+                    ActionFragmentKind::Defined {
+                        context,
+                        applies_to,
+                    } => {
+                        let context = try_jsonschema_type_into_validator_type(
+                            context,
+                            extensions,
+                            &common_types,
+                        )?
+                        .ty;
+                        let Type::Record { .. } = context else {
+                            return Err(ContextOrShapeNotRecordError {
+                                ctx_or_shape: ContextOrShape::ActionContext(name),
+                            }
+                            .into());
+                        };
+                        ValidatorActionIdKind::Defined(DefinedValidatorActionId {
+                            applies_to,
+                            context,
+                        })
                     }
-                    .into());
                 };
                 Ok((
                     name.clone(),
                     ValidatorActionId {
                         name,
-                        applies_to: action.applies_to,
+                        kind,
                         descendants,
-                        context,
                         loc: action.loc,
                     },
                 ))
@@ -934,7 +969,11 @@ impl ValidatorSchema {
         // types and `appliesTo` lists. See the `entity_types` loop for why the
         // `descendants` list is not checked.
         for action in action_ids.values() {
-            Self::check_undeclared_in_type(&action.context, all_defs, &mut undeclared_e);
+            // An external action declares no context and no `appliesTo`, so it
+            // has no references to check.
+            if let Some(context) = action.context() {
+                Self::check_undeclared_in_type(context, all_defs, &mut undeclared_e);
+            }
 
             for p_entity in action.applies_to_principals() {
                 if !entity_types.contains_key(p_entity) {
@@ -1032,6 +1071,54 @@ impl ValidatorSchema {
         self.entity_types.values()
     }
 
+    /// Return the list of external entities
+    pub fn unresolved_declarations(&self) -> impl Iterator<Item = UnresolvedDeclaration<'_>> {
+        let entity_types = self
+            .entity_types
+            .values()
+            .filter(|ety| ety.is_external())
+            .map(UnresolvedDeclaration::EntityType);
+        let actions = self
+            .action_ids
+            .values()
+            .filter(|action| action.is_external())
+            .map(UnresolvedDeclaration::Action);
+        entity_types.chain(actions)
+    }
+
+    /// Is every entity type and action not `external` (RFC 116)?
+    pub fn is_complete(&self) -> bool {
+        self.unresolved_declarations().next().is_none()
+    }
+
+    /// Fail unless this schema is complete, naming every declaration that
+    /// makes it incomplete.
+    pub fn check_complete(&self) -> std::result::Result<(), IncompleteSchemaError> {
+        let (mut entity_types, mut actions): (Vec<_>, Vec<_>) = self
+            .unresolved_declarations()
+            .partition_map(|decl| match decl {
+                UnresolvedDeclaration::EntityType(ety) => itertools::Either::Left(ety),
+                UnresolvedDeclaration::Action(action) => itertools::Either::Right(action),
+            });
+        // The maps iterate in no particular order; sort so the message is stable.
+        entity_types.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+        actions.sort_unstable_by(|a, b| a.name().cmp(b.name()));
+        // The location of the declaration that the message names first.
+        let loc = match (entity_types.first(), actions.first()) {
+            (Some(ety), _) => ety.loc.clone(),
+            (None, Some(action)) => action.loc().cloned(),
+            (None, None) => return Ok(()),
+        };
+        Err(IncompleteSchemaError {
+            entity_types: entity_types
+                .into_iter()
+                .map(|ety| ety.name().clone())
+                .collect(),
+            actions: actions.into_iter().map(|a| a.name().clone()).collect(),
+            loc,
+        })
+    }
+
     /// Get all entity types `ety0` in the schema where an expression
     /// `{ety0}::"{id0}" in {ety}::"{id}"` can evaluate to `true` for some `id0`
     /// and `id`.  This includes all entity types that are descendants `ety`
@@ -1101,12 +1188,13 @@ impl ValidatorSchema {
     /// Get the `Type` of context expected for the given `action`.
     /// This always returns a closed record type.
     ///
-    /// Returns `None` if the action is not in the schema.
+    /// Returns `None` if the action is not in the schema, or if it was only
+    /// declared `external` (RFC 116) and so has no known context type.
     pub fn context_type(&self, action: &EntityUID) -> Option<&Type> {
         // INVARIANT: `ValidatorActionId::context_type` always returns a closed
         // record type
         self.get_action_id(action)
-            .map(ValidatorActionId::context_type)
+            .and_then(ValidatorActionId::context_type)
     }
 
     /// Invert the action hierarchy to get the ancestor relation expected for
@@ -1155,16 +1243,29 @@ impl ValidatorSchema {
             }
         }
         for action in self.action_ids.values() {
-            stack.push(action.context());
+            // An external action has no context type to traverse.
+            if let Some(context) = action.context() {
+                stack.push(context);
+            }
         }
         TypeIterator { stack }
     }
 
-    /// Construct an `Entity` object for each action in the schema
+    /// Construct an `Entity` object for each action defined in the schema.
+    ///
+    /// An external action is skipped: it has no definition, so its entity is
+    /// not one this schema can hand out.
     pub fn action_entities(&self) -> std::result::Result<Entities, EntitiesError> {
         let extensions = Extensions::all_available();
         Entities::from_entities(
-            self.actions.values().map(|entity| entity.as_ref().clone()),
+            self.actions
+                .iter()
+                .filter(|(uid, _)| {
+                    self.action_ids
+                        .get(*uid)
+                        .is_some_and(|action| !action.is_external())
+                })
+                .map(|(_, entity)| entity.as_ref().clone()),
             None::<&crate::entities::NoEntitiesSchema>, // we don't want to tell `Entities::from_entities()` to add the schema's action entities, that would infinitely recurse
             TCComputation::AssumeAlreadyComputed,
             extensions,
@@ -2467,7 +2568,7 @@ pub(crate) mod test {
                 None,
                 None,
             )],
-            [ValidatorActionId::new(
+            [ValidatorActionId::new_defined(
                 action_uid,
                 [],
                 [],
@@ -2921,15 +3022,11 @@ pub(crate) mod test {
             .get_action_id(&"Foo::Bar::Action::\"Baz\"".parse().unwrap())
             .unwrap();
         assert_eq!(
-            baz.applies_to
-                .applicable_principal_types()
-                .collect::<HashSet<_>>(),
+            baz.applies_to_principals().collect::<HashSet<_>>(),
             HashSet::from([&("Fiz::Buz".parse().unwrap())])
         );
         assert_eq!(
-            baz.applies_to
-                .applicable_resource_types()
-                .collect::<HashSet<_>>(),
+            baz.applies_to_resources().collect::<HashSet<_>>(),
             HashSet::from([&("Fiz::Baz".parse().unwrap())])
         );
     }

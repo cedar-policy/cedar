@@ -25,10 +25,16 @@ pub use crate::symcc::{
     extension_types::decimal::DecimalError, extension_types::ipaddr::IPError, term::Term,
     BitVecError, CompileError, ConcretizeError, DecodeError, EncodeError, SolverError,
 };
+use cedar_policy_core::validator::IncompleteSchemaError;
 
 /// Top-level errors from the whole `cedar-policy-symcc` crate.
 #[derive(Debug, Diagnostic, Error)]
 pub enum Error {
+    /// The schema still declares some names `external` (RFC 116). Symbolic
+    /// compilation needs every name defined.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompleteSchema(#[from] IncompleteSchemaError),
     /// Action not found in schema.
     #[error("action not found in schema: {0}")]
     ActionNotInSchema(String),

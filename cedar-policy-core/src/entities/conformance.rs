@@ -211,6 +211,11 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
                 EntitySchemaConformanceError::unexpected_entity_type(self.schema, uid.clone())
             })?;
 
+            // An entity of an external type cannot be validated.
+            if schema_etype.is_external() {
+                return Err(err::ExternalEntityTypeError { uid: uid.clone() }.into());
+            }
+
             validate_euid(self.schema, uid)?;
             self.validate_entity_attributes(uid, entity.attrs(), &schema_etype)?;
             self.validate_entity_ancestors(uid, entity.ancestors(), &schema_etype)?;

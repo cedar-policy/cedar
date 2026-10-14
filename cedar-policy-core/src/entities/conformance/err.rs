@@ -59,6 +59,11 @@ pub enum EntitySchemaConformanceError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnexpectedEntityType(#[from] UnexpectedEntityTypeError),
+    /// Encountered an entity of a type which the schema declares `external`
+    /// (RFC 116) rather than defining
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExternalEntityType(#[from] ExternalEntityTypeError),
     /// Encountered an action which was not declared in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -321,6 +326,34 @@ impl Diagnostic for UnexpectedEntityTypeError {
                 tys.iter().map(ToString::to_string).collect::<Vec<String>>()
             ))),
         }
+    }
+}
+
+/// Encountered an entity of a type which the schema declares `external`
+/// rather than defining.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Debug, Error)]
+#[error("entity `{uid}` has type `{}` which is declared `external` in the schema", .uid.entity_type())]
+pub struct ExternalEntityTypeError {
+    /// Entity whose type is declared rather than defined
+    pub(crate) uid: EntityUID,
+}
+
+impl Diagnostic for ExternalEntityTypeError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "an `external` entity type does not describe its entities, so entities of that type cannot be validated",
+        ))
+    }
+}
+
+impl ExternalEntityTypeError {
+    /// The entity whose type is declared rather than defined
+    pub fn uid(&self) -> &EntityUID {
+        &self.uid
     }
 }
 

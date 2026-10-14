@@ -205,26 +205,32 @@ impl ValidatorActionId {
             )
         };
 
+        let applies_to = self
+            .defined()
+            .map(|defined| -> Result<_, String> {
+                Ok(json_schema::ApplySpec {
+                    resource_types: defined
+                        .applies_to_resources()
+                        .map(|et| RawName::from_name(et.as_ref().as_ref().clone()))
+                        .sorted()
+                        .collect(),
+                    principal_types: defined
+                        .applies_to_principals()
+                        .map(|et| RawName::from_name(et.as_ref().as_ref().clone()))
+                        .sorted()
+                        .collect(),
+                    context: json_schema::AttributesOrContext(validator_type_to_json_type(
+                        defined.context_type(),
+                    )?),
+                })
+            })
+            .transpose()?;
+
         Ok(json_schema::ActionType {
             attributes: None,
-            applies_to: Some(json_schema::ApplySpec {
-                resource_types: self
-                    .applies_to
-                    .applicable_resource_types()
-                    .map(|et| RawName::from_name(et.as_ref().as_ref().clone()))
-                    .sorted()
-                    .collect(),
-                principal_types: self
-                    .applies_to
-                    .applicable_principal_types()
-                    .map(|et| RawName::from_name(et.as_ref().as_ref().clone()))
-                    .sorted()
-                    .collect(),
-                context: json_schema::AttributesOrContext(validator_type_to_json_type(
-                    &self.context,
-                )?),
-            }),
+            applies_to,
             member_of,
+            external: self.is_external(),
             annotations: Annotations::new(),
             loc: self.loc.clone(),
             #[cfg(feature = "extended-schema")]
@@ -238,6 +244,14 @@ impl ValidatorEntityType {
         &self,
         ancestors: HashSet<EntityType>,
     ) -> Result<json_schema::EntityType<RawName>, String> {
+        // Both standard and external declarations carry their parents; an enum
+        // entity type cannot have any, so it ignores this.
+        let member_of_types: Vec<RawName> = ancestors
+            .into_iter()
+            .map(|entity_type| RawName::from_name(entity_type.as_ref().as_ref().clone()))
+            .sorted()
+            .collect();
+
         let kind = match &self.kind {
             ValidatorEntityTypeKind::Standard(std_type) => {
                 let attributes = self
@@ -256,12 +270,6 @@ impl ValidatorEntityType {
                         ))
                     })
                     .collect::<Result<BTreeMap<_, _>, String>>()?;
-
-                let member_of_types: Vec<RawName> = ancestors
-                    .into_iter()
-                    .map(|entity_type| RawName::from_name(entity_type.as_ref().as_ref().clone()))
-                    .sorted()
-                    .collect();
 
                 json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
                     member_of_types,
@@ -283,10 +291,21 @@ impl ValidatorEntityType {
             ValidatorEntityTypeKind::Enum(choices) => json_schema::EntityTypeKind::Enum {
                 choices: choices.clone(),
             },
+            // An external declaration has no shape and no tags, so it lowers to
+            // a `Standard` kind carrying only its parents; `external` below is
+            // what distinguishes it from a definition.
+            ValidatorEntityTypeKind::External => {
+                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+                    member_of_types,
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
+                })
+            }
         };
 
         Ok(json_schema::EntityType {
             kind,
+            external: self.is_external(),
             annotations: Annotations::new(),
             loc: self.loc.clone(),
         })

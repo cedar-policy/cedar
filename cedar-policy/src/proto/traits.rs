@@ -58,6 +58,10 @@ pub enum EncodeError {
     /// The protobuf message could not be encoded (e.g., buffer too small)
     #[error(transparent)]
     Proto(#[from] prost::EncodeError),
+    /// The value has no protobuf representation, as a schema that still
+    /// declares some names `external` (RFC 116) does not.
+    #[error(transparent)]
+    Conversion(#[from] ProtobufConversionError),
 }
 
 /// Maximum allowed protobuf recursion depth for encoding.
@@ -196,6 +200,20 @@ pub(crate) fn encode_to_vec<M: prost::Message + EncodeCheck + for<'a> From<&'a T
     thing: &T,
 ) -> Result<Vec<u8>, EncodeError> {
     let model = M::from(thing);
+    model.check_for_encode()?;
+    Ok(model.encode_to_vec())
+}
+
+/// Encode `thing` into the protobuf format `M`, where building `M` can fail.
+///
+/// The counterpart of [`try_decode`], for a type whose protobuf message cannot
+/// represent every value of the Rust type.
+pub(crate) fn try_encode_to_vec<M, E, T>(thing: &T) -> Result<Vec<u8>, EncodeError>
+where
+    M: prost::Message + EncodeCheck + for<'a> TryFrom<&'a T, Error = E>,
+    E: Into<ProtobufConversionError>,
+{
+    let model = M::try_from(thing).map_err(|e: E| EncodeError::Conversion(e.into()))?;
     model.check_for_encode()?;
     Ok(model.encode_to_vec())
 }

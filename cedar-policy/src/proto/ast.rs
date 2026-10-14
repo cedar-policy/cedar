@@ -37,6 +37,11 @@ pub enum ProtobufConversionError {
     /// A field was present but its value was semantically invalid
     #[error("{0}")]
     InvalidValue(String),
+    /// The schema still declares some entity types or actions `external`
+    /// (RFC 116). The protobuf `Schema` message describes a complete schema,
+    /// so there is no field in which to carry a declaration.
+    #[error(transparent)]
+    IncompleteSchema(#[from] cedar_policy_core::validator::IncompleteSchemaError),
 }
 
 impl ProtobufConversionError {

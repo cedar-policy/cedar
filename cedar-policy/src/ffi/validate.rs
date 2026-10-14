@@ -640,6 +640,30 @@ mod test {
         );
     }
 
+    /// An incomplete schema (RFC 116) is reported per policy, so each error
+    /// carries a `policyId`.
+    #[test]
+    fn test_validate_fails_on_incomplete_schema() {
+        let json = json!({
+            "schema": "external entity User; entity Document { owner: User }; action view appliesTo { principal: [Document], resource: [Document] };",
+            "policies": {
+                "staticPolicies": {
+                    "policy0": "permit(principal, action, resource);"
+                }
+            }
+        });
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 1);
+        assert_eq!(errs[0].policy_id, PolicyId::new("policy0"));
+        assert_error_matches(
+            &errs[0].error,
+            "for policy `policy0`, schema is incomplete: `User` is declared `external` but not defined",
+            Some(
+                "policy validation needs a definition for every name, so it cannot run until every `external` declaration has one",
+            ),
+        );
+    }
+
     #[test]
     fn test_validate_with_templates() {
         // Successful validation with templates and template links

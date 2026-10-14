@@ -157,7 +157,7 @@ mod demo_tests {
                 src,
                 &miette::Report::new(e),
                 &ExpectedErrorMessageBuilder::error("error parsing schema: unexpected token `;`")
-                    .exactly_one_underline_with_label(";", "expected `@`, `action`, `entity`, `namespace`, or `type`")
+                    .exactly_one_underline_with_label(";", "expected `@`, `action`, `entity`, `external`, `namespace`, or `type`")
                     .help(TRAILING_NAMESPACE_SEMICOLON_HELP_MSG)
                     .build(),
             );
@@ -397,6 +397,7 @@ mod demo_tests {
     #[test]
     fn empty_appliesto() {
         let action = json_schema::ActionType::<RawName> {
+            external: false,
             attributes: None,
             applies_to: None,
             member_of: None,
@@ -510,6 +511,7 @@ namespace Baz {action "Foo" appliesTo {
             BTreeMap::from([(
                 "j".to_smolstr(),
                 json_schema::ActionType::<RawName> {
+                    external: false,
                     attributes: None,
                     applies_to: Some(json_schema::ApplySpec::<RawName> {
                         resource_types: vec![],
@@ -1387,6 +1389,50 @@ mod translator_tests {
             Extensions::all_available(),
         ));
         assert_matches!(schema, Ok(_));
+
+        let schema = collect_warnings(json_schema::Fragment::from_cedarschema_str(
+            r#"
+          external action A;
+          action A;
+        "#,
+            Extensions::all_available(),
+        ));
+        assert_matches!(schema, Err(_));
+
+        let schema = collect_warnings(json_schema::Fragment::from_cedarschema_str(
+            r#"
+          external action A;
+          external action A;
+        "#,
+            Extensions::all_available(),
+        ));
+        assert_matches!(schema, Err(_));
+
+        let schema = collect_warnings(json_schema::Fragment::from_cedarschema_str(
+            r#"
+          external action A, A;
+        "#,
+            Extensions::all_available(),
+        ));
+        assert_matches!(schema, Err(_));
+
+        let schema = collect_warnings(json_schema::Fragment::from_cedarschema_str(
+            r#"
+          external action "A";
+          action A;
+        "#,
+            Extensions::all_available(),
+        ));
+        assert_matches!(schema, Err(_));
+
+        let schema = collect_warnings(json_schema::Fragment::from_cedarschema_str(
+            r#"
+          namespace X { external action A; }
+          action A;
+        "#,
+            Extensions::all_available(),
+        ));
+        assert_matches!(schema, Ok(_));
     }
 
     /// Test that duplicate entity type names are not allowed
@@ -1413,6 +1459,45 @@ mod translator_tests {
             collect_warnings(json_schema::Fragment::from_cedarschema_str(
                 r#"
           namespace X { entity A; }
+          entity A {};
+        "#,
+                Extensions::all_available(),
+            )),
+            Ok(_)
+        );
+        assert_matches!(
+            collect_warnings(json_schema::Fragment::from_cedarschema_str(
+                r#"
+          external entity A;
+          entity A {};
+        "#,
+                Extensions::all_available(),
+            )),
+            Err(_)
+        );
+        assert_matches!(
+            collect_warnings(json_schema::Fragment::from_cedarschema_str(
+                r#"
+          external entity A;
+          external entity A;
+        "#,
+                Extensions::all_available(),
+            )),
+            Err(_)
+        );
+        assert_matches!(
+            collect_warnings(json_schema::Fragment::from_cedarschema_str(
+                r#"
+          external entity A,A;
+        "#,
+                Extensions::all_available(),
+            )),
+            Err(_)
+        );
+        assert_matches!(
+            collect_warnings(json_schema::Fragment::from_cedarschema_str(
+                r#"
+          namespace X { external entity A; }
           entity A {};
         "#,
                 Extensions::all_available(),
@@ -2987,6 +3072,582 @@ namespace TinyTodo {
 }"#
             ),
             Ok(_)
+        );
+    }
+}
+
+/// Tests involving external declarations (RFC 116)
+mod external_declarations {
+    use cool_asserts::assert_matches;
+
+    use crate::extensions::Extensions;
+    use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
+    use crate::validator::{
+        cedar_schema::{
+            ast::{
+                ActionDecl, Annotated, Declaration, EntityDecl, ExternalActionDecl,
+                ExternalEntityDecl, Namespace,
+            },
+            parser::parse_schema,
+        },
+        json_schema::{self, EntityType, EntityTypeKind},
+        UnresolvedDeclaration, ValidationMode, ValidatorSchema,
+    };
+
+    #[test]
+    fn external_entity_decl_basic() {
+        let res = parse_schema(
+            r#"
+    external entity A;
+        "#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external entity "A";
+    "#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity A in B;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external entity A in [B];
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external entity A in [B, C];
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external entity A, B;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external entity A in [B, C] {};
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity A in [B, C] = {};
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity A in [B, C] = {foo: String};
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity A in [B, C] = {foo: String,};
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity A enum ["a"];
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity A tags String;
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external type T = String;
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external entity external;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+    }
+    #[test]
+    fn external_action_decl_basic() {
+        let res = parse_schema(
+            r#"
+    external action a;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action "a";
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action a in g;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action a in [g];
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action a in [g, h];
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action a, b;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action external;
+"#,
+        );
+        assert_matches!(res, Ok(_));
+        let res = parse_schema(
+            r#"
+    external action a appliesTo { principal: P, resource: R };
+"#,
+        );
+        assert_matches!(res, Err(_));
+        let res = parse_schema(
+            r#"
+    external action a attributes {};
+"#,
+        );
+        assert_matches!(res, Err(_));
+    }
+    /// Check that an external declaration parses into the external AST
+    /// variant, and not into an empty definition.
+    #[test]
+    fn external_decls_build_external_ast() {
+        let res = parse_schema(
+            r#"
+        external entity F in [G];
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Entity(EntityDecl::External(ExternalEntityDecl { names, member_of_types })) => {
+                        assert_eq!(names.clone().map(|n| n.node), nonempty::NonEmpty::singleton("F".parse().unwrap()));
+                        assert_matches!(member_of_types.as_slice(), [g] => {
+                            assert_eq!(g.to_string(), "G");
+                        });
+                    });
+                });
+            });
+        });
+
+        let res = parse_schema(
+            r#"
+        external action a, b in g;
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Action(ActionDecl::External(ExternalActionDecl { names, parents })) => {
+                        assert_eq!(
+                            names.clone().map(|n| n.node),
+                            nonempty::nonempty!["a".into(), "b".into()]
+                        );
+                        assert_matches!(parents, Some(parents) => {
+                            assert_eq!(parents.len(), 1);
+                            assert_eq!(parents.first().node.eid, "g");
+                        });
+                    });
+                });
+            });
+        });
+    }
+    /// A declaration without `external` still builds the defined variants.
+    #[test]
+    fn defined_decls_build_defined_ast() {
+        let res = parse_schema(
+            r#"
+        entity F in [G];
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Entity(EntityDecl::Standard(_)));
+                });
+            });
+        });
+
+        let res = parse_schema(
+            r#"
+        action a in g;
+        "#,
+        );
+        assert_matches!(res, Ok(ns) => {
+            assert_matches!(&ns, [Annotated {data: Namespace { decls, ..}, ..}] => {
+                assert_matches!(decls, [Annotated { data, .. }] => {
+                    assert_matches!(&data.node, Declaration::Action(ActionDecl::Defined(_)));
+                });
+            });
+        });
+    }
+    #[test]
+    fn entity_named_external() {
+        // `external` only starts a declaration before `entity` or `action`,
+        // so it can still name an entity type.
+        let src = r#"
+        entity external = {};
+        entity Foo in [external] = {};
+        "#;
+
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let ns = schema.0.get(&None).unwrap();
+        assert_matches!(ns.entity_types.get(&"Foo".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(foo), ..} => {
+        assert_eq!(foo.member_of_types, vec!["external".parse().unwrap()]);
+        });
+    }
+    #[test]
+    fn external_entity_types() {
+        let src = r#"
+        external entity G;
+        external entity F in [G];
+        @doc("declared here")
+        external entity H;
+        "#;
+
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let ns = schema.0.get(&None).unwrap();
+        assert_matches!(ns.entity_types.get(&"G".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(et), external: true, ..} => {
+            assert_eq!(et.member_of_types.len(), 0);
+            assert!(et.shape.is_empty_record());
+            assert_matches!(&et.tags, None);
+        });
+        assert_matches!(ns.entity_types.get(&"F".parse().unwrap()).unwrap(), EntityType { kind: EntityTypeKind::Standard(et), external: true, ..} => {
+            assert_eq!(et.member_of_types, vec!["G".parse().unwrap()]);
+        });
+        // An external declaration may carry annotations
+        assert_matches!(ns.entity_types.get(&"H".parse().unwrap()).unwrap(), EntityType {  annotations, ..} => {
+            assert_eq!(
+                annotations.0.get(&"doc".parse().unwrap()).unwrap().as_ref().unwrap().val,
+                "declared here"
+            );
+        });
+    }
+    #[test]
+    fn external_actions() {
+        let src = r#"
+        external action WriteActions;
+        external action DeleteActions in WriteActions;
+        "#;
+
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let ns = schema.0.get(&None).unwrap();
+        let write = ns.actions.get("WriteActions").unwrap();
+        assert!(write.external);
+        assert_matches!(&write.member_of, None);
+        let delete = ns.actions.get("DeleteActions").unwrap();
+        assert!(delete.external);
+        assert_matches!(delete.member_of.as_deref(), Some([parent]) => {
+            assert_eq!(parent.id, "WriteActions");
+            assert_matches!(&parent.ty, None);
+        });
+    }
+    /// A common type outranks an entity type of the same name in a type
+    /// position, but `in` is not a type position: a parent is always an entity
+    /// type. So `type G = Long` does not change what `F in G` means, whether
+    /// `F` is declared or defined.
+    #[test]
+    fn external_parent_is_an_entity_type_despite_a_common_type_of_that_name() {
+        let src = r#"
+        entity G;
+        type G = Long;
+        external entity F in G;
+        entity E in G;
+        "#;
+
+        let schema = ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())
+            .unwrap()
+            .0;
+        // The parent relation is stored inverted, as `G`'s descendants.
+        let g = schema.get_entity_type(&"G".parse().unwrap()).unwrap();
+        assert!(g.has_descendant_entity_type(&"F".parse().unwrap()));
+        assert!(g.has_descendant_entity_type(&"E".parse().unwrap()));
+    }
+    /// External entity type declarations survive translation to
+    /// `json_schema::Fragment` and on into `ValidatorSchema`, which may
+    /// therefore be incomplete in the sense of RFC 116.
+    #[test]
+    fn external_entity_type_reaches_validator_schema() {
+        let src = r#"external entity B;"#;
+        let (frag, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        assert_matches!(
+            frag.0
+                .get(&None)
+                .unwrap()
+                .entity_types
+                .get(&"B".parse().unwrap())
+                .unwrap(),
+            EntityType { .. }
+        );
+        let schema = ValidatorSchema::try_from(frag).unwrap();
+        let b = schema.get_entity_type(&"B".parse().unwrap()).unwrap();
+        assert!(b.is_external());
+        // Nothing is known about its shape or tags.
+        assert_eq!(b.attributes().iter().count(), 0);
+        assert_matches!(b.tag_type(), None);
+
+        // A reference to an external entity type resolves.
+        let src = r#"
+        external entity B;
+        entity A in [B] { b: B };
+        "#;
+        let (frag, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let schema = ValidatorSchema::try_from(frag).unwrap();
+        let b = schema.get_entity_type(&"B".parse().unwrap()).unwrap();
+        assert!(b.is_external());
+        // `A in [B]` is inverted into `B`'s descendants.
+        assert!(b.has_descendant_entity_type(&"A".parse().unwrap()));
+    }
+    /// Same as `external_entity_type_reaches_validator_schema`, for actions.
+    #[test]
+    fn external_action_reaches_validator_schema() {
+        let src = r#"external action a;"#;
+        let (frag, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        assert!(
+            frag.0
+                .get(&None)
+                .unwrap()
+                .actions
+                .get("a")
+                .unwrap()
+                .external
+        );
+        let schema = ValidatorSchema::try_from(frag).unwrap();
+        let a = schema
+            .get_action_id(&r#"Action::"a""#.parse().unwrap())
+            .unwrap();
+        assert!(a.is_external());
+        // Nothing is known about its context, and nothing is applicable to it,
+        // so it contributes no request environments.
+        assert_matches!(a.defined(), None);
+        assert_matches!(a.context_type(), None);
+        assert_eq!(a.applies_to_principals().count(), 0);
+        assert_eq!(
+            schema
+                .unlinked_request_envs(ValidationMode::Strict)
+                .filter(|env| env.action_entity_uid() == Some(&r#"Action::"a""#.parse().unwrap()))
+                .count(),
+            0
+        );
+
+        // A defined action may declare an external action as its parent.
+        let src = r#"
+        external action a;
+        action b in a;
+        "#;
+        let (frag, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let schema = ValidatorSchema::try_from(frag).unwrap();
+        let a = schema
+            .get_action_id(&r#"Action::"a""#.parse().unwrap())
+            .unwrap();
+        assert!(a.is_external());
+        // `b in a` is inverted into `a`'s descendants.
+        assert_eq!(
+            a.descendants().collect::<Vec<_>>(),
+            vec![&r#"Action::"b""#.parse().unwrap()]
+        );
+    }
+    /// A defined action with no `appliesTo` clause keeps an empty one.
+    #[test]
+    fn defined_action_without_applies_to() {
+        let src = r#"
+        action a;
+        "#;
+
+        let (schema, _) =
+            json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available()).unwrap();
+        let ns = schema.0.get(&None).unwrap();
+        let a = ns.actions.get("a").unwrap();
+        assert!(!a.external);
+        assert_matches!(&a.applies_to, Some(spec) => {
+            assert!(spec.principal_types.is_empty());
+            assert!(spec.resource_types.is_empty());
+        });
+        assert_matches!(&a.attributes, None);
+    }
+    /// `ValidatorSchema::is_complete` is false exactly when some name is still
+    /// only declared. Enumerated entity types are definitions, so they do not
+    /// make a schema incomplete.
+    #[test]
+    fn schema_completeness() {
+        let is_complete = |src: &str| {
+            let (frag, _) =
+                json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())
+                    .unwrap();
+            ValidatorSchema::try_from(frag).unwrap().is_complete()
+        };
+
+        assert!(is_complete(""));
+        assert!(is_complete(
+            r#"
+            entity Color enum ["red"];
+            entity User in [Color] { name: String } tags String;
+            action view appliesTo { principal: [User], resource: [User] };
+            "#
+        ));
+
+        assert!(!is_complete("external entity A;"));
+        assert!(!is_complete("external action a;"));
+        assert!(!is_complete(
+            r#"
+            external entity A;
+            entity B { a: A };
+            action view appliesTo { principal: [B], resource: [B] };
+            "#
+        ));
+        assert!(!is_complete("namespace NS { external entity A; }"));
+
+        // A definition elsewhere in the same schema does not resolve a
+        // declaration: that is linking, which is not implemented. The two
+        // collide as a duplicate.
+        assert!(json_schema::Fragment::from_cedarschema_str(
+            r#"
+                external entity A;
+                entity A;
+                "#,
+            Extensions::all_available()
+        )
+        .is_err());
+    }
+    /// `unresolved_declarations` lists exactly the declarations, and
+    /// `check_complete` names them all, sorted, entity types before actions.
+    #[test]
+    fn unresolved_declarations_and_check_complete() {
+        let src = r#"
+            external entity B;
+            external entity A;
+            entity Defined;
+            entity Color enum ["red"];
+            external action z;
+            external action a;
+            action defined appliesTo { principal: [Defined], resource: [Defined] };
+            "#;
+        let schema = ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())
+            .unwrap()
+            .0;
+
+        let mut entity_types = Vec::new();
+        let mut actions = Vec::new();
+        for decl in schema.unresolved_declarations() {
+            match decl {
+                UnresolvedDeclaration::EntityType(ety) => entity_types.push(ety.name().to_string()),
+                UnresolvedDeclaration::Action(action) => actions.push(action.name().to_string()),
+            }
+        }
+        entity_types.sort();
+        actions.sort();
+        assert_eq!(entity_types, ["A", "B"]);
+        assert_eq!(actions, [r#"Action::"a""#, r#"Action::"z""#]);
+
+        // The first name in the message is the one underlined.
+        expect_err(
+            src,
+            &miette::Report::new(schema.check_complete().unwrap_err()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"schema is incomplete: `A`, `B`, `Action::"a"`, and `Action::"z"` are declared `external` but not defined"#,
+            )
+            .help("this needs every entity type and action to be defined; entity validation and request validation are what accept a schema with `external` declarations")
+            .exactly_one_underline("external entity A;")
+            .build(),
+        );
+
+        // One declaration reads in the singular. With no entity type, the
+        // action is the first name and so supplies the location.
+        let src = "external action a;";
+        let schema = ValidatorSchema::from_cedarschema_str(src, Extensions::all_available())
+            .unwrap()
+            .0;
+        expect_err(
+            src,
+            &miette::Report::new(schema.check_complete().unwrap_err()),
+            &ExpectedErrorMessageBuilder::error(
+                r#"schema is incomplete: `Action::"a"` is declared `external` but not defined"#,
+            )
+            .help("this needs every entity type and action to be defined; entity validation and request validation are what accept a schema with `external` declarations")
+            .exactly_one_underline("external action a;")
+            .build(),
+        );
+
+        let complete = ValidatorSchema::from_cedarschema_str(
+            "entity A; action a appliesTo { principal: [A], resource: [A] };",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        assert_eq!(complete.unresolved_declarations().count(), 0);
+        assert!(complete.check_complete().is_ok());
+    }
+    /// An external declaration makes a name known, but it does not excuse the
+    /// names *it* references: a dangling parent is an error whether or not the
+    /// child is external.
+    #[test]
+    fn external_decl_with_dangling_parent() {
+        let error_for = |src: &str| {
+            let (frag, _) =
+                json_schema::Fragment::from_cedarschema_str(src, Extensions::all_available())
+                    .unwrap();
+            assert_matches!(
+                ValidatorSchema::try_from(frag),
+                Err(crate::validator::SchemaError::TypeNotDefined(e)) => e.to_string(),
+                "expected a dangling-parent error for `{src}`"
+            )
+        };
+        // The external declaration reports exactly what the defined one does.
+        assert_eq!(
+            error_for(r#"external entity A in [Undeclared];"#),
+            "failed to resolve type: Undeclared"
+        );
+        assert_eq!(
+            error_for(r#"entity A in [Undeclared];"#),
+            "failed to resolve type: Undeclared"
+        );
+
+        // Same for an external action's parent.
+        let (frag, _) = json_schema::Fragment::from_cedarschema_str(
+            r#"external action a in undeclared;"#,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        assert_matches!(
+            ValidatorSchema::try_from(frag),
+            Err(crate::validator::SchemaError::ActionNotDefined(_))
         );
     }
 }

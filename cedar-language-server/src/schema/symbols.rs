@@ -83,6 +83,10 @@ use super::SchemaInfo;
 /// `textDocument/documentSymbol` request in a language server implementation.
 /// They provide navigation targets for the document outline, breadcrumbs, and
 /// "go to symbol" functionality in IDEs.
+/// `DocumentSymbol::detail` for a name that is declared `external` (RFC 116)
+/// rather than defined.
+const EXTERNAL_DETAIL: &str = "external";
+
 #[must_use]
 pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSymbol>> {
     if schema_info.is_json_schema() {
@@ -103,23 +107,33 @@ pub(crate) fn schema_symbols(schema_info: &SchemaInfo) -> Option<Vec<DocumentSym
         })
         .collect();
 
-    // Create entity type symbols
+    // Create entity type symbols. An RFC 116 declaration carries `external`
+    // as its detail, so the outline tells it apart from a definition.
     let entity_type_symbols: Vec<DocumentSymbol> = validator
         .entity_types()
         .filter_map(|et| et.loc.as_ref().map(|loc| (et, loc)))
         .map(|(et, loc)| {
             let src_range = loc.to_range();
-            new_symbol(et.name().to_string(), src_range, SymbolKind::CLASS)
+            let mut symbol = new_symbol(et.name().to_string(), src_range, SymbolKind::CLASS);
+            if et.is_external() {
+                symbol.detail = Some(EXTERNAL_DETAIL.to_string());
+            }
+            symbol
         })
         .collect();
 
-    // Create action symbols
+    // Create action symbols. The range comes from the name's own location;
+    // `ValidatorActionId::loc` spans the whole declaration.
     let action_symbols: Vec<DocumentSymbol> = validator
-        .actions()
-        .filter_map(|a| a.loc().map(|loc| (a, loc)))
+        .action_ids()
+        .filter_map(|a| a.name().loc().map(|loc| (a, loc)))
         .map(|(action, loc)| {
             let src_range = loc.to_range();
-            new_symbol(action.to_string(), src_range, SymbolKind::ENUM)
+            let mut symbol = new_symbol(action.name().to_string(), src_range, SymbolKind::ENUM);
+            if action.is_external() {
+                symbol.detail = Some(EXTERNAL_DETAIL.to_string());
+            }
+            symbol
         })
         .collect();
 
@@ -414,4 +428,30 @@ mod test {
         ("Action::\"N\"", "N"),
         ("N", "entity N;")
     );
+
+    /// An RFC 116 declaration appears in the outline like a definition, and
+    /// carries `external` as its detail.
+    #[test]
+    #[traced_test]
+    fn external_declarations_carry_external_as_detail() {
+        let schema = "external entity Folder;
+                      entity Document in Folder;
+                      external action write;
+                      action read appliesTo { principal: [Document], resource: [Document] };";
+        let syms = schema_symbols(&SchemaInfo::cedar_schema(schema.to_owned())).unwrap();
+        let mut detail: Vec<(String, Option<String>)> = syms
+            .iter()
+            .map(|sym| (sym.name.clone(), sym.detail.clone()))
+            .collect();
+        detail.sort();
+        assert_eq!(
+            detail,
+            vec![
+                (r#"Action::"read""#.to_owned(), None),
+                (r#"Action::"write""#.to_owned(), Some("external".to_owned())),
+                ("Document".to_owned(), None),
+                ("Folder".to_owned(), Some("external".to_owned())),
+            ]
+        );
+    }
 }

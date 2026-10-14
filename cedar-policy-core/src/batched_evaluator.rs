@@ -27,7 +27,7 @@ use crate::authorizer::Decision;
 use crate::batched_evaluator::err::{BatchedEvalError, InsufficientIterationsError};
 use crate::entities::TCComputation;
 use crate::tpe::entities::PartialEntity;
-use crate::tpe::err::PartialRequestError;
+use crate::tpe::err::{PartialRequestError, TpeError};
 use crate::tpe::request::{PartialEntityUID, PartialRequest};
 use crate::tpe::residual_policies;
 use crate::tpe::response::{decision_from_residuals, ResidualPolicy, Response};
@@ -90,6 +90,8 @@ pub fn is_authorized_batched(
     loader: &mut dyn EntityLoader,
     max_iters: u32,
 ) -> Result<Decision, BatchedEvalError> {
+    // Checked before the request, which this function validates itself.
+    schema.check_complete().map_err(TpeError::from)?;
     let request = concrete_request_to_partial(request, schema)?;
     // Actions comes from the schema, so batched eval can start with them
     let mut entities = PartialEntities::from_entities(iter::empty(), schema)?;
@@ -238,6 +240,47 @@ mod tests {
             permit(principal, action, resource) when { principal.level > 5 };
             "#);
         assert_eq!(decision, Decision::Deny);
+        assert_eq!(loader.requested, vec![]);
+    }
+
+    /// Batched evaluation refuses a schema that still declares some names
+    /// `external` (RFC 116), before looking at the request: this request's
+    /// action is the external one, and the error is still about the schema.
+    #[test]
+    fn incomplete_schema_rejected() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            r#"
+            entity User;
+            entity Document;
+            external action audit;
+            action read appliesTo { principal: [User], resource: [Document] };
+            "#,
+            Extensions::all_available(),
+        )
+        .expect("schema should parse")
+        .0;
+        let request = Request::new(
+            (r#"User::"alice""#.parse().expect("uid should parse"), None),
+            (
+                r#"Action::"audit""#.parse().expect("uid should parse"),
+                None,
+            ),
+            (
+                r#"Document::"doc""#.parse().expect("uid should parse"),
+                None,
+            ),
+            Context::empty(),
+            Some(&RequestSchemaAllPass {}),
+            Extensions::all_available(),
+        )
+        .expect("request should be valid");
+        let mut loader = Loader {
+            requested: Vec::new(),
+        };
+        cool_asserts::assert_matches!(
+            is_authorized_batched(&request, &PolicySet::new(), &schema, &mut loader, 10),
+            Err(BatchedEvalError::TPE(TpeError::IncompleteSchema(_)))
+        );
         assert_eq!(loader.requested, vec![]);
     }
 }

@@ -143,6 +143,13 @@ pub trait EntityTypeDescription {
     /// Return valid EID choices if the entity type is enumerated otherwise
     /// return `None`
     fn enum_entity_eids(&self) -> Option<&NonEmpty<Eid>>;
+
+    /// Was this entity type declared `external` (RFC 116)?
+    ///
+    /// Defaults to `false`, for the schemas that cannot express a declaration.
+    fn is_external(&self) -> bool {
+        false
+    }
 }
 
 /// Simple type that implements `EntityTypeDescription` by expecting no

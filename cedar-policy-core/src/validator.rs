@@ -117,6 +117,9 @@ impl Validator {
     /// Validate all templates, links, and static policies in a policy set.
     /// Return a `ValidationResult`.
     pub fn validate(&self, policies: &PolicySet, mode: ValidationMode) -> ValidationResult {
+        if let Some(result) = self.reject_incomplete_schema(policies) {
+            return result;
+        }
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
             .map(|p| self.validate_policy(p, mode))
@@ -145,6 +148,9 @@ impl Validator {
         mode: ValidationMode,
         max_deref_level: u32,
     ) -> ValidationResult {
+        if let Some(result) = self.reject_incomplete_schema(policies) {
+            return result;
+        }
         let validate_policy_results: (Vec<_>, Vec<_>) = policies
             .all_templates()
             .map(|p| self.validate_policy_with_level(p, mode, max_deref_level))
@@ -161,6 +167,19 @@ impl Validator {
                 .chain(link_warnings.into_iter().flatten())
                 .chain(confusable_string_checks(policies.all_templates())),
         )
+    }
+
+    /// Refuse to validate policies against a schema that still declares some
+    /// names `external` (RFC 116), returning `None` when the schema is
+    /// complete and validation should proceed.
+    fn reject_incomplete_schema(&self, policies: &PolicySet) -> Option<ValidationResult> {
+        let err = self.schema.check_complete().err()?;
+        Some(ValidationResult::new(
+            policies.all_templates().map(|t| {
+                ValidationError::incomplete_schema(t.loc().cloned(), t.id().clone(), err.clone())
+            }),
+            std::iter::empty(),
+        ))
     }
 
     /// Run all validations against a single static policy or template (note
@@ -313,13 +332,14 @@ mod test {
             [(
                 action_name.into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: Some(json_schema::ApplySpec {
                         principal_types: vec!["foo_type".parse().unwrap()],
                         resource_types: vec!["bar_type".parse().unwrap()],
                         context: json_schema::AttributesOrContext::default(),
                     }),
-                    member_of: None,
                     attributes: None,
+                    member_of: None,
                     annotations: Annotations::new(),
                     loc: None,
                     #[cfg(feature = "extended-schema")]
@@ -591,6 +611,127 @@ mod test {
                 PolicyID::from_string("policy0"),
                 "һenry"
             )]
+        );
+    }
+}
+
+/// Policy validation refuses a schema that still declares some names
+/// `external` (RFC 116).
+#[cfg(test)]
+mod incomplete_schema {
+    use crate::extensions::Extensions;
+    use crate::parser::parse_policyset;
+    use crate::validator::{ValidationError, ValidationMode, Validator, ValidatorSchema};
+    use cool_asserts::assert_matches;
+
+    fn validator() -> Validator {
+        Validator::new(
+            ValidatorSchema::from_cedarschema_str(
+                r#"
+                external entity User;
+                external action audit;
+                entity Document { owner: User };
+                action view appliesTo { principal: [Document], resource: [Document] };
+                "#,
+                Extensions::all_available(),
+            )
+            .unwrap()
+            .0,
+        )
+    }
+
+    /// Neither a policy that names an external action nor one carrying a type
+    /// error of its own is typechecked.
+    #[test]
+    fn every_policy_is_refused() {
+        let policies = parse_policyset(
+            r#"
+            permit(principal, action == Action::"audit", resource);
+            permit(principal, action, resource) when { principal.owner.nope };
+            "#,
+        )
+        .unwrap();
+
+        for mode in [ValidationMode::Strict, ValidationMode::Permissive] {
+            let result = validator().validate(&policies, mode);
+            assert!(!result.validation_passed());
+            // One error per policy, and nothing else: no typechecking ran.
+            let errs: Vec<_> = result.validation_errors().collect();
+            assert_eq!(errs.len(), 2);
+            let mut ids: Vec<_> = errs
+                .iter()
+                .map(|e| {
+                    assert_matches!(e, ValidationError::IncompleteSchema(e) => {
+                        assert_eq!(
+                            e.err.to_string(),
+                            "schema is incomplete: `User` and `Action::\"audit\"` are declared `external` but not defined",
+                        );
+                        e.policy_id.to_string()
+                    })
+                })
+                .collect();
+            ids.sort();
+            assert_eq!(ids, ["policy0", "policy1"]);
+            assert_eq!(result.validation_warnings().count(), 0);
+        }
+
+        // `validate_with_level` refuses in the same way.
+        let result = validator().validate_with_level(&policies, ValidationMode::Strict, 1);
+        assert!(!result.validation_passed());
+        assert_eq!(result.validation_errors().count(), 2);
+    }
+
+    /// A template is refused under its own id, and so is a policy linked from
+    /// it: `all_templates` covers both.
+    #[test]
+    fn templates_are_refused() {
+        let policies =
+            parse_policyset(r#"permit(principal == ?principal, action, resource);"#).unwrap();
+        let result = validator().validate(&policies, ValidationMode::Strict);
+        assert_matches!(
+            result.validation_errors().collect::<Vec<_>>().as_slice(),
+            [ValidationError::IncompleteSchema(_)]
+        );
+    }
+
+    /// An empty policy set has nothing to refuse, so it passes.
+    #[test]
+    fn empty_policy_set_passes() {
+        let result = validator().validate(&crate::ast::PolicySet::new(), ValidationMode::Strict);
+        assert!(result.validation_passed());
+    }
+
+    /// A complete schema is unaffected: the same policies validate.
+    #[test]
+    fn complete_schema_is_unaffected() {
+        let validator = Validator::new(
+            ValidatorSchema::from_cedarschema_str(
+                r#"
+                entity User;
+                entity Document { owner: User };
+                action view appliesTo { principal: [Document], resource: [Document] };
+                "#,
+                Extensions::all_available(),
+            )
+            .unwrap()
+            .0,
+        );
+        let policies =
+            parse_policyset(r#"permit(principal, action == Action::"view", resource);"#).unwrap();
+        assert!(validator
+            .validate(&policies, ValidationMode::Strict)
+            .validation_passed());
+
+        // And a real type error is still a type error, not a refusal.
+        let policies = parse_policyset(
+            r#"permit(principal, action, resource) when { principal.owner.nope };"#,
+        )
+        .unwrap();
+        let result = validator.validate(&policies, ValidationMode::Strict);
+        assert!(!result.validation_passed());
+        assert_matches!(
+            result.validation_errors().next(),
+            Some(ValidationError::UnsafeAttributeAccess(_))
         );
     }
 }

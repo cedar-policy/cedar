@@ -678,6 +678,7 @@ pub fn well_typed_policy(
     env: &cedar_policy::RequestEnv,
     schema: &Schema,
 ) -> Result<Policy> {
+    schema.as_ref().check_complete()?;
     let env = to_validator_request_env(env, schema.as_ref())
         .ok_or_else(|| Error::ActionNotInSchema(env.action().to_string()))?;
     well_typed_policy_inner(policy, &env, schema)
@@ -744,6 +745,7 @@ pub fn well_typed_policies(
     env: &cedar_policy::RequestEnv,
     schema: &Schema,
 ) -> Result<PolicySet> {
+    schema.as_ref().check_complete()?;
     if policies.policies().any(|p| !p.is_static()) {
         return Err(CompileError::UnsupportedFeature(
             "template-linked policies are not supported".to_string(),

@@ -129,7 +129,8 @@ impl<N: Display> IndentedDisplay for json_schema::NamespaceDefinition<N> {
             ty.annotations.fmt_indented(f, base_indentation.len())?;
             writeln!(
                 f,
-                "{base_indentation}entity {n}{};",
+                "{base_indentation}{}entity {n}{};",
+                if ty.external { "external " } else { "" },
                 Indented(ty, base_indentation)
             )?;
 
@@ -141,7 +142,8 @@ impl<N: Display> IndentedDisplay for json_schema::NamespaceDefinition<N> {
             a.annotations.fmt_indented(f, base_indentation.len())?;
             writeln!(
                 f,
-                "{base_indentation}action \"{}\"{};",
+                "{base_indentation}{}action \"{}\"{};",
+                if a.external { "external " } else { "" },
                 n.escape_debug(),
                 Indented(a, base_indentation)
             )?;
@@ -311,6 +313,8 @@ impl<N: Display> IndentedDisplay for json_schema::ActionType<N> {
             write!(f, " in ")?;
             fmt_non_empty_slice(f, parents)?;
         }
+        // An external action has no `appliesTo`; the `external` keyword itself
+        // is written by the enclosing `NamespaceDefinition`.
         if let Some(spec) = &self.applies_to {
             match (
                 spec.principal_types.split_first(),
@@ -459,6 +463,9 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
         let unsupported = ns
             .entity_types
             .iter()
+            // An external declaration has no shape, so it can never be an
+            // unsupported one.
+            .filter(|(_, entity_type)| !entity_type.external)
             .filter(|(_, entity_type)| match &entity_type.kind {
                 json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
                     shape:
@@ -616,6 +623,61 @@ namespace TinyTodo {
         test_round_trip(r#"action Delete in Action::"Edit";"#);
         test_round_trip(r#"action Delete in Action::"\n\x00";"#);
         test_round_trip(r#"action Delete in [Action::"Edit", Action::"Destroy"];"#);
+    }
+
+    #[test]
+    fn external_entities_roundtrip() {
+        test_round_trip(r#"external entity Foo;"#);
+        test_round_trip(r#"external entity Foo in Bar;"#);
+        test_round_trip(r#"external entity Foo in [Bar, Baz];"#);
+        test_round_trip(r#"external entity Foo, Bar;"#);
+        test_round_trip(r#"external entity external;"#);
+        test_round_trip(r#"namespace N { external entity Foo in [N::Bar, Baz]; }"#);
+    }
+
+    #[test]
+    fn external_actions_roundtrip() {
+        test_round_trip(r#"external action Foo;"#);
+        test_round_trip(r#"external action "Foo";"#);
+        test_round_trip(r#"external action Foo in Action::"Bar";"#);
+        test_round_trip(r#"external action Foo in [Action::"Bar", Action::"Baz"];"#);
+        test_round_trip(r#"external action Foo, Bar;"#);
+        test_round_trip(r#"namespace N { external action Foo in N::Action::"Bar"; }"#);
+    }
+
+    /// The examples from the "Syntax" section of RFC 116. Action parents are
+    /// written with an explicit `Action::` prefix because an unqualified action
+    /// parent prints back qualified.
+    #[test]
+    fn external_declarations_rfc_examples() {
+        test_round_trip(
+            r#"
+        external entity B, C;
+        entity A in C {
+            other: B
+        };
+        "#,
+        );
+        test_round_trip(
+            r#"
+        namespace MyApp {
+            external entity B;
+            entity A {
+                other: B
+            };
+        }
+        entity C {
+            other: MyApp::B
+        };
+        "#,
+        );
+        test_round_trip(
+            r#"
+        external action WriteActions;
+        external action DeleteActions in Action::"WriteActions";
+        action DeleteFile in Action::"DeleteActions";
+        "#,
+        );
     }
 
     #[test]

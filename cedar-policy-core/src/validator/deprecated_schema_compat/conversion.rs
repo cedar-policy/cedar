@@ -234,6 +234,8 @@ impl TryFrom<compat::EntityType> for EntityType<RawName> {
                 shape: value.shape.try_into()?,
                 tags: None,
             }),
+            // The deprecated schema format has no external declarations.
+            external: false,
             annotations: Annotations::new(),
             loc: None,
         })
@@ -254,6 +256,8 @@ impl TryFrom<compat::ActionType> for ActionType<RawName> {
                 .applies_to
                 .map(|applies_to| applies_to.try_into())
                 .transpose()?,
+            // The deprecated schema format has no external declarations.
+            external: false,
             member_of: value
                 .member_of
                 .map(|member_of| {
