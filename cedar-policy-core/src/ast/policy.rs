@@ -81,17 +81,9 @@ cfg_tolerant_ast! {
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
 /// Note that this "template" may have no slots, in which case this `Template` represents a static policy
-#[derive(Educe, Clone, Debug)]
-#[educe(PartialEq, Eq, Hash)]
+#[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct Template {
     body: TemplateBody,
-    /// The condition expression of `body`, built once at construction so that
-    /// evaluating the template does not rebuild it on every request.
-    ///
-    /// INVARIANT (condition cache correctness): always equal to `body.condition()`
-    #[educe(PartialEq(ignore))]
-    #[educe(Hash(ignore))]
-    condition: Expr,
     /// INVARIANT (slot cache correctness): This Vec must contain _all_ of the open slots in `body`
     /// This is maintained by the only public constructors: `new()`, `new_shared()`, and `link_static_policy()`
     ///
@@ -111,13 +103,13 @@ impl Template {
     /// Returns `Ok(())` if the cache is correct, or
     /// `Err(TemplateValidationError::SlotCacheMismatch)` if not.
     fn check_slot_cache(&self) -> Result<(), TemplateValidationError> {
-        for slot in self.body.condition().slots() {
+        for slot in self.body.condition_ref().slots() {
             if !self.slots.contains(&slot) {
                 return Err(TemplateValidationError::SlotCacheMismatch);
             }
         }
         for slot in &self.slots {
-            if !self.body.condition().slots().contains(slot) {
+            if !self.body.condition_ref().slots().contains(slot) {
                 return Err(TemplateValidationError::SlotCacheMismatch);
             }
         }
@@ -130,7 +122,7 @@ impl Template {
     pub fn check_invariant(&self) {
         #[cfg(debug_assertions)]
         {
-            assert_eq!(self.condition, self.body.condition());
+            assert!(self.body.condition_cache_is_correct());
             assert!(self.check_slot_cache().is_ok());
         }
     }
@@ -255,8 +247,6 @@ impl Template {
     pub fn new_id(&self, id: PolicyID) -> Self {
         Template {
             body: self.body.new_id(id),
-            // The condition does not depend on the policy ID
-            condition: self.condition.clone(),
             slots: self.slots.clone(),
         }
     }
@@ -292,13 +282,13 @@ impl Template {
     /// principal, resource, and action); the template's "when" conditions; and
     /// the negation of each of the template's "unless" conditions.
     pub fn condition(&self) -> Expr {
-        self.condition.clone()
+        self.body.condition()
     }
 
     /// Like [`Template::condition`], but borrows the expression built when
     /// the template was constructed instead of returning a copy of it.
     pub fn condition_ref(&self) -> &Expr {
-        &self.condition
+        self.body.condition_ref()
     }
 
     /// List of open slots in this template
@@ -373,14 +363,11 @@ impl Template {
     /// They will share the same ID
     pub fn link_static_policy(p: StaticPolicy) -> (Arc<Template>, Policy) {
         let body: TemplateBody = p.into();
-        // INVARIANT (condition cache correctness)
-        let condition = body.condition();
         // INVARIANT (slot cache correctness):
         // StaticPolicy by invariant (inline policy correctness)
         // can have no slots, so it is safe to make `slots` the empty vec
         let t = Arc::new(Self {
             body,
-            condition,
             slots: vec![],
         });
         t.check_invariant();
@@ -448,16 +435,10 @@ pub enum TemplateValidationError {
 
 impl From<TemplateBody> for Template {
     fn from(body: TemplateBody) -> Self {
-        // INVARIANT (condition cache correctness)
-        let condition = body.condition();
         // INVARIANT: (slot cache correctness)
         // Pull all the slots out of the template body's condition.
-        let slots = condition.slots().collect::<Vec<_>>();
-        Self {
-            body,
-            condition,
-            slots,
-        }
+        let slots = body.condition_ref().slots().collect::<Vec<_>>();
+        Self { body, slots }
     }
 }
 
@@ -891,7 +872,7 @@ impl StaticPolicy {
             resource_constraint,
             non_scope_constraints,
         );
-        let first_slot = body.condition().slots().next();
+        let first_slot = body.condition_ref().slots().next();
         // INVARIANT (static policy correctness), checks that no slots exists
         match first_slot {
             Some(slot) => Err(UnexpectedSlotError::FoundSlot(slot))?,
@@ -929,8 +910,8 @@ impl From<StaticPolicy> for Arc<Template> {
 
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
-#[derive(Educe, Clone, Debug)]
-#[educe(PartialEq, Eq, Hash)]
+#[derive(Educe, Clone)]
+#[educe(PartialEq, Eq, Hash, Debug)]
 pub struct TemplateBodyImpl {
     /// ID of this policy
     id: PolicyID,
@@ -961,6 +942,45 @@ pub struct TemplateBodyImpl {
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
     non_scope_constraints: Option<Arc<Expr>>,
+    /// The condition expression of this policy: the scope constraints joined
+    /// with `non_scope_constraints`. It is built once, at construction, so
+    /// that asking for it does not rebuild it.
+    ///
+    /// INVARIANT (condition cache correctness): always equal to what
+    /// [`TemplateBodyImpl::build_condition`] returns for the fields above
+    #[educe(PartialEq(ignore))]
+    #[educe(Hash(ignore))]
+    #[educe(Debug(ignore))]
+    condition: Expr,
+}
+
+impl TemplateBodyImpl {
+    /// Build the condition expression of a policy with these components: a
+    /// conjunction of the scope constraints (on principal, action, and
+    /// resource) and the non-scope constraints.
+    fn build_condition(
+        loc: Option<&Loc>,
+        principal_constraint: &PrincipalConstraint,
+        action_constraint: &ActionConstraint,
+        resource_constraint: &ResourceConstraint,
+        non_scope_constraints: Option<&Expr>,
+    ) -> Expr {
+        Expr::and(
+            principal_constraint.as_expr(),
+            Expr::and(
+                action_constraint.as_expr(),
+                Expr::and(
+                    resource_constraint.as_expr(),
+                    non_scope_constraints
+                        .cloned()
+                        .unwrap_or_else(|| Expr::val(true)),
+                )
+                .with_maybe_source_loc(loc.cloned()),
+            )
+            .with_maybe_source_loc(loc.cloned()),
+        )
+        .with_maybe_source_loc(loc.cloned())
+    }
 }
 
 /// Policy datatype. This is used for both templates (in which case it contains
@@ -1181,6 +1201,7 @@ impl TemplateBody {
                 action_constraint,
                 resource_constraint,
                 non_scope_constraints,
+                condition: _,
             }) => Some((
                 id,
                 annotations,
@@ -1201,27 +1222,35 @@ impl TemplateBody {
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
     pub fn condition(&self) -> Expr {
+        self.condition_ref().clone()
+    }
+
+    /// Like [`TemplateBody::condition`], but borrows the expression built
+    /// when the policy was constructed instead of returning a copy of it.
+    pub fn condition_ref(&self) -> &Expr {
         match self {
-            TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => {
-                let loc = self.loc().cloned();
-                Expr::and(
-                    self.principal_constraint_expr(),
-                    Expr::and(
-                        self.action_constraint_expr(),
-                        Expr::and(
-                            self.resource_constraint_expr(),
-                            self.non_scope_constraints()
-                                .cloned()
-                                .unwrap_or_else(|| Expr::val(true)),
-                        )
-                        .with_maybe_source_loc(loc.clone()),
+            TemplateBody::TemplateBody(TemplateBodyImpl { condition, .. }) => condition,
+            #[cfg(feature = "tolerant-ast")]
+            TemplateBody::TemplateBodyError(_, _) => &DEFAULT_ERROR_EXPR,
+        }
+    }
+
+    /// Checks the invariant (condition cache correctness)
+    #[cfg(any(test, debug_assertions))]
+    fn condition_cache_is_correct(&self) -> bool {
+        match self {
+            TemplateBody::TemplateBody(body) => {
+                body.condition
+                    == TemplateBodyImpl::build_condition(
+                        body.loc.as_ref(),
+                        &body.principal_constraint,
+                        &body.action_constraint,
+                        &body.resource_constraint,
+                        body.non_scope_constraints.as_deref(),
                     )
-                    .with_maybe_source_loc(loc.clone()),
-                )
-                .with_maybe_source_loc(loc)
             }
             #[cfg(feature = "tolerant-ast")]
-            TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
+            TemplateBody::TemplateBodyError(_, _) => true,
         }
     }
 
@@ -1240,6 +1269,14 @@ impl TemplateBody {
         resource_constraint: ResourceConstraint,
         non_scope_constraints: Option<Arc<Expr>>,
     ) -> Self {
+        // INVARIANT (condition cache correctness)
+        let condition = TemplateBodyImpl::build_condition(
+            loc.as_ref(),
+            &principal_constraint,
+            &action_constraint,
+            &resource_constraint,
+            non_scope_constraints.as_deref(),
+        );
         Self::TemplateBody(TemplateBodyImpl {
             id,
             loc,
@@ -1249,6 +1286,7 @@ impl TemplateBody {
             action_constraint,
             resource_constraint,
             non_scope_constraints,
+            condition,
         })
     }
 
@@ -1267,16 +1305,16 @@ impl TemplateBody {
         resource_constraint: ResourceConstraint,
         non_scope_constraints: Option<Expr>,
     ) -> Self {
-        Self::TemplateBody(TemplateBodyImpl {
+        Self::new_shared(
             id,
             loc,
-            annotations: Arc::new(annotations),
+            Arc::new(annotations),
             effect,
             principal_constraint,
             action_constraint,
             resource_constraint,
-            non_scope_constraints: non_scope_constraints.map(Arc::new),
-        })
+            non_scope_constraints.map(Arc::new),
+        )
     }
 }
 
@@ -2122,12 +2160,12 @@ mod test {
     }
 
     #[test]
-    fn cached_condition_matches_body() {
+    fn cached_condition_matches_components() {
         for template in all_templates() {
-            assert_eq!(template.condition_ref(), &template.body.condition());
-            assert_eq!(&template.condition(), template.condition_ref());
+            assert!(template.body.condition_cache_is_correct());
             let renamed = template.new_id(PolicyID::from_string("renamed"));
-            assert_eq!(renamed.condition_ref(), &renamed.body.condition());
+            assert!(renamed.body.condition_cache_is_correct());
+            assert_eq!(renamed.condition_ref(), template.condition_ref());
         }
 
         let static_policy = parse_policy(
@@ -2135,10 +2173,14 @@ mod test {
             r#"permit(principal, action == Action::"a", resource) when { context.b };"#,
         )
         .expect("policy should parse");
+        let condition = static_policy.condition();
         let (template, policy) = Template::link_static_policy(static_policy);
-        assert_eq!(template.condition_ref(), &template.body.condition());
-        assert_eq!(policy.condition_ref(), template.condition_ref());
-        assert_eq!(&policy.condition(), policy.condition_ref());
+        assert!(template.body.condition_cache_is_correct());
+        assert_eq!(template.condition_ref(), &condition);
+        assert_eq!(policy.condition_ref(), &condition);
+        // `Expr` equality ignores source locations, so check them separately
+        assert!(template.loc().is_some());
+        assert_eq!(template.condition_ref().source_loc(), template.loc());
     }
 
     #[test]
@@ -2537,12 +2579,6 @@ mod test {
         // Check slots are empty
         assert!(error_template.slots().count() == 0);
 
-        // Check the cached condition is the error template body's
-        assert_eq!(
-            error_template.condition_ref(),
-            &error_template.body.condition()
-        );
-
         // Check body is an error template body
         assert_matches!(error_template.body,
             TemplateBody::TemplateBodyError(ref id, ref loc) if id == &policy_id && loc == &error_loc
@@ -2667,10 +2703,8 @@ mod template_validate_test {
             None,
         );
         // Inject a fake slot into the cache that doesn't exist in the condition
-        let condition = body.condition();
         let t = Template {
             body,
-            condition,
             slots: vec![Slot {
                 id: SlotId::principal(),
                 loc: None,
