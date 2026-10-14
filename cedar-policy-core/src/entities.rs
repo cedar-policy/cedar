@@ -201,6 +201,10 @@ impl Entities {
                             Arc::make_mut(entity).remove_indirect_ancestor(&uid_to_remove);
                             Arc::make_mut(entity).remove_parent(&uid_to_remove);
                             // remove any indirect link between `entity` and the ancestors of `entity_to_remove`
+                            // repair_tc re-adds edges that are reachable via alternate paths.
+                            // Determining whether an edge has an alternate path before removing it
+                            // could be done by processing descendants in topological order, but
+                            // the performance benefit over reusing `repair_tc` would be minimal.
                             for ancestor_uid in entity_to_remove.ancestors() {
                                 Arc::make_mut(entity).remove_indirect_ancestor(ancestor_uid);
                             }
@@ -209,10 +213,13 @@ impl Entities {
                 }
             }
         }
-        match tc_computation {
-            TCComputation::AssumeAlreadyComputed => (),
-            TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
-            TCComputation::ComputeNow => repair_tc(&entities_touched, &mut self.entities, true)?,
+        repair_tc(
+            &entities_touched,
+            &mut self.entities,
+            matches!(tc_computation, TCComputation::ComputeNow),
+        )?;
+        if let TCComputation::EnforceAlreadyComputed = tc_computation {
+            enforce_tc_and_dag(&self.entities)?;
         }
         Ok(self)
     }
@@ -2456,6 +2463,45 @@ mod entities_tests {
         // Assert that there is no longer an edge from F to B
         // as the only link was through D
         assert!(!f.is_descendant_of(&bid));
+    }
+
+    #[test]
+    fn test_remove_entities_preserves_alternate_pat() {
+        //   child -> removed -> ancestor
+        //   child -> sibling -> ancestor
+        let ancestor = EntityUID::with_eid("ancestor");
+        let removed = EntityUID::with_eid("removed");
+        let sibling = EntityUID::with_eid("sibling");
+        let child = EntityUID::with_eid("child");
+        let mut r = Entity::with_uid(removed.clone());
+        r.add_parent(ancestor.clone());
+        let mut s = Entity::with_uid(sibling.clone());
+        s.add_parent(ancestor.clone());
+        let mut c = Entity::with_uid(child.clone());
+        c.add_parent(removed.clone());
+        c.add_parent(sibling.clone());
+        let entities = Entities::from_entities(
+            vec![Entity::with_uid(ancestor.clone()), r, s, c],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        for tc in &[
+            TCComputation::AssumeAlreadyComputed,
+            TCComputation::EnforceAlreadyComputed,
+            TCComputation::ComputeNow,
+        ] {
+            let entities_copy = entities
+                .clone()
+                .remove_entities(vec![removed.clone()], *tc)
+                .unwrap();
+            assert_matches!(entities_copy.entity(&removed), Dereference::NoSuchEntity);
+            assert!(entities_copy
+                .entity(&child)
+                .unwrap()
+                .is_descendant_of(&ancestor));
+        }
     }
 
     #[test]
