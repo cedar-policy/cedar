@@ -34,10 +34,12 @@ extern crate tsify;
 
 mod err;
 mod partial_response;
+mod scope;
 pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
+use scope::RequestScope;
 
 /// Authorizer
 #[derive(Clone)] // `Debug` implemented manually below
@@ -75,7 +77,7 @@ impl Authorizer {
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
         let eval = Evaluator::new(q.clone(), entities, self.extensions);
-        match self.is_authorized_concrete(&eval, pset) {
+        match self.is_authorized_concrete(&eval, &q, pset, entities) {
             Some(response) => response,
             // Some policy evaluated to a residual. `PartialResponse` defines
             // the response in that case, so evaluate the whole request again
@@ -86,22 +88,38 @@ impl Authorizer {
         }
     }
 
-    /// Compute the [`Response`] for the request in `eval` without building a
+    /// Compute the [`Response`] for the request `q` without building a
     /// [`PartialResponse`]: only the satisfied policies and the evaluation
     /// errors are recorded, and nothing is recorded for a policy that
-    /// evaluates to `false`.
+    /// evaluates to `false`. `eval` must be an evaluator for `q` and
+    /// `entities`.
     ///
     /// Returns `None` if any policy evaluates to a residual. Otherwise the
     /// result is equal to concretizing the [`PartialResponse`] for the same
     /// request. In particular, the errors are in the order of
     /// [`PolicySet::policies`], which is the order in which
     /// [`Authorizer::is_authorized_core`] collects them.
-    fn is_authorized_concrete(&self, eval: &Evaluator<'_>, pset: &PolicySet) -> Option<Response> {
+    ///
+    /// A policy whose scope `q` cannot match evaluates to `false` without an
+    /// error. When the principal, action and resource of `q` are concrete,
+    /// such a policy is recognized from its scope constraints and is not
+    /// evaluated.
+    fn is_authorized_concrete(
+        &self,
+        eval: &Evaluator<'_>,
+        q: &Request,
+        pset: &PolicySet,
+        entities: &Entities,
+    ) -> Option<Response> {
+        let scope = RequestScope::new(q, entities);
         let mut satisfied_permits = vec![];
         let mut satisfied_forbids = vec![];
         let mut errors = vec![];
 
         for p in pset.policies() {
+            if scope.as_ref().is_some_and(|scope| scope.excludes(p)) {
+                continue;
+            }
             match eval.partial_evaluate(p) {
                 Ok(Either::Left(true)) => match p.effect() {
                     Effect::Permit => satisfied_permits.push(p.id()),
@@ -851,13 +869,13 @@ mod differential_tests {
         {"uid": {"type": "Action", "id": "readOnly"}, "attrs": {}, "parents": []}
     ]"#;
 
-    fn uid(ty: &str, eid: &str) -> EntityUID {
+    pub(super) fn uid(ty: &str, eid: &str) -> EntityUID {
         EntityUID::with_eid_and_type(ty, eid).expect("valid entity type")
     }
 
     /// The policies of [`POLICIES`], with each of the three templates linked
     /// four times, to different principals and resources.
-    fn policy_set() -> PolicySet {
+    pub(super) fn policy_set() -> PolicySet {
         let mut pset = parser::parse_policyset(POLICIES).expect("policies parse");
         let templates: Vec<(PolicyID, Vec<SlotId>)> = pset
             .templates()
@@ -893,7 +911,7 @@ mod differential_tests {
         pset
     }
 
-    fn entities() -> Entities {
+    pub(super) fn entities() -> Entities {
         EntityJsonParser::new(
             None::<&NoEntitiesSchema>,
             Extensions::all_available(),
@@ -905,7 +923,7 @@ mod differential_tests {
 
     /// Every combination of six principals, five actions, six resources and
     /// three contexts.
-    fn requests() -> Vec<Request> {
+    pub(super) fn requests() -> Vec<Request> {
         let principals = [
             uid("User", "alice"),
             uid("User", "bob"),
@@ -1047,6 +1065,60 @@ mod differential_tests {
                 assert_eq!(id4, &PolicyID::from_string("policy4"));
             }
         );
+    }
+
+    /// A policy that failed to parse is evaluated, and reports its error,
+    /// whatever the request. A policy with an action constraint that failed
+    /// to parse reports its error unless its principal constraint is `false`.
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn agrees_on_policies_that_failed_to_parse() {
+        let id = |id: &str| PolicyID::from_string(id);
+        let mut pset = policy_set();
+        pset.add_template(Template::error(id("unparsable"), None))
+            .expect("fresh template id");
+        pset.add_template(Template::new(
+            id("bad-action"),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::is_eq(Arc::new(uid("User", "bob"))),
+            ActionConstraint::ErrorConstraint,
+            ResourceConstraint::any(),
+            None,
+        ))
+        .expect("fresh template id");
+        for template in ["unparsable", "bad-action"] {
+            pset.link(
+                id(template),
+                id(&format!("{template}-link")),
+                HashMap::new(),
+            )
+            .expect("no slots to bind");
+        }
+
+        let entities = entities();
+        let errors_of = |principal: &str| -> usize {
+            let mut errors = 0;
+            for q in requests() {
+                if q.principal().uid() == Some(&uid("User", principal)) {
+                    let response = assert_agrees(&q, &pset, &entities);
+                    errors += response
+                        .diagnostics
+                        .errors
+                        .iter()
+                        .filter(|AuthorizationError::PolicyEvaluationError { id, .. }| {
+                            id.to_string().ends_with("-link")
+                        })
+                        .count();
+                }
+            }
+            errors
+        };
+        // 90 requests per principal: both policies error for bob, and only
+        // the unparsable one errors for alice
+        assert_eq!(errors_of("bob"), 180);
+        assert_eq!(errors_of("alice"), 90);
     }
 
     /// A policy that evaluates to a residual sends the whole request to the
