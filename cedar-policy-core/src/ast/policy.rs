@@ -1171,8 +1171,10 @@ impl TemplateBody {
     pub fn condition(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => {
-                // `authorizer/scope.rs` depends on this nesting and its
-                // evaluation order: `principal && (action && (resource && rest))`
+                // `authorizer/scope.rs` and the action index in
+                // `ast/policy_set/action_index.rs` depend on this nesting and
+                // its evaluation order:
+                // `principal && (action && (resource && rest))`
                 let loc = self.loc().cloned();
                 Expr::and(
                     self.principal_constraint_expr(),

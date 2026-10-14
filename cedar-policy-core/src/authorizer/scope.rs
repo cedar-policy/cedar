@@ -192,6 +192,23 @@ impl<'a> RequestScope<'a> {
         })
     }
 
+    /// The UID of the request's action and its entity, if the store has one:
+    /// the arguments of `ActionIndex::candidates`.
+    ///
+    /// Returns `None` unless the entity store resolves the principal and the
+    /// action, which is the precondition of that method.
+    pub(super) fn action_if_resolved(&self) -> Option<(&'a EntityUID, Option<&'a Entity>)> {
+        let entity = match self.action.stored {
+            Stored::Present(entity) => Some(entity),
+            Stored::Absent => None,
+            Stored::Unknown => return None,
+        };
+        match self.principal.stored {
+            Stored::Present(_) | Stored::Absent => Some((self.action.uid, entity)),
+            Stored::Unknown => None,
+        }
+    }
+
     /// Is `p`'s scope certain to evaluate to `false`, so that `p` is not
     /// satisfied and does not error?
     ///

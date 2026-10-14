@@ -103,7 +103,9 @@ impl Authorizer {
     /// A policy whose scope `q` cannot match evaluates to `false` without an
     /// error. When the principal, action and resource of `q` are concrete,
     /// such a policy is recognized from its scope constraints and is not
-    /// evaluated.
+    /// evaluated. When `entities` also resolves the principal and the action,
+    /// only the candidates that the action index of `pset` yields for the
+    /// action are visited at all.
     fn is_authorized_concrete(
         &self,
         eval: &Evaluator<'_>,
@@ -112,11 +114,17 @@ impl Authorizer {
         entities: &Entities,
     ) -> Option<Response> {
         let scope = RequestScope::new(q, entities);
+        let policies = match scope.as_ref().and_then(RequestScope::action_if_resolved) {
+            Some((action, action_entity)) => {
+                Either::Left(pset.action_index().candidates(action, action_entity))
+            }
+            None => Either::Right(pset.policies()),
+        };
         let mut satisfied_permits = vec![];
         let mut satisfied_forbids = vec![];
         let mut errors = vec![];
 
-        for p in pset.policies() {
+        for p in policies {
             if scope.as_ref().is_some_and(|scope| scope.excludes(p)) {
                 continue;
             }
@@ -1065,6 +1073,79 @@ mod differential_tests {
                 assert_eq!(id4, &PolicyID::from_string("policy4"));
             }
         );
+    }
+
+    /// After each method that changes a policy set, the response follows the
+    /// change. A clone taken before the changes still answers for the earlier
+    /// policies, and a clone taken after them for the later ones.
+    #[test]
+    fn agrees_after_policy_set_changes() {
+        let entities = entities();
+        let requests = requests();
+        let view = requests.first().expect("requests is not empty");
+        assert_eq!(view.action().uid(), Some(&uid("Action", "view")));
+        let decision = |pset: &PolicySet| -> Decision {
+            for q in requests.iter().step_by(5) {
+                assert_agrees(q, pset, &entities);
+            }
+            assert_agrees(view, pset, &entities).decision
+        };
+        let id = |id: &str| PolicyID::from_string(id);
+        let forbid_view = |id: PolicyID| {
+            parser::parse_policy(
+                Some(id),
+                r#"forbid(principal, action == Action::"view", resource);"#,
+            )
+            .expect("policy parses")
+        };
+
+        let mut pset = policy_set();
+        assert_eq!(decision(&pset), Decision::Allow);
+        let original = pset.clone();
+
+        pset.add_static(forbid_view(id("forbid-view")))
+            .expect("fresh policy id");
+        assert_eq!(decision(&pset), Decision::Deny);
+        pset.remove_static(&id("forbid-view"))
+            .expect("policy is in the set");
+        assert_eq!(decision(&pset), Decision::Allow);
+
+        pset.add(forbid_view(id("forbid-view")).into())
+            .expect("fresh policy id");
+        assert_eq!(decision(&pset), Decision::Deny);
+        pset.remove_static(&id("forbid-view"))
+            .expect("policy is in the set");
+
+        pset.add_template(
+            parser::parse_policy_or_template(
+                Some(id("forbid-template")),
+                r#"forbid(principal == ?principal, action in [Action::"readOnly"], resource);"#,
+            )
+            .expect("template parses"),
+        )
+        .expect("fresh template id");
+        assert_eq!(decision(&pset), Decision::Allow);
+        pset.link(
+            id("forbid-template"),
+            id("forbid-link"),
+            HashMap::from([(SlotId::principal(), uid("User", "alice"))]),
+        )
+        .expect("linking succeeds");
+        assert_eq!(decision(&pset), Decision::Deny);
+        pset.unlink(&id("forbid-link")).expect("link is in the set");
+        assert_eq!(decision(&pset), Decision::Allow);
+        pset.remove_template(&id("forbid-template"))
+            .expect("template has no links");
+        assert_eq!(decision(&pset), Decision::Allow);
+
+        let other =
+            PolicySet::try_from_iter([forbid_view(id("forbid-view")).into()]).expect("one policy");
+        pset.merge_policyset(&other, false)
+            .expect("no policy id in common");
+        assert_eq!(decision(&pset), Decision::Deny);
+
+        assert_eq!(decision(&original), Decision::Allow);
+        assert_eq!(decision(&pset.clone()), Decision::Deny);
     }
 
     /// A policy that failed to parse is evaluated, and reports its error,
