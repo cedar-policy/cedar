@@ -23,39 +23,122 @@ use thiserror::Error;
 
 use crate::{
     ast::{Eid, EntityType, EntityUID, PartialValueToValueError},
-    entities::{conformance::err::EntitySchemaConformanceError, err::Duplicate},
+    entities::{
+        conformance::err::EntitySchemaConformanceError, err::Duplicate,
+        json::err::JsonSerializationError,
+    },
     evaluator::{evaluation_errors::UnlinkedSlotError, EvaluationError},
     transitive_closure::TcError,
     validator::{RequestValidationError, ValidationError},
 };
 
-/// Error thrown when encountered an action
-#[derive(Debug, Error, Diagnostic)]
-#[error("Unexpected action: `{}`", .action)]
-pub struct UnexpectedActionError {
-    pub(super) action: EntityUID,
-}
-
 /// Error thrown when deserializing a [`crate::tpe::entities::PartialEntity`]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum JsonDeserializationError {
     /// Error thrown when deserializing concrete components
     #[error(transparent)]
     #[diagnostic(transparent)]
     Concrete(#[from] crate::entities::json::err::JsonDeserializationError),
-    /// Error thrown when encountered an action
-    /// Actions are automatically inserted from a schema
-    #[error(transparent)]
-    #[diagnostic(transparent)]
-    UnexpectedAction(#[from] UnexpectedActionError),
     /// Error thrown when a restricted expression does not evaluate to a value
     #[error(transparent)]
     #[diagnostic(transparent)]
     RestrictedExprEvaluation(#[from] EvaluationError),
+    /// A malformed `knowledge` map
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Knowledge(#[from] KnowledgeJsonError),
+    /// The action is not declared in the schema, so its context has no type
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextUndeclaredAction(#[from] ContextUndeclaredActionError),
+    /// The stated context is not valid for the action
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextNotValid(#[from] ContextNotValidError),
+    /// A stated context value does not evaluate to a value
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ContextNonValue(#[from] ContextNonValueError),
 }
+
+/// Error thrown when the action whose context is being built is not declared in
+/// the schema, so the context has no type to check against
+#[derive(Debug, Error, Diagnostic)]
+#[error("action `{action}` is not declared in the schema")]
+pub struct ContextUndeclaredActionError {
+    pub(super) action: EntityUID,
+}
+
+/// Error thrown when the stated context does not match the action's context type
+#[derive(Debug, Error, Diagnostic)]
+#[error("context is not valid")]
+#[non_exhaustive]
+pub struct ContextNotValidError {}
+
+/// Error thrown when a stated context field does not evaluate to a value
+#[derive(Debug, Error, Diagnostic)]
+#[error("the value stated for context field `{field}` does not evaluate to a value")]
+pub struct ContextNonValueError {
+    pub(super) field: SmolStr,
+}
+
+impl ContextNonValueError {
+    /// Build an error for the given context field
+    pub fn new(field: SmolStr) -> Self {
+        Self { field }
+    }
+}
+
+/// Error thrown when a `knowledge` map is malformed
+#[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
+pub enum KnowledgeJsonError {
+    /// A node that was neither a valid state string nor a nested object
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    MalformedNode(#[from] KnowledgeMalformedNodeError),
+    /// The knowledge descends into a key whose declared type is not a record
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    NotARecord(#[from] KnowledgeNotARecordError),
+    /// A key the schema does not declare
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    UndeclaredKey(#[from] KnowledgeUndeclaredKeyError),
+    /// The same key is given both a value and a state
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Contradiction(#[from] KnowledgeContradictionError),
+}
+
+/// Error thrown when a `knowledge` node is neither a state string nor a nested object
+#[derive(Debug, Error, Diagnostic)]
+#[error("a `knowledge` node must be `\"present\"`, `\"absent\"`, or a nested object")]
+#[non_exhaustive]
+pub struct KnowledgeMalformedNodeError {}
+
+/// Error thrown when `knowledge` states fields of a key whose declared type is not a record
+#[derive(Debug, Error, Diagnostic)]
+#[error("`knowledge` states fields of a key that is not a record")]
+#[non_exhaustive]
+pub struct KnowledgeNotARecordError {}
+
+/// Error thrown when `knowledge` names a key the schema does not declare
+#[derive(Debug, Error, Diagnostic)]
+#[error("`knowledge` names a key that is not declared in the schema")]
+#[non_exhaustive]
+pub struct KnowledgeUndeclaredKeyError {}
+
+/// Error thrown when a key is given both a value and a state in `knowledge`
+#[derive(Debug, Error, Diagnostic)]
+#[error("a key is given both a value and a state in `knowledge`")]
+#[non_exhaustive]
+pub struct KnowledgeContradictionError {}
 
 /// Error thrown when validating a [`crate::tpe::entities::PartialEntity`]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum EntityValidationError {
     /// Error thrown when validating concrete components
     #[error(transparent)]
@@ -87,6 +170,7 @@ pub struct AncestorValidationError {
 
 /// Errors for TPE
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum TpeError {
     /// Error thrown when there is no matching request environment according to
     /// a schema
@@ -177,6 +261,7 @@ pub struct NoMatchingReqEnvError;
 
 /// Error thrown when constructing [`crate::tpe::entities::PartialEntities`]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum EntitiesError {
     /// Error thrown when validating concrete components
     #[error(transparent)]
@@ -203,11 +288,16 @@ pub enum EntitiesError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     PartialValueToValue(#[from] PartialValueToValueError),
+    /// Error thrown when serializing a [`crate::tpe::entities::PartialEntities`] to JSON
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Serialization(#[from] JsonSerializationError),
 }
 
 /// Error thrown when checking the consistency between [`crate::tpe::entities::PartialEntities`] and
 /// [`crate::entities::Entities`]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum EntitiesConsistencyError {
     /// Error thrown when there is an entity missing in the concrete entities
     #[error(transparent)]
@@ -227,6 +317,7 @@ pub enum EntitiesConsistencyError {
 /// Error thrown when checking the consistency between [`crate::tpe::entities::PartialEntity`] and
 /// [`crate::ast::Entity`]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum EntityConsistencyError {
     /// Error thrown when the concrete entity contains unknown attribute
     #[error(transparent)]
@@ -303,6 +394,7 @@ pub struct UnknownEntityError {
 
 /// Error thrown when a [`crate::tpe::request::PartialRequest`] is inconsistent with a [`crate::ast::Request`]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum RequestConsistencyError {
     /// Error thrown when the concrete principal is unknown
     #[error("the concrete request's principal is unknown")]

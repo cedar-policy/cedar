@@ -1,0 +1,12 @@
+entity User;
+
+entity Doc;
+
+action read appliesTo {
+  principal: [User],
+  resource: [Doc],
+  context: {
+    "mfa"?: Bool,
+    "level": Long,
+  }
+};

@@ -1397,6 +1397,7 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
 /// Error thrown when creating a `PartialRequest`
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Error, Diagnostic)]
+#[non_exhaustive]
 pub enum PartialRequestCreationError {
     /// When the context contains unknowns
     #[error("Context contains unknowns")]
@@ -1405,12 +1406,17 @@ pub enum PartialRequestCreationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     Validation(#[from] RequestValidationError),
+    /// Error parsing partial context from JSON
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    JsonDeserialization(#[from] tpe_err::JsonDeserializationError),
 }
 
 #[cfg(feature = "tpe")]
 /// Errors that can be encountered when re-evaluating a partial response
 #[doc = include_str!("../../experimental_warning.md")]
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum TpeReauthorizationError {
     /// `Request` cannot be validated
     #[error(transparent)]
@@ -1457,6 +1463,7 @@ pub enum PermissionQueryError {
 #[doc = include_str!("../../experimental_warning.md")]
 /// Error when constructing [`crate::PartialEntity`]
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum PartialEntityError {
     /// An evaluation error was encountered
     #[error(transparent)]
