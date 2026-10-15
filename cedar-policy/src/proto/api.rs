@@ -368,6 +368,18 @@ mod decode_test {
         similar_asserts::assert_eq!(checked, unchecked);
     }
 
+    #[cfg(feature = "tpe")]
+    #[test]
+    fn decode_accepts_tpe_residual_error() {
+        use cedar_policy_core::tpe::residual::Residual;
+        use cedar_policy_core::validator::types::Type;
+
+        let expr = crate::Expression(Residual::Error(Type::primitive_boolean()).into());
+        let buf = expr.encode().expect("encode failed");
+        let decoded = crate::Expression::decode(&buf[..]).expect("decode should accept `error()`");
+        similar_asserts::assert_eq!(decoded.as_ref(), expr.as_ref());
+    }
+
     /// Decoding arbitrary bytes must never panic — it should return `Err`.
     #[test]
     fn decode_random_bytes_does_not_panic() {
