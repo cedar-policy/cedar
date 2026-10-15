@@ -26,7 +26,7 @@ pub use request::*;
 mod schema;
 pub use schema::*;
 mod entities;
-pub(crate) use entities::*;
+pub use entities::*;
 
 // Read from a file (when `filename` is a `Some`) or stdin (when `filename` is `None`) to a `String`
 pub(crate) fn read_from_file_or_stdin(

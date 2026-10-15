@@ -16,16 +16,17 @@
 
 use clap::Args;
 
-use crate::{load_entities, CedarExitCode};
+use crate::{CedarExitCode, EntitiesArgs};
 
 #[derive(Args, Debug)]
 pub struct VisualizeArgs {
-    #[arg(long = "entities", value_name = "FILE")]
-    pub entities_file: String,
+    /// Entities args (incorporated by reference)
+    #[command(flatten)]
+    pub entities: EntitiesArgs,
 }
 
 pub fn visualize(args: &VisualizeArgs) -> CedarExitCode {
-    match load_entities(&args.entities_file, None) {
+    match args.entities.get_entities(None) {
         Ok(entities) => {
             println!("{}", entities.to_dot_str());
             CedarExitCode::Success
