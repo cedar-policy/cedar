@@ -20,7 +20,8 @@
 
 use cedar_policy::{PolicySet, Schema, Validator};
 use cedar_policy_symcc::{
-    err::Error, solver::WriterSolver, CedarSymCompiler, CompiledPolicySet, ResetMode,
+    err::Error, solver::WriterSolver, CedarSymCompiler, CompiledPolicySet, CompiledSchema,
+    ResetMode,
 };
 use cool_asserts::assert_matches;
 
@@ -55,7 +56,8 @@ fn setup(schema: &Schema) -> (Environments<'_>, PolicySet) {
 async fn script_for_check_unsat(reset_mode: ResetMode) -> String {
     let schema = utils::schema_from_cedarstr(SCHEMA);
     let (envs, pset) = setup(&schema);
-    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, &schema).unwrap();
+    let compiled_schema = CompiledSchema::new(&schema).unwrap();
+    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, &compiled_schema).unwrap();
     let mut compiler = CedarSymCompiler::new(WriterSolver { w: Vec::new() })
         .unwrap()
         .with_reset_mode(reset_mode);
@@ -72,7 +74,8 @@ async fn script_for_check_unsat(reset_mode: ResetMode) -> String {
 async fn script_for_check_sat(reset_mode: ResetMode) -> String {
     let schema = utils::schema_from_cedarstr(SCHEMA);
     let (envs, pset) = setup(&schema);
-    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, &schema).unwrap();
+    let compiled_schema = CompiledSchema::new(&schema).unwrap();
+    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, &compiled_schema).unwrap();
     let mut compiler = CedarSymCompiler::new(WriterSolver { w: Vec::new() })
         .unwrap()
         .with_reset_mode(reset_mode);
@@ -110,7 +113,8 @@ fn assert_starts_with_reset_comment(script: &str) {
 async fn check_unsat_default_emits_reset_command() {
     let schema = utils::schema_from_cedarstr(SCHEMA);
     let (envs, pset) = setup(&schema);
-    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, &schema).unwrap();
+    let compiled_schema = CompiledSchema::new(&schema).unwrap();
+    let compiled = CompiledPolicySet::compile(&pset, &envs.req_env, &compiled_schema).unwrap();
     let mut compiler = CedarSymCompiler::new(WriterSolver { w: Vec::new() }).unwrap();
     assert_eq!(compiler.reset_mode(), ResetMode::Emit);
     assert_matches!(
