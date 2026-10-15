@@ -19,12 +19,8 @@ package cedar_policy_validator;
 
 import "core.proto";
 
-// the protobuf Schema message describes a complete schema.
-//
-// There is no field for an entity type or action that a Cedar schema declares
-// `external` (RFC 116) without defining: EntityDecl and ActionDecl carry a
-// shape and an appliesTo, which a declaration does not have. Converting such
-// a schema fails.
+// the protobuf Schema message describes a schema, which may be incomplete:
+// see the `external` field on EntityDecl and ActionDecl.
 message Schema {
     repeated EntityDecl entity_decls = 1;
     repeated ActionDecl action_decls = 2;
@@ -38,6 +34,9 @@ message EntityDecl {
     map<string, AttributeType> attributes = 3;
     optional Type tags = 5;
     repeated string enum_choices = 6;
+    // True for an external declaration, whose shape is unknown. Defaults to
+    // false for messages written before this field existed.
+    bool external = 7;
 }
 
 // the protobuf ActionDecl message contains all of the schema's
@@ -48,6 +47,9 @@ message ActionDecl {
     map<string, AttributeType> context = 4;
     repeated cedar_policy_core.Name principal_types = 5;
     repeated cedar_policy_core.Name resource_types = 6;
+    // True for an external declaration, whose appliesTo is unknown. Defaults
+    // to false for messages written before this field existed.
+    bool external = 7;
 }
 
 message Type {

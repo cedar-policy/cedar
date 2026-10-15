@@ -204,20 +204,6 @@ pub(crate) fn encode_to_vec<M: prost::Message + EncodeCheck + for<'a> From<&'a T
     Ok(model.encode_to_vec())
 }
 
-/// Encode `thing` into the protobuf format `M`, where building `M` can fail.
-///
-/// The counterpart of [`try_decode`], for a type whose protobuf message cannot
-/// represent every value of the Rust type.
-pub(crate) fn try_encode_to_vec<M, E, T>(thing: &T) -> Result<Vec<u8>, EncodeError>
-where
-    M: prost::Message + EncodeCheck + for<'a> TryFrom<&'a T, Error = E>,
-    E: Into<ProtobufConversionError>,
-{
-    let model = M::try_from(thing).map_err(|e: E| EncodeError::Conversion(e.into()))?;
-    model.check_for_encode()?;
-    Ok(model.encode_to_vec())
-}
-
 use std::{default::Default, fmt::Display};
 
 /// Decode something of type `T` from `buf` using the protobuf format `M`

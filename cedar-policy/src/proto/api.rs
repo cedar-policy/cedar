@@ -47,29 +47,13 @@ macro_rules! fallible_conversions {
 fallible_conversions!(api::Entity, api::Entity, models::Entity);
 fallible_conversions!(api::EntityUid, api::EntityUid, models::EntityUid);
 fallible_conversions!(api::Entities, api::Entities, models::Entities);
+fallible_conversions!(api::Schema, api::Schema, models::Schema);
 fallible_conversions!(api::EntityTypeName, api::EntityTypeName, models::Name);
 fallible_conversions!(api::EntityNamespace, api::EntityNamespace, models::Name);
 fallible_conversions!(api::Expression, api::Expression, models::Expr);
 fallible_conversions!(api::Request, api::Request, models::Request);
 
 // nonstandard conversions
-
-// `api::Schema` is fallible in both directions: the protobuf `Schema` message
-// describes a complete schema, and cannot carry an `external` declaration
-// (RFC 116).
-impl TryFrom<&api::Schema> for models::Schema {
-    type Error = ProtobufConversionError;
-    fn try_from(v: &api::Schema) -> Result<Self, Self::Error> {
-        Self::try_from(&v.0)
-    }
-}
-
-impl TryFrom<models::Schema> for api::Schema {
-    type Error = ProtobufConversionError;
-    fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
-        Ok(Self(v.try_into()?))
-    }
-}
 
 impl From<&api::Template> for models::TemplateBody {
     fn from(v: &api::Template) -> Self {
@@ -124,20 +108,12 @@ macro_rules! standard_protobuf_impl {
 standard_protobuf_impl!(api::Entity, models::Entity);
 standard_protobuf_impl!(api::EntityTypeName, models::Name);
 standard_protobuf_impl!(api::EntityNamespace, models::Name);
+standard_protobuf_impl!(api::Schema, models::Schema);
 standard_protobuf_impl!(api::Template, models::TemplateBody);
 standard_protobuf_impl!(api::Expression, models::Expr);
 standard_protobuf_impl!(api::Request, models::Request);
 
 // nonstandard implementations of `traits::Protobuf`
-
-impl traits::Protobuf for api::Schema {
-    fn encode(&self) -> Result<Vec<u8>, traits::EncodeError> {
-        traits::try_encode_to_vec::<models::Schema, _, _>(self)
-    }
-    fn decode_unchecked(buf: impl prost::bytes::Buf) -> Result<Self, traits::DecodeError> {
-        traits::try_decode::<models::Schema, _, _>(buf)
-    }
-}
 
 impl traits::Protobuf for api::Entities {
     fn encode(&self) -> Result<Vec<u8>, traits::EncodeError> {
