@@ -50,6 +50,8 @@ mod rbac;
 mod schema;
 pub use schema::err::*;
 pub use schema::*;
+mod linking;
+pub use linking::*;
 mod deprecated_schema_compat;
 pub mod json_schema;
 mod str_checks;

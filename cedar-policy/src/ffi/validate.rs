@@ -56,6 +56,8 @@ pub fn validate_wasm(call: Ts<ValidationCall>) -> Result<Ts<ValidationAnswer>, J
 ///
 /// This is the basic validator interface, using [`ValidationCall`] and
 /// [`ValidationAnswer`] types
+///
+/// Reports error when the schema contains `external` entity types or actions.
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {

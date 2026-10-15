@@ -36,7 +36,7 @@ pub use cedar_policy_core::validator::entity_manifest::slicing::EntitySliceError
 use cedar_policy_core::validator::entity_manifest::{
     self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
 };
-pub use cedar_policy_core::validator::{schema_errors, SchemaError};
+pub use cedar_policy_core::validator::{schema_errors, LinkError, SchemaError};
 use cedar_policy_core::{ast, authorizer, est, pst};
 use miette::Diagnostic;
 use ref_cast::RefCast;

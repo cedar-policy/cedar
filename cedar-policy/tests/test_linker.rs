@@ -1,0 +1,772 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! End-to-end tests for schema linking (RFC 116), exercised through the
+//! public API only.
+//!
+//! Linking resolves a name declared `external` in one schema against a
+//! definition of the same name in another. Each test encodes one case of the
+//! specification: two input schemas `p` and `c`, and either the schema they
+//! link to or the fact that linking refuses them.
+//!
+//! Every test is `#[ignore]`d while `Schema::schema_link` is unimplemented. Drop the
+//! attribute from a test once it passes.
+//!
+//! A successful link is checked against the expected schema written as Cedar
+//! text, compared on everything the public API can observe: which entity types
+//! and actions exist, which of them are still `external`, each entity type's
+//! closed ancestors, and whether the result is complete. `Schema` has no
+//! `PartialEq`, so there is no stronger comparison available.
+//!
+//! A refusal is checked only for being a refusal. The specification names a
+//! distinct error for each case, recorded in the `spec_error` argument, but
+//! `LinkError`'s variants are not decided yet, so asserting a particular one
+//! would pin an invention rather than the specification.
+
+use cedar_policy::{Entities, Schema};
+use serde_json::json;
+use std::str::FromStr;
+
+/// Sorted display forms, so an assertion reads as a list of names.
+fn names<'a, T: ToString + 'a>(iter: impl Iterator<Item = &'a T>) -> Vec<String> {
+    let mut v: Vec<String> = iter.map(ToString::to_string).collect();
+    v.sort();
+    v
+}
+
+fn parse(label: &str, src: &str) -> Schema {
+    Schema::from_str(src).unwrap_or_else(|e| panic!("{label} should parse: {e}"))
+}
+
+/// Compare everything the public API can observe about two schemas.
+#[track_caller]
+fn assert_same_schema(case: &str, got: &Schema, want: &Schema) {
+    assert_eq!(
+        names(got.entity_types()),
+        names(want.entity_types()),
+        "{case}: entity types"
+    );
+    assert_eq!(
+        names(got.actions()),
+        names(want.actions()),
+        "{case}: actions"
+    );
+    assert_eq!(
+        names(got.external_entity_types()),
+        names(want.external_entity_types()),
+        "{case}: which entity types are still external"
+    );
+    assert_eq!(
+        names(got.external_actions()),
+        names(want.external_actions()),
+        "{case}: which actions are still external"
+    );
+    assert_eq!(
+        got.is_complete(),
+        want.is_complete(),
+        "{case}: completeness"
+    );
+    for ty in want.entity_types() {
+        let ancestors = |s: &Schema| {
+            s.ancestors(ty)
+                .map(|it| names(it.collect::<Vec<_>>().iter()))
+        };
+        assert_eq!(
+            ancestors(got),
+            ancestors(want),
+            "{case}: closed ancestors of `{ty}`"
+        );
+    }
+}
+
+/// `p` and `c` link to `expected`.
+#[track_caller]
+fn link_ok(case: &str, p: &str, c: &str, expected: &str) -> Schema {
+    let linked = Schema::schema_link([parse("p", p), parse("c", c)])
+        .unwrap_or_else(|e| panic!("{case}: linking should succeed: {e}"));
+    assert_same_schema(case, &linked, &parse("the expected schema", expected));
+    linked
+}
+
+/// Linking `p` and `c` is refused. `spec_error` is the name the specification
+/// gives the refusal; see the module comment for why it is not asserted.
+#[track_caller]
+fn link_err(case: &str, p: &str, c: &str, spec_error: &str) {
+    let got = Schema::schema_link([parse("p", p), parse("c", c)]);
+    assert!(
+        got.is_err(),
+        "{case}: linking should be refused with `{spec_error}`"
+    );
+}
+
+/// An entity UID as it appears inside an attribute value.
+fn euid(ty: &str, id: &str) -> serde_json::Value {
+    json!({ "__entity": { "type": ty, "id": id } })
+}
+
+/// Validate a one-entity store, as a way to observe an attribute's type.
+#[track_caller]
+fn accepts_entity(schema: &Schema, store: serde_json::Value) -> bool {
+    Entities::from_json_value(store, Some(schema)).is_ok()
+}
+
+/// Entity: partial + complete = complete.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_entity_definition_replaces_an_external() {
+    link_ok(
+        "an_entity_definition_replaces_an_external",
+        r#"
+external entity B;
+entity A { b: B };
+"#,
+        r#"
+entity B;
+"#,
+        r#"
+entity A { b: B };
+entity B;
+"#,
+    );
+}
+
+/// Action: an external action links to a definition with an appliesTo.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_external_action_links_to_a_definition_with_applies_to() {
+    link_ok(
+        "an_external_action_links_to_a_definition_with_applies_to",
+        r#"
+entity User;
+entity Doc;
+external action write;
+"#,
+        r#"
+external entity User;
+external entity Doc;
+action write
+  appliesTo {
+    principal: User,
+    resource: Doc,
+  };
+"#,
+        r#"
+entity User;
+entity Doc;
+action write
+  appliesTo {
+    principal: User,
+    resource: Doc,
+  };
+"#,
+    );
+}
+
+/// Partial + partial = partial.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_unresolved_external_remains_external() {
+    link_ok(
+        "an_unresolved_external_remains_external",
+        r#"
+external entity B;
+entity A { b: B };
+"#,
+        r#"
+external entity B;
+entity D { b: B };
+"#,
+        r#"
+external entity B;
+entity A { b: B };
+entity D { b: B };
+"#,
+    );
+}
+
+/// Mutual externals: partial + partial = complete.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn mutual_externals_resolve() {
+    link_ok(
+        "mutual_externals_resolve",
+        r#"
+external entity B;
+entity A { b: B };
+"#,
+        r#"
+external entity A;
+entity B { a: A };
+"#,
+        r#"
+entity A { b: B };
+entity B { a: A };
+"#,
+    );
+}
+
+/// Ancestors through an external.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_definition_preserves_closed_ancestors_through_an_external() {
+    link_ok(
+        "a_definition_preserves_closed_ancestors_through_an_external",
+        r#"
+external entity G;
+external entity F in G;
+entity A in F;
+"#,
+        r#"
+entity G;
+entity F in G;
+"#,
+        r#"
+entity G;
+entity F in G;
+entity A in F;
+"#,
+    );
+}
+
+/// Repeated externals combine their declared parents.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn repeated_external_ancestors_are_combined() {
+    link_ok(
+        "repeated_external_ancestors_are_combined",
+        r#"
+external entity G;
+external entity F in G;
+"#,
+        r#"
+external entity H;
+external entity F in H;
+"#,
+        r#"
+external entity G;
+external entity H;
+external entity F in [G, H];
+"#,
+    );
+}
+
+/// A definition may add parents.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_entity_definition_may_contain_more_closed_ancestors() {
+    link_ok(
+        "an_entity_definition_may_contain_more_closed_ancestors",
+        r#"
+external entity G;
+external entity F in G;
+"#,
+        r#"
+entity G;
+entity H;
+entity F in [G, H];
+"#,
+        r#"
+entity G;
+entity H;
+entity F in [G, H];
+"#,
+    );
+}
+
+/// Error: a cross-schema cycle would enlarge defined ancestors.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_cross_schema_cycle_would_enlarge_defined_ancestors() {
+    link_err(
+        "a_cross_schema_cycle_would_enlarge_defined_ancestors",
+        r#"
+external entity B;
+entity A in B;
+"#,
+        r#"
+external entity A;
+entity B in A;
+"#,
+        "definedEntityAncestorsChanged",
+    );
+}
+
+/// A transitive ancestor satisfies an external declaration.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_transitive_ancestor_satisfies_an_external_declaration() {
+    link_ok(
+        "a_transitive_ancestor_satisfies_an_external_declaration",
+        r#"
+external entity G;
+external entity F in G;
+"#,
+        r#"
+entity G;
+entity X in G;
+entity F in X;
+"#,
+        r#"
+entity G;
+entity X in G;
+entity F in X;
+"#,
+    );
+}
+
+/// Error: action parents must match exactly.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn action_ancestors_must_match_exactly() {
+    link_err(
+        "action_ancestors_must_match_exactly",
+        r#"
+external action g;
+external action w in g;
+"#,
+        r#"
+action g;
+action r;
+action w in [g, r];
+"#,
+        "externalActionParentsMismatch",
+    );
+}
+
+/// Error: an external can't be an enumerated type.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_external_entity_cannot_resolve_to_an_enum() {
+    link_err(
+        "an_external_entity_cannot_resolve_to_an_enum",
+        r#"
+external entity E;
+entity A { e: E };
+"#,
+        r#"
+entity E enum ["x"];
+"#,
+        "externalIsEnum",
+    );
+}
+
+/// Error: two definitions of the same name.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn duplicate_entity_definitions_are_rejected() {
+    link_err(
+        "duplicate_entity_definitions_are_rejected",
+        r#"
+entity A;
+"#,
+        r#"
+entity A;
+"#,
+        "duplicateEntityType",
+    );
+}
+
+/// Error: an external cannot add an ancestor to a definition.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_external_cannot_add_an_ancestor_to_a_definition() {
+    link_err(
+        "an_external_cannot_add_an_ancestor_to_a_definition",
+        r#"
+external entity X;
+entity E in X;
+"#,
+        r#"
+external entity G;
+external entity E in G;
+"#,
+        "externalAncestorsNotInDefinition",
+    );
+}
+
+/// Error: linking cannot enlarge a defined entity's closed ancestors.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn linking_cannot_enlarge_a_defined_entitys_closed_ancestors() {
+    link_err(
+        "linking_cannot_enlarge_a_defined_entitys_closed_ancestors",
+        r#"
+external entity X;
+entity E in X;
+"#,
+        r#"
+external entity G;
+external entity X in G;
+"#,
+        "definedEntityAncestorsChanged",
+    );
+}
+
+/// An external entity's closed ancestors can grow.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_external_entitys_closed_ancestors_can_grow() {
+    link_ok(
+        "an_external_entitys_closed_ancestors_can_grow",
+        r#"
+external entity X;
+external entity E in X;
+"#,
+        r#"
+external entity G;
+external entity X in G;
+"#,
+        r#"
+external entity G;
+external entity X in G;
+external entity E in [X, G];
+"#,
+    );
+}
+
+/// Link shadows a declared entity.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_shadow_a_declared_entity() {
+    link_err(
+        "a_link_may_not_shadow_a_declared_entity",
+        r#"
+external entity B;
+entity A { b: B };
+"#,
+        r#"
+type B = String;
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Link shadows a declared parent.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_shadow_a_declared_parent() {
+    link_err(
+        "a_link_may_not_shadow_a_declared_parent",
+        r#"
+external entity B;
+entity A in B;
+"#,
+        r#"
+type B = String;
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Link defines the shadowed entity.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_define_a_shadowed_entity() {
+    let linked = link_ok(
+        "a_link_may_define_a_shadowed_entity",
+        r#"
+external entity B;
+type B = String;
+entity A { b: B };
+"#,
+        r#"
+entity B;
+"#,
+        r#"
+entity B;
+type B = String;
+entity A { b: B };
+"#,
+    );
+    assert!(
+        accepts_entity(
+            &linked,
+            json!([{ "uid": { "type": "A", "id": "a" },
+            "attrs": { "b": "x" }, "parents": [] }])
+        ),
+        "`b` should still be the common type `String`"
+    );
+    assert!(
+        !accepts_entity(
+            &linked,
+            json!([{ "uid": { "type": "A", "id": "a" },
+            "attrs": { "b": euid("B", "x") }, "parents": [] }])
+        ),
+        "`b` should not be the entity type `B`"
+    );
+}
+
+/// Link defines the declared child.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_define_a_declared_child() {
+    link_ok(
+        "a_link_may_define_a_declared_child",
+        r#"
+entity G;
+type G = Long;
+external entity F in G;
+"#,
+        r#"
+external entity G;
+entity F in G;
+"#,
+        r#"
+entity G;
+type G = Long;
+entity F in G;
+"#,
+    );
+}
+
+/// Link shadows a defined entity.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_shadow_a_defined_entity() {
+    link_err(
+        "a_link_may_not_shadow_a_defined_entity",
+        r#"
+entity B;
+entity A { b: B };
+"#,
+        r#"
+type B = String;
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Shadowing arrives already formed.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn shadowing_that_arrives_already_formed_is_refused() {
+    link_err(
+        "shadowing_that_arrives_already_formed_is_refused",
+        r#"
+external entity B;
+entity A { b: B };
+"#,
+        r#"
+entity B;
+type B = String;
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Link adds a namespaced declaration.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_add_a_namespaced_declaration() {
+    link_err(
+        "a_link_may_not_add_a_namespaced_declaration",
+        r#"
+entity Foo;
+namespace N {
+  entity A { f: Foo };
+}
+"#,
+        r#"
+namespace N {
+  external entity Foo;
+}
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Link shadows a primitive.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_shadow_a_primitive() {
+    link_err(
+        "a_link_may_not_shadow_a_primitive",
+        r#"
+entity A { s: String };
+"#,
+        r#"
+external entity String;
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Link repeats existing shadowing.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_repeat_existing_shadowing() {
+    let linked = link_ok(
+        "a_link_may_repeat_existing_shadowing",
+        r#"
+entity String;
+entity A { s: String };
+"#,
+        r#"
+external entity String;
+"#,
+        r#"
+entity String;
+entity A { s: String };
+"#,
+    );
+    assert!(
+        accepts_entity(
+            &linked,
+            json!([{ "uid": { "type": "A", "id": "a" },
+            "attrs": { "s": euid("String", "x") }, "parents": [] }])
+        ),
+        "`s` should still be the entity type `String`"
+    );
+    assert!(
+        !accepts_entity(
+            &linked,
+            json!([{ "uid": { "type": "A", "id": "a" },
+            "attrs": { "s": "x" }, "parents": [] }])
+        ),
+        "`s` should not be the primitive `String`"
+    );
+}
+
+/// Link declares a namespaced Action.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_declare_a_namespaced_action() {
+    link_err(
+        "a_link_may_not_declare_a_namespaced_action",
+        r#"
+action a;
+namespace N {
+  entity R { act: Action };
+}
+"#,
+        r#"
+namespace N {
+  action b;
+}
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Link adds a conflicting definition.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_add_a_conflicting_common_type() {
+    link_err(
+        "a_link_may_not_add_a_conflicting_common_type",
+        r#"
+type T = String;
+entity A { x: T };
+"#,
+        r#"
+type T = Long;
+"#,
+        "duplicateCommonType",
+    );
+}
+
+/// Link repeats an identical definition.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_repeat_an_identical_common_type() {
+    link_err(
+        "a_link_may_not_repeat_an_identical_common_type",
+        r#"
+type T = String;
+entity A { x: T };
+"#,
+        r#"
+type T = String;
+"#,
+        "duplicateCommonType",
+    );
+}
+
+/// Link resolves to an enum.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn an_external_may_not_resolve_to_an_enum_across_a_link() {
+    link_err(
+        "an_external_may_not_resolve_to_an_enum_across_a_link",
+        r#"
+external entity E;
+entity A in E;
+"#,
+        r#"
+entity E enum ["x"];
+"#,
+        "externalIsEnum",
+    );
+}
+
+/// Link shadows an extension type.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn a_link_may_not_shadow_an_extension_type() {
+    link_err(
+        "a_link_may_not_shadow_an_extension_type",
+        r#"
+entity A { d: decimal };
+"#,
+        r#"
+entity decimal;
+"#,
+        "linkIntroducesShadowing",
+    );
+}
+
+/// Both sides carry one key.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn annotations_on_one_key_merge_from_both_sides() {
+    link_ok(
+        "annotations_on_one_key_merge_from_both_sides",
+        r#"
+@doc("declared here")
+external entity B;
+"#,
+        r#"
+@doc("defined here")
+entity B;
+"#,
+        r#"
+@doc("declared here\ndefined here")
+entity B;
+"#,
+    );
+}
+
+/// Each side carries its own key.
+#[test]
+#[ignore = "Schema::schema_link is unimplemented"]
+fn annotations_on_separate_keys_are_both_kept() {
+    link_ok(
+        "annotations_on_separate_keys_are_both_kept",
+        r#"
+@doc("declared here")
+external entity B;
+"#,
+        r#"
+@owner("team")
+entity B;
+"#,
+        r#"
+@doc("declared here")
+@owner("team")
+entity B;
+"#,
+    );
+}

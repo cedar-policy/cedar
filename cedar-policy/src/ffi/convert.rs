@@ -686,6 +686,54 @@ mod test {
         });
     }
 
+    /// `external` declarations survive both conversions, so the schema a
+    /// partial schema converts to can be converted back.
+    #[test]
+    fn test_external_declarations_survive_both_conversions() {
+        let text = r"
+            external entity User;
+            entity Doc = { owner: User };
+            external action audit;
+            action view appliesTo {principal: Doc, resource: Doc};
+        ";
+        let expected = json!({
+        "": {
+            "entityTypes": {
+                "User": { "external": true },
+                "Doc": {
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {
+                            "owner": {"type": "EntityOrCommon", "name": "User"}
+                        }
+                    }
+                }
+            },
+            "actions": {
+                "audit": { "external": true },
+                "view": {
+                    "appliesTo": {
+                        "resourceTypes": ["Doc"],
+                        "principalTypes": ["Doc"]
+                    }
+                }}
+            }
+        });
+        assert_matches!(schema_to_json(Schema::Cedar(text.into())), SchemaToJsonAnswer::Success { json, warnings: _ } =>
+            assert_eq!(json, expected.clone().into())
+        );
+        assert_matches!(schema_to_text(Schema::Json(expected.into())), SchemaToTextAnswer::Success { text, warnings: _ } => {
+            assert!(
+                text.contains("external entity User;"),
+                "entity declaration lost: {text}"
+            );
+            assert!(
+                text.contains(r#"external action "audit";"#),
+                "action declaration lost: {text}"
+            );
+        });
+    }
+
     #[test]
     fn test_schema_to_text() {
         let json = json!({

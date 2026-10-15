@@ -72,6 +72,9 @@ pub fn is_authorized_wasm(call: Ts<AuthorizationCall>) -> Result<Ts<Authorizatio
 }
 
 /// Basic interface, using [`AuthorizationCall`] and [`AuthorizationAnswer`] types
+///
+/// An action declared `external` in the schema cannot be used in a request,
+/// and an entity whose type is declared `external` cannot be supplied.
 pub fn is_authorized(call: AuthorizationCall) -> AuthorizationAnswer {
     match call.parse() {
         WithWarnings {
