@@ -354,6 +354,24 @@ impl ValidatorSchema {
         )
     }
 
+    /// Take the entity types and the actions, consuming the schema.
+    ///
+    /// The inverse of [`ValidatorSchema::new_from_maps`], and the way to reuse
+    /// a schema's declarations without cloning them. The caches a schema holds
+    /// are derived from these two maps and are rebuilt on the way back in.
+    ///
+    /// Under the `extended-schema` feature the source locations of the common
+    /// types and of the namespaces are not part of either map, so a schema put
+    /// back together from these loses them.
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        HashMap<EntityType, ValidatorEntityType>,
+        HashMap<EntityUID, ValidatorActionId>,
+    ) {
+        (self.entity_types, self.action_ids)
+    }
+
     /// for internal use: version of `new()` which takes the maps directly, rather than constructing them.
     ///
     /// This function constructs the `actions` cache.

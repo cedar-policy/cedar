@@ -2229,19 +2229,46 @@ impl Schema {
     /// be incomplete (see [`Self::is_complete`]). Use
     /// [`Self::schema_link_complete`] to require a complete result.
     ///
-    /// TODO: all error cases
-    /// Errors when name any name shadowing is introduced.
-    ///
     /// Linking is agnostic to the ordering of the input.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LinkError`], which is `non_exhaustive`, in these cases.
+    ///
+    /// - [`LinkError::ActionEntityTypeDeclared`]: an entity type has the same
+    ///   name as the entity type of an action.
+    /// - [`LinkError::DuplicateEntityType`]: two schemas define the same
+    ///   entity type.
+    /// - [`LinkError::DuplicateAction`]: two schemas define the same action.
+    /// - [`LinkError::ExternalIsEnum`]: an external entity type resolves to an
+    ///   enumerated entity type.
+    /// - [`LinkError::DefinedEntityAncestorsChanged`]: linking would give a
+    ///   defined entity type an ancestor its definition omits.
+    /// - [`LinkError::ExternalActionParentsMismatch`]: two declarations of one
+    ///   action give it different parents.
+    /// - [`LinkError::ShadowsBuiltinType`]: linking would introduce an entity
+    ///   type whose name shadows a primitive or extension type.
+    /// - [`LinkError::Schema`]: the linked schema is not well formed, and
+    ///   reports what writing the merged declarations as one schema would.
     pub fn schema_link(schemas: impl IntoIterator<Item = Self>) -> Result<Self, LinkError> {
         Ok(Self(
-            cedar_policy_core::validator::Linker::new(schemas.into_iter().map(|s| s.0)).link()?,
+            cedar_policy_core::validator::Linker::new(
+                schemas.into_iter().map(|s| s.0),
+                Extensions::all_available(),
+            )
+            .link()?,
         ))
     }
 
     /// Link `schemas` (see [`Self::schema_link`]) and require the result to be
     /// complete, i.e. to contain no `external` declarations (see
     /// [`Self::is_complete`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns any error of [`Self::schema_link`], and additionally
+    /// [`LinkError::IncompleteSchema`] when the linked schema still declares
+    /// an entity type or an action `external`.
     pub fn schema_link_complete(
         schemas: impl IntoIterator<Item = Self>,
     ) -> Result<Self, LinkError> {
@@ -3540,6 +3567,9 @@ impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
 ///
 /// This function is called by [`Template::get_valid_request_envs`] and
 /// [`Policy::get_valid_request_envs`]
+///
+/// When there is external entity types or actions, this function returns an empty iterator.
+/// [`Schema::is_complete`] should be called on the schema to ensure nontrivial behavior.
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
     let tc = Typechecker::new(
         &s.0,

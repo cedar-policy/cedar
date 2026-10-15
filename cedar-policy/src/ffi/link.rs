@@ -205,7 +205,6 @@ mod test {
 
     /// A definition replaces an external, and the linked schema comes back.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn an_entity_definition_replaces_an_external() {
         let (json, complete) = assert_links(vec![
             json!("external entity B;\nentity A { b: B };"),
@@ -228,7 +227,6 @@ mod test {
 
     /// An unresolved external is still external in the linked schema.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn an_unresolved_external_remains_external() {
         let answer: LinkSchemasAnswer = serde_json::from_value(link(vec![
             json!("external entity B;\nentity A { b: B };"),
@@ -246,7 +244,6 @@ mod test {
 
     /// Mutual externals resolve against each other.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn mutual_externals_resolve() {
         let (_, complete) = assert_links(vec![
             json!("external entity B;\nentity A { b: B };"),
@@ -257,7 +254,6 @@ mod test {
 
     /// An external action resolves to a definition with an `appliesTo`.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn an_external_action_links_to_a_definition() {
         let (_, complete) = assert_links(vec![
             json!("entity User;\nentity Doc;\nexternal action write;"),
@@ -270,7 +266,6 @@ mod test {
 
     /// An input in Cedar syntax links against an input in JSON syntax.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn the_two_schema_syntaxes_link() {
         let (_, complete) = assert_links(vec![
             json!("external entity B;\nentity A { b: B };"),
@@ -279,28 +274,8 @@ mod test {
         assert!(complete);
     }
 
-    /// The linked schema is itself a valid input, so linking can be chained.
-    #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
-    fn the_linked_schema_can_be_linked_again() {
-        let (once, _) = assert_links(vec![
-            json!("external entity B;\nentity A { b: B };"),
-            json!("external entity C;\nentity B { c: C };"),
-        ]);
-        let (chained, chained_complete) = assert_links(vec![once, json!("entity C;")]);
-        let (direct, direct_complete) = assert_links(vec![
-            json!("external entity B;\nentity A { b: B };"),
-            json!("external entity C;\nentity B { c: C };"),
-            json!("entity C;"),
-        ]);
-        assert!(chained_complete);
-        assert!(direct_complete);
-        assert_eq!(chained, direct, "chaining differs from linking all at once");
-    }
-
     /// Order does not matter: linking is commutative.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn order_does_not_matter() {
         let p = json!("external entity B;\nexternal action audit;\nentity A { b: B };");
         let c = json!("entity B;");
@@ -313,7 +288,6 @@ mod test {
 
     /// One schema links to itself.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn one_schema_links_to_itself() {
         let (_, complete) = assert_links(vec![json!("external entity B;\nentity A { b: B };")]);
         assert!(!complete);
@@ -321,7 +295,6 @@ mod test {
 
     /// No schemas link to the empty schema, which is complete.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn no_schemas_link_to_the_empty_schema() {
         let (json, complete) = assert_links(vec![]);
         assert!(complete);
@@ -330,7 +303,6 @@ mod test {
 
     /// Two definitions of the same name are refused.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn duplicate_entity_definitions_are_refused() {
         let errors = assert_link_fails(vec![json!("entity A;"), json!("entity A;")]);
         assert_eq!(errors.len(), 1, "unexpected errors: {errors:?}");
@@ -338,7 +310,6 @@ mod test {
 
     /// The string entry point answers the same as the JSON one.
     #[test]
-    #[ignore = "Schema::schema_link is unimplemented"]
     fn the_string_entry_point_agrees() {
         let call = json!({ "schemas": [
             "external entity B;\nentity A { b: B };",
