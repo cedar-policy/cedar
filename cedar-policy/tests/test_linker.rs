@@ -818,6 +818,26 @@ entity decimal;
     );
 }
 
+/// Neither input has the forbidden shape on its own: `p` declares nothing
+/// `external` and `c` declares no enum. Linking them would give the external
+/// `E` the enum `F` as an ancestor, which no schema may hold.
+#[test]
+fn a_link_may_not_give_an_external_an_enum_ancestor() {
+    link_err(
+        "a_link_may_not_give_an_external_an_enum_ancestor",
+        r#"
+entity F enum ["x"];
+entity M in [F];
+"#,
+        r#"
+external entity M;
+external entity E in [M];
+entity Leaf { e: E };
+"#,
+        "externalWithEnumAncestor",
+    );
+}
+
 /// Link with the extensions active. They are an argument to the link rather
 /// than a property of either input, so a name no input declares stays the
 /// extension type.

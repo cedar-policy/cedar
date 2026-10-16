@@ -907,6 +907,7 @@ impl ValidatorSchema {
         // transitively closed descendants.
         compute_tc(&mut entity_types, false)
             .map_err(|e| EntityTypeTransitiveClosureError::from(Box::new(e)))?;
+        Self::check_no_external_with_enum_ancestor(&entity_types)?;
         // Pass `true` here so that we also check that the action hierarchy does
         // not contain cycles.
         compute_tc(&mut action_ids, true)?;
@@ -1290,9 +1291,39 @@ impl ValidatorSchema {
         )
     }
 
+    /// Check that no entity type declared `external` (RFC 116) has an enum
+    /// entity type among its ancestors.
+    ///
+    /// Assumes `entity_types` holds transitively closed descendants, so that
+    /// an enum ancestor reached through another type is also found.
+    fn check_no_external_with_enum_ancestor(
+        entity_types: &HashMap<EntityType, ValidatorEntityType>,
+    ) -> std::result::Result<(), SchemaError> {
+        for ancestor in entity_types.values() {
+            if !matches!(ancestor.kind, ValidatorEntityTypeKind::Enum(_)) {
+                continue;
+            }
+            for descendant in &ancestor.descendants {
+                // A descendant that is not declared is reported elsewhere.
+                if entity_types
+                    .get(descendant)
+                    .is_some_and(ValidatorEntityType::is_external)
+                {
+                    return Err(ExternalWithEnumAncestorError {
+                        external_type: descendant.clone(),
+                        enum_type: ancestor.name().clone(),
+                    }
+                    .into());
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Check that the types in the hierarchy are declared, and no enum entity types
     /// appears as a descendant of another type.
     fn check_hierarchy_wf(&self) -> std::result::Result<(), SchemaError> {
+        Self::check_no_external_with_enum_ancestor(&self.entity_types)?;
         let mut undeclared_entities = Vec::new();
         // Check for entities:
         // - all descendants are declared entity types,

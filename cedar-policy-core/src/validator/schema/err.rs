@@ -273,6 +273,12 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     EnumEntityInHierarchy(#[from] schema_errors::EnumEntityInHierarchyError),
+
+    /// An entity type declared `external` has an enum entity type as an
+    /// ancestor, which is not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExternalWithEnumAncestor(#[from] schema_errors::ExternalWithEnumAncestorError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -1032,6 +1038,33 @@ pub mod schema_errors {
         }
 
         impl_diagnostic_from_method_on_field!(parent_type, loc);
+    }
+
+    /// An entity type declared `external` (RFC 116) has an enum entity type
+    /// among its ancestors. Validating an entity of the external type would
+    /// have to check that each such ancestor is one of the allowed values,
+    /// which the declaration does not say.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    #[error("external entity type `{external_type}` cannot have the enum entity type `{enum_type}` as an ancestor")]
+    pub struct ExternalWithEnumAncestorError {
+        /// The entity type declared `external`
+        pub(crate) external_type: EntityType,
+        /// The enum entity type that is one of its ancestors
+        pub(crate) enum_type: EntityType,
+    }
+
+    impl Diagnostic for ExternalWithEnumAncestorError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "external entity types cannot have any enum entity type as an ancestor",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_field!(external_type, loc);
     }
 
     /// An action has an entity type whose basename is not `Action`.
