@@ -25,23 +25,12 @@ use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-/// The protobuf `Schema` message describes a complete schema, so an
-/// incomplete one (RFC 116) is refused rather than silently losing its
-/// declarations.
-impl TryFrom<&validator::ValidatorSchema> for models::Schema {
-    type Error = ProtobufConversionError;
-    fn try_from(v: &validator::ValidatorSchema) -> Result<Self, Self::Error> {
-        v.check_complete()?;
-        Ok(Self {
-            entity_decls: v
-                .entity_types()
-                .map(models::EntityDecl::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            action_decls: v
-                .action_ids()
-                .map(models::ActionDecl::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-        })
+impl From<&validator::ValidatorSchema> for models::Schema {
+    fn from(v: &validator::ValidatorSchema) -> Self {
+        Self {
+            entity_decls: v.entity_types().map(models::EntityDecl::from).collect(),
+            action_decls: v.action_ids().map(models::ActionDecl::from).collect(),
+        }
     }
 }
 
@@ -111,49 +100,67 @@ impl TryFrom<models::ValidationMode> for validator::ValidationMode {
     }
 }
 
-impl TryFrom<&validator::ValidatorActionId> for models::ActionDecl {
-    type Error = ProtobufConversionError;
-    fn try_from(v: &validator::ValidatorActionId) -> Result<Self, Self::Error> {
-        // `ActionDecl` has no field for a declaration: it carries `context`
-        // and the two `appliesTo` lists, none of which an external action has.
-        // `ValidatorSchema::try_from` above rejects such a schema first, so
-        // this is reached only by converting one action on its own.
-        let context = v.context().ok_or_else(|| {
-            ProtobufConversionError::InvalidValue(format!(
-                "action `{}` is declared `external`, so it has no context or `appliesTo` to convert",
-                v.name()
-            ))
-        })?;
+#[expect(clippy::fallible_impl_from, reason = "experimental feature")]
+impl From<&validator::ValidatorActionId> for models::ActionDecl {
+    #[expect(clippy::panic, reason = "ValidatorActionId invariant")]
+    fn from(v: &validator::ValidatorActionId) -> Self {
+        if v.is_external() {
+            return Self {
+                name: Some(models::EntityUid::from(v.name())),
+                principal_types: vec![],
+                resource_types: vec![],
+                descendants: v.descendants().map(models::EntityUid::from).collect(),
+                context: HashMap::new(),
+                external: true,
+            };
+        }
+        let Some(context) = v.context() else {
+            panic!("non-external action `{}` has no context type", v.name());
+        };
         let ctx_attrs = match context {
             types::Type::Record {
                 attrs,
                 open_attributes: types::OpenTag::ClosedAttributes,
             } => attrs,
-            ty => {
-                return Err(ProtobufConversionError::InvalidValue(format!(
-                    "expected context to be a closed record, but got {ty:?}"
-                )))
-            }
+            ty => panic!("expected context to be a closed record, but got {ty:?}"),
         };
-        Ok(Self {
+        Self {
             name: Some(models::EntityUid::from(v.name())),
             principal_types: v.applies_to_principals().map(models::Name::from).collect(),
             resource_types: v.applies_to_resources().map(models::Name::from).collect(),
             descendants: v.descendants().map(models::EntityUid::from).collect(),
             context: attributes_to_model(ctx_attrs),
-        })
+            external: false,
+        }
     }
 }
 
 impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     type Error = ProtobufConversionError;
     fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
-        // Always a definition: there is no field that could carry a declaration.
+        let name = ast::EntityUID::try_from(
+            v.name
+                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
+        )?;
+        let descendants = v
+            .descendants
+            .into_iter()
+            .map(ast::EntityUID::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        if v.external {
+            if !v.principal_types.is_empty()
+                || !v.resource_types.is_empty()
+                || !v.context.is_empty()
+            {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "action `{name}` is declared `external`, so it should have no \
+                     `principal_types`, `resource_types`, or `context`"
+                )));
+            }
+            return Ok(Self::new_external(name, descendants, None));
+        }
         Ok(Self::new_defined(
-            ast::EntityUID::try_from(
-                v.name
-                    .ok_or_else(|| ProtobufConversionError::missing("name"))?,
-            )?,
+            name,
             v.principal_types
                 .into_iter()
                 .map(ast::EntityType::try_from)
@@ -162,10 +169,7 @@ impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
                 .into_iter()
                 .map(ast::EntityType::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
-            v.descendants
-                .into_iter()
-                .map(ast::EntityUID::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
+            descendants,
             types::Type::Record {
                 attrs: model_to_attributes(v.context)?,
                 open_attributes: types::OpenTag::default(),
@@ -175,40 +179,32 @@ impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     }
 }
 
-impl TryFrom<&validator::ValidatorEntityType> for models::EntityDecl {
-    type Error = ProtobufConversionError;
-    fn try_from(v: &validator::ValidatorEntityType) -> Result<Self, Self::Error> {
+impl From<&validator::ValidatorEntityType> for models::EntityDecl {
+    fn from(v: &validator::ValidatorEntityType) -> Self {
         let name = Some(models::Name::from(v.name()));
         let descendants = v.descendants.iter().map(models::Name::from).collect();
-        let attributes = attributes_to_model(v.attributes());
-        let tags = v.tag_type().map(models::Type::from);
-        match &v.kind {
-            validator::ValidatorEntityTypeKind::Standard(_) => Ok(Self {
-                name,
-                descendants,
-                attributes,
-                tags,
-                enum_choices: vec![],
-            }),
-            validator::ValidatorEntityTypeKind::Enum(enum_choices) => Ok(Self {
-                name,
-                descendants,
-                attributes,
-                tags,
-                enum_choices: enum_choices
-                    .into_iter()
-                    .map(|eid| eid.as_ref().to_string())
-                    .collect(),
-            }),
-            // The message has no representation for a declaration.
-            // `ValidatorSchema::try_from` above rejects such a schema first,
-            // so this is reached only by converting one entity type on its own.
-            validator::ValidatorEntityTypeKind::External => {
-                Err(ProtobufConversionError::InvalidValue(format!(
-                    "entity type `{}` is declared `external`, so it has no shape to convert",
-                    v.name()
-                )))
-            }
+        let (attributes, tags, enum_choices, external) = match &v.kind {
+            validator::ValidatorEntityTypeKind::Standard(_) => (
+                attributes_to_model(v.attributes()),
+                v.tag_type().map(models::Type::from),
+                vec![],
+                false,
+            ),
+            validator::ValidatorEntityTypeKind::Enum(choices) => (
+                attributes_to_model(v.attributes()),
+                v.tag_type().map(models::Type::from),
+                choices.iter().map(|eid| eid.as_ref().to_string()).collect(),
+                false,
+            ),
+            validator::ValidatorEntityTypeKind::External => (HashMap::new(), None, vec![], true),
+        };
+        Self {
+            name,
+            descendants,
+            attributes,
+            tags,
+            enum_choices,
+            external,
         }
     }
 }
@@ -225,6 +221,15 @@ impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
             .into_iter()
             .map(ast::EntityType::try_from)
             .collect::<Result<Vec<_>, _>>()?;
+        if v.external {
+            if !v.attributes.is_empty() || v.tags.is_some() || !v.enum_choices.is_empty() {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "entity type `{name}` is declared `external`, so it should have no \
+                     `attributes`, `tags`, or `enum_choices`"
+                )));
+            }
+            return Ok(Self::new_external(name, descendants, None));
+        }
         match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
             // `enum_choices` is empty, so `v` represents a standard entity type
             None => Ok(Self::new_standard(
@@ -397,6 +402,7 @@ mod test {
             attributes: Default::default(),
             tags: None,
             enum_choices: vec![],
+            external: false,
         }
     }
 
@@ -479,7 +485,7 @@ mod test {
         let schema: ValidatorSchema = src.parse().expect("failed to parse cedar schema");
         assert_eq!(
             schema,
-            ValidatorSchema::try_from(models::Schema::try_from(&schema).unwrap()).unwrap()
+            ValidatorSchema::try_from(models::Schema::from(&schema)).unwrap()
         );
     }
 
@@ -488,72 +494,53 @@ mod test {
         assert_schema_roundtrip("");
     }
 
-    /// The protobuf `Schema` message describes a complete schema, so a schema
-    /// that still declares a name `external` (RFC 116) is refused.
+    /// A declaration is distinct from a definition with no
+    /// attributes/`appliesTo`, and the two do not collapse across a round trip.
     #[test]
-    fn schema_with_external_declaration_is_refused() {
-        use super::super::ast::ProtobufConversionError;
-        use crate::proto::traits::{EncodeError, Protobuf as _};
-        use cool_asserts::assert_matches;
-
-        for src in [
-            "external entity User;",
-            "external action audit;",
-            "external entity User; entity Document { owner: User };",
-        ] {
-            let schema: ValidatorSchema = src.parse().expect("failed to parse cedar schema");
-            assert_matches!(
-                models::Schema::try_from(&schema),
-                Err(ProtobufConversionError::IncompleteSchema(_)),
-                "expected `{src}` to be refused"
-            );
-            // And through the public API's encode path.
-            assert_matches!(
-                crate::Schema(schema).encode(),
-                Err(EncodeError::Conversion(
-                    ProtobufConversionError::IncompleteSchema(_)
-                ))
-            );
-        }
-
-        // A complete schema that merely mentions the keyword as an identifier
-        // is unaffected.
+    fn schema_roundtrip_external_declarations() {
+        assert_schema_roundtrip("external entity User;");
+        assert_schema_roundtrip("external action audit;");
+        assert_schema_roundtrip("external entity User; entity Document { owner: User };");
+        assert_schema_roundtrip("external entity Group; external entity User in [Group];");
+        assert_schema_roundtrip("action write; external action audit in [write];");
+        // `external` as an identifier rather than a keyword is unaffected.
         assert_schema_roundtrip("entity external; entity Foo in [external];");
     }
 
-    /// Converting a single declaration on its own, bypassing the schema-level
-    /// refusal above, also errors.
     #[test]
-    fn single_external_declaration_is_refused() {
-        use super::super::ast::ProtobufConversionError;
-        use cool_asserts::assert_matches;
-
-        let schema: ValidatorSchema = "external entity User; external action audit;"
-            .parse()
-            .expect("failed to parse cedar schema");
-
-        let ety = schema
-            .get_entity_type(&"User".parse().unwrap())
-            .expect("`User` should be in the schema");
+    fn external_flag_is_exclusive() {
+        let bad = models::EntityDecl {
+            name: Some(name("Doc")),
+            descendants: vec![],
+            attributes: Default::default(),
+            tags: None,
+            enum_choices: vec!["x".into()],
+            external: true,
+        };
         assert_matches!(
-            models::EntityDecl::try_from(ety),
+            validator::ValidatorEntityType::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) => {
                 assert_eq!(
                     msg,
-                    "entity type `User` is declared `external`, so it has no shape to convert"
+                    "entity type `Doc` is declared `external`, so it should have no `attributes`, `tags`, or `enum_choices`"
                 );
             }
         );
 
-        let action = schema
-            .get_action_id(&r#"Action::"audit""#.parse().unwrap())
-            .expect("`audit` should be in the schema");
+        let bad = models::ActionDecl {
+            name: Some(action_uid("a")),
+            descendants: vec![],
+            context: Default::default(),
+            principal_types: vec![name("Doc")],
+            resource_types: vec![],
+            external: true,
+        };
         assert_matches!(
-            models::ActionDecl::try_from(action),
+            validator::ValidatorActionId::try_from(bad),
             Err(ProtobufConversionError::InvalidValue(msg)) => {
                 assert_eq!(
                     msg,
-                    "action `Action::\"audit\"` is declared `external`, so it has no context or `appliesTo` to convert"
+                    "action `Action::\"a\"` is declared `external`, so it should have no `principal_types`, `resource_types`, or `context`"
                 );
             }
         );
@@ -635,6 +622,7 @@ mod test {
             resource_types: vec![],
             descendants: vec![],
             context: Default::default(),
+            external: false,
         };
         assert_matches!(
             validator::ValidatorActionId::try_from(bad),
@@ -650,6 +638,7 @@ mod test {
             attributes: Default::default(),
             tags: None,
             enum_choices: vec![],
+            external: false,
         };
         assert_matches!(
             validator::ValidatorEntityType::try_from(bad),
@@ -698,6 +687,7 @@ mod test {
             .into(),
             tags: None,
             enum_choices: vec!["x".to_string()],
+            external: false,
         };
         assert_matches!(
             validator::ValidatorEntityType::try_from(bad),
@@ -718,6 +708,7 @@ mod test {
                 )),
             }),
             enum_choices: vec!["x".to_string()],
+            external: false,
         };
         assert_matches!(
             validator::ValidatorEntityType::try_from(bad),
@@ -740,6 +731,7 @@ mod test {
                 attributes: Default::default(),
                 tags: None,
                 enum_choices: vec![],
+                external: false,
             }],
             action_decls: vec![],
         };
@@ -763,6 +755,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec!["0".to_string()],
+                    external: false,
                 },
                 models::EntityDecl {
                     name: Some(models::Name::from(&d_name)),
@@ -770,6 +763,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec![],
+                    external: false,
                 },
             ],
             action_decls: vec![],
@@ -795,6 +789,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec!["0".to_string()],
+                    external: false,
                 },
                 models::EntityDecl {
                     name: Some(models::Name::from(&d_name)),
@@ -802,6 +797,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec![],
+                    external: false,
                 },
             ],
             action_decls: vec![],
@@ -824,6 +820,7 @@ mod test {
                 resource_types: vec![],
                 descendants: vec![],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -864,6 +861,7 @@ mod test {
                 .into(),
                 tags: None,
                 enum_choices: vec![],
+                external: false,
             }],
             action_decls: vec![],
         };
@@ -885,6 +883,7 @@ mod test {
                     data: Some(models::r#type::Data::Ext(name("q"))),
                 }),
                 enum_choices: vec![],
+                external: false,
             }],
             action_decls: vec![],
         };
@@ -905,6 +904,7 @@ mod test {
                 resource_types: vec![name("A")],
                 descendants: vec![action_uid("")],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -924,6 +924,7 @@ mod test {
                 resource_types: vec![name("A")],
                 descendants: vec![action_uid("nonexistent")],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -944,6 +945,7 @@ mod test {
                 resource_types: vec![name("A")],
                 descendants: vec![],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -975,6 +977,7 @@ mod test {
                     resource_types: vec![name("A")],
                     descendants: vec![],
                     context: Default::default(),
+                    external: false,
                 },
                 models::ActionDecl {
                     name: Some(action_uid("act")),
@@ -982,6 +985,7 @@ mod test {
                     resource_types: vec![],
                     descendants: vec![],
                     context: Default::default(),
+                    external: false,
                 },
             ],
         };
