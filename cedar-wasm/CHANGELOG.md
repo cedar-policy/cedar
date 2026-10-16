@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 4.14.0
+
+### Added
+
+- `linkSchemas` binding for schema linking (RFC 116), resolving the `external` entity type and action declarations of one schema against definitions in the others. The result may itself be partial. (#2615)
+- `schemaCompleteness` binding, reporting whether a schema still has `external` declarations and naming the ones it has. (#2615)
+
 ### Changed
 
 - Upgraded tsify dependency and migrated wasm bindings to use the new `Ts<T>` wrapper pattern, fixing memory leak potential when passing malformed inputs. (#2534)
