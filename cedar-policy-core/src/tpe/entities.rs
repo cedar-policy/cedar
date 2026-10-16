@@ -383,6 +383,14 @@ impl PartialEntity {
         let schema_etype = core_schema.entity_type(etype).ok_or_else(|| {
             EntitySchemaConformanceError::unexpected_entity_type(&core_schema, uid.clone())
         })?;
+        // As in `EntitySchemaConformanceChecker::validate_entity`:
+        // external entity validation is not allowed.
+        if schema_etype.is_external() {
+            return Err(EntitySchemaConformanceError::from(
+                crate::entities::conformance::err::ExternalEntityTypeError { uid: uid.clone() },
+            )
+            .into());
+        }
         let checker =
             EntitySchemaConformanceChecker::new(&core_schema, Extensions::all_available());
         if let Some(ancestors) = &self.ancestors {
@@ -923,6 +931,8 @@ mod test_validate {
 
             entity Resource;
 
+            external entity Ext;
+
             action view appliesTo {
                 principal: User,
                 resource: Resource
@@ -1151,6 +1161,27 @@ mod test_validate {
             entity.validate(&schema),
             Err(EntityValidationError::Concrete(
                 EntitySchemaConformanceError::TypeMismatch(_)
+            ))
+        );
+    }
+
+    /// An entity of an `external` type is rejected here as it is in
+    /// `EntitySchemaConformanceChecker::validate_entity`, even when every part
+    /// of it is left unknown.
+    #[test]
+    fn invalid_entity_of_external_type() {
+        let schema = test_schema();
+        let entity = PartialEntity {
+            uid: "Ext::\"x\"".parse().unwrap(),
+            attrs: None,
+            ancestors: None,
+            tags: None,
+        };
+
+        assert_matches!(
+            entity.validate(&schema),
+            Err(EntityValidationError::Concrete(
+                EntitySchemaConformanceError::ExternalEntityType(_)
             ))
         );
     }

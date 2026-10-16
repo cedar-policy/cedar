@@ -1528,6 +1528,8 @@ impl Validator {
     /// that policy passed the validator. If the function `validation_passed`
     /// returns true, then there were no validation errors found, so all
     /// policies in the policy set have passed the validator.
+    /// Validation using schemas that contain `external` always fail; see
+    /// [`Schema::is_complete`].
     pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
@@ -1539,6 +1541,8 @@ impl Validator {
     /// appear in the output iterator, then that policy passed the validator. If the function
     /// `validation_passed` returns true, then there were no validation errors found, so
     /// all policies in the policy set have passed the validator.
+    /// Validation using schemas that contain `external` always fail; see
+    /// [`Schema::is_complete`].
     pub fn validate_with_level(
         &self,
         pset: &PolicySet,
@@ -2008,7 +2012,7 @@ impl Schema {
     }
 
     /// Extract from the schema an [`Entities`] containing the action entities
-    /// declared in the schema.
+    /// defined in the schema. External actions are excluded.
     pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
     }
@@ -2072,7 +2076,8 @@ impl Schema {
     ///
     /// ## Errors
     ///
-    /// Returns [`None`] if `action` is not found in the schema
+    /// Returns [`None`] if `action` is not found in the schema. An external
+    /// action is found, so this returns `Some` with an empty iterator.
     pub fn principals_for_action(
         &self,
         action: &EntityUid,
@@ -2086,7 +2091,8 @@ impl Schema {
     ///
     /// ## Errors
     ///
-    /// Returns [`None`] if `action` is not found in the schema
+    /// Returns [`None`] if `action` is not found in the schema. External
+    /// actions return `Some` with an empty iterator.
     pub fn resources_for_action(
         &self,
         action: &EntityUid,
@@ -2098,6 +2104,9 @@ impl Schema {
 
     /// Returns an iterator over all the [`RequestEnv`]s that are valid
     /// according to this schema.
+    ///
+    /// An external action contributes none, since what it applies to is
+    /// unknown.
     pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         self.0
             .unlinked_request_envs(cedar_policy_core::validator::ValidationMode::Strict)
@@ -2123,14 +2132,24 @@ impl Schema {
         self.0.action_groups().map(RefCast::ref_cast)
     }
 
-    /// Returns an iterator over all entity types defined in this schema
+    /// Returns an iterator over all entity types declared in this schema,
+    /// including both external and non-external (defined) types.
+    ///
+    /// See [`Self::external_entity_types`] and [`Self::defined_entity_types`]
+    /// for the two subsets, and [`Self::is_complete`] to check whether this
+    /// schema has any `external` declarations at all.
     pub fn entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0
             .entity_types()
             .map(|ety| RefCast::ref_cast(ety.name()))
     }
 
-    /// Returns an iterator over all actions defined in this schema
+    /// Returns an iterator over all actions declared in this schema,
+    /// including both external and non-external (defined) actions.
+    ///
+    /// See [`Self::external_actions`] and [`Self::defined_actions`] for the
+    /// two subsets, and [`Self::is_complete`] to check whether this schema has
+    /// any `external` declarations at all.
     pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
         self.0.actions().map(RefCast::ref_cast)
     }
@@ -2146,6 +2165,116 @@ impl Schema {
         self.0
             .actions_for_principal_and_resource(&principal_type.0, &resource_type.0)
             .map(RefCast::ref_cast)
+    }
+
+    /// Returns an iterator over the external entity types: the
+    /// subset of [`Self::entity_types`] that are declared `external`.
+    ///
+    /// See [`Self::defined_entity_types`] for the complementary subset, and
+    /// [`Self::is_complete`] to check whether any external types exist.
+    pub fn external_entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .filter(|ety| ety.is_external())
+            .map(|ety| RefCast::ref_cast(ety.name()))
+    }
+
+    /// Returns an iterator over the non-external (defined) entity types: the
+    /// subset of [`Self::entity_types`] that are not declared `external`.
+    ///
+    /// See [`Self::external_entity_types`] for the complementary subset.
+    pub fn defined_entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .filter(|ety| !ety.is_external())
+            .map(|ety| RefCast::ref_cast(ety.name()))
+    }
+
+    /// Returns an iterator over the external actions: the subset of
+    /// [`Self::actions`] that are declared `external`.
+    ///
+    /// See [`Self::defined_actions`] for the complementary subset, and
+    /// [`Self::is_complete`] to check whether any external actions exist.
+    pub fn external_actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0
+            .action_ids()
+            .filter(|action| action.is_external())
+            .map(|action| RefCast::ref_cast(action.name()))
+    }
+
+    /// Returns an iterator over the non-external (defined) actions: the subset
+    /// of [`Self::actions`] that are not declared `external`.
+    ///
+    /// See [`Self::external_actions`] for the complementary subset.
+    pub fn defined_actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0
+            .action_ids()
+            .filter(|action| !action.is_external())
+            .map(|action| RefCast::ref_cast(action.name()))
+    }
+
+    /// Returns true if all of the entity types and actions are not external.
+    ///
+    /// Only a complete schema may be used for policy validation (see
+    /// [`Validator::validate`]). See [`Self::external_entity_types`] and
+    /// [`Self::external_actions`] to enumerate the external declarations that
+    /// make a schema incomplete, and [`Self::schema_link_complete`] to link
+    /// schemas and require a complete result.
+    pub fn is_complete(&self) -> bool {
+        self.0.is_complete()
+    }
+
+    /// Link `schemas` by combining external declarations.
+    /// The result may contain external entity types and actions, i.e. it may
+    /// be incomplete (see [`Self::is_complete`]). Use
+    /// [`Self::schema_link_complete`] to require a complete result.
+    ///
+    /// Linking is agnostic to the ordering of the input.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LinkError`], which is `non_exhaustive`, in these cases.
+    ///
+    /// - [`LinkError::ActionEntityTypeDeclared`]: an entity type has the same
+    ///   name as the entity type of an action.
+    /// - [`LinkError::DuplicateEntityType`]: two schemas define the same
+    ///   entity type.
+    /// - [`LinkError::DuplicateAction`]: two schemas define the same action.
+    /// - [`LinkError::ExternalIsEnum`]: an external entity type resolves to an
+    ///   enumerated entity type.
+    /// - [`LinkError::DefinedEntityAncestorsChanged`]: linking would give a
+    ///   defined entity type an ancestor its definition omits.
+    /// - [`LinkError::ExternalActionParentsMismatch`]: two declarations of one
+    ///   action give it different parents.
+    /// - [`LinkError::ShadowsBuiltinType`]: linking would introduce an entity
+    ///   type whose name shadows a primitive or extension type.
+    /// - [`LinkError::Schema`]: the linked schema is not well formed, and
+    ///   reports what writing the merged declarations as one schema would.
+    pub fn schema_link(schemas: impl IntoIterator<Item = Self>) -> Result<Self, LinkError> {
+        Ok(Self(
+            cedar_policy_core::validator::Linker::new(
+                schemas.into_iter().map(|s| s.0),
+                Extensions::all_available(),
+            )
+            .link()?,
+        ))
+    }
+
+    /// Link `schemas` (see [`Self::schema_link`]) and require the result to be
+    /// complete, i.e. to contain no `external` declarations (see
+    /// [`Self::is_complete`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns any error of [`Self::schema_link`], and additionally
+    /// [`LinkError::IncompleteSchema`] when the linked schema still declares
+    /// an entity type or an action `external`.
+    pub fn schema_link_complete(
+        schemas: impl IntoIterator<Item = Self>,
+    ) -> Result<Self, LinkError> {
+        let linked = Self::schema_link(schemas)?;
+        linked.0.check_complete()?;
+        Ok(linked)
     }
 }
 
@@ -2283,6 +2412,7 @@ mod test_schema_str_to_json_with_resolved_types {
         }
     }
 }
+
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
 #[derive(Debug, Clone)]
@@ -3437,6 +3567,9 @@ impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
 ///
 /// This function is called by [`Template::get_valid_request_envs`] and
 /// [`Policy::get_valid_request_envs`]
+///
+/// When there is external entity types or actions, this function returns an empty iterator.
+/// [`Schema::is_complete`] should be called on the schema to ensure nontrivial behavior.
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
     let tc = Typechecker::new(
         &s.0,

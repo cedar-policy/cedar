@@ -273,6 +273,12 @@ pub enum SchemaError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     EnumEntityInHierarchy(#[from] schema_errors::EnumEntityInHierarchyError),
+
+    /// An entity type declared `external` has an enum entity type as an
+    /// ancestor, which is not allowed.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExternalWithEnumAncestor(#[from] schema_errors::ExternalWithEnumAncestorError),
 }
 
 impl From<transitive_closure::TcError<EntityUID>> for SchemaError {
@@ -348,6 +354,51 @@ impl From<NonEmpty<schema_errors::TypeNotDefinedError>> for SchemaError {
     fn from(errs: NonEmpty<schema_errors::TypeNotDefinedError>) -> Self {
         Self::TypeNotDefined(schema_errors::TypeNotDefinedError::join_nonempty(errs))
     }
+}
+
+/// This error happens when the functionality expects a completed schema,
+/// but gets an schema with external entity/action left.
+//
+// CAUTION: this type is publicly exported in `cedar-policy`.
+// Don't make fields `pub`, don't make breaking changes, and use caution
+// when adding public methods.
+#[derive(Clone, Debug, Error, Hash, Eq, PartialEq)]
+pub struct IncompleteSchemaError {
+    /// Entity types declared `external` and not defined, sorted.
+    pub(crate) entity_types: Vec<crate::ast::EntityType>,
+    /// Actions declared `external` and not defined, sorted.
+    pub(crate) actions: Vec<EntityUID>,
+    /// Location of the declaration the message names first.
+    ///
+    /// INVARIANT: `entity_types` and `actions` are not both empty.
+    pub(crate) loc: Option<crate::parser::Loc>,
+}
+
+impl std::fmt::Display for IncompleteSchemaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "schema is incomplete: ")?;
+        let names = self
+            .entity_types
+            .iter()
+            .map(ToString::to_string)
+            .chain(self.actions.iter().map(ToString::to_string));
+        crate::parser::join_with_conjunction(f, "and", names, |f, name| write!(f, "`{name}`"))?;
+        if self.entity_types.len() + self.actions.len() == 1 {
+            write!(f, " is declared `external` but not defined")
+        } else {
+            write!(f, " are declared `external` but not defined")
+        }
+    }
+}
+
+impl Diagnostic for IncompleteSchemaError {
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        Some(Box::new(
+            "this needs every entity type and action to be defined; entity validation and request validation are what accept a schema with `external` declarations",
+        ))
+    }
+
+    impl_diagnostic_from_source_loc_opt_field!(loc);
 }
 
 /// Convenience alias
@@ -987,6 +1038,33 @@ pub mod schema_errors {
         }
 
         impl_diagnostic_from_method_on_field!(parent_type, loc);
+    }
+
+    /// An entity type declared `external` (RFC 116) has an enum entity type
+    /// among its ancestors. Validating an entity of the external type would
+    /// have to check that each such ancestor is one of the allowed values,
+    /// which the declaration does not say.
+    //
+    // CAUTION: this type is publicly exported in `cedar-policy`.
+    // Don't make fields `pub`, don't make breaking changes, and use caution
+    // when adding public methods.
+    #[derive(Debug, Error)]
+    #[error("external entity type `{external_type}` cannot have the enum entity type `{enum_type}` as an ancestor")]
+    pub struct ExternalWithEnumAncestorError {
+        /// The entity type declared `external`
+        pub(crate) external_type: EntityType,
+        /// The enum entity type that is one of its ancestors
+        pub(crate) enum_type: EntityType,
+    }
+
+    impl Diagnostic for ExternalWithEnumAncestorError {
+        fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+            Some(Box::new(
+                "external entity types cannot have any enum entity type as an ancestor",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_field!(external_type, loc);
     }
 
     /// An action has an entity type whose basename is not `Action`.

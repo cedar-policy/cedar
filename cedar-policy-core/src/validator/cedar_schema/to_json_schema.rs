@@ -224,29 +224,45 @@ impl TryFrom<Annotated<Namespace>> for json_schema::NamespaceDefinition<RawName>
 fn convert_action_decl(
     a: Annotated<Node<ActionDecl>>,
 ) -> Result<impl Iterator<Item = (SmolStr, json_schema::ActionType<RawName>)>, ToJsonSchemaErrors> {
-    let ActionDecl {
-        names,
-        parents,
-        app_decls,
-    } = a.data.node;
-    // Create the internal type from the 'applies_to' clause and 'member_of'
-    let applies_to = app_decls
-        .map(|decls| convert_app_decls(&names.first().node, names.first().loc.as_ref(), decls))
-        .transpose()?
-        .unwrap_or_else(|| json_schema::ApplySpec {
-            resource_types: vec![],
-            principal_types: vec![],
-            context: json_schema::AttributesOrContext::default(),
-        });
+    let Annotated {
+        data: Node { node, loc },
+        annotations,
+    } = a;
+    let (names, parents, applies_to, external) = match node {
+        ActionDecl::Defined(decl) => {
+            // Create the internal type from the `appliesTo` clause.
+            let applies_to = decl
+                .app_decls
+                .map(|app_decls| {
+                    convert_app_decls(
+                        &decl.names.first().node,
+                        decl.names.first().loc.as_ref(),
+                        app_decls,
+                    )
+                })
+                .transpose()?
+                .unwrap_or_else(|| json_schema::ApplySpec {
+                    resource_types: vec![],
+                    principal_types: vec![],
+                    context: json_schema::AttributesOrContext::default(),
+                });
+            (decl.names, decl.parents, Some(applies_to), false)
+        }
+        // An external action declares only its parents, so it has no
+        // `appliesTo` and no context.
+        ActionDecl::External(decl) => (decl.names, decl.parents, None, true),
+    };
     let member_of = parents.map(|parents| parents.into_iter().map(convert_qual_name).collect());
 
     Ok(names.into_iter().map(move |name| {
         let ty = json_schema::ActionType {
-            attributes: None, // Action attributes are currently unsupported in the Cedar schema format
-            applies_to: Some(applies_to.clone()),
+            // Action attributes are currently unsupported in the Cedar schema format
+            attributes: None,
+            applies_to: applies_to.clone(),
             member_of: member_of.clone(),
-            annotations: a.annotations.clone().into(),
-            loc: a.data.loc.clone(),
+            external,
+            annotations: annotations.clone().into(),
+            loc: loc.clone(),
             #[cfg(feature = "extended-schema")]
             defn_loc: name.loc,
         };
@@ -391,6 +407,7 @@ fn convert_entity_decl(
         reason = "2025-02-28: this Clippy nursery lint is bugged, makes a suggestion that does not compile"
     )]
     let names: Vec<Node<Id>> = e.data.node.names().cloned().collect();
+    let external = matches!(&e.data.node, EntityDecl::External(_));
     let etype = json_schema::EntityType {
         kind: match e.data.node {
             EntityDecl::Enum(d) => json_schema::EntityTypeKind::Enum {
@@ -404,7 +421,17 @@ fn convert_entity_decl(
                     tags: d.tags.map(cedar_type_to_json_type),
                 })
             }
+            // An external declaration lowers to a standard type, with the
+            // `external` flag set.
+            EntityDecl::External(d) => {
+                json_schema::EntityTypeKind::Standard(json_schema::StandardEntityType {
+                    member_of_types: d.member_of_types.into_iter().map(RawName::from).collect(),
+                    shape: json_schema::AttributesOrContext::default(),
+                    tags: None,
+                })
+            }
         },
+        external,
         annotations: e.annotations.into(),
         loc: e.data.loc,
     };

@@ -40,12 +40,14 @@ pub struct ValidatorEntityType {
     /// descendants before it is used in any validation.
     pub descendants: HashSet<EntityType>,
 
-    /// The kind of entity type: enumerated and standard
+    /// The kind of entity type: standard, enumerated, or external
     pub kind: ValidatorEntityTypeKind,
 
     /// The attributes associated with this entity.
     ///
-    /// For enumerated entities, this is always empty.
+    /// Always empty for enumerated and for external entities.
+    /// TODO: move this into `StandardEntityType`, the only kind that has
+    /// attributes.
     pub(crate) attributes: Attributes,
 
     /// Source location - if available
@@ -55,14 +57,16 @@ pub struct ValidatorEntityType {
 
 /// The kind of validator entity types.
 ///
-/// It can either be a standard (non-enum) entity type, or
-/// an enumerated entity type
+/// It can be a standard (non-enum) entity type, an enumerated entity type, or
+/// a type declared `external` without being defined (RFC 116).
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ValidatorEntityTypeKind {
     /// Standard, aka non-enum
     Standard(StandardValidatorEntityType),
     /// Enumerated
     Enum(NonEmpty<Eid>),
+    /// External
+    External,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -123,6 +127,21 @@ impl ValidatorEntityType {
         }
     }
 
+    /// Construct a new external `ValidatorEntityType`.
+    pub fn new_external(
+        name: EntityType,
+        descendants: impl IntoIterator<Item = EntityType>,
+        loc: Option<Loc>,
+    ) -> Self {
+        Self {
+            name,
+            descendants: descendants.into_iter().collect(),
+            attributes: Attributes::with_attributes([]),
+            kind: ValidatorEntityTypeKind::External,
+            loc,
+        }
+    }
+
     /// The name of the entity type
     pub fn name(&self) -> &EntityType {
         &self.name
@@ -130,7 +149,7 @@ impl ValidatorEntityType {
 
     /// Attribute types for this entity.
     ///
-    /// For enumerated entity types, this will always be empty.
+    /// For enumerated and external entity types, this will always be empty.
     pub fn attributes(&self) -> &Attributes {
         &self.attributes
     }
@@ -146,6 +165,14 @@ impl ValidatorEntityType {
         self.descendants.contains(ety)
     }
 
+    /// Is this entity type only declared `external`, rather than defined
+    /// (RFC 116)?
+    ///
+    /// An enumerated entity type is a definition, so this is `false` for one.
+    pub fn is_external(&self) -> bool {
+        matches!(self.kind, ValidatorEntityTypeKind::External)
+    }
+
     /// Return the [`OpenTag`] which indicates whether this entity type may have
     /// additional attributes other than the declared attributes.
     /// This is used for partial schema validation. Attempting to access an
@@ -155,6 +182,8 @@ impl ValidatorEntityType {
         match &self.kind {
             ValidatorEntityTypeKind::Enum(_) => OpenTag::ClosedAttributes,
             ValidatorEntityTypeKind::Standard(ty) => ty.open_attributes,
+            // The attribute list of an external entity type is empty.
+            ValidatorEntityTypeKind::External => OpenTag::ClosedAttributes,
         }
     }
 
@@ -164,6 +193,8 @@ impl ValidatorEntityType {
         match &self.kind {
             ValidatorEntityTypeKind::Enum(_) => None,
             ValidatorEntityTypeKind::Standard(ty) => ty.tag_type(),
+            // An external entity type has no tags.
+            ValidatorEntityTypeKind::External => None,
         }
     }
 }

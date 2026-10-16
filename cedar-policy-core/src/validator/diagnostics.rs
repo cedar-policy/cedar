@@ -165,6 +165,12 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     EntityDerefLevelViolation(#[from] validation_errors::EntityDerefLevelViolation),
+    /// The schema still declares some names `external` (RFC 116), so the
+    /// policy could not be validated. Reported once per policy; nothing about
+    /// the policy itself is wrong.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompleteSchema(#[from] validation_errors::IncompleteSchema),
 }
 
 impl ValidationError {
@@ -179,6 +185,19 @@ impl ValidationError {
             policy_id,
             actual_entity_type,
             suggested_entity_type,
+        }
+        .into()
+    }
+
+    pub(crate) fn incomplete_schema(
+        source_loc: Option<Loc>,
+        policy_id: PolicyID,
+        err: crate::validator::IncompleteSchemaError,
+    ) -> Self {
+        validation_errors::IncompleteSchema {
+            source_loc,
+            policy_id,
+            err,
         }
         .into()
     }

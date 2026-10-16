@@ -27,6 +27,9 @@ use crate::{
     policy::{cedar::EntityTypeKind, format_attributes},
 };
 
+/// Hover note for a name that is declared `external` (RFC 116).
+const EXTERNAL_NOTE: &str = "Declared `external` in this schema.";
+
 impl ToDocumentationString for EntityType {
     fn to_documentation_string(&self, schema: Option<&ValidatorSchema>) -> Cow<'static, str> {
         let mut builder = MarkdownBuilder::new();
@@ -35,6 +38,9 @@ impl ToDocumentationString for EntityType {
             .paragraph(&format!("Entity Type: `{self}`"));
 
         if let Some(schema_type) = schema.and_then(|schema| schema.get_entity_type(self)) {
+            if schema_type.is_external() {
+                builder.paragraph(EXTERNAL_NOTE);
+            }
             let attrs = schema_type.attributes();
             if attrs.iter().next().is_some() {
                 builder
@@ -57,6 +63,9 @@ impl ToDocumentationString for EntityUID {
 
         if let Some(schema) = schema {
             if let Some(schema_type) = schema.get_entity_type(self.entity_type()) {
+                if schema_type.is_external() {
+                    builder.paragraph(EXTERNAL_NOTE);
+                }
                 let attrs = schema_type.attributes();
                 if attrs.iter().next().is_some() {
                     builder
@@ -94,6 +103,9 @@ where
             // Add attribute information for each type if schema is available
             if let Some(schema_type) = schema.and_then(|schema| schema.get_entity_type(entity_type))
             {
+                if schema_type.is_external() {
+                    builder.paragraph(EXTERNAL_NOTE);
+                }
                 let attrs = schema_type.attributes();
                 if attrs.iter().next().is_some() {
                     builder
@@ -262,5 +274,39 @@ mod test {
         let entity_type_kind = EntityTypeKind::AnyResource;
         let schema = test_schema();
         assert_snapshot!(entity_type_kind.to_documentation_string(Some(&schema)));
+    }
+
+    /// Hover on an RFC 116 declaration says so. Without the note it renders
+    /// exactly like `entity Folder;`, since both have no attributes.
+    #[test]
+    fn external_entity_type_hover_says_it_is_external() {
+        let schema: ValidatorSchema = r"
+            external entity Folder;
+            entity Document in Folder { owner: String };
+        "
+        .parse()
+        .unwrap();
+
+        let folder: EntityType = "Folder".parse().unwrap();
+        let doc: EntityType = "Document".parse().unwrap();
+
+        let rendered = folder.to_documentation_string(Some(&schema));
+        assert!(
+            rendered.contains("Declared `external` in this schema."),
+            "expected the external note, got `{rendered}`"
+        );
+        let rendered = doc.to_documentation_string(Some(&schema));
+        assert!(
+            !rendered.contains("external"),
+            "a definition should carry no note, got `{rendered}`"
+        );
+
+        // Same through the `EntityUID` hover path.
+        let uid: EntityUID = "Folder::\"home\"".parse().unwrap();
+        assert!(
+            uid.to_documentation_string(Some(&schema))
+                .contains("Declared `external` in this schema."),
+            "expected the external note on the UID path"
+        );
     }
 }

@@ -118,6 +118,20 @@ impl CedarSchemaParser {
                 continue;
             }
 
+            // An RFC 116 declaration is `external entity ...` or
+            // `external action ...`. The regexes below are anchored at
+            // `entity`/`action`, so match against the line with that prefix
+            // removed. Ranges still come from the untouched `line`.
+            //
+            // `external` is a contextual keyword, so the prefix is only
+            // stripped when `entity` or `action` follows it; `entity external;`
+            // and a common type named `external` are unaffected.
+            let decl = line_pre_comment
+                .strip_prefix("external")
+                .map(str::trim_start)
+                .filter(|rest| rest.starts_with("entity") || rest.starts_with("action"))
+                .unwrap_or(line_pre_comment);
+
             // Process namespace declaration
             if line_pre_comment.starts_with("namespace") {
                 if let Some(captures) = self.namespace.captures(line_pre_comment) {
@@ -131,41 +145,35 @@ impl CedarSchemaParser {
             }
 
             // Process type declarations
-            if line_pre_comment.starts_with("type") && declaration_start_line == -1 {
+            if decl.starts_with("type") && declaration_start_line == -1 {
                 declaration_start_line = i;
                 Self::process_declaration(
                     self.r#type,
                     line,
                     i,
-                    line_pre_comment,
+                    decl,
                     &namespace,
                     &mut declarations,
                 );
             }
 
             // Process entity declarations
-            if line_pre_comment.starts_with("entity") && declaration_start_line == -1 {
+            if decl.starts_with("entity") && declaration_start_line == -1 {
                 declaration_start_line = i;
                 Self::process_declaration(
                     self.entity,
                     line,
                     i,
-                    line_pre_comment,
+                    decl,
                     &namespace,
                     &mut declarations,
                 );
             }
 
             // Process action declarations
-            if line_pre_comment.starts_with("action") && declaration_start_line == -1 {
+            if decl.starts_with("action") && declaration_start_line == -1 {
                 declaration_start_line = i;
-                self.process_action_declaration(
-                    line,
-                    i,
-                    line_pre_comment,
-                    &namespace,
-                    &mut declarations,
-                );
+                self.process_action_declaration(line, i, decl, &namespace, &mut declarations);
             }
 
             // Check for end of declaration
@@ -277,7 +285,13 @@ impl CedarSchemaParser {
             // Return appropriate snippet based on the trigger character
             match trimmed_prefix {
                 "a" => return Some(Self::create_action_snippet_items()),
-                "e" => return Some(Self::create_entity_snippet_items()),
+                "e" => {
+                    // `external` also begins with `e`, so this trigger offers
+                    // the declaration forms alongside the definition ones.
+                    let mut items = Self::create_entity_snippet_items();
+                    items.extend(Self::create_external_snippet_items());
+                    return Some(items);
+                }
                 "t" => return Some(Self::create_type_snippet_items()),
                 _ => {}
             }
@@ -314,6 +328,25 @@ impl CedarSchemaParser {
                 ..CompletionItem::default()
             },
         ]
+    }
+
+    /// The RFC 116 declaration forms, which have no body.
+    fn create_external_snippet_items() -> Vec<CompletionItem> {
+        [
+            ("external entity", EXTERNAL_ENTITY_SNIPPET),
+            ("external entity in", EXTERNAL_ENTITY_IN_SNIPPET),
+            ("external action", EXTERNAL_ACTION_SNIPPET),
+            ("external action in", EXTERNAL_ACTION_IN_SNIPPET),
+        ]
+        .into_iter()
+        .map(|(label, snippet)| CompletionItem {
+            label: label.to_string(),
+            kind: Some(CompletionItemKind::SNIPPET),
+            insert_text: Some(snippet.to_string()),
+            insert_text_format: Some(ls_types::InsertTextFormat::SNIPPET),
+            ..CompletionItem::default()
+        })
+        .collect()
     }
 
     fn create_type_snippet_items() -> Vec<CompletionItem> {
@@ -397,6 +430,18 @@ const ENTITY_IN_SNIPPET: &str = r"entity ${1} in [${2}] {
 };
 ";
 
+const EXTERNAL_ENTITY_SNIPPET: &str = r"external entity ${1};
+";
+
+const EXTERNAL_ENTITY_IN_SNIPPET: &str = r"external entity ${1} in [${2}];
+";
+
+const EXTERNAL_ACTION_SNIPPET: &str = r#"external action "${1}";
+"#;
+
+const EXTERNAL_ACTION_IN_SNIPPET: &str = r#"external action "${1}" in [${2}];
+"#;
+
 const TYPE_SNIPPET: &str = r"type ${1} {
     ${0}
 };
@@ -461,7 +506,11 @@ mod test {
         "e|caret|",
         vec![
             "entity ${1} in [${2}] {\n    ${0}\n};\n",
-            "entity ${1} {\n    ${0}\n};\n"
+            "entity ${1} {\n    ${0}\n};\n",
+            "external action \"${1}\" in [${2}];\n",
+            "external action \"${1}\";\n",
+            "external entity ${1} in [${2}];\n",
+            "external entity ${1};\n"
         ]
     );
 
@@ -470,7 +519,11 @@ mod test {
         "action view;\ne|caret|",
         vec![
             "entity ${1} in [${2}] {\n    ${0}\n};\n",
-            "entity ${1} {\n    ${0}\n};\n"
+            "entity ${1} {\n    ${0}\n};\n",
+            "external action \"${1}\" in [${2}];\n",
+            "external action \"${1}\";\n",
+            "external entity ${1} in [${2}];\n",
+            "external entity ${1};\n"
         ]
     );
 
@@ -479,7 +532,11 @@ mod test {
         "e|caret|\ntype ty;",
         vec![
             "entity ${1} in [${2}] {\n    ${0}\n};\n",
-            "entity ${1} {\n    ${0}\n};\n"
+            "entity ${1} {\n    ${0}\n};\n",
+            "external action \"${1}\" in [${2}];\n",
+            "external action \"${1}\";\n",
+            "external entity ${1} in [${2}];\n",
+            "external entity ${1};\n"
         ]
     );
 
@@ -488,7 +545,11 @@ mod test {
         "namespace ns {\ne|caret|\n};",
         vec![
             "entity ${1} in [${2}] {\n    ${0}\n};\n",
-            "entity ${1} {\n    ${0}\n};\n"
+            "entity ${1} {\n    ${0}\n};\n",
+            "external action \"${1}\" in [${2}];\n",
+            "external action \"${1}\";\n",
+            "external entity ${1} in [${2}];\n",
+            "external entity ${1};\n"
         ]
     );
 
@@ -508,5 +569,49 @@ mod test {
         complete_typedef,
         "t|caret|",
         vec!["type ${1} {\n    ${0}\n};\n"]
+    );
+
+    // `external` begins with `e`, so the declaration forms share the trigger
+    // with `entity`.
+    completion_test!(
+        complete_entity_after_external_def,
+        "external entity Folder;\ne|caret|",
+        vec![
+            "entity ${1} in [${2}] {\n    ${0}\n};\n",
+            "entity ${1} {\n    ${0}\n};\n",
+            "external action \"${1}\" in [${2}];\n",
+            "external action \"${1}\";\n",
+            "external entity ${1} in [${2}];\n",
+            "external entity ${1};\n"
+        ]
+    );
+
+    // A declaration spanning more than one line is a declaration range like
+    // any other, so nothing is offered inside it.
+    completion_test!(
+        no_complete_in_external_entity_declaration,
+        "external entity A,\ne|caret|\nB;",
+        Vec::<String>::new()
+    );
+
+    completion_test!(
+        no_complete_in_external_action_declaration,
+        "external action a,\ne|caret|\nb;",
+        Vec::<String>::new()
+    );
+
+    // `external` is contextual: it still names an entity type, and a line
+    // starting with it that is not a declaration must not be treated as one.
+    completion_test!(
+        entity_named_external_is_not_a_declaration_prefix,
+        "entity external;\ne|caret|",
+        vec![
+            "entity ${1} in [${2}] {\n    ${0}\n};\n",
+            "entity ${1} {\n    ${0}\n};\n",
+            "external action \"${1}\" in [${2}];\n",
+            "external action \"${1}\";\n",
+            "external entity ${1} in [${2}];\n",
+            "external entity ${1};\n"
+        ]
     );
 }

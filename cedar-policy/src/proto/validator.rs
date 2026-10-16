@@ -102,9 +102,22 @@ impl TryFrom<models::ValidationMode> for validator::ValidationMode {
 
 #[expect(clippy::fallible_impl_from, reason = "experimental feature")]
 impl From<&validator::ValidatorActionId> for models::ActionDecl {
-    #[expect(clippy::panic, reason = "experimental feature")]
+    #[expect(clippy::panic, reason = "ValidatorActionId invariant")]
     fn from(v: &validator::ValidatorActionId) -> Self {
-        let ctx_attrs = match v.context() {
+        if v.is_external() {
+            return Self {
+                name: Some(models::EntityUid::from(v.name())),
+                principal_types: vec![],
+                resource_types: vec![],
+                descendants: v.descendants().map(models::EntityUid::from).collect(),
+                context: HashMap::new(),
+                external: true,
+            };
+        }
+        let Some(context) = v.context() else {
+            panic!("non-external action `{}` has no context type", v.name());
+        };
+        let ctx_attrs = match context {
             types::Type::Record {
                 attrs,
                 open_attributes: types::OpenTag::ClosedAttributes,
@@ -117,6 +130,7 @@ impl From<&validator::ValidatorActionId> for models::ActionDecl {
             resource_types: v.applies_to_resources().map(models::Name::from).collect(),
             descendants: v.descendants().map(models::EntityUid::from).collect(),
             context: attributes_to_model(ctx_attrs),
+            external: false,
         }
     }
 }
@@ -124,11 +138,29 @@ impl From<&validator::ValidatorActionId> for models::ActionDecl {
 impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     type Error = ProtobufConversionError;
     fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
-        Ok(Self::new(
-            ast::EntityUID::try_from(
-                v.name
-                    .ok_or_else(|| ProtobufConversionError::missing("name"))?,
-            )?,
+        let name = ast::EntityUID::try_from(
+            v.name
+                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
+        )?;
+        let descendants = v
+            .descendants
+            .into_iter()
+            .map(ast::EntityUID::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        if v.external {
+            if !v.principal_types.is_empty()
+                || !v.resource_types.is_empty()
+                || !v.context.is_empty()
+            {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "action `{name}` is declared `external`, so it should have no \
+                     `principal_types`, `resource_types`, or `context`"
+                )));
+            }
+            return Ok(Self::new_external(name, descendants, None));
+        }
+        Ok(Self::new_defined(
+            name,
             v.principal_types
                 .into_iter()
                 .map(ast::EntityType::try_from)
@@ -137,10 +169,7 @@ impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
                 .into_iter()
                 .map(ast::EntityType::try_from)
                 .collect::<Result<Vec<_>, _>>()?,
-            v.descendants
-                .into_iter()
-                .map(ast::EntityUID::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
+            descendants,
             types::Type::Record {
                 attrs: model_to_attributes(v.context)?,
                 open_attributes: types::OpenTag::default(),
@@ -154,26 +183,28 @@ impl From<&validator::ValidatorEntityType> for models::EntityDecl {
     fn from(v: &validator::ValidatorEntityType) -> Self {
         let name = Some(models::Name::from(v.name()));
         let descendants = v.descendants.iter().map(models::Name::from).collect();
-        let attributes = attributes_to_model(v.attributes());
-        let tags = v.tag_type().map(models::Type::from);
-        match &v.kind {
-            validator::ValidatorEntityTypeKind::Standard(_) => Self {
-                name,
-                descendants,
-                attributes,
-                tags,
-                enum_choices: vec![],
-            },
-            validator::ValidatorEntityTypeKind::Enum(enum_choices) => Self {
-                name,
-                descendants,
-                attributes,
-                tags,
-                enum_choices: enum_choices
-                    .into_iter()
-                    .map(|eid| eid.as_ref().to_string())
-                    .collect(),
-            },
+        let (attributes, tags, enum_choices, external) = match &v.kind {
+            validator::ValidatorEntityTypeKind::Standard(_) => (
+                attributes_to_model(v.attributes()),
+                v.tag_type().map(models::Type::from),
+                vec![],
+                false,
+            ),
+            validator::ValidatorEntityTypeKind::Enum(choices) => (
+                attributes_to_model(v.attributes()),
+                v.tag_type().map(models::Type::from),
+                choices.iter().map(|eid| eid.as_ref().to_string()).collect(),
+                false,
+            ),
+            validator::ValidatorEntityTypeKind::External => (HashMap::new(), None, vec![], true),
+        };
+        Self {
+            name,
+            descendants,
+            attributes,
+            tags,
+            enum_choices,
+            external,
         }
     }
 }
@@ -190,6 +221,15 @@ impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
             .into_iter()
             .map(ast::EntityType::try_from)
             .collect::<Result<Vec<_>, _>>()?;
+        if v.external {
+            if !v.attributes.is_empty() || v.tags.is_some() || !v.enum_choices.is_empty() {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "entity type `{name}` is declared `external`, so it should have no \
+                     `attributes`, `tags`, or `enum_choices`"
+                )));
+            }
+            return Ok(Self::new_external(name, descendants, None));
+        }
         match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
             // `enum_choices` is empty, so `v` represents a standard entity type
             None => Ok(Self::new_standard(
@@ -362,6 +402,7 @@ mod test {
             attributes: Default::default(),
             tags: None,
             enum_choices: vec![],
+            external: false,
         }
     }
 
@@ -453,6 +494,58 @@ mod test {
         assert_schema_roundtrip("");
     }
 
+    /// A declaration is distinct from a definition with no
+    /// attributes/`appliesTo`, and the two do not collapse across a round trip.
+    #[test]
+    fn schema_roundtrip_external_declarations() {
+        assert_schema_roundtrip("external entity User;");
+        assert_schema_roundtrip("external action audit;");
+        assert_schema_roundtrip("external entity User; entity Document { owner: User };");
+        assert_schema_roundtrip("external entity Group; external entity User in [Group];");
+        assert_schema_roundtrip("action write; external action audit in [write];");
+        // `external` as an identifier rather than a keyword is unaffected.
+        assert_schema_roundtrip("entity external; entity Foo in [external];");
+    }
+
+    #[test]
+    fn external_flag_is_exclusive() {
+        let bad = models::EntityDecl {
+            name: Some(name("Doc")),
+            descendants: vec![],
+            attributes: Default::default(),
+            tags: None,
+            enum_choices: vec!["x".into()],
+            external: true,
+        };
+        assert_matches!(
+            validator::ValidatorEntityType::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) => {
+                assert_eq!(
+                    msg,
+                    "entity type `Doc` is declared `external`, so it should have no `attributes`, `tags`, or `enum_choices`"
+                );
+            }
+        );
+
+        let bad = models::ActionDecl {
+            name: Some(action_uid("a")),
+            descendants: vec![],
+            context: Default::default(),
+            principal_types: vec![name("Doc")],
+            resource_types: vec![],
+            external: true,
+        };
+        assert_matches!(
+            validator::ValidatorActionId::try_from(bad),
+            Err(ProtobufConversionError::InvalidValue(msg)) => {
+                assert_eq!(
+                    msg,
+                    "action `Action::\"a\"` is declared `external`, so it should have no `principal_types`, `resource_types`, or `context`"
+                );
+            }
+        );
+    }
+
     #[test]
     fn schema_roundtrip_entities() {
         assert_schema_roundtrip("entity User;");
@@ -529,6 +622,7 @@ mod test {
             resource_types: vec![],
             descendants: vec![],
             context: Default::default(),
+            external: false,
         };
         assert_matches!(
             validator::ValidatorActionId::try_from(bad),
@@ -544,6 +638,7 @@ mod test {
             attributes: Default::default(),
             tags: None,
             enum_choices: vec![],
+            external: false,
         };
         assert_matches!(
             validator::ValidatorEntityType::try_from(bad),
@@ -592,6 +687,7 @@ mod test {
             .into(),
             tags: None,
             enum_choices: vec!["x".to_string()],
+            external: false,
         };
         assert_matches!(
             validator::ValidatorEntityType::try_from(bad),
@@ -612,6 +708,7 @@ mod test {
                 )),
             }),
             enum_choices: vec!["x".to_string()],
+            external: false,
         };
         assert_matches!(
             validator::ValidatorEntityType::try_from(bad),
@@ -634,6 +731,7 @@ mod test {
                 attributes: Default::default(),
                 tags: None,
                 enum_choices: vec![],
+                external: false,
             }],
             action_decls: vec![],
         };
@@ -657,6 +755,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec!["0".to_string()],
+                    external: false,
                 },
                 models::EntityDecl {
                     name: Some(models::Name::from(&d_name)),
@@ -664,6 +763,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec![],
+                    external: false,
                 },
             ],
             action_decls: vec![],
@@ -689,6 +789,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec!["0".to_string()],
+                    external: false,
                 },
                 models::EntityDecl {
                     name: Some(models::Name::from(&d_name)),
@@ -696,6 +797,7 @@ mod test {
                     attributes: Default::default(),
                     tags: None,
                     enum_choices: vec![],
+                    external: false,
                 },
             ],
             action_decls: vec![],
@@ -718,6 +820,7 @@ mod test {
                 resource_types: vec![],
                 descendants: vec![],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -758,6 +861,7 @@ mod test {
                 .into(),
                 tags: None,
                 enum_choices: vec![],
+                external: false,
             }],
             action_decls: vec![],
         };
@@ -779,6 +883,7 @@ mod test {
                     data: Some(models::r#type::Data::Ext(name("q"))),
                 }),
                 enum_choices: vec![],
+                external: false,
             }],
             action_decls: vec![],
         };
@@ -799,6 +904,7 @@ mod test {
                 resource_types: vec![name("A")],
                 descendants: vec![action_uid("")],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -818,6 +924,7 @@ mod test {
                 resource_types: vec![name("A")],
                 descendants: vec![action_uid("nonexistent")],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -838,6 +945,7 @@ mod test {
                 resource_types: vec![name("A")],
                 descendants: vec![],
                 context: Default::default(),
+                external: false,
             }],
         };
         assert_matches!(
@@ -869,6 +977,7 @@ mod test {
                     resource_types: vec![name("A")],
                     descendants: vec![],
                     context: Default::default(),
+                    external: false,
                 },
                 models::ActionDecl {
                     name: Some(action_uid("act")),
@@ -876,6 +985,7 @@ mod test {
                     resource_types: vec![],
                     descendants: vec![],
                     context: Default::default(),
+                    external: false,
                 },
             ],
         };

@@ -26,7 +26,7 @@ use crate::tpe::err::{
     RequestConsistencyError,
 };
 use crate::validator::request_validation_errors::{
-    UndeclaredActionError, UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
+    UndeclaredPrincipalTypeError, UndeclaredResourceTypeError,
 };
 use crate::validator::{
     types::RequestEnv, RequestValidationError, ValidationMode, ValidatorEntityTypeKind,
@@ -227,29 +227,24 @@ impl PartialRequest {
 
     // Validate `self` with `schema`
     pub(crate) fn validate(&self, schema: &ValidatorSchema) -> Result<(), RequestValidationError> {
-        if let Some(action_id) = schema.get_action_id(&self.action) {
-            action_id.check_principal_type(&self.principal.ty, &self.action.clone().into())?;
-            action_id.check_resource_type(&self.resource.ty, &self.action.clone().into())?;
-            self.principal
-                .validate(schema)
-                .map_err(|e| e.into_principal_error())?;
-            self.resource
-                .validate(schema)
-                .map_err(|e| e.into_resource_error())?;
-            if let Some(m) = &self.context {
-                schema.validate_context(
-                    &Context::Value(m.clone()),
-                    &self.action,
-                    Extensions::all_available(),
-                )?;
-            }
-            Ok(())
-        } else {
-            Err(UndeclaredActionError {
-                action: self.action.clone().into(),
-            }
-            .into())
+        // Rejects an external action (RFC 116) as well as an undeclared one.
+        let action_id = schema.get_defined_action_id(&self.action)?;
+        action_id.check_principal_type(&self.principal.ty, &self.action.clone().into())?;
+        action_id.check_resource_type(&self.resource.ty, &self.action.clone().into())?;
+        self.principal
+            .validate(schema)
+            .map_err(|e| e.into_principal_error())?;
+        self.resource
+            .validate(schema)
+            .map_err(|e| e.into_resource_error())?;
+        if let Some(m) = &self.context {
+            schema.validate_context(
+                &Context::Value(m.clone()),
+                &self.action,
+                Extensions::all_available(),
+            )?;
         }
+        Ok(())
     }
 
     /// Check consistency between a [`PartialRequest`] and a [`Request`]
@@ -345,6 +340,7 @@ mod invalid_requests {
         entity A enum ["foo"];
         entity B;
         entity C;
+        external action ext;
         action a appliesTo {
           principal: A,
           resource: B,
@@ -393,6 +389,24 @@ mod invalid_requests {
                 r#"request's action `Action::"c"` is not declared in the schema"#,
             )
             .exactly_one_underline(r#"Action::"c""#)
+            .build(),
+        );
+    }
+
+    /// An external action yields no request environment, so no partial
+    /// request is valid for it either.
+    #[test]
+    fn external_action() {
+        expect_validation_err(
+            "A",
+            r#"Action::"ext""#,
+            "B",
+            None,
+            &ExpectedErrorMessageBuilder::error(
+                r#"request's action `Action::"ext"` is declared `external` in the schema"#,
+            )
+            .help("an `external` action does not declare what it applies to, so no request can be valid for it")
+            .exactly_one_underline(r#"Action::"ext""#)
             .build(),
         );
     }

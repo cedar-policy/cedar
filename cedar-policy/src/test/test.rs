@@ -5992,6 +5992,54 @@ mod invalid_action_application_tests {
     }
 }
 
+/// Tests involving external declarations (RFC 116)
+mod external_declarations {
+    use crate::{PolicyId, PolicySet, ValidationMode, Validator};
+    use std::str::FromStr;
+
+    use super::Schema;
+
+    /// Policy validation refuses a schema that still declares some names
+    /// `external`, once per policy.
+    #[test]
+    fn incomplete_schema_is_refused_per_policy() {
+        let policies = PolicySet::from_str(
+            r#"
+            permit(principal, action == Action::"audit", resource);
+            permit(principal, action, resource);
+            "#,
+        )
+        .unwrap();
+        let schema = Schema::from_str(
+            r#"
+            external entity User;
+            external action audit;
+            entity Document { owner: User };
+            action view appliesTo { principal: [Document], resource: [Document] };
+            "#,
+        )
+        .unwrap();
+
+        let result = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        assert!(!result.validation_passed());
+        let errs: Vec<_> = result.validation_errors().collect();
+        assert_eq!(errs.len(), 2);
+        for policy_id in ["policy0", "policy1"] {
+            assert!(
+                errs.iter().any(|e| {
+                    e.policy_id() == &PolicyId::new(policy_id)
+                        && matches!(e, crate::ValidationError::IncompleteSchema(_))
+                }),
+                "expected an `IncompleteSchema` error for `{policy_id}`, but saw {errs:?}"
+            );
+        }
+        assert_eq!(
+            errs[0].to_string(),
+            "for policy `policy0`, schema is incomplete: `User` and `Action::\"audit\"` are declared `external` but not defined"
+        );
+    }
+}
+
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;
@@ -7914,7 +7962,7 @@ mod context_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"action `Action::"foo"` does not exist in the supplied schema"#,
+                r#"action `Action::"foo"` is not defined in the supplied schema"#,
             )
             .build(),
         );

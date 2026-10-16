@@ -56,6 +56,8 @@ pub fn validate_wasm(call: Ts<ValidationCall>) -> Result<Ts<ValidationAnswer>, J
 ///
 /// This is the basic validator interface, using [`ValidationCall`] and
 /// [`ValidationAnswer`] types
+///
+/// Reports error when the schema contains `external` entity types or actions.
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {
@@ -637,6 +639,30 @@ mod test {
         assert_validate_json_str_is_failure(
             text,
             "expected a static policy set represented by a string, JSON array, or JSON object (with no duplicate keys) at line 8 column 13",
+        );
+    }
+
+    /// An incomplete schema (RFC 116) is reported per policy, so each error
+    /// carries a `policyId`.
+    #[test]
+    fn test_validate_fails_on_incomplete_schema() {
+        let json = json!({
+            "schema": "external entity User; entity Document { owner: User }; action view appliesTo { principal: [Document], resource: [Document] };",
+            "policies": {
+                "staticPolicies": {
+                    "policy0": "permit(principal, action, resource);"
+                }
+            }
+        });
+        let errs = assert_validates_with_errors(json);
+        assert_length_matches(&errs, 1);
+        assert_eq!(errs[0].policy_id, PolicyId::new("policy0"));
+        assert_error_matches(
+            &errs[0].error,
+            "for policy `policy0`, schema is incomplete: `User` is declared `external` but not defined",
+            Some(
+                "policy validation needs a definition for every name, so it cannot run until every `external` declaration has one",
+            ),
         );
     }
 

@@ -94,12 +94,13 @@ impl RootAccessTrie {
                                 schema,
                             )?,
                             EntityRoot::Var(Var::Context) => {
-                                let ty = &schema
+                                // An external action is treated as a missing action.
+                                let ty = schema
                                     .get_action_id(&request_type.action.clone())
+                                    .and_then(|action| action.context())
                                     .ok_or_else(|| MismatchedMissingEntityError {
                                         entity: request_type.action.clone(),
-                                    })?
-                                    .context;
+                                    })?;
                                 slice.to_typed(request_type, ty, schema)?
                             }
                         },

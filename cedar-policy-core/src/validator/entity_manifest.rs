@@ -41,7 +41,7 @@ use crate::validator::entity_manifest::analysis::{
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
-    ValidationMode, ValidatorSchema,
+    IncompleteSchemaError, ValidationMode, ValidatorSchema,
 };
 use crate::validator::{ValidationResult, Validator};
 
@@ -207,6 +207,9 @@ pub enum EntityManifestError {
     /// Unsupported feature
     #[error(transparent)]
     UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
+    /// The schema still declares some names `external` (RFC 116)
+    #[error(transparent)]
+    IncompleteSchema(#[from] IncompleteSchemaError),
 }
 
 /// Error when entity manifest analysis cannot handle a Cedar feature
@@ -266,6 +269,9 @@ pub enum EntityManifestFromJsonError {
     /// A mismatched entity manifest error
     #[error(transparent)]
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
+    /// The schema still declares some names `external` (RFC 116)
+    #[error(transparent)]
+    IncompleteSchema(#[from] IncompleteSchemaError),
 }
 
 impl EntityManifest {
@@ -281,6 +287,7 @@ impl EntityManifest {
         json: &str,
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
+        schema.check_complete()?;
         match serde_json::from_str::<EntityManifest>(json) {
             Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
@@ -293,6 +300,7 @@ impl EntityManifest {
         value: serde_json::Value,
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
+        schema.check_complete()?;
         match serde_json::from_value::<EntityManifest>(value) {
             Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
@@ -447,6 +455,9 @@ pub fn compute_entity_manifest(
     validator: &Validator,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
+    // Not left to the validation below: this must not depend on how policy
+    // validation reports an incomplete schema, or on there being a policy.
+    validator.schema().check_complete()?;
     // first, run strict validation to ensure there are no errors
     let validation_res = validator.validate(policies, ValidationMode::Strict);
     if !validation_res.validation_passed() {
@@ -739,6 +750,38 @@ resource: [Document]
         )
         .unwrap()
         .0
+    }
+
+    /// Neither way of producing a manifest accepts a schema that still declares
+    /// some names `external` (RFC 116). `compute_entity_manifest` refuses with
+    /// no policies at all, so it does not rest on policy validation's verdict.
+    #[test]
+    fn incomplete_schema_rejected() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+external entity User;
+entity Document = { owner: User };
+action Read appliesTo {
+  principal: [Document],
+  resource: [Document]
+};
+    ",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        cool_asserts::assert_matches!(
+            compute_entity_manifest(&Validator::new(schema.clone()), &PolicySet::new()),
+            Err(EntityManifestError::IncompleteSchema(_))
+        );
+        cool_asserts::assert_matches!(
+            EntityManifest::from_json_str(r#"{ "perAction": [] }"#, &schema),
+            Err(EntityManifestFromJsonError::IncompleteSchema(_))
+        );
+        cool_asserts::assert_matches!(
+            EntityManifest::from_json_value(serde_json::json!({ "perAction": [] }), &schema),
+            Err(EntityManifestFromJsonError::IncompleteSchema(_))
+        );
     }
 
     #[test]

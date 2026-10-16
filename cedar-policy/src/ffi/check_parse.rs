@@ -212,6 +212,8 @@ pub fn check_parse_entities_wasm(
 }
 
 /// Check whether a set of entities successfully parses.
+///
+/// External entity types are rejected and treated as undeclared entity types.
 pub fn check_parse_entities(call: EntitiesParsingCall) -> CheckParseAnswer {
     let schema = match call.schema.map(|s| s.parse().map(|res| res.0)).transpose() {
         Ok(schema) => schema,

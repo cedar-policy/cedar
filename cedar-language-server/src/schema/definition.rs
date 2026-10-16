@@ -136,7 +136,12 @@ impl FindDefinition for ValidatorActionId {
                 let loc = vet.loc.as_ref()?;
                 Some(loc.to_range())
             })
-            .or_else(|| self.context_type().find_definition(cx))
+            // An action declared `external` (RFC 116) has no context type, so
+            // there is no context definition to jump to.
+            .or_else(|| {
+                self.context_type()
+                    .and_then(|context| context.find_definition(cx))
+            })
             .or_else(|| {
                 cx.schema
                     .action_groups()

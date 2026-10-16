@@ -332,6 +332,7 @@ pub fn entity_decl(
         attributes: attrs.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         tags: None,
         enum_choices: vec![],
+        external: false,
     }
 }
 
@@ -348,6 +349,7 @@ pub fn entity_decl_full(
         attributes: attrs.into_iter().map(|(k, v)| (k.to_string(), v)).collect(),
         tags,
         enum_choices: vec![],
+        external: false,
     }
 }
 
@@ -386,5 +388,6 @@ pub fn action_decl(
             .into_iter()
             .map(|(k, v)| (k.to_string(), v))
             .collect(),
+        external: false,
     }
 }

@@ -229,6 +229,49 @@ async fn tests_for_well_typed() {
     test_succeeds_on_well_typed(&policy_b, &envs, &mut compiler, true).await;
 }
 
+/// Every symcc entry point that takes a schema refuses one that still declares
+/// some names `external` (RFC 116). None of these needs a solver.
+#[test]
+#[expect(
+    deprecated,
+    reason = "`WellTypedPolicy` is one of the gated entry points"
+)]
+fn incomplete_schema() {
+    use cedar_policy_symcc::{err::Error, CompiledPolicy, CompiledSchema};
+
+    let schema = Schema::from_str(
+        r#"
+        external entity Ext;
+        entity a;
+        action action appliesTo {
+            principal: a,
+            resource: a,
+        };
+    "#,
+    )
+    .unwrap();
+    let policy = Policy::from_str("permit(principal, action, resource);").unwrap();
+    // Request environments for the defined action are still known.
+    let env = schema.request_envs().next().unwrap();
+
+    assert_matches!(
+        WellTypedPolicy::from_policy(&policy, &env, &schema).err(),
+        Some(Error::IncompleteSchema(_))
+    );
+    assert_matches!(
+        SymEnv::new(&schema, &env).err(),
+        Some(Error::IncompleteSchema(_))
+    );
+    assert_matches!(
+        CompiledSchema::new(&schema).err(),
+        Some(Error::IncompleteSchema(_))
+    );
+    assert_matches!(
+        CompiledPolicy::compile(&policy, &env, &schema).err(),
+        Some(Error::IncompleteSchema(_))
+    );
+}
+
 #[test]
 #[expect(deprecated, reason = "specifically testing deprecated functionality")]
 fn undeclared_entity_type() {
