@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Fixed
+
+- Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
+  once in one batch.
 
 ## [4.14.0] - 2026-10-17
 

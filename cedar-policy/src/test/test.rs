@@ -9563,6 +9563,58 @@ mod test_entities_api {
         assert_eq!(entities.len(), 2);
         assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
     }
+
+    #[test]
+    fn upsert_batch_repeated_entity_updates_authorization() {
+        use std::str::FromStr;
+
+        use crate::{Authorizer, Context, Decision, PolicySet, Request};
+
+        fn uid(s: &str) -> EntityUid {
+            EntityUid::from_str(s).unwrap()
+        }
+        fn entity(id: &str, parents: &[&str]) -> Entity {
+            Entity::new_no_attrs(uid(id), parents.iter().map(|p| uid(p)).collect())
+        }
+
+        // A -> T; T -> O (not stored) and G1; G1 -> G2.
+        let entities = Entities::from_entities(
+            [
+                entity(r#"User::"a""#, &[r#"Team::"t""#]),
+                entity(r#"Team::"t""#, &[r#"Org::"o""#, r#"Group::"g1""#]),
+                entity(r#"Group::"g1""#, &[r#"Group::"g2""#]),
+            ],
+            None,
+        )
+        .unwrap()
+        // One batch defines Org::"o" twice, the last version wins, relation between G1 and G2
+        // removed.
+        .upsert_entities(
+            [
+                entity(r#"Org::"o""#, &[r#"Group::"g1""#]),
+                entity(r#"Org::"o""#, &[]),
+                entity(r#"Group::"g1""#, &[]),
+            ],
+            None,
+        )
+        .unwrap();
+
+        // No relation between a and g2, so a policy scoped to g2 does not match.
+        let policies =
+            PolicySet::from_str(r#"permit(principal in Group::"g2", action, resource);"#).unwrap();
+        let request = Request::new(
+            uid(r#"User::"a""#),
+            uid(r#"Action::"view""#),
+            uid(r#"Doc::"d""#),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+        let decision = Authorizer::new()
+            .is_authorized(&request, &policies, &entities)
+            .decision();
+        assert_eq!(decision, Decision::Deny);
+    }
 }
 
 mod deep_eq {
