@@ -29,6 +29,8 @@ Cedar Language Version: TBD
 - External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
   An external declaration still cannot be resolved by linking it to an enum definition.
 - Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+- `Debug` for `PolicySet` now prints each policy and template as Cedar text keyed by id, and the template of each
+  template-linked policy, instead of the internal representation with its source locations (#1254).
 
 ### Fixed
 
