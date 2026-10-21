@@ -29,6 +29,7 @@ Cedar Language Version: TBD
 - External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
   An external declaration still cannot be resolved by linking it to an enum definition.
 - Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+- Validating `action in [...]` is faster for schemas with large action groups (#2586).
 
 ### Fixed
 
