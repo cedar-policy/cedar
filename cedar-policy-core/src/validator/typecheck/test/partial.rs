@@ -551,6 +551,7 @@ pub(crate) fn assert_typecheck_fails_partial_schema(
 
 mod passes_partial_schema {
     use super::*;
+    use crate::validator::typecheck::test::test_utils::assert_typechecks_for_mode;
 
     #[test]
     fn unknown_attr_on_declared_entity_type() {
@@ -636,6 +637,34 @@ mod passes_partial_schema {
         )
         .expect("Policy should parse.");
         assert_typechecks_partial_schema(p);
+    }
+
+    #[test]
+    fn action_in_set_with_undeclared_action() {
+        let schema: ValidatorSchema = r#"
+            entity a;
+            action "action" in ["parent"] appliesTo {
+                principal: a,
+                resource: a,
+            };
+            action "parent";
+        "#
+        .parse()
+        .expect("Expected that schema would parse");
+
+        // The result is unknown when any action on the right is not declared,
+        // even if another one is an ancestor of the action on the left.
+        for src in [
+            r#"Action::"action" in [Action::"parent", Action::"undeclared"]"#,
+            r#"Action::"action" in [Action::"undeclared", Action::"parent"]"#,
+        ] {
+            assert_typechecks_for_mode(
+                schema.clone(),
+                &src.parse().unwrap(),
+                &Type::primitive_boolean(),
+                ValidationMode::Partial,
+            );
+        }
     }
 }
 

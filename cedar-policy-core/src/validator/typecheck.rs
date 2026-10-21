@@ -2135,11 +2135,20 @@ impl<'a> SingleEnvTypechecker<'a> {
         lhs_expr: Expr<Option<Type>>,
         rhs_expr: Expr<Option<Type>>,
     ) -> TypecheckAnswer<'static> {
-        if let Some(rhs_descendants) = self.schema.get_actions_in_set(rhs) {
-            // We have literal actions on the LHS and RHS of the `in` so we can
-            // precisely evaluate the expression by checking if the LHS action
-            // is a decedent of anything on the RHS.
-            let is_action_in_descendants = rhs_descendants.into_iter().any(|e| e == lhs);
+        // We have literal actions on the LHS and RHS of the `in` so we can
+        // precisely evaluate the expression by checking if the LHS action is
+        // a descendant of (or equal to) anything on the RHS. This is unknown if
+        // any RHS action is not in the schema, so look at every element rather
+        // than stopping at the first match.
+        let is_action_in_descendants = rhs
+            .into_iter()
+            .map(|e| {
+                self.schema
+                    .get_action_id(e)
+                    .map(|action| action.name == *lhs || action.descendants.contains(lhs))
+            })
+            .try_fold(false, |found, is_in| is_in.map(|is_in| found || is_in));
+        if let Some(is_action_in_descendants) = is_action_in_descendants {
             TypecheckAnswer::success(
                 ExprBuilder::with_data(Some(Type::singleton_boolean(is_action_in_descendants)))
                     .with_same_source_loc(in_expr)
