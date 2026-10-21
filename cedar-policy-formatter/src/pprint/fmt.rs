@@ -243,6 +243,32 @@ mod tests {
     }
 
     #[test]
+    fn test_method_call_not_split() {
+        // A method name must stay on the same line as its argument list, and
+        // formatting must be idempotent (#2119).
+        let config = Config {
+            line_width: 80,
+            indent_width: 2,
+        };
+        let cedar_source = fs::read_to_string("tests/method_call_line_break.cedar").unwrap();
+        let formatted = policies_str_to_pretty(&cedar_source, &config).unwrap();
+        for method in [".toTime()", ".contains(", ".isInRange(", ".isLoopback()"] {
+            assert!(
+                formatted.contains(method),
+                "`{method}` was split:\n{formatted}"
+            );
+        }
+        assert!(
+            formatted.contains(".lessThan // c1\n"),
+            "comment was lost:\n{formatted}"
+        );
+        assert_eq!(
+            policies_str_to_pretty(&formatted, &config).unwrap(),
+            formatted
+        );
+    }
+
+    #[test]
     fn test_format_files() {
         let config = Config {
             line_width: 80,

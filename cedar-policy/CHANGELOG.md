@@ -18,6 +18,8 @@ Cedar Language Version: TBD
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
   once in one batch.
+- The policy formatter no longer puts a line break between a method name and its argument list when it splits
+  a long attribute access chain (#2119).
 
 ## [4.14.0] - 2026-10-17
 
