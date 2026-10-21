@@ -1226,6 +1226,153 @@ mod tests {
     }
 
     #[test]
+    fn scope_variable_error_recovery() {
+        // An error right after a scope variable's name recovers at the next
+        // `,` or `)`, so errors in the following scope variables are reported
+        // too (#1293). It used to skip to the next `;` and report only one.
+        let src = r#"
+            permit(
+              prin cipal == U ser::"alice",
+              action    == Act ion::"view",
+              resource  == Pho to::"VacationPhoto94.jpg"
+            );
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `cipal`")
+                .exactly_one_underline_with_label(
+                    "cipal",
+                    "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `ion`")
+                .exactly_one_underline_with_label("ion", "expected `!=`, `&&`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, or `like`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `to`")
+                .exactly_one_underline_with_label("to", "expected `!=`, `&&`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, or `like`")
+                .build(),
+        );
+        expect_n_errors(src, &errs, 3);
+
+        // The first example from the issue, with the errors in the
+        // expressions, was already reported in full.
+        let src = r#"
+            permit(
+              principal == U ser::"alice",
+              action    == Act ion::"view",
+              reso urce  == Photo::"VacationPhoto94.jpg"
+            );
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `ser`")
+                .exactly_one_underline_with_label("ser", "expected `!=`, `&&`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, or `like`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `ion`")
+                .exactly_one_underline_with_label("ion", "expected `!=`, `&&`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, or `like`")
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `urce`")
+                .exactly_one_underline_with_label(
+                    "urce",
+                    "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
+        );
+        expect_n_errors(src, &errs, 3);
+
+        // An error in the last scope variable recovers at `)`, so errors in the
+        // conditions are reported too.
+        let src = r#"
+            permit(principal, action, reso urce) when { 1 2 };
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 2);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `urce`")
+                .exactly_one_underline_with_label(
+                    "urce",
+                    "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
+        );
+
+        // A missing `,` after a complete scope constraint is one error.
+        let src = r#"
+            permit(principal == User::"a" action, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_exactly_one_error(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `action`")
+                .exactly_one_underline_with_label("action", "expected `!=`, `&&`, `(`, `)`, `*`, `+`, `,`, `-`, `.`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `has`, `in`, `is`, or `like`")
+                .build(),
+        );
+
+        // Recovery does not run past the end of the policy: the missing `)` is
+        // reported, and the following policies still parse.
+        let src = r#"
+            permit(prin cipal, action, resource;
+            permit(principal, action, resource);
+            permit(principal, act ion, resource);
+        "#;
+        let errs = assert_parse_fails(parse_policies, src);
+        expect_n_errors(src, &errs, 3);
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `;`")
+                .exactly_one_underline_with_label(
+                    ";",
+                    "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `cipal`")
+                .exactly_one_underline_with_label(
+                    "cipal",
+                    "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
+        );
+        expect_some_error_matches(
+            src,
+            &errs,
+            &ExpectedErrorMessageBuilder::error("unexpected token `ion`")
+                .exactly_one_underline_with_label(
+                    "ion",
+                    "expected `!=`, `)`, `,`, `:`, `<`, `<=`, `==`, `>`, `>=`, `in`, or `is`",
+                )
+                .build(),
+        );
+    }
+
+    #[test]
     fn error_recovery() {
         // After hitting an unexpected `!`, the parser skips ahead until it
         // finds a `;`, skipping over the body of the policy where it used to
@@ -1549,6 +1696,22 @@ mod tests {
         let (policy1, _) = policies.0[1].clone().into_inner();
         assert_matches!(policy1.unwrap(), Policy::PolicyError);
         let (policy2, _) = policies.0[0].clone().into_inner();
+        assert_matches!(policy2.unwrap(), Policy::Policy(_));
+    }
+
+    #[test]
+    #[cfg(feature = "tolerant-ast")]
+    fn policies_tolerant_scope_variable_error() {
+        // A policy whose scope recovered from an error is still an error node.
+        let src = r#"
+            permit(prin cipal, action, resource);
+            permit(principal, action, resource);
+        "#;
+        let policies = assert_parse_succeeds(parse_policies_tolerant, src);
+        assert_eq!(policies.0.len(), 2);
+        let (policy1, _) = policies.0[0].clone().into_inner();
+        assert_matches!(policy1.unwrap(), Policy::PolicyError);
+        let (policy2, _) = policies.0[1].clone().into_inner();
         assert_matches!(policy2.unwrap(), Policy::Policy(_));
     }
 

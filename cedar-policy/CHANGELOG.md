@@ -20,6 +20,9 @@ Cedar Language Version: TBD
   once in one batch.
 - The policy formatter no longer puts a line break between a method name and its argument list when it splits
   a long attribute access chain (#2119).
+- The policy parser now recovers from a syntax error right after a scope variable's name (e.g., `prin cipal ==
+  User::"alice"`) at the next `,` or `)`, so errors later in the policy are also reported, instead of only the
+  first one (#1293).
 
 ## [4.14.0] - 2026-10-17
 
