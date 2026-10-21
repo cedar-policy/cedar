@@ -2629,7 +2629,7 @@ pub(crate) struct StringifiedPolicySet {
 }
 
 /// Represents a set of `Policy`s
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct PolicySet {
     /// AST representation. Technically partially redundant with the other fields.
     /// Internally, we ensure that the duplicated information remains consistent.
@@ -3415,6 +3415,34 @@ impl std::fmt::Display for PolicySet {
             }
         }
         Ok(())
+    }
+}
+
+/// Lists the ids of the policies (static and template-linked) and of the
+/// templates, sorted. Policy contents are left out, as they may be sensitive
+/// and are available through `Display`.
+impl std::fmt::Debug for PolicySet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PolicySet")
+            .field(
+                "policies",
+                &self
+                    .policies
+                    .keys()
+                    .map(AsRef::<str>::as_ref)
+                    .sorted()
+                    .collect_vec(),
+            )
+            .field(
+                "templates",
+                &self
+                    .templates
+                    .keys()
+                    .map(AsRef::<str>::as_ref)
+                    .sorted()
+                    .collect_vec(),
+            )
+            .finish_non_exhaustive()
     }
 }
 
