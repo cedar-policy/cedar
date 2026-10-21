@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- `Debug` for `PolicySet` now prints each policy and template as Cedar text keyed by id, and the template of each
+  template-linked policy, instead of the internal representation with its source locations (#1254).
+
 ## [4.15.0] - 2026-11-16
 
 Cedar Language Version: 4.7

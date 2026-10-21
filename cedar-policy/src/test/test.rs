@@ -12987,3 +12987,69 @@ mod test_depth_limit {
         assert_matches!(Policy::from_json_with_depth_limit(None, policy, 1000), Err(e) => assert_too_deep(&e, 100_002, 1000));
     }
 }
+
+/// `Debug` for the public `PolicySet` shows ids and contents without the internal
+/// representation (#1254).
+mod policy_set_debug_tests {
+    use crate::{EntityUid, Policy, PolicyId, PolicySet, SlotId, Template};
+    use std::collections::HashMap;
+
+    #[test]
+    fn empty() {
+        assert_eq!(
+            format!("{:?}", PolicySet::new()),
+            "PolicySet { policies: {}, templates: {}, links: {} }"
+        );
+    }
+
+    #[test]
+    fn ids_contents_and_links_sorted_by_id() {
+        let mut pset = PolicySet::new();
+        pset.add(
+            Policy::parse(
+                Some(PolicyId::new("b")),
+                r#"permit(principal == User::"bob", action, resource);"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        pset.add_template(
+            Template::parse(
+                Some(PolicyId::new("t")),
+                "permit(principal == ?principal, action, resource);",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        pset.link(
+            PolicyId::new("t"),
+            PolicyId::new("a"),
+            HashMap::from([(
+                SlotId::principal(),
+                r#"User::"alice""#.parse::<EntityUid>().unwrap(),
+            )]),
+        )
+        .unwrap();
+
+        let debug = format!("{pset:#?}");
+        assert_eq!(
+            debug,
+            r#"PolicySet {
+    policies: {
+        "a": permit(principal == User::"alice", action, resource);,
+        "b": permit(principal == User::"bob", action, resource);,
+    },
+    templates: {
+        "t": permit(principal == ?principal, action, resource);,
+    },
+    links: {
+        "a": "t",
+    },
+}"#
+        );
+        // None of the internal representation, which the derived `Debug` printed
+        for internal in ["ast", "Loc", "SourceSpan"] {
+            assert!(!debug.contains(internal), "{internal} in {debug}");
+        }
+    }
+}
