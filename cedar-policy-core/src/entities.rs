@@ -27,6 +27,9 @@ pub mod conformance;
 /// Module for error types
 pub mod err;
 pub mod json;
+/// Module for parsing entity data in the Cedar syntax
+#[cfg(feature = "cedar-entity-syntax")]
+pub mod syntax;
 use json::err::JsonSerializationError;
 
 pub use json::{
