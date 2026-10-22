@@ -76,8 +76,7 @@ permit (principal, action, resource)
 when
 {
   resource.configs
-    .containsAny
-    (
+    .containsAny(
       [{},
        { foo: "bar" },
        {
