@@ -113,7 +113,15 @@ pub Policy: Node<Option<cst::Policy>> = {
     <conds:Cond*>
     ";"
     <r:@R>
-    => Node::with_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src))),
+    => {
+        // Tolerant AST treats a policy with an unparsable scope variable like
+        // any other unparsable policy
+        #[cfg(feature = "tolerant-ast")]
+        if variables.iter().any(|v| v.node.is_none()) {
+            return Node::with_source_loc(Some(cst::Policy::PolicyError), Loc::new(l..r, Arc::clone(src)));
+        }
+        Node::with_source_loc(Some(cst::Policy::Policy(cst::PolicyImpl{ annotations,effect,variables,conds })), Loc::new(l..r, Arc::clone(src)))
+    },
     <l:@L> <err:!> ";" <r:@R> => {
         // Tolerant AST creates a valid CST node representing the unparsable policy
         #[cfg(feature = "tolerant-ast")]
@@ -135,6 +143,13 @@ VariableDef: Node<Option<cst::VariableDef>> = {
     <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
         => Node::with_source_loc(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }), Loc::new(l..r, Arc::clone(src))),
+    // After the variable name, recover at the next `,` or `)` so that errors
+    // in later scope variables are reported too, rather than skipping to the
+    // end of the policy.
+    <l:@L> AnyIdent <err:!> <r:@R> => {
+        errors.push(err);
+        Node::with_source_loc(None, Loc::new(l..r, Arc::clone(src)))
+    },
 }
 
 // Identifier, but not the special ones
