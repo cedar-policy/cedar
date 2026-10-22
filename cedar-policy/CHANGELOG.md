@@ -62,6 +62,8 @@ Cedar Language Version: 4.6
 - `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
   parses the string and renders the result back out to check that the input was normalized. The same
   optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+- `Authorizer::is_authorized()` is faster (~1.8x on the `is_authorized` benchmark, ~3x on a
+  1,000-policy set), as each policy's condition is now built once instead of on every evaluation.
 - Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
   were previously accepted, but slots were not included in the manifest.
 
