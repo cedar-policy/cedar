@@ -269,6 +269,43 @@ mod tests {
     }
 
     #[test]
+    fn test_function_call_not_split() {
+        // A call can also be the first access of a member, as in a function
+        // call. There is no line break before the first access, so a function
+        // name also stays on the same line as its argument list (#2119).
+        let config = Config {
+            line_width: 40,
+            indent_width: 2,
+        };
+        let cedar_source = r#"permit(principal, action, resource) when {
+            decimal("1.000000000000000000000000000000000000000000") &&
+            ip("192.168.0.1").isInRange(ip("192.168.0.0/24"))
+        };"#;
+        let formatted = policies_str_to_pretty(cedar_source, &config).unwrap();
+        assert_eq!(
+            formatted,
+            r#"permit (principal, action, resource)
+when
+{
+  decimal(
+      "1.000000000000000000000000000000000000000000"
+    ) &&
+  ip(
+      "192.168.0.1"
+    )
+    .isInRange(
+      ip("192.168.0.0/24")
+    )
+};
+"#
+        );
+        assert_eq!(
+            policies_str_to_pretty(&formatted, &config).unwrap(),
+            formatted
+        );
+    }
+
+    #[test]
     fn test_format_files() {
         let config = Config {
             line_width: 80,
