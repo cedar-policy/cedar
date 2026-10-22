@@ -18,6 +18,10 @@ Cedar Language Version: TBD
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
   once in one batch.
+- `Policy::to_cedar()` and `PolicySet::to_cedar()` now return `None` for policies and templates (e.g., from
+  JSON) that cannot be represented in Cedar syntax, such as a method-style extension function call with no
+  receiver (`{"offset": []}`) or an extended `has` with a non-identifier attribute. Previously they returned
+  Cedar text that failed to parse (#2116).
 
 ## [4.14.0] - 2026-10-17
 

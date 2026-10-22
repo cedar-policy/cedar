@@ -1288,6 +1288,35 @@ fn test_translate_policy() {
 }
 
 #[test]
+fn test_translate_policy_without_cedar_syntax() {
+    // `offset` is a method, and a method call needs a receiver, so this JSON
+    // policy has no Cedar representation (#2116). Translation must fail rather
+    // than print `offset()`, which does not parse.
+    let json = r#"{
+        "effect": "permit",
+        "principal": { "op": "All" },
+        "action": { "op": "All" },
+        "resource": { "op": "All" },
+        "conditions": [{ "kind": "when", "body": { "offset": [] } }]
+    }"#;
+    let output = cargo::cargo_bin_cmd!("cedar")
+        .arg("translate-policy")
+        .arg("--direction")
+        .arg("json-to-cedar")
+        .write_stdin(json)
+        .assert()
+        .code(1);
+
+    let stdout = std::str::from_utf8(&output.get_output().stdout).unwrap();
+    let stderr = std::str::from_utf8(&output.get_output().stderr).unwrap();
+    assert_eq!(stdout, "");
+    assert!(
+        stderr.contains("cannot be represented in Cedar syntax"),
+        "unexpected error: {stderr}"
+    );
+}
+
+#[test]
 fn test_translate_schema() {
     let cedar_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema";
     let json_filename = "sample-data/tiny_sandboxes/translate-schema/tinytodo.cedarschema.json";
