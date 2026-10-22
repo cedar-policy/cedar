@@ -191,9 +191,8 @@ impl Diagnostic for PartialRequestError {}
 #[derive(Debug, Error)]
 pub enum EntityManifestError {
     /// A validation error was encountered
-    // TODO (#1158) impl Error for ValidationResult (it already is implemented for api::ValidationResult)
     #[error("a validation error occurred")]
-    Validation(ValidationResult),
+    Validation(#[source] ValidationResult),
     /// A entities error was encountered
     #[error(transparent)]
     Entities(#[from] EntitiesError),
@@ -781,6 +780,28 @@ action Read appliesTo {
         cool_asserts::assert_matches!(
             EntityManifest::from_json_value(serde_json::json!({ "perAction": [] }), &schema),
             Err(EntityManifestFromJsonError::IncompleteSchema(_))
+        );
+    }
+
+    /// A policy that fails strict validation is reported with the validation
+    /// result chained as the error source (#1158).
+    #[test]
+    fn validation_error_is_source() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { principal.nope == "x" };"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let err = compute_entity_manifest(&Validator::new(schema()), &pset).unwrap_err();
+        cool_asserts::assert_matches!(&err, EntityManifestError::Validation(_));
+        assert_eq!(err.to_string(), "a validation error occurred");
+        let source = std::error::Error::source(&err).expect("validation result is the source");
+        assert_eq!(
+            source.to_string(),
+            "for policy `policy0`, attribute `nope` on entity type `User` not found"
         );
     }
 
