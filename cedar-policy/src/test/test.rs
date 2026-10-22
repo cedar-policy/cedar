@@ -12606,3 +12606,164 @@ mod tolerant_ast_tests {
         let _ = policy.action_constraint();
     }
 }
+
+/// The `ValidationResult` wrapper must render exactly like the core
+/// `ValidationResult` it wraps (#1158).
+mod validation_result_display_tests {
+    use crate::{PolicySet, Schema, ValidationMode, ValidationResult, Validator};
+    use miette::Diagnostic;
+
+    fn schema() -> Schema {
+        r"
+        entity User;
+        entity Photo { owner: User };
+        action view appliesTo { principal: User, resource: Photo };
+        "
+        .parse()
+        .unwrap()
+    }
+
+    fn results(
+        src: &str,
+    ) -> (
+        cedar_policy_core::validator::ValidationResult,
+        ValidationResult,
+    ) {
+        let schema = schema();
+        let pset: PolicySet = src.parse().unwrap();
+        let core = cedar_policy_core::validator::Validator::new(schema.0.clone())
+            .validate(&pset.ast, ValidationMode::default().into());
+        let wrapper = Validator::new(schema).validate(&pset, ValidationMode::default());
+        (core, wrapper)
+    }
+
+    const SINGLE_ERROR: &str = "permit(principal, action, resource) when { resource.nope };";
+    const MULTIPLE: &str = concat!(
+        "permit(principal, action, resource) when { resource.nope };\n",
+        "permit(principal, action, resource) when { principal.missing };\n",
+        "permit(principal, action, resource) when { false };",
+    );
+
+    /// Checks the public `ValidationResult` against output pinned from `main`
+    /// (before #1158), including `Debug`, which the wrapper forwards by hand.
+    fn assert_pinned(src: &str, display: &str, debug: &str, report: &str) {
+        let (_, wrapper) = results(src);
+        assert_eq!(wrapper.to_string(), display);
+        assert_eq!(format!("{wrapper:?}"), debug);
+        assert_eq!(render(&wrapper), report);
+    }
+
+    fn render(d: &dyn Diagnostic) -> String {
+        let mut out = String::new();
+        miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor())
+            .render_report(&mut out, d)
+            .unwrap();
+        out
+    }
+
+    fn assert_same(src: &str) {
+        let (core, wrapper) = results(src);
+        assert_eq!(core.to_string(), wrapper.to_string());
+        assert_eq!(core.severity(), wrapper.severity());
+        assert_eq!(
+            core.code().map(|c| c.to_string()),
+            wrapper.code().map(|c| c.to_string())
+        );
+        assert_eq!(
+            core.help().map(|h| h.to_string()),
+            wrapper.help().map(|h| h.to_string())
+        );
+        assert_eq!(
+            core.labels().map(Iterator::collect::<Vec<_>>),
+            wrapper.labels().map(Iterator::collect::<Vec<_>>)
+        );
+        assert_eq!(
+            core.related()
+                .map(|r| r.map(|d| d.to_string()).collect::<Vec<_>>()),
+            wrapper
+                .related()
+                .map(|r| r.map(|d| d.to_string()).collect::<Vec<_>>())
+        );
+        assert_eq!(render(&core), render(&wrapper));
+        assert_eq!(
+            format!("{:?}", miette::Report::new(core)),
+            format!("{:?}", miette::Report::new(wrapper))
+        );
+    }
+
+    #[test]
+    fn no_errors_or_warnings() {
+        let (core, _) = results(r"permit(principal, action, resource);");
+        assert_eq!(core.to_string(), "no errors or warnings");
+        assert_eq!(core.severity(), Some(miette::Severity::Advice));
+        assert_same(r"permit(principal, action, resource);");
+    }
+
+    #[test]
+    fn single_error() {
+        let (core, wrapper) = results(SINGLE_ERROR);
+        assert!(!core.validation_passed());
+        assert!(!wrapper.validation_passed());
+        assert_same(SINGLE_ERROR);
+        assert_pinned(
+            SINGLE_ERROR,
+            "for policy `policy0`, attribute `nope` on entity type `Photo` not found",
+            "ValidationResult { validation_errors: [UnsafeAttributeAccess(UnsafeAttributeAccess(UnsafeAttributeAccess { source_loc: Some(Loc(`resource.nope`)), policy_id: PolicyID(\"policy0\"), attribute_access: EntityLUB(EntityLUB { lub_elements: NonEmpty { head: EntityType(Name(InternalName { id: Id(\"Photo\"), path: [] })), tail: [] } }, [\"nope\"]), suggestion: Some(\"owner\"), may_exist: false }))], validation_warnings: [] }",
+            concat!(
+            "  × for policy `policy0`, attribute `nope` on entity type `Photo` not found\n",
+            "   ╭────\n",
+            " 1 │ permit(principal, action, resource) when { resource.nope };\n",
+            "   ·                                            ─────────────\n",
+            "   ╰────\n",
+            "  help: did you mean `owner`?\n",
+        ),
+        );
+    }
+
+    #[test]
+    fn multiple_errors_and_warnings() {
+        assert_same(MULTIPLE);
+        assert_pinned(
+            MULTIPLE,
+            "for policy `policy0`, attribute `nope` on entity type `Photo` not found",
+            "ValidationResult { validation_errors: [UnsafeAttributeAccess(UnsafeAttributeAccess(UnsafeAttributeAccess { source_loc: Some(Loc(`resource.nope`)), policy_id: PolicyID(\"policy0\"), attribute_access: EntityLUB(EntityLUB { lub_elements: NonEmpty { head: EntityType(Name(InternalName { id: Id(\"Photo\"), path: [] })), tail: [] } }, [\"nope\"]), suggestion: Some(\"owner\"), may_exist: false })), UnsafeAttributeAccess(UnsafeAttributeAccess(UnsafeAttributeAccess { source_loc: Some(Loc(`principal.missing`)), policy_id: PolicyID(\"policy1\"), attribute_access: EntityLUB(EntityLUB { lub_elements: NonEmpty { head: EntityType(Name(InternalName { id: Id(\"User\"), path: [] })), tail: [] } }, [\"missing\"]), suggestion: None, may_exist: false }))], validation_warnings: [ImpossiblePolicy(ImpossiblePolicy(ImpossiblePolicy { source_loc: Some(Loc(`permit(principal, action, resource) when { false };`)), policy_id: PolicyID(\"policy2\") }))] }",
+            concat!(
+            "  × for policy `policy0`, attribute `nope` on entity type `Photo` not found\n",
+            "   ╭─[1:44]\n",
+            " 1 │ permit(principal, action, resource) when { resource.nope };\n",
+            "   ·                                            ─────────────\n",
+            " 2 │ permit(principal, action, resource) when { principal.missing };\n",
+            "   ╰────\n",
+            "  help: did you mean `owner`?\n",
+            "\n",
+            "Error: \n",
+            "  × for policy `policy1`, attribute `missing` on entity type `User` not found\n",
+            "   ╭─[2:44]\n",
+            " 1 │ permit(principal, action, resource) when { resource.nope };\n",
+            " 2 │ permit(principal, action, resource) when { principal.missing };\n",
+            "   ·                                            ─────────────────\n",
+            " 3 │ permit(principal, action, resource) when { false };\n",
+            "   ╰────\n",
+            "\n",
+            "Warning: \n",
+            "  ⚠ for policy `policy2`, policy is impossible: the policy expression evaluates to false for all valid requests\n",
+            "   ╭─[3:1]\n",
+            " 2 │ permit(principal, action, resource) when { principal.missing };\n",
+            " 3 │ permit(principal, action, resource) when { false };\n",
+            "   · ───────────────────────────────────────────────────\n",
+            "   ╰────\n",
+        ),
+        );
+    }
+
+    #[test]
+    fn only_warnings() {
+        let src = r"permit(principal, action, resource) when { false };";
+        let (core, wrapper) = results(src);
+        assert!(core.validation_passed());
+        assert!(wrapper.validation_passed());
+        assert!(!wrapper.validation_passed_without_warnings());
+        assert_eq!(core.severity(), Some(miette::Severity::Warning));
+        assert_same(src);
+    }
+}
