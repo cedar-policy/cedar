@@ -75,22 +75,29 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         // ancestor type is allowed by the schema.
         // Ancestors are typically stored in a `HashSet`, whose iteration order
         // is arbitrary. To keep the error deterministic, if several ancestors
-        // are invalid we report the error for the smallest one, and only build
-        // the error for that one.
+        // are invalid we report the error for the smallest one, calling
+        // `validate_euid` once per ancestor and building the invalid ancestor
+        // type error only for the smallest one.
         //
         // note that `allowed_parent_types()` was transitively closed, so it's
         // actually `allowed_ancestor_types()`
         let allowed_ancestor_types = schema_etype.allowed_parent_types();
-        let is_valid_ancestor = |ancestor_euid: &EntityUID| {
-            allowed_ancestor_types.contains(ancestor_euid.entity_type())
-                && validate_euid(self.schema, ancestor_euid).is_ok()
-        };
+        // For each invalid ancestor, keep the `validate_euid` error if there is
+        // one, or `None` if only its type is not allowed.
         match ancestors
-            .filter(|ancestor_euid| !is_valid_ancestor(ancestor_euid))
-            .min()
+            .filter_map(
+                |ancestor_euid| match validate_euid(self.schema, ancestor_euid) {
+                    Err(err) => Some((ancestor_euid, Some(err))),
+                    Ok(()) if !allowed_ancestor_types.contains(ancestor_euid.entity_type()) => {
+                        Some((ancestor_euid, None))
+                    }
+                    Ok(()) => None,
+                },
+            )
+            .min_by_key(|(ancestor_euid, _)| *ancestor_euid)
         {
-            Some(ancestor_euid) => {
-                validate_euid(self.schema, ancestor_euid)?;
+            Some((_, Some(err))) => Err(err.into()),
+            Some((ancestor_euid, None)) => {
                 Err(EntitySchemaConformanceError::invalid_ancestor_type(
                     uid.clone(),
                     ancestor_euid.entity_type().clone(),
