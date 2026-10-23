@@ -28,7 +28,7 @@ use err::{
 use miette::Diagnostic;
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use thiserror::Error;
 
 /// Struct used to check whether entities conform to a schema
@@ -72,8 +72,11 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         schema_etype: &impl EntityTypeDescription,
     ) -> Result<(), EntitySchemaConformanceError> {
         // For each ancestor that actually appears in `entity`, ensure the
-        // ancestor type is allowed by the schema
-        for ancestor_euid in ancestors {
+        // ancestor type is allowed by the schema.
+        // Ancestors are typically stored in a `HashSet`, whose iteration order
+        // is arbitrary. To keep the error deterministic, if several ancestors
+        // are invalid we report the error for the smallest one.
+        let validate_ancestor = |ancestor_euid: &EntityUID| {
             validate_euid(self.schema, ancestor_euid)?;
             let ancestor_type = ancestor_euid.entity_type();
             if schema_etype.allowed_parent_types().contains(ancestor_type) {
@@ -81,14 +84,25 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
                 // closed, so it's actually `allowed_ancestor_types()`
                 //
                 // thus, the check passes in this case
+                Ok(())
             } else {
-                return Err(EntitySchemaConformanceError::invalid_ancestor_type(
+                Err(EntitySchemaConformanceError::invalid_ancestor_type(
                     uid.clone(),
                     ancestor_type.clone(),
-                ));
+                ))
             }
+        };
+        match ancestors
+            .filter_map(|ancestor_euid| {
+                validate_ancestor(ancestor_euid)
+                    .err()
+                    .map(|err| (ancestor_euid, err))
+            })
+            .min_by_key(|(ancestor_euid, _)| *ancestor_euid)
+        {
+            Some((_, err)) => Err(err),
+            None => Ok(()),
         }
-        Ok(())
     }
 
     /// Validate attributes of an entity
@@ -98,7 +112,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         attrs: impl Iterator<Item = (&'a SmolStr, &'a PartialValue)>,
         schema_etype: &impl EntityTypeDescription,
     ) -> Result<(), EntitySchemaConformanceError> {
-        let attrs: HashMap<&SmolStr, &PartialValue> = attrs.collect();
+        let attrs: BTreeMap<&SmolStr, &PartialValue> = attrs.collect();
         // Ensure that all required attributes for `etype` are actually
         // included in `entity`
         for required_attr in schema_etype.required_attrs() {
@@ -159,7 +173,7 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         tags: impl Iterator<Item = (&'a SmolStr, &'a PartialValue)>,
         schema_etype: &impl EntityTypeDescription,
     ) -> Result<(), EntitySchemaConformanceError> {
-        let tags: HashMap<&SmolStr, &PartialValue> = tags.collect();
+        let tags: BTreeMap<&SmolStr, &PartialValue> = tags.collect();
         match schema_etype.tag_type() {
             None => {
                 if let Some((k, _)) = tags.iter().next() {

@@ -2415,10 +2415,13 @@ mod test_schema_str_to_json_with_resolved_types {
 
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
-#[derive(Debug, Clone)]
+//
+// `Display`, `Error` and `Diagnostic` are implemented by the inner
+// `ValidationResult` and forwarded here.
+#[derive(Clone, Diagnostic)]
+#[diagnostic(transparent)]
 pub struct ValidationResult {
-    validation_errors: Vec<ValidationError>,
-    validation_warnings: Vec<ValidationWarning>,
+    inner: cedar_policy_core::validator::ValidationResult<ValidationError, ValidationWarning>,
 }
 
 impl ValidationResult {
@@ -2426,34 +2429,23 @@ impl ValidationResult {
     /// non-fatal warnings. Use [`ValidationResult::validation_passed_without_warnings`]
     /// to check that there are also no warnings.
     pub fn validation_passed(&self) -> bool {
-        self.validation_errors.is_empty()
+        self.inner.validation_passed()
     }
 
     /// True when validation passes (i.e., there are no errors) and there are
     /// additionally no non-fatal warnings.
     pub fn validation_passed_without_warnings(&self) -> bool {
-        self.validation_errors.is_empty() && self.validation_warnings.is_empty()
+        self.inner.validation_passed() && self.inner.validation_warnings().next().is_none()
     }
 
     /// Get an iterator over the errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError> {
-        self.validation_errors.iter()
+        self.inner.validation_errors()
     }
 
     /// Get an iterator over the warnings found by the validator.
     pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
-        self.validation_warnings.iter()
-    }
-
-    fn first_error_or_warning(&self) -> Option<&dyn Diagnostic> {
-        self.validation_errors
-            .first()
-            .map(|e| e as &dyn Diagnostic)
-            .or_else(|| {
-                self.validation_warnings
-                    .first()
-                    .map(|w| w as &dyn Diagnostic)
-            })
+        self.inner.validation_warnings()
     }
 
     pub(crate) fn into_errors_and_warnings(
@@ -2462,10 +2454,7 @@ impl ValidationResult {
         impl Iterator<Item = ValidationError>,
         impl Iterator<Item = ValidationWarning>,
     ) {
-        (
-            self.validation_errors.into_iter(),
-            self.validation_warnings.into_iter(),
-        )
+        self.inner.into_errors_and_warnings()
     }
 }
 
@@ -2474,25 +2463,29 @@ impl From<cedar_policy_core::validator::ValidationResult> for ValidationResult {
     fn from(r: cedar_policy_core::validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
-            validation_errors: errors.map(ValidationError::from).collect(),
-            validation_warnings: warnings.map(ValidationWarning::from).collect(),
+            inner: cedar_policy_core::validator::ValidationResult::new(
+                errors.map(ValidationError::from),
+                warnings.map(ValidationWarning::from),
+            ),
         }
+    }
+}
+
+impl std::fmt::Debug for ValidationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.inner, f)
     }
 }
 
 impl std::fmt::Display for ValidationResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.first_error_or_warning() {
-            Some(diagnostic) => write!(f, "{diagnostic}"),
-            None => write!(f, "no errors or warnings"),
-        }
+        std::fmt::Display::fmt(&self.inner, f)
     }
 }
 
 impl std::error::Error for ValidationResult {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.first_error_or_warning()
-            .and_then(std::error::Error::source)
+        self.inner.source()
     }
 
     fn description(&self) -> &str {
@@ -2500,8 +2493,7 @@ impl std::error::Error for ValidationResult {
             deprecated,
             reason = "description() is deprecated but we still want to forward it"
         )]
-        self.first_error_or_warning()
-            .map_or("no errors or warnings", std::error::Error::description)
+        self.inner.description()
     }
 
     fn cause(&self) -> Option<&dyn std::error::Error> {
@@ -2509,60 +2501,7 @@ impl std::error::Error for ValidationResult {
             deprecated,
             reason = "cause() is deprecated but we still want to forward it"
         )]
-        self.first_error_or_warning()
-            .and_then(std::error::Error::cause)
-    }
-}
-
-// Except for `.related()`, and `.severity` everything is forwarded to the first
-// error, or to the first warning if there are no errors. This is done for the
-// same reason as policy parse errors.
-impl Diagnostic for ValidationResult {
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        let mut related = self
-            .validation_errors
-            .iter()
-            .map(|err| err as &dyn Diagnostic)
-            .chain(
-                self.validation_warnings
-                    .iter()
-                    .map(|warn| warn as &dyn Diagnostic),
-            );
-        related.next().map(move |first| match first.related() {
-            Some(first_related) => Box::new(first_related.chain(related)),
-            None => Box::new(related) as Box<dyn Iterator<Item = _>>,
-        })
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        self.first_error_or_warning()
-            .map_or(Some(miette::Severity::Advice), Diagnostic::severity)
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::labels)
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.first_error_or_warning()
-            .and_then(Diagnostic::source_code)
-    }
-
-    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::code)
-    }
-
-    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::url)
-    }
-
-    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::help)
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.first_error_or_warning()
-            .and_then(Diagnostic::diagnostic_source)
+        self.inner.cause()
     }
 }
 
