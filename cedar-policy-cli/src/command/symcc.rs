@@ -340,7 +340,7 @@ fn build_request_env(args: &SymccArgs) -> Result<RequestEnv> {
 }
 
 async fn symcc_async(args: &SymccArgs) -> Result<()> {
-    use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet};
+    use cedar_policy_symcc::{CedarSymCompiler, CompiledPolicy, CompiledPolicySet, CompiledSchema};
 
     let solver = initialize_solver(args.cvc5_path.as_ref())?;
     let mut compiler =
@@ -351,7 +351,9 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         // --- Single-policy primitives ---
         SymccCommands::NeverErrors(cmd_args) => {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
-            let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled = CompiledPolicy::compile(&policy, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -369,7 +371,9 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::AlwaysMatches(cmd_args) => {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
-            let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled = CompiledPolicy::compile(&policy, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -387,7 +391,9 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::NeverMatches(cmd_args) => {
             let (policy, schema) = load_single_policy(cmd_args, &args.schema)?;
-            let compiled = CompiledPolicy::compile(&policy, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled = CompiledPolicy::compile(&policy, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -407,9 +413,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         // --- Two-policy comparison primitives ---
         SymccCommands::MatchesEquivalent(cmd_args) => {
             let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
-            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy1")?;
-            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
+            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -431,9 +439,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::MatchesImplies(cmd_args) => {
             let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
-            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy1")?;
-            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
+            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -455,9 +465,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::MatchesDisjoint(cmd_args) => {
             let (p1, p2, schema) = load_two_policies(cmd_args, &args.schema)?;
-            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled1 = CompiledPolicy::compile(&p1, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy1")?;
-            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &schema)
+            let compiled2 = CompiledPolicy::compile(&p2, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -481,7 +493,9 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         // --- Single-policy-set primitives ---
         SymccCommands::AlwaysAllows(cmd_args) => {
             let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
-            let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled = CompiledPolicySet::compile(&pset, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -499,7 +513,9 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::AlwaysDenies(cmd_args) => {
             let (pset, schema) = load_policy_set(cmd_args, &args.schema)?;
-            let compiled = CompiledPolicySet::compile(&pset, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled = CompiledPolicySet::compile(&pset, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -519,9 +535,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         // --- Two-policy-set primitives ---
         SymccCommands::Equivalent(cmd_args) => {
             let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
-            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set 1")?;
-            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
+            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set 2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -539,9 +557,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::Implies(cmd_args) => {
             let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
-            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set 1")?;
-            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
+            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set 2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
@@ -563,9 +583,11 @@ async fn symcc_async(args: &SymccArgs) -> Result<()> {
         }
         SymccCommands::Disjoint(cmd_args) => {
             let (pset1, pset2, schema) = load_two_policy_sets(cmd_args, &args.schema)?;
-            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &schema)
+            let compiled_schema =
+                CompiledSchema::new(&schema).wrap_err("Failed to compile schema")?;
+            let compiled1 = CompiledPolicySet::compile(&pset1, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set 1")?;
-            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &schema)
+            let compiled2 = CompiledPolicySet::compile(&pset2, &req_env, &compiled_schema)
                 .wrap_err("Failed to compile policy set 2")?;
             if args.counterexample && !args.no_counterexample {
                 let result = compiler
