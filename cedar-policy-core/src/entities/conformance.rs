@@ -75,32 +75,34 @@ impl<S: Schema> EntitySchemaConformanceChecker<'_, S> {
         // ancestor type is allowed by the schema.
         // Ancestors are typically stored in a `HashSet`, whose iteration order
         // is arbitrary. To keep the error deterministic, if several ancestors
-        // are invalid we report the error for the smallest one.
-        let validate_ancestor = |ancestor_euid: &EntityUID| {
-            validate_euid(self.schema, ancestor_euid)?;
-            let ancestor_type = ancestor_euid.entity_type();
-            if schema_etype.allowed_parent_types().contains(ancestor_type) {
-                // note that `allowed_parent_types()` was transitively
-                // closed, so it's actually `allowed_ancestor_types()`
-                //
-                // thus, the check passes in this case
-                Ok(())
-            } else {
-                Err(EntitySchemaConformanceError::invalid_ancestor_type(
-                    uid.clone(),
-                    ancestor_type.clone(),
-                ))
-            }
-        };
+        // are invalid we report the error for the smallest one, calling
+        // `validate_euid` once per ancestor and building the invalid ancestor
+        // type error only for the smallest one.
+        //
+        // note that `allowed_parent_types()` was transitively closed, so it's
+        // actually `allowed_ancestor_types()`
+        let allowed_ancestor_types = schema_etype.allowed_parent_types();
+        // For each invalid ancestor, keep the `validate_euid` error if there is
+        // one, or `None` if only its type is not allowed.
         match ancestors
-            .filter_map(|ancestor_euid| {
-                validate_ancestor(ancestor_euid)
-                    .err()
-                    .map(|err| (ancestor_euid, err))
-            })
+            .filter_map(
+                |ancestor_euid| match validate_euid(self.schema, ancestor_euid) {
+                    Err(err) => Some((ancestor_euid, Some(err))),
+                    Ok(()) if !allowed_ancestor_types.contains(ancestor_euid.entity_type()) => {
+                        Some((ancestor_euid, None))
+                    }
+                    Ok(()) => None,
+                },
+            )
             .min_by_key(|(ancestor_euid, _)| *ancestor_euid)
         {
-            Some((_, err)) => Err(err),
+            Some((_, Some(err))) => Err(err.into()),
+            Some((ancestor_euid, None)) => {
+                Err(EntitySchemaConformanceError::invalid_ancestor_type(
+                    uid.clone(),
+                    ancestor_euid.entity_type().clone(),
+                ))
+            }
             None => Ok(()),
         }
     }

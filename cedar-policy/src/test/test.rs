@@ -6766,6 +6766,58 @@ mod issue_2504 {
         );
     }
 
+    /// An ancestor can be invalid because its type is not allowed, or because
+    /// it is not a valid entity of an enumerated type. Either way, the error
+    /// reported is the one for the smallest invalid ancestor.
+    #[test]
+    fn multiple_invalid_ancestors_mixed_reasons() {
+        let schema: Schema = r#"
+            entity Area, Zone;
+            entity Color enum ["red"];
+            entity User in [Color];
+            entity Guest;
+        "#
+        .parse()
+        .expect("should be a valid schema");
+        let entities = |parents: serde_json::Value| {
+            serde_json::json!([
+                { "uid": { "type": "User", "id": "alice" }, "attrs": {}, "parents": parents }
+            ])
+        };
+
+        let json = entities(serde_json::json!([
+            { "type": "Zone", "id": "z" },
+            { "type": "Color", "id": "blue" }
+        ]));
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"entity `Color::"blue"` is of an enumerated entity type, but `"blue"` is not declared as a valid eid"#,
+        );
+
+        let json = entities(serde_json::json!([
+            { "type": "Color", "id": "blue" },
+            { "type": "Area", "id": "a" }
+        ]));
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"`User::"alice"` is not allowed to have an ancestor of type `Area` according to the schema"#,
+        );
+
+        // When the smallest invalid ancestor is invalid for both reasons, the
+        // invalid entity ID is reported, as before.
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "Guest", "id": "g" },
+                "attrs": {},
+                "parents": [{ "type": "Zone", "id": "z" }, { "type": "Color", "id": "blue" }]
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"entity `Color::"blue"` is of an enumerated entity type, but `"blue"` is not declared as a valid eid"#,
+        );
+    }
+
     #[cfg(feature = "ipaddr")]
     #[test]
     fn multiple_attr_evaluation_errors() {

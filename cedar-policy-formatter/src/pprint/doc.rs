@@ -495,15 +495,20 @@ impl Doc for Node<Option<Unary>> {
 impl Doc for Member {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let item_doc = self.item.to_doc(context)?;
+        let mut access_doc = RcDoc::nil();
+        let mut prev_is_field = false;
+        for (i, ac) in self.access.iter().enumerate() {
+            let is_call = matches!(ac.as_inner(), Some(MemAccess::Call(_)));
+            // Never break between a method name and its argument list (#2119)
+            if i > 0 && !(prev_is_field && is_call) {
+                access_doc = access_doc.append(RcDoc::line_());
+            }
+            access_doc = access_doc.append(ac.to_doc(context));
+            prev_is_field = matches!(ac.as_inner(), Some(MemAccess::Field(_)));
+        }
         Some(
             item_doc
-                .append(
-                    RcDoc::intersperse(
-                        self.access.iter().map(|ac| ac.to_doc(context)),
-                        RcDoc::line_(),
-                    )
-                    .nest(context.config.indent_width),
-                )
+                .append(access_doc.nest(context.config.indent_width))
                 .group(),
         )
     }
