@@ -14,16 +14,22 @@
  * limitations under the License.
  */
 
+use educe::Educe;
 use std::sync::Arc;
 
 /// Represents a source location: index/range, and a reference to the source
 /// code which that index/range indexes into
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Educe, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[educe(Hash)]
 pub struct Loc {
     /// `SourceSpan` indicating a specific source code location or range
     pub span: miette::SourceSpan,
 
     /// Original source code (which the above source span indexes into)
+    // `src` is usually the whole policy set, so hashing it made hashing any
+    // error or warning holding a `Loc` linear in the size of the input. Equal
+    // `Loc`s have equal spans, so ignoring `src` is consistent with `Eq`.
+    #[educe(Hash(ignore))]
     pub src: Arc<str>,
 }
 
@@ -113,6 +119,26 @@ impl std::fmt::Debug for Loc {
 }
 
 mod test {
+    #[test]
+    fn test_loc_hash_and_eq() {
+        use std::hash::{BuildHasher, RandomState};
+
+        let src: std::sync::Arc<str> = "permit(principal, action, resource);".into();
+        let other_src: std::sync::Arc<str> = "forbid(principal, action, resource);".into();
+        let hasher = RandomState::new();
+        let l = super::Loc::new(0..6, src.clone());
+        // Same span and source text, in a different allocation
+        let same = super::Loc::new(0..6, src.to_string().into());
+        assert_eq!(l, same);
+        assert_eq!(hasher.hash_one(&l), hasher.hash_one(&same));
+        // The hash depends only on the span. This pins a deliberate collision
+        // rather than the performance property, which has no deterministic test.
+        let other = super::Loc::new(0..6, other_src);
+        assert_ne!(l, other);
+        assert_eq!(hasher.hash_one(&l), hasher.hash_one(&other));
+        assert_ne!(l, super::Loc::new(0..5, src));
+    }
+
     #[test]
     fn test_loc_debug() {
         let str: std::sync::Arc<str> =
