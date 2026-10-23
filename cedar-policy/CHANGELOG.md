@@ -16,6 +16,8 @@ Cedar Language Version: TBD
 
 ### Fixed
 
+- Clarified in the documentation of `ffi::validate` that the error for schemas containing `external` entity types or
+  actions is reported per policy, so an empty policy set produces no error (#2632).
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
   once in one batch.
 - The policy formatter no longer puts a line break between a method name and its argument list when it splits
