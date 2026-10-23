@@ -76,7 +76,7 @@ pub enum Term {
         /// Function being called
         op: Op,
         /// Arguments
-        args: Arc<Vec<Term>>,
+        args: Arc<[Term]>,
         /// Return type of the function
         ret_ty: TermType,
     },
