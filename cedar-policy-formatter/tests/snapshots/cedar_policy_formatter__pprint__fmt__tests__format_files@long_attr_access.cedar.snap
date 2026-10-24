@@ -6,11 +6,11 @@ input_file: cedar-policy-formatter/tests/long_attr_access.cedar
 // Index access formatting tests
 // Simple index access
 permit (principal, action, resource)
-when { principal["is_admin"] };
+when { principal.is_admin };
 
 // Chained index access
 permit (principal, action, resource)
-when { principal["roles"]["admin"] };
+when { principal.roles.admin };
 
 // Index access with comments
 permit (principal, action, resource)
@@ -23,11 +23,11 @@ when
 
 // Mixed member and index access
 permit (principal, action, resource)
-when { principal.profile["settings"]["theme"] == "dark" };
+when { principal.profile.settings.theme == "dark" };
 
 // Complex expressions in index
 permit (principal, action, resource)
-when { resource.data["user_config"]["enabled"] };
+when { resource.data.user_config.enabled };
 
 // Very long mixed access chains
 permit (principal, action, resource)
@@ -35,27 +35,18 @@ when
 {
   principal.organization
     .departments
-    ["engineering"]
+    .engineering
     .teams
-    ["backend"]
+    .backend
     .members
-    ["alice"]
+    .alice
     .permissions
-    ["read"] == true
+    .read == true
 };
 
 // Long index-only chains
 permit (principal, action, resource)
-when
-{
-  resource["metadata"]
-    ["security"]
-    ["permissions"]
-    ["roles"]
-    ["admin"]
-    ["capabilities"]
-    ["delete"]
-};
+when { resource.metadata.security.permissions.roles.admin.capabilities.delete };
 
 // Extremely long mixed chains
 permit (principal, action, resource)
@@ -63,29 +54,33 @@ when
 {
   principal.company
     .divisions
-    ["technology"]
+    .technology
     .departments
-    ["software"]
+    .software
     .teams
-    ["platform"]
+    .platform
     .projects
-    ["auth"]
+    .auth
     .settings
-    ["security"]
-    ["encryption"]
-    ["algorithms"]
-    ["aes256"]
-    ["keySize"] == 256
+    .security
+    .encryption
+    .algorithms
+    .aes256
+    .keySize == 256
 };
 
 // Long chains with method calls
 permit (principal, action, resource)
+when { resource.config.services.database.connections.primary.timeout > 30 };
+
+// Long index-only chains with attributes that must be quoted
+permit (principal, action, resource)
 when
 {
-  resource.config
-    ["services"]
-    ["database"]
-    ["connections"]
-    ["primary"]
-    ["timeout"] > 30
+  resource["meta data"]
+    ["security level"]
+    ["permission set"]
+    ["role name"]
+    ["admin role"]
+    ["delete capability"]
 };
