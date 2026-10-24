@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
+  becomes `principal.name` and `principal has "name"` becomes `principal has name` (#2118).
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

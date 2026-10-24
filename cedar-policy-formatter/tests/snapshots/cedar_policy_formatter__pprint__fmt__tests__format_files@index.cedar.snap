@@ -4,10 +4,10 @@ expression: formatted
 input_file: cedar-policy-formatter/tests/index.cedar
 ---
 permit (principal, action, resource)
-when { principal["is_admin"] };
+when { principal.is_admin };
 
 permit (principal, action, resource)
-when { principal["roles"]["admin"] };
+when { principal.roles.admin };
 
 permit (principal, action, resource)
 when

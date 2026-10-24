@@ -1,0 +1,57 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-formatter/tests/unquoted_attributes.cedar
+---
+// Attributes that are valid identifiers are written without quotes
+permit (principal, action, resource)
+when
+{
+  principal.name == "alice" &&
+  resource.owner.manager == principal &&
+  context.principal == context.permit &&
+  principal has name &&
+  resource has owner &&
+  resource.owner has manager
+};
+
+// Other attributes keep their quotes
+permit (principal, action, resource)
+when
+{
+  principal["first name"] == "alice" &&
+  principal["if"] &&
+  principal["__cedar"] &&
+  principal["\u{6e}ame"] == "alice" &&
+  principal[""] &&
+  principal has "first name" &&
+  principal has "if" &&
+  principal has "\u{6e}ame"
+};
+
+// Index-style access with a comment on the brackets or the string is kept as is
+permit (principal, action, resource)
+when
+{
+  principal
+    // leading comment
+    ["roles"] &&
+  principal[ // after the bracket
+    "roles"] &&
+  principal["roles" // after the string
+    ] &&
+  principal["roles"] // after the closing bracket
+};
+
+// A comment on a `has` string literal moves to the identifier
+permit (principal, action, resource)
+when
+{
+  principal
+  has
+    // leading comment
+    name &&
+  principal
+  has
+  name // trailing comment
+};
