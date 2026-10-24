@@ -46,3 +46,8 @@ permit(principal, action, resource) when {
 permit(principal, action, resource) when {
   resource.config["services"]["database"]["connections"]["primary"]["timeout"] > 30
 };
+
+// Long index-only chains with attributes that must be quoted
+permit(principal, action, resource) when {
+  resource["meta data"]["security level"]["permission set"]["role name"]["admin role"]["delete capability"]
+};
