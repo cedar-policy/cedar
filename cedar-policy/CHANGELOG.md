@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- `SchemaFragment::entity_type_attribute_annotations` and `SchemaFragment::entity_type_attribute_annotation`
+  get the annotations of an entity type attribute, including attributes nested in record types, by attribute path (#1404).
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

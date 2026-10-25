@@ -9241,6 +9241,107 @@ mod schema_annotations {
         );
     }
 
+    /// #1404
+    #[test]
+    fn entity_type_attribute_annotations() {
+        let schema = SchemaFragment::from_cedarschema_str(
+            r#"
+        type Addr = { @doc("c") city: String };
+        entity User {
+          @doc("name") @pii
+          name: String,
+          address: {
+            @doc("street")
+            street: String,
+            geo: { @unit("deg") lat: Long },
+            plain: Long,
+          },
+          common: Addr,
+        };
+        entity Color enum ["Red"];
+        namespace N {
+          entity User { @doc("n") name: String };
+        }
+        "#,
+        )
+        .expect("should be a valid schema fragment")
+        .0;
+        let attr = |path: &[&str]| {
+            schema
+                .entity_type_attribute_annotations(None, "User", path)
+                .map(Iterator::collect::<BTreeMap<_, _>>)
+        };
+        assert_eq!(
+            attr(&["name"]),
+            Some(BTreeMap::from_iter([("doc", "name"), ("pii", "")]))
+        );
+        assert_eq!(attr(&["address"]), Some(BTreeMap::new()));
+        assert_eq!(
+            attr(&["address", "street"]),
+            Some(BTreeMap::from_iter([("doc", "street")]))
+        );
+        assert_eq!(
+            attr(&["address", "geo", "lat"]),
+            Some(BTreeMap::from_iter([("unit", "deg")]))
+        );
+        assert_eq!(attr(&["address", "plain"]), Some(BTreeMap::new()));
+        // missing paths
+        assert_eq!(attr(&[]), None);
+        assert_eq!(attr(&["missing"]), None);
+        assert_eq!(attr(&["address", "missing"]), None);
+        assert_eq!(attr(&["name", "first"]), None);
+        assert_eq!(attr(&["address", "plain", "x"]), None);
+        // common type references are not followed
+        assert_eq!(attr(&["common", "city"]), None);
+        assert_matches!(
+            schema
+                .entity_type_attribute_annotations(None, "Color", &["name"])
+                .map(|_| ()),
+            None
+        );
+        assert_matches!(
+            schema
+                .entity_type_attribute_annotations(None, "Missing", &["name"])
+                .map(|_| ()),
+            None
+        );
+
+        assert_matches!(
+            schema.entity_type_attribute_annotation(None, "User", &["name"], "doc"),
+            Some("name")
+        );
+        assert_matches!(
+            schema.entity_type_attribute_annotation(None, "User", &["name"], "pii"),
+            Some("")
+        );
+        assert_matches!(
+            schema.entity_type_attribute_annotation(
+                None,
+                "User",
+                &["address", "geo", "lat"],
+                "unit"
+            ),
+            Some("deg")
+        );
+        assert_matches!(
+            schema.entity_type_attribute_annotation(None, "User", &["name"], "missing"),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_attribute_annotation(None, "User", &["name"], "1invalid"),
+            None
+        );
+        assert_matches!(
+            schema.entity_type_attribute_annotation(
+                Some("N".parse().expect("should be a valid name")),
+                "User",
+                &["name"],
+                "doc"
+            ),
+            Some("n")
+        );
+    }
+
     #[test]
     fn common_type_annotations() {
         let schema = example_schema();
