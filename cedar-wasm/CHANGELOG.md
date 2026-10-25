@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- Cedar schema text accepted by the schema bindings may now have a trailing comma in bracketed lists (entity type lists, action parent lists and enum choices), per RFC 71. (#1605)
+
 ## 4.14.0
 
 ### Added

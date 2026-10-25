@@ -14,6 +14,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
+  for bracketed lists in the Cedar schema syntax: entity type lists (`in [A, B,]`, `principal: [A, B,]`),
+  action parent lists (`in ["a", "b",]`) and enum choices (`enum ["a", "b",]`). (#1605)
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

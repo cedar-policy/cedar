@@ -240,12 +240,11 @@ AttrDecls: Vec<Node<Annotated<AttrDecl>>> = {
         =>? {ds.insert(0, deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src))))?); Ok(ds)},
 }
 
+// A possibly empty list, with an optional trailing comma (RFC 71) when it's
+// not empty
 Comma<E>: Vec<E> = {
-    <e:E?> => e.into_iter().collect(),
-    <mut es:(<E> ",")+> <e:E> => {
-        es.push(e);
-        es
-    },
+    => Vec::new(),
+    <es:NonEmptyCommaTrailing<E>> => es.into(),
 }
 
 // IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
@@ -338,6 +337,17 @@ NonEmptyComma<E>: NonEmpty<E> = {
     },
 }
 
+// Like `NonEmptyComma`, but also accepting a trailing comma (RFC 71). Only for
+// lists closed by a token that can't start an `E` (such as `]`): where a list
+// can be followed by a keyword like `in` or `appliesTo`, which are also valid
+// names, a trailing comma would make the grammar ambiguous.
+NonEmptyCommaTrailing<E>: NonEmpty<E> = {
+    <mut es:(<E> ",")*> <e:E> ","? => {
+        es.push(e);
+        NonEmpty::from_vec(es).unwrap()
+    },
+}
+
 // Idents := IDENT {',' IDENT}
 Idents: NonEmpty<Node<Id>> = NonEmptyComma<Ident>;
 
@@ -345,10 +355,10 @@ Idents: NonEmpty<Node<Id>> = NonEmptyComma<Ident>;
 Names: NonEmpty<Node<SmolStr>> = NonEmptyComma<Name>;
 
 // Qualnames := Qualname {',' Qualname }
-QualNames : NonEmpty<Node<QualName>> = NonEmptyComma<QualName>;
+QualNames : NonEmpty<Node<QualName>> = NonEmptyCommaTrailing<QualName>;
 
 // Eids := Eid {',' Eid}
-Eids: NonEmpty<Node<Eid>> = NonEmptyComma<Eid>;
+Eids: NonEmpty<Node<Eid>> = NonEmptyCommaTrailing<Eid>;
 
 PrincipalOrResource: Node<PR> = {
     <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),
