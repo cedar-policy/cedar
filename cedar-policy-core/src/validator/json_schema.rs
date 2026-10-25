@@ -401,6 +401,101 @@ pub struct ReservedCommonTypeBasenameError {
     pub(crate) id: UnreservedId,
 }
 
+/// Deserializers for the `commonTypes`, `entityTypes` and `actions` maps of a
+/// [`NamespaceDefinition`]. Like `serde_with`'s `maps_duplicate_key_is_error`,
+/// they reject duplicate keys, but an error in a declaration's name or body
+/// also says which declaration it is in (#435), since there is no source
+/// location to point at once the JSON has been read.
+mod declarations {
+    use super::{ActionType, CommonType, CommonTypeId, EntityType, RawName, UnreservedId};
+    use serde::de::{Error, IntoDeserializer, MapAccess, Visitor};
+    use serde::{Deserialize, Deserializer};
+    use smol_str::SmolStr;
+    use std::collections::BTreeMap;
+    use std::marker::PhantomData;
+
+    struct DeclarationsVisitor<K, V> {
+        kind: &'static str,
+        _types: PhantomData<(K, V)>,
+    }
+
+    impl<'de, K, V> Visitor<'de> for DeclarationsVisitor<K, V>
+    where
+        K: Deserialize<'de> + Ord,
+        V: Deserialize<'de>,
+    {
+        type Value = BTreeMap<K, V>;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "a map of {} declarations", self.kind)
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let kind = self.kind;
+            let mut declarations = BTreeMap::new();
+            while let Some(name) = map.next_key::<SmolStr>()? {
+                let key =
+                    K::deserialize(name.as_str().into_deserializer()).map_err(|e: A::Error| {
+                        A::Error::custom(format!("in name of {kind} `{name}`: {e}"))
+                    })?;
+                let value = map
+                    .next_value::<V>()
+                    .map_err(|e| A::Error::custom(format!("in {kind} `{name}`: {e}")))?;
+                if declarations.contains_key(&key) {
+                    return Err(A::Error::custom("invalid entry: found duplicate key"));
+                }
+                declarations.insert(key, value);
+            }
+            Ok(declarations)
+        }
+    }
+
+    fn declarations<'de, D, K, V>(
+        deserializer: D,
+        kind: &'static str,
+    ) -> Result<BTreeMap<K, V>, D::Error>
+    where
+        D: Deserializer<'de>,
+        K: Deserialize<'de> + Ord,
+        V: Deserialize<'de>,
+    {
+        deserializer.deserialize_map(DeclarationsVisitor {
+            kind,
+            _types: PhantomData,
+        })
+    }
+
+    pub(super) fn common_types<'de, D, N>(
+        deserializer: D,
+    ) -> Result<BTreeMap<CommonTypeId, CommonType<N>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        N: Deserialize<'de> + From<RawName>,
+    {
+        declarations(deserializer, "common type")
+    }
+
+    pub(super) fn entity_types<'de, D, N>(
+        deserializer: D,
+    ) -> Result<BTreeMap<UnreservedId, EntityType<N>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        N: Deserialize<'de> + From<RawName>,
+    {
+        declarations(deserializer, "entity type")
+    }
+
+    pub(super) fn actions<'de, D, N>(
+        deserializer: D,
+    ) -> Result<BTreeMap<SmolStr, ActionType<N>>, D::Error>
+    where
+        D: Deserializer<'de>,
+        N: Deserialize<'de> + From<RawName>,
+    {
+        declarations(deserializer, "action")
+    }
+}
+
 /// A single namespace definition from a Fragment.
 /// This is composed of common types, entity types, and action definitions.
 ///
@@ -422,11 +517,14 @@ pub struct ReservedCommonTypeBasenameError {
 pub struct NamespaceDefinition<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(serialize_with = "::serde_with::rust::maps_duplicate_key_is_error::serialize")]
+    #[serde(deserialize_with = "declarations::common_types")]
     pub common_types: BTreeMap<CommonTypeId, CommonType<N>>,
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(serialize_with = "::serde_with::rust::maps_duplicate_key_is_error::serialize")]
+    #[serde(deserialize_with = "declarations::entity_types")]
     pub entity_types: BTreeMap<UnreservedId, EntityType<N>>,
-    #[serde(with = "::serde_with::rust::maps_duplicate_key_is_error")]
+    #[serde(serialize_with = "::serde_with::rust::maps_duplicate_key_is_error::serialize")]
+    #[serde(deserialize_with = "declarations::actions")]
     pub actions: BTreeMap<SmolStr, ActionType<N>>,
     /// Annotations
     #[serde(default)]
@@ -2953,7 +3051,7 @@ mod test {
             expect_err(
                 &src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"missing field `name`"#)
+                &ExpectedErrorMessageBuilder::error(r#"in entity type `User`: missing field `name`"#)
                     .build());
         });
     }
@@ -3000,7 +3098,7 @@ mod test {
             expect_err(
                 "",
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
+                &ExpectedErrorMessageBuilder::error(r#"in entity type `User`: unknown field `foo`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`"#).build()
             );
         });
     }
@@ -3035,7 +3133,7 @@ mod test {
             expect_err(
                 "",
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"unknown field `element`, expected `attributes` or `additionalAttributes`"#).build()
+                &ExpectedErrorMessageBuilder::error(r#"in entity type `User`: unknown field `element`, expected `attributes` or `additionalAttributes`"#).build()
             );
         });
     }
@@ -3069,7 +3167,7 @@ mod test {
             expect_err(
                 "",
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"invalid type: string "Boolean", expected struct TypeOfAttribute"#).build()
+                &ExpectedErrorMessageBuilder::error(r#"in entity type `a`: invalid type: string "Boolean", expected struct TypeOfAttribute"#).build()
             );
         });
     }
@@ -3224,7 +3322,10 @@ mod strengthened_types {
             }
         });
         let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
-        assert_error_matches(schema, "invalid id ``: unexpected end of input");
+        assert_error_matches(
+            schema,
+            "in name of common type ``: invalid id ``: unexpected end of input",
+        );
 
         let src = serde_json::json!(
         {
@@ -3237,7 +3338,10 @@ mod strengthened_types {
             }
         });
         let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
-        assert_error_matches(schema, "invalid id `~`: invalid token");
+        assert_error_matches(
+            schema,
+            "in name of common type `~`: invalid id `~`: invalid token",
+        );
 
         let src = serde_json::json!(
         {
@@ -3250,7 +3354,10 @@ mod strengthened_types {
             }
         });
         let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
-        assert_error_matches(schema, "invalid id `A::B`: unexpected token `::`");
+        assert_error_matches(
+            schema,
+            "in name of common type `A::B`: invalid id `A::B`: unexpected token `::`",
+        );
     }
 
     #[test]
@@ -3263,7 +3370,10 @@ mod strengthened_types {
             "actions": {}
         });
         let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
-        assert_error_matches(schema, "invalid id ``: unexpected end of input");
+        assert_error_matches(
+            schema,
+            "in name of entity type ``: invalid id ``: unexpected end of input",
+        );
 
         let src = serde_json::json!(
         {
@@ -3273,7 +3383,10 @@ mod strengthened_types {
             "actions": {}
         });
         let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
-        assert_error_matches(schema, "invalid id `*`: unexpected token `*`");
+        assert_error_matches(
+            schema,
+            "in name of entity type `*`: invalid id `*`: unexpected token `*`",
+        );
 
         let src = serde_json::json!(
         {
@@ -3283,7 +3396,10 @@ mod strengthened_types {
             "actions": {}
         });
         let schema: Result<NamespaceDefinition<RawName>, _> = serde_json::from_value(src);
-        assert_error_matches(schema, "invalid id `A::B`: unexpected token `::`");
+        assert_error_matches(
+            schema,
+            "in name of entity type `A::B`: invalid id `A::B`: unexpected token `::`",
+        );
     }
 
     #[test]
@@ -3652,7 +3768,7 @@ mod entity_tags {
             expect_err(
                 &json,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error("unknown field `tags`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
+                &ExpectedErrorMessageBuilder::error("in entity type `User`: unknown field `tags`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
                     .build(),
             );
         });
@@ -4143,10 +4259,11 @@ mod annotations {
     }
 
     #[track_caller]
-    fn test_unknown_fields(src: serde_json::Value, field: &str, expected: &str) {
+    /// `context` is the declaration the error is reported in, e.g. "in entity type `A`: "
+    fn test_unknown_fields(src: serde_json::Value, context: &str, field: &str, expected: &str) {
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Err(errs) => {
-            assert_eq!(errs.to_string(), format!("unknown field {field}, expected one of {expected}"));
+            assert_eq!(errs.to_string(), format!("{context}unknown field {field}, expected one of {expected}"));
         });
     }
 
@@ -4175,7 +4292,12 @@ mod annotations {
             }},
             "actions": {},
         }});
-        test_unknown_fields(src, "`shape44`", ENTITY_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in entity type `UserGroup`: ",
+            "`shape44`",
+            ENTITY_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4193,7 +4315,12 @@ mod annotations {
                         }
                 }
         }}});
-        test_unknown_fields(src, "`annotations`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in common type `C`: ",
+            "`annotations`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4208,7 +4335,12 @@ mod annotations {
                             "doc": "this is a doc"
                             },
         }}}});
-        test_unknown_fields(src, "`foo`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in common type `C`: ",
+            "`foo`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4229,7 +4361,12 @@ mod annotations {
                         }
                     },
         }}}});
-        test_unknown_fields(src, "`foo`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in common type `C`: ",
+            "`foo`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4258,7 +4395,12 @@ mod annotations {
                         }
                     },
         }}}});
-        test_unknown_fields(src, "`bar`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in common type `C`: ",
+            "`bar`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4278,7 +4420,12 @@ mod annotations {
             }},
             "actions": {},
         }});
-        test_unknown_fields(src, "`annotations`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in entity type `UserGroup`: ",
+            "`annotations`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4296,7 +4443,12 @@ mod annotations {
                     },
                 },
         }});
-        test_unknown_fields(src, "`annotations`", APPLIES_TO_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in action `a`: ",
+            "`annotations`",
+            APPLIES_TO_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4309,7 +4461,7 @@ mod annotations {
             }
            }
         });
-        test_unknown_fields(src, "`foo`", NAMESPACE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(src, "", "`foo`", NAMESPACE_EXPECTED_ATTRIBUTES);
 
         let src = serde_json::json!(
         {
@@ -4327,7 +4479,12 @@ mod annotations {
             }
            }
         });
-        test_unknown_fields(src, "`bar`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in common type `a`: ",
+            "`bar`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
 
         let src = serde_json::json!(
         {
@@ -4350,7 +4507,12 @@ mod annotations {
             }
            }
         });
-        test_unknown_fields(src, "`bar`", ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES);
+        test_unknown_fields(
+            src,
+            "in common type `a`: ",
+            "`bar`",
+            ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES,
+        );
     }
 }
 
@@ -4431,7 +4593,7 @@ mod enumerated_entity_types {
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Err(errs) => {
             // TODO: write our own error messages if it's deemed to be too ugly.
-            assert_eq!(errs.to_string(), "the vector provided was empty, NonEmpty needs at least one element");
+            assert_eq!(errs.to_string(), "in entity type `Foo`: the vector provided was empty, NonEmpty needs at least one element");
         });
 
         let src = serde_json::json!({
@@ -4446,7 +4608,7 @@ mod enumerated_entity_types {
         });
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Err(errs) => {
-            assert_eq!(errs.to_string(), "invalid type: null, expected a sequence");
+            assert_eq!(errs.to_string(), "in entity type `Foo`: invalid type: null, expected a sequence");
         });
 
         let src = serde_json::json!({
@@ -4462,7 +4624,7 @@ mod enumerated_entity_types {
         });
         let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
         assert_matches!(schema, Err(errs) => {
-            assert_eq!(errs.to_string(), "unexpected field: memberOfTypes");
+            assert_eq!(errs.to_string(), "in entity type `Foo`: unexpected field: memberOfTypes");
         });
     }
 }
@@ -4827,6 +4989,83 @@ mod typescript_declarations {
             "NamespaceDefinition",
             <NamespaceDefinition<RawName> as Tsify>::DECL,
             "EntityType",
+        );
+    }
+}
+
+/// Errors found while reading a JSON schema say which declaration they are in (#435)
+#[cfg(test)]
+mod declaration_context {
+    use crate::extensions::Extensions;
+    use crate::validator::ValidatorSchema;
+    use serde_json::json;
+
+    fn err(src: serde_json::Value) -> String {
+        ValidatorSchema::from_json_value(src, Extensions::all_available())
+            .expect_err("schema should not be valid")
+            .to_string()
+    }
+
+    #[test]
+    fn entity_type_member_of_types() {
+        assert_eq!(
+            err(json!({"": {"entityTypes": {"User": {"memberOfTypes": [""]}}, "actions": {}}})),
+            "in entity type `User`: invalid name ``: unexpected end of input"
+        );
+    }
+
+    #[test]
+    fn entity_type_name() {
+        assert_eq!(
+            err(json!({"": {"entityTypes": {"My Entity Type": {}}, "actions": {}}})),
+            "in name of entity type `My Entity Type`: invalid id `My Entity Type`: unexpected token `Entity`"
+        );
+    }
+
+    #[test]
+    fn common_type_name() {
+        assert_eq!(
+            err(json!({"MyNameSpace": {
+                "commonTypes": {"My Common Type": {"type": "String"}},
+                "entityTypes": {},
+                "actions": {}
+            }})),
+            "in name of common type `My Common Type`: invalid id `My Common Type`: unexpected token `Common`"
+        );
+    }
+
+    #[test]
+    fn common_type_body() {
+        assert_eq!(
+            err(json!({"": {
+                "commonTypes": {"Ctx": {"type": "Record", "attributes": {"a": {"type": "Foo Bar"}}}},
+                "entityTypes": {},
+                "actions": {}
+            }})),
+            "in common type `Ctx`: invalid common type `Foo Bar`: unexpected token `Bar`"
+        );
+    }
+
+    #[test]
+    fn action_body() {
+        assert_eq!(
+            err(json!({"": {"entityTypes": {}, "actions": {
+                "view": {"appliesTo": {"principalTypes": ["a b"], "resourceTypes": []}}
+            }}})),
+            "in action `view`: invalid name `a b`: unexpected token `b`"
+        );
+    }
+
+    #[test]
+    fn json_string_keeps_one_location() {
+        let src = r#"{"": {"entityTypes": {"User": {"memberOfTypes": [""]}}, "actions": {}}}"#;
+        let msg = ValidatorSchema::from_json_str(src, Extensions::all_available())
+            .expect_err("schema should not be valid")
+            .to_string();
+        // serde_json adds the location once, not once per wrapped error
+        assert_eq!(
+            msg,
+            "in entity type `User`: invalid name ``: unexpected end of input at line 1 column 51"
         );
     }
 }
