@@ -27,7 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::Loc;
+pub use loc::{Loc, SourceText};
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;

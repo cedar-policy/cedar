@@ -17,7 +17,7 @@
 use std::str::FromStr;
 use std::sync::Arc;
 use crate::validator::cedar_schema::err::{RawErrorRecovery, UserError};
-use crate::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
+use crate::parser::{Node, Loc, SourceText, unescape::to_unescaped_string, cst::Ref};
 use crate::ast::{Id, AnyId, Annotations};
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
@@ -55,7 +55,7 @@ use lalrpop_util::{ParseError, ErrorRecovery};
 /// `errors` collects generated errors.
 ///
 /// `src` is the (full) original source being parsed, which the source locations l,r index into.
-grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>, keep_src: bool);
+grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s SourceText, keep_src: bool);
 
 extern {
     type Error = UserError;
@@ -100,7 +100,7 @@ match {
 
 // Annotations := {'@' AnyIdent '(' String ')'}
 Annotation: Node<(Node<AnyId>, Option<Node<SmolStr>>)> = {
-    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, Arc::clone(src)))
+    <l:@L> "@" <key:AnyIdent> <value: ("(" <STR> ")")?> <r:@R> => Node::with_source_loc((key, value), Loc::new(l..r, src.clone()))
 }
 
 Annotated<E>: Annotated<E> = {
@@ -117,13 +117,13 @@ pub Schema: ASchema = {
 #[inline]
 Namedspace: Namespace = {
      <l:@L> NAMESPACE <p: Path> "{" <decls: Annotated<Decl>*> "}" <r:@R> 
-        => Namespace { name: Some(p), decls, loc: Some(Loc::new(l..r, Arc::clone(src)))},
+        => Namespace { name: Some(p), decls, loc: Some(Loc::new(l..r, src.clone()))},
 }
 
 // Namespace := 'namespace' Path '{' {Decl} '}'
 Namespace: Annotated<Namespace> = {
     <ns: Annotated<Namedspace>> => ns,
-    <l:@L> <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl], loc: Some(Loc::new(l..r, Arc::clone(src)))}, annotations: Annotations::new()},
+    <l:@L> <decl: Annotated<Decl>> <r:@R> => Annotated {data: Namespace {name: None, decls: vec![decl], loc: Some(Loc::new(l..r, src.clone()))}, annotations: Annotations::new()},
 }
 
 // Decl := Entity | Action | TypeDecl
@@ -140,18 +140,18 @@ Entity: Node<Declaration> = {
         => Node::with_source_loc(Declaration::Entity(EntityDecl::External(ExternalEntityDecl {
             names: ets,
             member_of_types: ps.unwrap_or_default(),
-        })), Loc::new(l..r, Arc::clone(src))),
+        })), Loc::new(l..r, src.clone())),
     <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
             names: ets,
             member_of_types: ps.unwrap_or_default(),
-            attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))),
+            attrs: Node::with_source_loc(ds.map(|ds| ds.unwrap_or_default()).unwrap_or_default(), Loc::new(l2..r2, src.clone())),
             tags: ts,
-            })), Loc::new(l1..r1, Arc::clone(src))),
+            })), Loc::new(l1..r1, src.clone())),
     <l:@L> ENTITY <ets: Idents> ENUM "[" <choices: Eids> "]" ";" <r:@R> => Node::with_source_loc(Declaration::Entity(EntityDecl::Enum(EnumEntityDecl {
         names: ets,
         choices,
-    })), Loc::new(l..r, Arc::clone(src))),
+    })), Loc::new(l..r, src.clone())),
 }
 
 // Action := ExternalAction | DefinedAction
@@ -162,18 +162,18 @@ Action: Node<Declaration> = {
         => Node::with_source_loc(Declaration::Action(ActionDecl::External(ExternalActionDecl {
             names: ns,
             parents: ps,
-        })), Loc::new(l..r, Arc::clone(src))),
+        })), Loc::new(l..r, src.clone())),
     <l:@L> ACTION <ns:Names> <ps:(IN <QualNameOrQualNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" "}")?>";" <r:@R>
         => Node::with_source_loc(Declaration::Action(ActionDecl::Defined(DefinedActionDecl {
             names: ns,
             parents: ps,
             app_decls: ads,
-        })), Loc::new(l..r, Arc::clone(src))),
+        })), Loc::new(l..r, src.clone())),
 }
 
 TypeDecl: Node<Declaration> = {
     <l:@L> TYPE <i:Ident> "=" <t:Type> ";" <r:@R>
-        => Node::with_source_loc(Declaration::Type(TypeDecl { name : i, def : t}), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Declaration::Type(TypeDecl { name : i, def : t}), Loc::new(l..r, src.clone())),
 }
 
 // AppDecls := ('principal' | 'resource') ':' EntTypes [',' | ',' AppDecls]
@@ -183,40 +183,40 @@ AppDecls: Node<NonEmpty<Node<AppDecl>>> = {
         => {
             let entity_tys: Option<NonEmpty<Path>> = NonEmpty::collect(ets.into_iter());
             Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, Arc::clone(src)))],
-                Loc::new(l..r, Arc::clone(src)))
+                nonempty![Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, src.clone()))],
+                Loc::new(l..r, src.clone()))
         },
     <l:@L> <pr: PrincipalOrResource> ":" <ets:EntTypes> <r:@R> "," <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
             let entity_tys: Option<NonEmpty<Path>> = NonEmpty::collect(ets.into_iter());
-            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, Arc::clone(src))));
-            Node::with_source_loc(ds, Loc::new(l..r, Arc::clone(src)))
+            ds.insert(0, Node::with_source_loc(AppDecl::PR(PRAppDecl { kind:pr, entity_tys }), Loc::new(l..r, src.clone())));
+            Node::with_source_loc(ds, Loc::new(l..r, src.clone()))
         },
     <l:@L> CONTEXT ":" <p:Path> ","? <r:@R>
         =>  Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src)))],
-                Loc::new(l..r, Arc::clone(src))),
+                nonempty![Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, src.clone()))],
+                Loc::new(l..r, src.clone())),
     <l:@L> CONTEXT ":" <p:Path> "," <r:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, Arc::clone(src))));
+            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Left(p)), Loc::new(l..r, src.clone())));
             Node::with_source_loc(
                 ds,
-                Loc::new(l..r, Arc::clone(src)))
+                Loc::new(l..r, src.clone()))
         },
     <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> ","? <r1:@R>
         =>
             Node::with_source_loc(
-                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src)))],
-                Loc::new(l1..r1, Arc::clone(src))),
+                nonempty![Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, src.clone())))), Loc::new(l1..r1, src.clone()))],
+                Loc::new(l1..r1, src.clone())),
     <l1:@L> CONTEXT ":" <l2:@L> "{" <attrs:AttrDecls?> "}" <r2:@R> "," <r1:@R> <mut ds: AppDecls>
         => {
             let (mut ds, _) = ds.into_inner();
-            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, Arc::clone(src))))), Loc::new(l1..r1, Arc::clone(src))));
+            ds.insert(0, Node::with_source_loc(AppDecl::Context(Either::Right(Node::with_source_loc(attrs.unwrap_or_default(), Loc::new(l2..r2, src.clone())))), Loc::new(l1..r1, src.clone())));
             Node::with_source_loc(
                 ds,
-                Loc::new(l1..r1, Arc::clone(src)))
+                Loc::new(l1..r1, src.clone()))
         },
 }
 
@@ -227,17 +227,17 @@ pub Type: Node<SType> = {
     <p:Path>
         => { let loc = p.loc().cloned(); Node::with_maybe_source_loc(SType::Ident(p), loc) },
     <l:@L> SET "<" <t:Type> ">" <r:@R>
-        => Node::with_source_loc(SType::Set(Box::new(t)), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(SType::Set(Box::new(t)), Loc::new(l..r, src.clone())),
     <l:@L> "{" <ds:AttrDecls?> "}" <r:@R>
-        => Node::with_source_loc(SType::Record(ds.unwrap_or_default()), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(SType::Record(ds.unwrap_or_default()), Loc::new(l..r, src.clone())),
 }
 
 // AttrDecls := Annotation* Name ['?'] ':' Type [',' | ',' AttrDecls]
 AttrDecls: Vec<Node<Annotated<AttrDecl>>> = {
     <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> ","? <r:@R>
-        =>? Ok(deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| vec![Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src)))])?),
+        =>? Ok(deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| vec![Node::with_source_loc(decl, Loc::new(l..r, src.clone()))])?),
     <l:@L> <annotations: Annotation*> <name: Name> <required:"?"?> ":" <ty:Type> "," <r:@R> <mut ds: AttrDecls>
-        =>? {ds.insert(0, deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| Node::with_source_loc(decl, Loc::new(l..r, Arc::clone(src))))?); Ok(ds)},
+        =>? {ds.insert(0, deduplicate_annotations(AttrDecl { name, required: required.is_none(), ty}, annotations).map(|decl| Node::with_source_loc(decl, Loc::new(l..r, src.clone())))?); Ok(ds)},
 }
 
 Comma<E>: Vec<E> = {
@@ -258,49 +258,49 @@ Ident: Node<Id> = {
 // AnyIdent := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
 AnyIdent: Node<AnyId> = {
     <l:@L> NAMESPACE <r:@R>
-        => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> EXTERNAL <r:@R>
-        => Node::with_source_loc("external".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("external".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> ENTITY <r:@R>
-        => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> SET <r:@R>
-        => Node::with_source_loc("Set".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("Set".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> APPLIESTO <r:@R>
-        => Node::with_source_loc("appliesTo".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("appliesTo".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> PRINCIPAL <r:@R>
-        => Node::with_source_loc("principal".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("principal".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> ACTION <r:@R>
-        => Node::with_source_loc("action".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("action".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> RESOURCE <r:@R>
-        => Node::with_source_loc("resource".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("resource".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> CONTEXT <r:@R>
-        => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> ATTRIBUTES <r:@R>
-        => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> TAGS <r:@R>
-        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> BOOL <r:@R>
-        => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> LONG <r:@R>
-        => Node::with_source_loc("Long".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("Long".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> STRING <r:@R>
-        => Node::with_source_loc("String".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("String".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> TYPE <r:@R>
-        => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> IN <r:@R>
-        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> ENUM <r:@R>
-        => Node::with_source_loc("enum".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc("enum".parse().unwrap(), Loc::new(l..r, src.clone())),
     <l:@L> <i:IDENTIFIER> <r:@R>
-        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, src.clone())),
 }
 
 STR: Node<SmolStr> = {
     <l:@L> <s:STRINGLIT> <r:@R> =>? {
         #[allow(clippy::string_slice, reason = "STRINGLIT token has at least two characters, starting and ending with the ASCII character `\"`")]
         to_unescaped_string(&s[1..(s.len() - 1)]).map_or_else(|e| Err(ParseError::User {
-            error: UserError::StringEscape(Node::with_source_loc(e, Loc::new(l..r, Arc::clone(src)))),
-        }), |v| Ok(Node::with_source_loc(v, Loc::new(l..r, Arc::clone(src)))))
+            error: UserError::StringEscape(Node::with_source_loc(e, Loc::new(l..r, src.clone()))),
+        }), |v| Ok(Node::with_source_loc(v, Loc::new(l..r, src.clone()))))
     },
 }
 
@@ -316,17 +316,17 @@ Name: Node<SmolStr> = {
 
 // QualName      := Name | Path '::' STR
 QualName : Node<QualName> = {
-    <l:@L> <p : PathInline> "::" <s:STR> <r:@R> => Node::with_source_loc(QualName::qualified(p, s.node), Loc::new(l..r, Arc::clone(src))),
-    <l:@L> <i : Name> <r:@R> => Node::with_source_loc(QualName::unqualified(i.node), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> <p : PathInline> "::" <s:STR> <r:@R> => Node::with_source_loc(QualName::qualified(p, s.node), Loc::new(l..r, src.clone())),
+    <l:@L> <i : Name> <r:@R> => Node::with_source_loc(QualName::unqualified(i.node), Loc::new(l..r, src.clone())),
 }
 
 // Path := IDENT {'::' IDENT}
 #[inline]
 PathInline: Path = {
     <l:@L> <i:Ident> <r:@R>
-        => Path::single(i.node, Some(Loc::new(l..r, Arc::clone(src)))),
+        => Path::single(i.node, Some(Loc::new(l..r, src.clone()))),
     <l:@L> <is:(<Ident> "::")+> <i:Ident> <r:@R>
-        => Path::new(i.node, is.into_iter().map(|n| n.node), Some(Loc::new(l..r, Arc::clone(src)))),
+        => Path::new(i.node, is.into_iter().map(|n| n.node), Some(Loc::new(l..r, src.clone()))),
 }
 
 NonEmptyComma<E>: NonEmpty<E> = {
@@ -351,8 +351,8 @@ QualNames : NonEmpty<Node<QualName>> = NonEmptyComma<QualName>;
 Eids: NonEmpty<Node<Eid>> = NonEmptyComma<Eid>;
 
 PrincipalOrResource: Node<PR> = {
-    <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, Arc::clone(src))),
-    <l:@L> RESOURCE <r:@R> => Node::with_source_loc(PR::Resource, Loc::new(l..r, Arc::clone(src))),
+    <l:@L> PRINCIPAL <r:@R> => Node::with_source_loc(PR::Principal, Loc::new(l..r, src.clone())),
+    <l:@L> RESOURCE <r:@R> => Node::with_source_loc(PR::Resource, Loc::new(l..r, src.clone())),
 }
 
 // EntTypes := Path | '[' [Path {',' Path}] ']'

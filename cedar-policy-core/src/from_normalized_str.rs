@@ -72,7 +72,7 @@ pub fn default_from_normalized_str<T: FromStr<Err = ParseErrors> + Display>(
                 src: s.to_string(),
                 normalized_src,
             },
-            Some(Loc::new(diff_byte, s.into())),
+            Some(Loc::new(diff_byte, s)),
         ))))
     }
 }
