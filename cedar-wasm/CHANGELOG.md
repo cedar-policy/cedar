@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Errors found while reading a schema in the JSON format now say which entity type, common type or action they are in. (#435)
+
 ## 4.14.0
 
 ### Added
