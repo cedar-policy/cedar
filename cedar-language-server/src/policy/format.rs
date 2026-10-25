@@ -40,7 +40,7 @@ pub(crate) fn format_policy(policy: &str) -> Option<Vec<TextEdit>> {
                 character: 0,
             },
             end: Position {
-                line: lines as u32,
+                line: crate::utils::to_u32(lines),
                 character: 0,
             },
         },
@@ -72,7 +72,7 @@ mod tests {
                 let range = &edits[0].range;
                 prop_assert_eq!(range.start.line, 0);
                 prop_assert_eq!(range.start.character, 0);
-                let input_lines = policy.lines().count() as u32;
+                let input_lines = crate::utils::to_u32(policy.lines().count());
                 prop_assert!(range.end.line >= input_lines.saturating_sub(1),
                     "end line {} should cover input lines {}", range.end.line, input_lines);
             }

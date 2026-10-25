@@ -15,6 +15,7 @@
  */
 
 use super::SchemaInfo;
+use crate::utils::to_u32;
 use regex::Regex;
 use std::collections::HashMap;
 use tower_lsp_server::ls_types::{
@@ -104,10 +105,9 @@ impl CedarSchemaParser {
         let mut ranges = Vec::new();
         let mut namespace = String::new();
         let mut declarations = HashMap::new();
-        let mut declaration_start_line = -1_isize;
+        let mut declaration_start_line: Option<usize> = None;
 
         for (i, line) in doc_text.lines().enumerate() {
-            let i = i as isize;
             #[expect(
                 clippy::string_slice,
                 reason = "index returned from find() is valid byte index"
@@ -139,14 +139,14 @@ impl CedarSchemaParser {
                         namespace = format!("{}::", ns_match.as_str());
                     }
                 }
-            } else if declaration_start_line == -1 && line_pre_comment == "}" {
+            } else if declaration_start_line.is_none() && line_pre_comment == "}" {
                 // End of namespace
                 namespace.clear();
             }
 
             // Process type declarations
-            if decl.starts_with("type") && declaration_start_line == -1 {
-                declaration_start_line = i;
+            if decl.starts_with("type") && declaration_start_line.is_none() {
+                declaration_start_line = Some(i);
                 Self::process_declaration(
                     self.r#type,
                     line,
@@ -158,8 +158,8 @@ impl CedarSchemaParser {
             }
 
             // Process entity declarations
-            if decl.starts_with("entity") && declaration_start_line == -1 {
-                declaration_start_line = i;
+            if decl.starts_with("entity") && declaration_start_line.is_none() {
+                declaration_start_line = Some(i);
                 Self::process_declaration(
                     self.entity,
                     line,
@@ -171,20 +171,22 @@ impl CedarSchemaParser {
             }
 
             // Process action declarations
-            if decl.starts_with("action") && declaration_start_line == -1 {
-                declaration_start_line = i;
+            if decl.starts_with("action") && declaration_start_line.is_none() {
+                declaration_start_line = Some(i);
                 self.process_action_declaration(line, i, decl, &namespace, &mut declarations);
             }
 
             // Check for end of declaration
-            if line_pre_comment.ends_with(';') && declaration_start_line != -1 {
+            if let Some(start_line) =
+                declaration_start_line.filter(|_| line_pre_comment.ends_with(';'))
+            {
                 let declaration_range = Range {
-                    start: Position::new(declaration_start_line as u32, 0),
-                    end: Position::new(i as u32, line.len() as u32),
+                    start: Position::new(to_u32(start_line), 0),
+                    end: Position::new(to_u32(i), to_u32(line.len())),
                 };
 
                 ranges.push(declaration_range);
-                declaration_start_line = -1;
+                declaration_start_line = None;
                 declarations.clear();
             }
         }
@@ -195,7 +197,7 @@ impl CedarSchemaParser {
     fn process_declaration(
         regex: &Regex,
         line: &str,
-        line_idx: isize,
+        line_idx: usize,
         line_pre_comment: &str,
         namespace: &str,
         declarations: &mut HashMap<String, Option<Range>>,
@@ -206,7 +208,7 @@ impl CedarSchemaParser {
 
                 for entity_type in entities.split(',') {
                     let trimmed_type = entity_type.trim();
-                    if let Some(range) = find_range(line, line_idx as usize, trimmed_type) {
+                    if let Some(range) = find_range(line, line_idx, trimmed_type) {
                         declarations.insert(format!("{namespace}{trimmed_type}"), Some(range));
                     }
                 }
@@ -217,7 +219,7 @@ impl CedarSchemaParser {
     fn process_action_declaration(
         &self,
         line: &str,
-        line_idx: isize,
+        line_idx: usize,
         line_pre_comment: &str,
         namespace: &str,
         declarations: &mut HashMap<String, Option<Range>>,
@@ -230,7 +232,7 @@ impl CedarSchemaParser {
                     let trimmed_id = action_id.trim();
                     let is_quoted = trimmed_id.starts_with('"') && trimmed_id.ends_with('"');
 
-                    if let Some(range) = find_range(line, line_idx as usize, trimmed_id) {
+                    if let Some(range) = find_range(line, line_idx, trimmed_id) {
                         // Extract the actual action ID, removing quotes if present
                         let actual_id = if is_quoted && trimmed_id.len() >= 2 {
                             #[expect(
@@ -382,8 +384,8 @@ impl CedarSchemaParser {
 // Helper function to find a text match within a line and create a Range
 fn find_range(line: &str, line_idx: usize, text: &str) -> Option<Range> {
     line.find(text).map(|start_pos| Range {
-        start: Position::new(line_idx as u32, start_pos as u32),
-        end: Position::new(line_idx as u32, (start_pos + text.len()) as u32),
+        start: Position::new(to_u32(line_idx), to_u32(start_pos)),
+        end: Position::new(to_u32(line_idx), to_u32(start_pos + text.len())),
     })
 }
 

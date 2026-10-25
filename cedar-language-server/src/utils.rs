@@ -96,6 +96,15 @@ pub(crate) fn to_lsp_diagnostics<'a>(
     diagnostics
 }
 
+/// Convert a line, column or length to the `u32` that LSP positions use.
+///
+/// A document would need more than `u32::MAX` lines, or a line more than
+/// `u32::MAX` characters, for this not to fit; such values saturate at
+/// `u32::MAX` instead of silently wrapping.
+pub(crate) fn to_u32(n: usize) -> u32 {
+    u32::try_from(n).unwrap_or(u32::MAX)
+}
+
 pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
     // Find valid character boundary at or before offset
     let offset = source_span.offset().min(src.len());
@@ -121,12 +130,12 @@ pub(crate) fn to_range(source_span: &SourceSpan, src: &str) -> Range {
 
     Range {
         start: Position {
-            line: start_line as u32,
-            character: start_col as u32,
+            line: to_u32(start_line),
+            character: to_u32(start_col),
         },
         end: Position {
-            line: end_line as u32,
-            character: end_col as u32,
+            line: to_u32(end_line),
+            character: to_u32(end_col),
         },
     }
 }
@@ -286,8 +295,8 @@ fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
                         paren_depth += 1;
                         if paren_depth == 1 {
                             policy_start_pos = Some(Position {
-                                line: line_idx as u32,
-                                character: char_idx as u32,
+                                line: to_u32(line_idx),
+                                character: to_u32(char_idx),
                             });
                         }
                     }
@@ -300,8 +309,8 @@ fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
                             policy_scopes.push(Range {
                                 start: policy_start_pos,
                                 end: Position {
-                                    line: line_idx as u32,
-                                    character: char_idx as u32,
+                                    line: to_u32(line_idx),
+                                    character: to_u32(char_idx),
                                 },
                             });
                             in_effect_keyword = false;
@@ -626,6 +635,19 @@ pub(crate) mod tests {
     use similar_asserts::assert_eq;
 
     use super::*;
+
+    #[test]
+    fn to_u32_converts_without_wrapping() {
+        assert_eq!(to_u32(0), 0);
+        assert_eq!(to_u32(42), 42);
+        assert_eq!(to_u32(u32::MAX as usize), u32::MAX);
+        #[cfg(target_pointer_width = "64")]
+        {
+            // `as u32` would wrap this to 0
+            assert_eq!(to_u32(u32::MAX as usize + 1), u32::MAX);
+            assert_eq!(to_u32(usize::MAX), u32::MAX);
+        }
+    }
 
     pub(crate) fn remove_caret_marker(policy: impl AsRef<str>) -> (String, Position) {
         let marker = "|caret|";

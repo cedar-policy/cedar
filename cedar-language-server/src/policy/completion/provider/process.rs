@@ -88,7 +88,7 @@ pub(crate) fn preprocess_policy(
         let insert_pos = pos + 1 + offset;
 
         // Only adjust cursor position if we're on the same line
-        if line_num as u32 == original_position.line {
+        if crate::utils::to_u32(line_num) == original_position.line {
             // Calculate the position relative to the line start
             let line_start = if original_text.lines().count() > 1 {
                 original_text
@@ -103,7 +103,7 @@ pub(crate) fn preprocess_policy(
             let pos_in_line = pos - line_start + 1;
 
             if pos_in_line < original_position.character as usize {
-                adjusted_position.character += LSP_MARKER.len() as u32;
+                adjusted_position.character += crate::utils::to_u32(LSP_MARKER.len());
             }
         }
 
@@ -158,7 +158,10 @@ mod tests {
             r"permit(principal, action, resource) when { principal.hello && action.__CEDAR_LSP && resource.__CEDAR_LSP };"
         );
 
-        assert_eq!(position, Position::new(0, 82 + LSP_MARKER.len() as u32));
+        assert_eq!(
+            position,
+            Position::new(0, 82 + crate::utils::to_u32(LSP_MARKER.len()))
+        );
     }
 
     #[test]
@@ -176,7 +179,10 @@ mod tests {
             };"
         );
 
-        assert_eq!(position, Position::new(1, 22 + LSP_MARKER.len() as u32));
+        assert_eq!(
+            position,
+            Position::new(1, 22 + crate::utils::to_u32(LSP_MARKER.len()))
+        );
     }
 
     #[test]
@@ -196,7 +202,7 @@ mod tests {
 
         assert_eq!(
             position,
-            Position::new(1, 106 + (LSP_MARKER.len() as u32 * 2))
+            Position::new(1, 106 + (crate::utils::to_u32(LSP_MARKER.len()) * 2))
         );
     }
 
@@ -223,6 +229,9 @@ mod tests {
             new_policy,
             "permit(principal, action, resource) when { principal.__CEDAR_LSP .__CEDAR_LSP .__CEDAR_LSP .__CEDAR_LSP };"
         );
-        assert_eq!(position, Position::new(0, 55 + LSP_MARKER.len() as u32));
+        assert_eq!(
+            position,
+            Position::new(0, 55 + crate::utils::to_u32(LSP_MARKER.len()))
+        );
     }
 }

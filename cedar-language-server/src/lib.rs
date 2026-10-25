@@ -15,13 +15,7 @@
  */
 
 #![warn(clippy::pedantic)]
-#![allow(
-    clippy::missing_errors_doc,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_possible_wrap,
-    reason = "existing code"
-)]
+#![allow(clippy::missing_errors_doc, reason = "existing code")]
 #![cfg_attr(not(feature = "bin"), allow(dead_code, unused_imports))]
 
 #[cfg(feature = "bin")]
