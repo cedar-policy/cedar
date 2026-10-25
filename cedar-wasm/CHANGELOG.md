@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `checkParsePolicySetJsonStr`, `checkParseSchemaJsonStr`, `checkParseEntitiesJsonStr` and `checkParseContextJsonStr` bindings, which take their input as a JSON string instead of a JavaScript object, so errors in the JSON syntax report their line and column. (#1317)
+
 ## 4.14.0
 
 ### Added

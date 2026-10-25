@@ -14,6 +14,13 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- With the `wasm` feature, `check_parse_policy_set_json_str`, `check_parse_schema_json_str`,
+  `check_parse_entities_json_str` and `check_parse_context_json_str` are exported to WASM as
+  `checkParsePolicySetJsonStr`, `checkParseSchemaJsonStr`, `checkParseEntitiesJsonStr` and
+  `checkParseContextJsonStr` (#1317).
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
