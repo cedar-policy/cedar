@@ -11,6 +11,8 @@ homepage.workspace = true
 repository = "https://github.com/cedar-policy/cedar"
 
 [dependencies]
+vstd = { version = "=0.0.0-2026-10-18-0147", optional = true }
+verus_builtin_macros = { version = "=0.0.0-2026-10-18-0147", optional = true }
 cedar-policy-core = { version = "=4.14.0", path = "../cedar-policy-core" }
 cedar-policy-formatter = { version = "=4.14.0", path = "../cedar-policy-formatter" }
 ref-cast = "1.0"
@@ -79,6 +81,9 @@ extended-schema = ["cedar-policy-core/extended-schema"]
 deprecated-schema-compat = []
 tpe = ["cedar-policy-core/tpe"]
 variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
+# Verus proofs that the public authorizer agrees with the model in
+# `cedar-rust-model` (only meant to be used by `cargo verus`)
+verus = ["dep:vstd", "dep:verus_builtin_macros", "cedar-policy-core/verus"]
 
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
@@ -131,6 +136,9 @@ rustdoc-args = ["--cfg", "docsrs"]
 
 [lints]
 workspace = true
+
+[package.metadata.verus]
+verify = true
 
 [package.metadata.release]
 pre-release-replacements = [

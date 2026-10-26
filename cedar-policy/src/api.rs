@@ -23,6 +23,10 @@
     reason = "this module doesn't currently comply with these lints"
 )]
 
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{call_ensures, proof, proof_decl, verus_spec, verus_verify, View};
+
 mod id;
 use cedar_policy_core::pst::error_body;
 #[cfg(feature = "entity-manifest")]
@@ -413,8 +417,19 @@ impl std::fmt::Display for Entity {
 /// Represents an entity hierarchy, and allows looking up `Entity` objects by
 /// Uid.
 #[repr(transparent)]
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, RefCast)]
 pub struct Entities(pub(crate) cedar_policy_core::entities::Entities);
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Entities {
+    /// The core entities (for specifications)
+    pub open(crate) spec fn spec_ast(self) -> cedar_policy_core::entities::Entities {
+        self.0
+    }
+}
+} // verus!
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl AsRef<cedar_policy_core::entities::Entities> for Entities {
@@ -983,8 +998,19 @@ impl IntoIterator for Entities {
 
 /// Authorizer object, which provides responses to authorization queries
 #[repr(transparent)]
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, RefCast)]
 pub struct Authorizer(authorizer::Authorizer);
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Authorizer {
+    /// The core authorizer (for specifications)
+    pub closed spec fn spec_ast(self) -> authorizer::Authorizer {
+        self.0
+    }
+}
+} // verus!
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl AsRef<authorizer::Authorizer> for Authorizer {
@@ -999,6 +1025,7 @@ impl Default for Authorizer {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Authorizer {
     /// Create a new `Authorizer`
     ///
@@ -1056,6 +1083,7 @@ impl Authorizer {
     /// let authorizer = Authorizer::new();
     /// let r = authorizer.is_authorized(&request, &policy, &entities);
     /// ```
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r.spec_ast().spec_ext_ok()))]
     pub fn new() -> Self {
         Self(authorizer::Authorizer::new())
     }
@@ -1113,8 +1141,24 @@ impl Authorizer {
     /// let response = authorizer.is_authorized(&request, &policy, &entities);
     /// assert_eq!(response.decision(), Decision::Allow);
     /// ```
+    #[cfg_attr(feature = "verus", verus_spec(resp =>
+        requires
+            crate::verification::abs::authorization_hyps(*self, *r, *p, *e),
+        ensures
+            crate::verification::abs::is_authorized_lift(*self, *r, *p, *e, resp),
+    ))]
     pub fn is_authorized(&self, r: &Request, p: &PolicySet, e: &Entities) -> Response {
-        self.0.is_authorized(r.0.clone(), &p.ast, &e.0).into()
+        let resp = self.0.is_authorized(r.0.clone(), &p.ast, &e.0);
+        proof_decl! {
+            let ghost resp0 = resp;
+        }
+        let resp = Response::from(resp);
+        proof! {
+            assert(call_ensures(authorizer::Authorizer::is_authorized, (&self.0, r.0, &p.ast, &e.0), resp0));
+            crate::verification::abs::lemma_response_lift(resp0, resp);
+            assert(cedar_policy_core::verification::authorizer_theorems::authorized(self.0, r.0, p.ast, e.0, resp0));
+        }
+        resp
     }
 
     /// A partially evaluated authorization request.
@@ -1137,6 +1181,7 @@ impl Authorizer {
 }
 
 /// Authorization response returned from the `Authorizer`
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Response {
     /// Authorization decision
@@ -1279,6 +1324,7 @@ impl From<cedar_policy_core::authorizer::PartialResponse> for PartialResponse {
 }
 
 /// Diagnostics providing more information on how a `Decision` was reached
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Diagnostics {
     /// `PolicyId`s of the policies that contributed to the decision.
@@ -1289,8 +1335,49 @@ pub struct Diagnostics {
     errors: Vec<AuthorizationError>,
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Response {
+    /// The decision (for specifications)
+    pub closed spec fn spec_decision(self) -> Decision {
+        self.decision
+    }
+
+    /// The IDs of the determining policies (for specifications)
+    pub closed spec fn spec_reason(self) -> vstd::set::Set<PolicyId> {
+        self.diagnostics.spec_reason()
+    }
+
+    /// The errors (for specifications)
+    pub closed spec fn spec_errors(self) -> vstd::seq::Seq<AuthorizationError> {
+        self.diagnostics.spec_errors()
+    }
+}
+
+impl Diagnostics {
+    /// The IDs of the determining policies (for specifications)
+    pub closed spec fn spec_reason(self) -> vstd::set::Set<PolicyId> {
+        self.reason@
+    }
+
+    /// The errors (for specifications)
+    pub closed spec fn spec_errors(self) -> vstd::seq::Seq<AuthorizationError> {
+        self.errors@
+    }
+}
+} // verus!
+
 #[doc(hidden)]
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<authorizer::Diagnostics> for Diagnostics {
+    // Trusted: Verus doesn't support `map(..).collect()`.
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_reason().map(|id: PolicyId| id.spec_ast()) == diagnostics.reason@,
+            r.spec_errors().map_values(|e: AuthorizationError| e.spec_policy_id())
+                == diagnostics.errors@.map_values(|e: authorizer::AuthorizationError| cedar_policy_core::verification::trusted::error_policy_id(e)),
+    ))]
     fn from(diagnostics: authorizer::Diagnostics) -> Self {
         Self {
             reason: diagnostics.reason.into_iter().map(PolicyId::new).collect(),
@@ -1430,8 +1517,10 @@ impl Diagnostics {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Response {
     /// Create a new `Response`
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn new(
         decision: Decision,
         reason: HashSet<PolicyId>,
@@ -1444,27 +1533,41 @@ impl Response {
     }
 
     /// Get the authorization decision
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r == self.spec_decision(),
+    ))]
     pub fn decision(&self) -> Decision {
         self.decision
     }
 
     /// Get the authorization diagnostics
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn diagnostics(&self) -> &Diagnostics {
         &self.diagnostics
     }
 }
 
 #[doc(hidden)]
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<authorizer::Response> for Response {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_decision() == a.decision,
+            r.spec_reason().map(|id: PolicyId| id.spec_ast()) == a.diagnostics.reason@,
+            r.spec_errors().map_values(|e: AuthorizationError| e.spec_policy_id())
+                == a.diagnostics.errors@.map_values(|e: authorizer::AuthorizationError| cedar_policy_core::verification::trusted::error_policy_id(e)),
+    ))]
     fn from(a: authorizer::Response) -> Self {
         Self {
             decision: a.decision,
-            diagnostics: a.diagnostics.into(),
+            diagnostics: Diagnostics::from(a.diagnostics),
         }
     }
 }
 
 /// Used to select how a policy will be validated.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Default, Eq, PartialEq, Copy, Clone, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[serde(rename_all = "camelCase")]
@@ -2568,6 +2671,7 @@ pub(crate) struct StringifiedPolicySet {
 }
 
 /// Represents a set of `Policy`s
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Default)]
 pub struct PolicySet {
     /// AST representation. Technically partially redundant with the other fields.
@@ -2586,6 +2690,16 @@ impl PartialEq for PolicySet {
     }
 }
 impl Eq for PolicySet {}
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl PolicySet {
+    /// The core policy set (for specifications)
+    pub closed spec fn spec_ast(self) -> ast::PolicySet {
+        self.ast
+    }
+}
+} // verus!
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl AsRef<ast::PolicySet> for PolicySet {
@@ -5168,8 +5282,19 @@ impl RequestBuilder<&Schema> {
 /// It represents an authorization request asking the question, "Can this
 /// principal take this action on this resource in this context?"
 #[repr(transparent)]
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, RefCast)]
 pub struct Request(pub(crate) ast::Request);
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Request {
+    /// The core request (for specifications)
+    pub open(crate) spec fn spec_ast(self) -> ast::Request {
+        self.0
+    }
+}
+} // verus!
 
 #[doc(hidden)] // because this converts to a private/internal type
 impl AsRef<ast::Request> for Request {

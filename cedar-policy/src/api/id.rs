@@ -20,6 +20,9 @@
 use crate::entities_json_errors::{JsonDeserializationError, JsonSerializationError};
 use crate::ParseErrors;
 use cedar_policy_core::ast;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{verus_spec, verus_verify};
 use cedar_policy_core::entities::json::err::JsonDeserializationErrorContext;
 use cedar_policy_core::pst;
 use cedar_policy_core::FromNormalizedStr;
@@ -355,6 +358,7 @@ impl From<ast::EntityUID> for EntityUid {
 /// # assert_eq!(AsRef::<str>::as_ref(&id), "my-id");
 /// ```
 #[repr(transparent)]
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord, Serialize, Deserialize, RefCast)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct PolicyId(#[cfg_attr(feature = "wasm", tsify(type = "string"))] ast::PolicyID);
@@ -365,6 +369,25 @@ impl AsRef<ast::PolicyID> for PolicyId {
         &self.0
     }
 }
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl PolicyId {
+    /// The core policy ID (for specifications)
+    pub closed spec fn spec_ast(self) -> ast::PolicyID {
+        self.0
+    }
+
+    /// A policy ID is determined by its core ID.
+    pub proof fn lemma_spec_ast_ext(a: Self, b: Self)
+        requires
+            a.spec_ast() == b.spec_ast(),
+        ensures
+            a == b,
+    {
+    }
+}
+} // verus!
 
 impl PolicyId {
     /// Construct a [`PolicyId`] from a source string

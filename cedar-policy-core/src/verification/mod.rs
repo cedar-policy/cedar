@@ -30,7 +30,9 @@ use vstd::prelude::*;
 pub mod model;
 
 pub mod abs;
+pub mod authorizer_lean_theorems;
 pub mod authorizer_lemmas;
+pub mod authorizer_theorems;
 pub mod conversions;
 pub mod expr_abs;
 pub mod ext_abs;

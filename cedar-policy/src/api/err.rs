@@ -17,6 +17,9 @@
 //! This module defines the publicly exported error types.
 
 use crate::{EntityUid, PolicyId};
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{verus_spec, verus_verify};
 pub use cedar_policy_core::ast::{
     expression_construction_errors, restricted_expr_errors, ContainsUnknown,
     ExpressionConstructionError, PartialValueToValueError, RestrictedExpressionError,
@@ -77,6 +80,7 @@ pub mod conformance_errors {
 }
 
 /// Errors that can occur during authorization
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
 pub enum AuthorizationError {
     /// An error occurred when evaluating a policy.
@@ -92,8 +96,12 @@ pub mod authorization_errors {
     use miette::Diagnostic;
     use ref_cast::RefCast;
     use thiserror::Error;
+    #[cfg(feature = "verus")]
+    #[allow(unused_imports)]
+    use vstd::prelude::{verus_spec, verus_verify};
 
     /// An error occurred when evaluating a policy
+    #[cfg_attr(feature = "verus", verus_verify(external_derive))]
     #[derive(Debug, Diagnostic, PartialEq, Eq, Error, Clone)]
     #[error("error while evaluating policy `{id}`: {error}")]
     #[diagnostic(forward(error))]
@@ -121,8 +129,23 @@ pub mod authorization_errors {
         }
     }
 
+    #[cfg(feature = "verus")]
+    vstd::prelude::verus! {
+    impl PolicyEvaluationError {
+        /// The ID of the erroring policy (for specifications)
+        pub closed spec fn spec_id(self) -> ast::PolicyID {
+            self.id
+        }
+    }
+    } // verus!
+
     #[doc(hidden)]
+    #[cfg_attr(feature = "verus", verus_verify)]
     impl From<authorizer::AuthorizationError> for PolicyEvaluationError {
+        #[cfg_attr(feature = "verus", verus_spec(r =>
+            ensures
+                r.spec_id() == cedar_policy_core::verification::trusted::error_policy_id(e),
+        ))]
         fn from(e: authorizer::AuthorizationError) -> Self {
             match e {
                 authorizer::AuthorizationError::PolicyEvaluationError { id, error } => {
@@ -133,10 +156,27 @@ pub mod authorization_errors {
     }
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl AuthorizationError {
+    /// The ID of the erroring policy (for specifications)
+    pub open spec fn spec_policy_id(self) -> ast::PolicyID {
+        match self {
+            AuthorizationError::PolicyEvaluationError(e) => e.spec_id(),
+        }
+    }
+}
+} // verus!
+
 #[doc(hidden)]
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<authorizer::AuthorizationError> for AuthorizationError {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_policy_id() == cedar_policy_core::verification::trusted::error_policy_id(value),
+    ))]
     fn from(value: authorizer::AuthorizationError) -> Self {
-        Self::PolicyEvaluationError(value.into())
+        Self::PolicyEvaluationError(authorization_errors::PolicyEvaluationError::from(value))
     }
 }
 
