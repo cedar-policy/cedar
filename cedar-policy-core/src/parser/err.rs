@@ -19,7 +19,7 @@ use std::fmt::{self, Display, Write};
 use std::iter;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use either::Either;
 use lalrpop_util as lalr;
@@ -27,6 +27,8 @@ use miette::{Diagnostic, LabeledSpan, SourceSpan};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use thiserror::Error;
+
+use crate::parser::SourceText;
 
 use crate::ast::{self, ReservedNameError};
 use crate::parser::fmt::join_with_conjunction;
@@ -612,7 +614,7 @@ pub mod parse_errors {
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub struct ToCSTError {
     err: OwnedRawParseError,
-    src: Arc<str>,
+    src: SourceText,
 }
 
 impl ToCSTError {
@@ -634,14 +636,14 @@ impl ToCSTError {
         }
     }
 
-    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>, src: Arc<str>) -> Self {
+    pub(crate) fn from_raw_parse_err(err: RawParseError<'_>, src: SourceText) -> Self {
         Self {
             err: err.map_token(|token| token.to_string()),
             src,
         }
     }
 
-    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>, src: Arc<str>) -> Self {
+    pub(crate) fn from_raw_err_recovery(recovery: RawErrorRecovery<'_>, src: SourceText) -> Self {
         Self::from_raw_parse_err(recovery.error, src)
     }
 }

@@ -70,7 +70,7 @@ cfg_tolerant_ast! {
             <ExprWithErrsBuilder as ExprBuilder>::new()
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Some(Loc::new(0..1, "ASTErrorNode".into())),
+                    Some(Loc::new(0..1, "ASTErrorNode")),
                 )))
                 .unwrap_infallible(),
         )
@@ -2413,13 +2413,13 @@ mod test {
         use std::str::FromStr;
 
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Some(Loc::new(0..1, "ASTErrorNode".into()));
+        let error_loc = Some(Loc::new(0..1, "ASTErrorNode"));
         let error_body = TemplateBody::TemplateBodyError(policy_id.clone(), error_loc.clone());
 
         let expected_error = <ExprWithErrsBuilder as ExprBuilder>::new()
             .error(ParseErrors::singleton(ToASTError::new(
                 ToASTErrorKind::ASTErrorNode,
-                Some(Loc::new(0..1, "ASTErrorNode".into())),
+                Some(Loc::new(0..1, "ASTErrorNode")),
             )))
             .unwrap();
 
@@ -2476,7 +2476,7 @@ mod test {
     #[test]
     fn template_error_methods() {
         let policy_id = PolicyID::from_string("error_policy");
-        let error_loc = Some(Loc::new(0..1, "ASTErrorNode".into()));
+        let error_loc = Some(Loc::new(0..1, "ASTErrorNode"));
         let error_template = Template::error(policy_id.clone(), error_loc.clone());
 
         // Check template properties

@@ -120,14 +120,13 @@ impl<'a> SchemaActionLoc<'a> {
 #[expect(clippy::string_slice, reason = "unit test code")]
 mod tests {
     use similar_asserts::assert_eq;
-    use std::sync::Arc;
 
     use super::*;
 
     fn make_loc(text: &str) -> Loc {
         Loc {
             span: SourceSpan::new(SourceOffset::from(0), text.len()),
-            src: Arc::from(text),
+            src: text.into(),
         }
     }
 

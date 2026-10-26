@@ -249,7 +249,7 @@ impl FromNormalizedStr for InternalName {
                     return Ok(InternalName::new(
                         Id::new_unchecked(*last),
                         prefix.iter().map(|part| Id::new_unchecked(*part)),
-                        Some(Loc::new(0..(s.len()), s.into())),
+                        Some(Loc::new(0..(s.len()), s)),
                     ));
                 }
             }
@@ -498,7 +498,7 @@ impl FromNormalizedStr for Name {
             Ok(Self(InternalName::new(
                 Id::new_unchecked(*last),
                 prefix.iter().map(|part| Id::new_unchecked(*part)),
-                Some(Loc::new(0..(s.len()), s.into())),
+                Some(Loc::new(0..(s.len()), s)),
             )))
         } else {
             Err(Self::parse_err_from_str(s))
@@ -599,7 +599,7 @@ impl Name {
                         src: s.to_string(),
                         normalized_src,
                     },
-                    Some(Loc::new(diff_byte, s.into())),
+                    Some(Loc::new(diff_byte, s)),
                 )))
             }
         }
@@ -624,7 +624,7 @@ impl From<ReservedNameError> for ParseError {
             value.clone().into(),
             value.0.loc.clone().or_else(|| {
                 let name_str = value.0.to_string();
-                Some(Loc::new(0..(name_str.len()), name_str.into()))
+                Some(Loc::new(0..(name_str.len()), name_str))
             }),
         ))
     }

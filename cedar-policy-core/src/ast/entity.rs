@@ -385,7 +385,7 @@ impl FromNormalizedStr for EntityUID {
                     return Ok(Self::from_components(
                         ty.into(),
                         Eid::new(eid),
-                        Some(Loc::new(0..(s.len()), s.into())),
+                        Some(Loc::new(0..(s.len()), s)),
                     ));
                 }
             }

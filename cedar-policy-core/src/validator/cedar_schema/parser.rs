@@ -16,7 +16,7 @@
 
 //! Parser for schemas in the Cedar syntax
 
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 use lalrpop_util::lalrpop_mod;
 use miette::Diagnostic;
@@ -28,6 +28,7 @@ use super::{
     to_json_schema::cedar_schema_to_json_schema,
 };
 use crate::extensions::Extensions;
+use crate::parser::SourceText;
 use crate::validator::json_schema;
 
 lalrpop_mod!(
@@ -51,24 +52,25 @@ fn parse_collect_errors<'a, P, T>(
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
-        &Arc<str>,
+        &SourceText,
         bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), true, text);
+    let src = SourceText::from(text);
+    let result = parse(parser, &mut errs, &src, true, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| ParseError::from_raw_error_recovery(rc, Arc::from(text)))
+        .map(|rc| ParseError::from_raw_error_recovery(rc, src.clone()))
         .collect::<Vec<ParseError>>();
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(ParseErrors::new(
-                ParseError::from_raw_parse_error(e, Arc::from(text)),
+                ParseError::from_raw_parse_error(e, src),
                 errors,
             ));
         }
