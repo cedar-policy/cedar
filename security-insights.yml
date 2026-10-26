@@ -1,0 +1,271 @@
+header:
+  schema-version: 2.2.0
+  last-updated: '2026-10-26'
+  last-reviewed: '2026-10-26'
+  url: https://raw.githubusercontent.com/cedar-policy/cedar/main/security-insights.yml
+
+project:
+  name: Cedar
+  homepage: https://www.cedarpolicy.com/
+  administrators:
+    - name: John Kastner
+      affiliation: Amazon
+      social: https://github.com/john-h-kastner-aws
+      primary: true
+    - name: Katherine Hough
+      affiliation: Amazon
+      social: https://github.com/katherine-hough
+      primary: false
+    - name: Liana Hadarean
+      affiliation: Amazon
+      social: https://github.com/lianah
+      primary: false
+    - name: Victor Nicolet
+      affiliation: Amazon
+      social: https://github.com/victornicolet
+      primary: false
+    - name: Lucas Käldström
+      affiliation: Amazon
+      social: https://github.com/luxas
+      primary: false
+    - name: Silei Ren
+      affiliation: Amazon
+      social: https://github.com/s-ren
+      primary: false
+    - name: Craig Disselkoen
+      affiliation: Amazon
+      social: https://github.com/cdisselkoen
+      primary: false
+    - name: Charlie Murphy
+      affiliation: Montana State University
+      social: https://github.com/chaluli
+      primary: false
+    - name: Victor Moreno
+      social: https://github.com/Swolebrain
+      primary: false
+    - name: Jeffrey Sica
+      affiliation: CNCF
+      social: https://github.com/jeefy
+      primary: false
+    - name: The Linux Foundation
+      affiliation: The Linux Foundation
+      social: https://github.com/thelinuxfoundation
+      primary: false
+    - name: Emina Torlak
+      affiliation: Amazon
+      social: https://github.com/emina
+      primary: false
+    - name: Shaobo He
+      affiliation: Amazon
+      social: https://github.com/shaobo-he-aws
+      primary: false
+    - name: Adrian Palacios
+      affiliation: Code Metal
+      social: https://github.com/adpaco
+      primary: false
+  repositories:
+    - name: cedar
+      url: https://github.com/cedar-policy/cedar
+      comment: Rust implementation of the Cedar policy language, including the authorizer, validator, formatter, symbolic compiler, CLI, language server, and WebAssembly bindings.
+  vulnerability-reporting:
+    reports-accepted: true
+    bug-bounty-available: false
+    contact:
+      name: Cedar security team
+      email: cedar-policy-security@lists.cncf.io
+      primary: true
+    policy: https://github.com/cedar-policy/cedar/blob/main/SECURITY.md
+    comment: Report vulnerabilities by email, not in public issues. The team sends a non-automated acknowledgement within 1 business day and an initial assessment within 5 business days, then agrees an embargo period with the reporter before public disclosure. Fixed vulnerabilities are published at https://github.com/cedar-policy/cedar/security/advisories as GitHub security advisories.
+  documentation:
+    detailed-guide: https://docs.cedarpolicy.com/
+    quickstart-guide: https://github.com/cedar-policy/cedar#quick-start
+    code-of-conduct: https://github.com/cedar-policy/cedar/blob/main/CODE_OF_CONDUCT.md
+    design: https://www.amazon.science/publications/cedar-a-new-language-for-expressive-fast-safe-and-analyzable-authorization
+
+repository:
+  url: https://github.com/cedar-policy/cedar
+  status: active
+  accepts-change-request: true
+  accepts-automated-change-request: true
+  bug-fixes-only: false
+  no-third-party-packages: false
+  core-team:
+    - name: John Kastner
+      affiliation: Amazon
+      social: https://github.com/john-h-kastner-aws
+      primary: true
+    - name: Katherine Hough
+      affiliation: Amazon
+      social: https://github.com/katherine-hough
+      primary: false
+    - name: Liana Hadarean
+      affiliation: Amazon
+      social: https://github.com/lianah
+      primary: false
+    - name: Victor Nicolet
+      affiliation: Amazon
+      social: https://github.com/victornicolet
+      primary: false
+    - name: Lucas Käldström
+      affiliation: Amazon
+      social: https://github.com/luxas
+      primary: false
+    - name: Silei Ren
+      affiliation: Amazon
+      social: https://github.com/s-ren
+      primary: false
+  license:
+    url: https://github.com/cedar-policy/cedar/blob/main/LICENSE
+    expression: Apache-2.0
+  documentation:
+    contributing-guide: https://github.com/cedar-policy/cedar/blob/main/CONTRIBUTING.md
+    review-policy: https://github.com/cedar-policy/cedar/blob/main/CONTRIBUTING.md#review-process
+    security-policy: https://github.com/cedar-policy/cedar/blob/main/SECURITY.md
+    governance: https://github.com/cedar-policy/.github/blob/main/GOVERNANCE.md
+  release:
+    automated-pipeline: true
+    distribution-points:
+      - uri: https://github.com/cedar-policy/cedar/releases
+        comment: GitHub releases, including prebuilt cedar-policy-cli binaries built with cargo-dist.
+      - uri: https://crates.io/crates/cedar-policy
+        comment: Main Rust crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+      - uri: https://crates.io/crates/cedar-policy-core
+        comment: Core Rust crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+      - uri: https://crates.io/crates/cedar-policy-formatter
+        comment: Policy formatter crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+      - uri: https://crates.io/crates/cedar-policy-symcc
+        comment: Symbolic compiler crate. Every release since 0.3.1 (March 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+      - uri: https://crates.io/crates/cedar-policy-cli
+        comment: Command-line interface crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+      - uri: https://crates.io/crates/cedar-policy-validator
+        comment: Validator crate, still published for the 3.x release line. Release 3.4.3 (June 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+      - uri: https://www.npmjs.com/package/@cedar-policy/cedar-wasm
+        comment: WebAssembly bindings on npm.
+    changelog: https://github.com/cedar-policy/cedar/blob/main/cedar-policy/CHANGELOG.md
+    attestations:
+      - name: npm provenance for @cedar-policy/cedar-wasm
+        location: https://www.npmjs.com/package/@cedar-policy/cedar-wasm
+        predicate-uri: https://slsa.dev/provenance/v1
+        comment: npm has published SLSA build provenance for every version released since February 2026 (4.9.0 and later). It records that the package was built by .github/workflows/publish_wasm.yml on main, on a GitHub-hosted runner. Verify it with npm audit signatures.
+  security:
+    assessments:
+      self:
+        comment: A self-assessment has not been completed yet.
+      third-party:
+        - name: 'Cedar, Rego, and OpenFGA Policy Languages: Comparative Language Security Assessment'
+          evidence: https://github.com/trailofbits/publications/blob/master/reports/Policy_Language_Security_Comparison_and_TM.pdf
+          date: '2024-08-21'
+          comment: Threat model and comparative security assessment of the Cedar, Rego, and OpenFGA policy languages by Trail of Bits, commissioned by AWS.
+    tools:
+      - name: CodeQL
+        type: SAST
+        comment: GitHub code scanning default setup. Analyzes the GitHub Actions workflows and Python scripts on push, on pull requests, and weekly.
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results: {}
+      - name: Clippy
+        type: SAST
+        comment: Every crate inherits the workspace lint configuration, which forbids unsafe code and denies Clippy lints for code that can panic, such as unwrap_used, expect_used, indexing_slicing, and panic.
+        rulesets:
+          - https://github.com/cedar-policy/cedar/blob/main/Cargo.toml
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results:
+          adhoc:
+            name: Nightly build
+            predicate-uri: https://github.com/rust-lang/rust-clippy
+            location: https://github.com/cedar-policy/cedar/actions/workflows/nightly_build.yml
+          ci:
+            name: Cargo Build & Test
+            predicate-uri: https://github.com/rust-lang/rust-clippy
+            location: https://github.com/cedar-policy/cedar/actions/workflows/ci.yml
+      - name: OpenSSF Scorecard
+        type: other
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results:
+          ci:
+            name: Scorecard supply-chain security
+            predicate-uri: https://github.com/ossf/scorecard-action
+            location: https://scorecard.dev/viewer/?uri=github.com/cedar-policy/cedar
+      - name: cargo-audit
+        type: SCA
+        comment: Runs with --deny warnings on every pull request and in the nightly build.
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results:
+          ci:
+            name: Cargo Build & Test
+            predicate-uri: https://github.com/rustsec/rustsec/tree/main/cargo-audit
+            location: https://github.com/cedar-policy/cedar/actions/workflows/ci.yml
+      - name: cargo-deny
+        type: SCA
+        comment: Runs all checks on every pull request and in the nightly build. A separate nightly advisories check opens an issue when it fails.
+        rulesets:
+          - https://github.com/cedar-policy/cedar/blob/main/deny.toml
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results:
+          adhoc:
+            name: Cargo audit
+            predicate-uri: https://github.com/EmbarkStudios/cargo-deny-action
+            location: https://github.com/cedar-policy/cedar/actions/workflows/cargo_audit.yml
+          ci:
+            name: Cargo Build & Test
+            predicate-uri: https://github.com/EmbarkStudios/cargo-deny-action
+            location: https://github.com/cedar-policy/cedar/actions/workflows/ci.yml
+      - name: Dependabot
+        type: SCA
+        comment: Dependabot alerts and security updates are enabled. Version updates run weekly for Cargo and GitHub Actions.
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: false
+          release: false
+        results: {}
+      - name: GitHub secret scanning
+        type: secret
+        comment: Secret scanning and push protection are enabled.
+        rulesets:
+          - default
+        integration:
+          adhoc: true
+          ci: false
+          release: false
+        results: {}
+      - name: cedar-drt
+        type: fuzzing
+        comment: Coverage-guided cargo-fuzz targets in cedar-spec test this repository's Rust code, either by differential testing against the Lean formal specification or by property-based testing. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in cedar-integration-tests and refreshed with each minor release. Every pull request builds the fuzz targets against the change and runs the corpus as tests.
+        rulesets:
+          - https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt/fuzz/fuzz_targets
+        integration:
+          adhoc: true
+          ci: true
+          release: false
+        results:
+          adhoc:
+            name: Fuzzer-generated corpus tests
+            predicate-uri: https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt
+            location: https://github.com/cedar-policy/cedar-integration-tests/blob/main/corpus-tests.tar.gz
+            comment: Minimized corpus from a 6-hour run of the abac fuzz target. Logs of the fuzzing runs are not public.
+          ci:
+            name: Build Downstream Dependencies
+            predicate-uri: https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt
+            location: https://github.com/cedar-policy/cedar/actions/workflows/build_downstream_deps.yml
