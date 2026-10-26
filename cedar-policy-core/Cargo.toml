@@ -13,6 +13,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+vstd = { version = "=0.0.0-2026-10-18-0147", optional = true }
+verus_builtin_macros = { version = "=0.0.0-2026-10-18-0147", optional = true }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_with = { version = "3.21", features = ["json"] }
 serde_json = { version = "1.0", features = ["preserve_order"] }
@@ -67,6 +69,7 @@ experimental = [
     "variadic-is-in-range",
 ]
 tpe = []
+verus = ["dep:vstd", "dep:verus_builtin_macros"]
 variadic-is-in-range = []
 
 # Unstable tooling features
@@ -89,3 +92,6 @@ workspace = true
 [package.metadata.docs.rs]
 features = ["experimental", "unstable-tooling", "test-util"]
 rustdoc-args = ["--cfg", "docsrs"]
+
+[package.metadata.verus]
+verify = true

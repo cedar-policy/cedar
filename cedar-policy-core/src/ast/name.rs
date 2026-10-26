@@ -27,6 +27,9 @@ use std::fmt::Display;
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 
 use crate::parser::err::{ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use crate::parser::Loc;
@@ -38,6 +41,7 @@ use crate::{default_from_normalized_str, FromNormalizedStr};
 ///
 /// This type may contain any name valid for use internally, including names
 /// with reserved `__cedar` components (and also names without `__cedar`).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Clone)]
 #[educe(Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct InternalName {
@@ -52,6 +56,45 @@ pub struct InternalName {
     #[educe(Debug(ignore))]
     pub(crate) loc: Option<Loc>,
 }
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl InternalName {
+    /// The basename (for specifications)
+    pub closed spec fn spec_id(self) -> Id {
+        self.id
+    }
+
+    /// The namespace path (for specifications)
+    pub closed spec fn spec_path(self) -> vstd::prelude::Seq<Id> {
+        vstd::prelude::View::view(&*self.path)
+    }
+}
+
+impl SlotId {
+    /// The slot for `principal` (for specifications)
+    pub closed spec fn spec_principal() -> SlotId {
+        SlotId(ValidSlotId::Principal)
+    }
+
+    /// The slot for `resource` (for specifications)
+    pub closed spec fn spec_resource() -> SlotId {
+        SlotId(ValidSlotId::Resource)
+    }
+}
+
+/// There are two slots.
+pub proof fn lemma_slot_id_cases(s: SlotId)
+    ensures
+        s == SlotId::spec_principal() || s == SlotId::spec_resource(),
+        SlotId::spec_principal() != SlotId::spec_resource(),
+{
+    match s.0 {
+        ValidSlotId::Principal => {},
+        ValidSlotId::Resource => {},
+    }
+}
+} // verus!
 
 /// A shortcut for [`InternalName::unqualified_name`]
 impl From<Id> for InternalName {
@@ -309,32 +352,47 @@ impl<'de> Deserialize<'de> for InternalName {
 /// Clone is O(1).
 // This simply wraps a separate enum -- currently [`ValidSlotId`] -- in case we
 // want to generalize later
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SlotId(pub(crate) ValidSlotId);
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl SlotId {
     /// Get the slot for `principal`
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r == SlotId::spec_principal(),
+    ))]
     pub fn principal() -> Self {
         Self(ValidSlotId::Principal)
     }
 
     /// Get the slot for `resource`
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r == SlotId::spec_resource(),
+    ))]
     pub fn resource() -> Self {
         Self(ValidSlotId::Resource)
     }
 
     /// Check if a slot represents a principal
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn is_principal(&self) -> bool {
         matches!(self, Self(ValidSlotId::Principal))
     }
 
     /// Check if a slot represents a resource
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn is_resource(&self) -> bool {
         matches!(self, Self(ValidSlotId::Resource))
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<PrincipalOrResource> for SlotId {
     fn from(v: PrincipalOrResource) -> Self {
         match v {
@@ -351,6 +409,7 @@ impl std::fmt::Display for SlotId {
 }
 
 /// Two possible variants for Slots
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub(crate) enum ValidSlotId {
     #[serde(rename = "?principal")]
@@ -370,6 +429,7 @@ impl std::fmt::Display for ValidSlotId {
 }
 
 /// [`SlotId`] plus a source location
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct Slot {
@@ -402,10 +462,21 @@ mod vars_test {
 /// This represents names which are legal for end-users to _define_, while
 /// [`InternalName`] represents names which are legal for end-users to
 /// _reference_.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash, Serialize, RefCast)]
 #[repr(transparent)]
 #[serde(transparent)]
 pub struct Name(pub(crate) InternalName);
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Name {
+    /// The underlying `InternalName` (for specifications)
+    pub closed spec fn spec_internal(self) -> InternalName {
+        self.0
+    }
+}
+} // verus!
 
 impl From<UnreservedId> for Name {
     fn from(value: UnreservedId) -> Self {

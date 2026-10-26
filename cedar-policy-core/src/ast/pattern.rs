@@ -14,9 +14,15 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "verus")]
+use crate::verification::{abs::*, model as m, wildcard_lemmas::*};
 use std::sync::Arc;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::*;
 
 /// Represent an element in a pattern literal (the RHS of the like operation)
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PatternElem {
@@ -28,34 +34,51 @@ pub enum PatternElem {
 
 /// Represent a pattern literal (the RHS of the like operator)
 /// Also provides an implementation of the Display trait as well as a wildcard matching method.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
 pub struct Pattern {
     /// A vector of pattern elements
     elems: Arc<Vec<PatternElem>>,
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Pattern {
+    /// The pattern elements (for specifications)
+    pub closed spec fn spec_elems(self) -> vstd::prelude::Seq<PatternElem> {
+        vstd::prelude::View::view(&*self.elems)
+    }
+}
+} // verus!
+
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Pattern {
     /// Explicitly create a pattern literal out of a shared vector of pattern elements
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     fn new(elems: Arc<Vec<PatternElem>>) -> Self {
         Self { elems }
     }
 
     /// Getter to the wrapped vector
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r@ == self.spec_elems()))]
     pub fn get_elems(&self) -> &[PatternElem] {
         &self.elems
     }
 
     /// Iterate over pattern elements
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn iter(&self) -> impl Iterator<Item = &PatternElem> {
         self.elems.iter()
     }
 
     /// Length of elems vector
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn len(&self) -> usize {
         self.elems.len()
     }
 
     /// Is this an empty pattern
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn is_empty(&self) -> bool {
         self.elems.is_empty()
     }
@@ -92,23 +115,38 @@ impl std::fmt::Display for Pattern {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl PatternElem {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures r == match self {
+            PatternElem::Char(c) => text_char == c,
+            PatternElem::Wildcard => true,
+        }
+    ))]
     fn match_char(self, text_char: char) -> bool {
         match self {
             PatternElem::Char(c) => text_char == c,
             PatternElem::Wildcard => true,
         }
     }
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r == self is Wildcard))]
     fn is_wildcard(self) -> bool {
         matches!(self, PatternElem::Wildcard)
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Pattern {
     /// Find if the argument text matches the pattern
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures r == m::evaluator::wildcard_match(&seq_to_list(text@), &abs_pattern(*self))
+    ))]
     pub fn wildcard_match(&self, text: &str) -> bool {
         let pattern = self.get_elems();
         if pattern.is_empty() {
+            proof! {
+                assert(abs_elems(pattern@) =~= vstd::prelude::Seq::empty());
+            }
             return text.is_empty();
         }
 
@@ -131,25 +169,78 @@ impl Pattern {
         let text_len = text.len();
         let pattern_len = pattern.len();
 
+        proof! {
+            lemma_seq_to_list_full(text@);
+            lemma_seq_to_list_full(abs_elems(pattern@));
+        }
+        #[cfg_attr(feature = "verus", verus_spec(
+            invariant
+                text_len == text@.len(),
+                pattern_len == pattern@.len(),
+                pattern_len > 0,
+                pattern@ == self.spec_elems(),
+                greedy_inv(text@, abs_elems(pattern@), wm_at(text@, abs_elems(pattern@), 0, 0),
+                    i as int, j as int, star_idx as int, tmp_idx as int, contains_star),
+            decreases text_len - tmp_idx, (text_len - i) + (pattern_len - j)
+        ))]
+        // the early `return false` needs facts about the shadowed `text: &str`
+        #[cfg_attr(verus_keep_ghost, verifier::loop_isolation(false))]
         while i < text_len && (!contains_star || star_idx != pattern_len - 1) {
             #[expect(
                 clippy::indexing_slicing,
                 reason = "`j` is checked to be less than length"
             )]
             if j < pattern_len && pattern[j].is_wildcard() {
+                proof! {
+                    if contains_star {
+                        lemma_wm_new_star(text@, abs_elems(pattern@), tmp_idx as int,
+                            star_idx as int, i as int, j as int);
+                    }
+                }
                 contains_star = true;
                 star_idx = j;
                 tmp_idx = i;
                 j += 1;
             } else if j < pattern_len && pattern[j].match_char(text[i]) {
+                proof! {
+                    let p = abs_elems(pattern@);
+                    if !contains_star {
+                        lemma_wm_step(text@, p, i as int, j as int);
+                    } else {
+                        let ghost s1 = star_idx + 1;
+                        assert forall|q: int| 0 <= q < j + 1 - s1 implies #[trigger] p[s1 + q]
+                            == m::expr::PatElem::JustChar(text@[tmp_idx + q]) by {
+                            if q < j - s1 {
+                                assert(p[s1 + q] == m::expr::PatElem::JustChar(text@[tmp_idx + q]));
+                            }
+                        }
+                    }
+                }
                 i += 1;
                 j += 1;
             } else if contains_star {
+                proof! {
+                    lemma_wm_mismatch(text@, abs_elems(pattern@), tmp_idx as int,
+                        star_idx as int, i as int, j as int);
+                }
                 j = star_idx + 1;
                 i = tmp_idx + 1;
                 tmp_idx = i;
             } else {
+                proof! {
+                    lemma_wm_step(text@, abs_elems(pattern@), i as int, j as int);
+                }
                 return false;
+            }
+        }
+
+        proof! {
+            let p = abs_elems(pattern@);
+            if contains_star && star_idx == pattern_len - 1 {
+                lemma_wm_star_end(text@, p, tmp_idx as int);
+                lemma_wm_step(text@, p, text_len as int, pattern_len as int);
+            } else if contains_star {
+                lemma_wm_text_end(text@, p, tmp_idx as int, star_idx as int, j as int);
             }
         }
 
@@ -157,8 +248,24 @@ impl Pattern {
             clippy::indexing_slicing,
             reason = "`j` is checked to be less than length"
         )]
+        #[cfg_attr(feature = "verus", verus_spec(
+            invariant
+                text_len == text@.len(),
+                pattern_len == pattern@.len(),
+                pattern@ == self.spec_elems(),
+                j <= pattern_len,
+                wm_at(text@, abs_elems(pattern@), 0, 0)
+                    == wm_at(text@, abs_elems(pattern@), text_len as int, j as int),
+            decreases pattern_len - j
+        ))]
         while j < pattern_len && pattern[j].is_wildcard() {
+            proof! {
+                lemma_wm_step(text@, abs_elems(pattern@), text_len as int, j as int);
+            }
             j += 1;
+        }
+        proof! {
+            lemma_wm_step(text@, abs_elems(pattern@), text_len as int, j as int);
         }
 
         j == pattern_len

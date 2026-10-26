@@ -35,6 +35,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
 use thiserror::Error;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 
 #[cfg(feature = "tolerant-ast")]
 static ERROR_NAME: std::sync::LazyLock<Name> = std::sync::LazyLock::new(|| {
@@ -55,6 +58,7 @@ static ENTITY_UID_ERROR_STR: &str = "EntityUID::Error";
 /// The entity type that Actions must have
 pub static ACTION_ENTITY_TYPE: &str = "Action";
 
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 /// Entity type - can be an error type when 'tolerant-ast' feature is enabled
@@ -205,6 +209,7 @@ impl std::fmt::Display for EntityType {
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Serialize, Deserialize, Debug, Clone)]
 #[serde(rename = "EntityUID")]
 #[educe(PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -222,6 +227,21 @@ pub struct EntityUIDImpl {
     loc: Option<Loc>,
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl EntityUIDImpl {
+    /// The entity type (for specifications)
+    pub closed spec fn spec_ty(self) -> EntityType {
+        self.ty
+    }
+
+    /// The entity id (for specifications)
+    pub closed spec fn spec_eid(self) -> Eid {
+        self.eid
+    }
+}
+} // verus!
+
 impl EntityUIDImpl {
     /// The source location of this entity
     pub fn loc(&self) -> Option<Loc> {
@@ -230,6 +250,7 @@ impl EntityUIDImpl {
 }
 
 /// Unique ID for an entity. These represent entities in the AST.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum EntityUID {
     /// Unique ID for an entity. These represent entities in the AST
@@ -331,6 +352,13 @@ impl EntityUID {
     }
 
     /// Get the type component.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match *self {
+                EntityUID::EntityUID(i) => *r == i.spec_ty(),
+            },
+    ))]
     pub fn entity_type(&self) -> &EntityType {
         match self {
             EntityUID::EntityUID(entity_uid) => &entity_uid.ty,
@@ -416,6 +444,7 @@ impl<'a> arbitrary::Arbitrary<'a> for EntityUID {
 /// (see [#884](https://github.com/cedar-policy/cedar/issues/884)).
 /// To get an escaped representation, use `.escaped()`.
 /// To get an unescaped representation, use `.as_ref()`.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(PartialEq, Eq, Debug, Clone, Hash, PartialOrd, Ord)]
 pub enum Eid {
     /// Actual Eid

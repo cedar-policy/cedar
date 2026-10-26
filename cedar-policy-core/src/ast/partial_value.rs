@@ -19,8 +19,12 @@ use crate::parser::Loc;
 use itertools::Either;
 use miette::Diagnostic;
 use thiserror::Error;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 
 /// Intermediate results of partial evaluation
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PartialValue {
     /// Fully evaluated values
@@ -30,6 +34,7 @@ pub enum PartialValue {
     Residual(Expr),
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl PartialValue {
     /// Create a new `PartialValue` consisting of just this single `Unknown`
     pub fn unknown(u: Unknown) -> Self {
@@ -37,6 +42,14 @@ impl PartialValue {
     }
 
     /// Return the `PartialValue`, but with the given `Loc` (or `None`)
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match (self, r) {
+                (PartialValue::Value(v), PartialValue::Value(w)) => w.value == v.value,
+                (PartialValue::Residual(_), PartialValue::Residual(_)) => true,
+                _ => false,
+            }
+    ))]
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         match self {
             Self::Value(v) => Self::Value(v.with_maybe_source_loc(loc)),
@@ -45,6 +58,7 @@ impl PartialValue {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl<V: Into<Value>> From<V> for PartialValue {
     fn from(into_v: V) -> Self {
         PartialValue::Value(into_v.into())

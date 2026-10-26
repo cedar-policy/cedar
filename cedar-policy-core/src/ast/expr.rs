@@ -14,6 +14,9 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 #[cfg(feature = "tolerant-ast")]
 use {
     super::expr_allows_errors::AstExprErrorKind,
@@ -49,6 +52,7 @@ extern crate tsify;
 /// where the expression was written in policy source code, and some generic
 /// data which is stored on each node of the AST.
 /// Cloning is O(1).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct Expr<T = ()> {
@@ -61,6 +65,7 @@ pub struct Expr<T = ()> {
 
 /// The possible expression variants. This enum should be matched on by code
 /// recursively traversing the AST.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub enum ExprKind<T = ()> {
     /// Literal value
@@ -240,7 +245,42 @@ impl From<PartialValue> for Expr {
     }
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
 impl<T> Expr<T> {
+    /// The `ExprKind` (for specifications)
+    pub closed spec fn spec_kind(self) -> ExprKind<T> {
+        self.expr_kind
+    }
+
+    /// The data (for specifications)
+    pub closed spec fn spec_data(self) -> T {
+        self.data
+    }
+
+    /// The kind of an expression is smaller than it (for recursion in specifications)
+    pub proof fn lemma_kind_decreases(self)
+        ensures
+            vstd::prelude::decreases_to!(self => self.spec_kind()),
+    {
+    }
+}
+
+impl<T> ExprBuilder<T> {
+    /// The data of the expressions it builds (for specifications)
+    pub closed spec fn spec_data(self) -> T {
+        self.data
+    }
+}
+} // verus!
+
+#[cfg_attr(feature = "verus", verus_verify)]
+impl<T> Expr<T> {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == expr_kind,
+            r.spec_data() == data,
+    ))]
     pub(crate) fn new(expr_kind: ExprKind<T>, source_loc: Option<Loc>, data: T) -> Self {
         Self {
             expr_kind,
@@ -252,26 +292,34 @@ impl<T> Expr<T> {
     /// Access the inner `ExprKind` for this `Expr`. The `ExprKind` is the
     /// `enum` which specifies the expression variant, so it must be accessed by
     /// any code matching and recursing on an expression.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            *r == self.spec_kind(),
+    ))]
     pub fn expr_kind(&self) -> &ExprKind<T> {
         &self.expr_kind
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Access the inner `ExprKind`, taking ownership and consuming the `Expr`.
     pub fn into_expr_kind(self) -> ExprKind<T> {
         self.expr_kind
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Access the data stored on the `Expr`.
     pub fn data(&self) -> &T {
         &self.data
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Access the data stored on the `Expr`, taking ownership and consuming the
     /// `Expr`.
     pub fn into_data(self) -> T {
         self.data
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Consume the `Expr`, returning the `ExprKind`, `source_loc`, and stored
     /// data.
     pub fn into_parts(self) -> (ExprKind<T>, Option<Loc>, T) {
@@ -284,16 +332,23 @@ impl<T> Expr<T> {
     }
 
     /// Return the `Expr`, but with the new `source_loc` (or `None`).
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == self.spec_kind(),
+            r.spec_data() == self.spec_data(),
+    ))]
     pub fn with_maybe_source_loc(self, source_loc: Option<Loc>) -> Self {
         Self { source_loc, ..self }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Update the data for this `Expr`. A convenient function used by the
     /// Validator in one place.
     pub fn set_data(&mut self, data: T) {
         self.data = data;
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Check whether this expression is an entity reference
     ///
     /// This is used for policy scopes, where some syntax is
@@ -305,11 +360,13 @@ impl<T> Expr<T> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Check whether this expression is a slot.
     pub fn is_slot(&self) -> bool {
         matches!(&self.expr_kind, ExprKind::Slot(_))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Check whether this expression is a set of entity references
     ///
     /// This is used for policy scopes, where some syntax is
@@ -321,11 +378,13 @@ impl<T> Expr<T> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Iterate over all sub-expressions in this expression
     pub fn subexpressions(&self) -> impl Iterator<Item = &Self> {
         expr_iterator::ExprIterator::new(self)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Iterate over all of the slots in this policy AST
     pub fn slots(&self) -> impl Iterator<Item = Slot> + '_ {
         self.subexpressions()
@@ -338,6 +397,7 @@ impl<T> Expr<T> {
             })
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Determine if the expression is projectable under partial evaluation
     /// An expression is projectable if it's guaranteed to never error on evaluation
     /// This is true if the expression is entirely composed of values or unknowns
@@ -354,6 +414,7 @@ impl<T> Expr<T> {
         })
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Try to compute the runtime type of this expression. This operation may
     /// fail (returning `None`), for example, when asked to get the type of any
     /// variables, any attributes of entities or records, or an `unknown`
@@ -441,6 +502,7 @@ impl<T> Expr<T> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Converts an `Expr<V>` to `B::Expr` using the provided builder.
     ///
     /// Preserves source location information and recursively transforms each expression node.
@@ -538,6 +600,7 @@ impl<T> Expr<T> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Convert this expression to a `B::Expr`, where `B` is an infallible builder.
     pub fn into_expr<B: expr_builder::ExprBuilder>(self) -> B::Expr
     where
@@ -552,10 +615,16 @@ impl<T> Expr<T> {
     clippy::should_implement_trait,
     reason = "the names of arithmetic constructors alias with those of certain trait methods such as `add` of `std::ops::Add`"
 )]
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Expr {
     /// Create an `Expr` that's just a single `Literal`.
     ///
     /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            crate::verification::conversions::obeys_into_literal(v) ==> r.spec_kind()
+                == ExprKind::<()>::Lit(crate::verification::conversions::into_literal(v)),
+    ))]
     pub fn val(v: impl Into<Literal>) -> Self {
         ExprBuilder::new().val(v)
     }
@@ -566,15 +635,24 @@ impl Expr {
     }
 
     /// Create an `Expr` that's just this literal `Var`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == ExprKind::<()>::Var(v),
+    ))]
     pub fn var(v: Var) -> Self {
         ExprBuilder::new().var(v)
     }
 
     /// Create an `Expr` that's just this `SlotId`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == ExprKind::<()>::Slot(s),
+    ))]
     pub fn slot(s: SlotId) -> Self {
         ExprBuilder::new().slot(s)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a ternary (if-then-else) `Expr`.
     ///
     /// `test_expr` must evaluate to a Bool type
@@ -589,22 +667,32 @@ impl Expr {
         ExprBuilder::new().ite_arc(test_expr, then_expr, else_expr)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a 'not' expression. `e` must evaluate to Bool type
     pub fn not(e: Expr) -> Self {
         ExprBuilder::new().not(e)
     }
 
     /// Create a '==' expression
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::BinaryApp { op, arg1, arg2 } && op == BinaryOp::Eq && *arg1 == e1 && *arg2 == e2,
+    ))]
     pub fn is_eq(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().is_eq(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a '!=' expression
     pub fn noteq(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().noteq(e1, e2)
     }
 
     /// Create an 'and' expression. Arguments must evaluate to Bool type
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            crate::verification::policy_abs::and_rel(r, e1, e2),
+    ))]
     pub fn and(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().and(e1, e2)
     }
@@ -614,41 +702,49 @@ impl Expr {
         ExprBuilder::new().or(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a '<' expression. Arguments must evaluate to Long type
     pub fn less(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().less(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a '<=' expression. Arguments must evaluate to Long type
     pub fn lesseq(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().lesseq(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a '>' expression. Arguments must evaluate to Long type
     pub fn greater(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().greater(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a '>=' expression. Arguments must evaluate to Long type
     pub fn greatereq(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().greatereq(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create an 'add' expression. Arguments must evaluate to Long type
     pub fn add(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().add(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a 'sub' expression. Arguments must evaluate to Long type
     pub fn sub(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().sub(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a 'mul' expression. Arguments must evaluate to Long type
     pub fn mul(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().mul(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a 'neg' expression. `e` must evaluate to Long type.
     pub fn neg(e: Expr) -> Self {
         ExprBuilder::new().neg(e)
@@ -657,26 +753,34 @@ impl Expr {
     /// Create an 'in' expression. First argument must evaluate to Entity type.
     /// Second argument must evaluate to either Entity type or Set type where
     /// all set elements have Entity type.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::BinaryApp { op, arg1, arg2 } && op == BinaryOp::In && *arg1 == e1 && *arg2 == e2,
+    ))]
     pub fn is_in(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().is_in(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a `contains` expression.
     /// First argument must have Set type.
     pub fn contains(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a `containsAll` expression. Arguments must evaluate to Set type
     pub fn contains_all(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_all(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a `containsAny` expression. Arguments must evaluate to Set type
     pub fn contains_any(e1: Expr, e2: Expr) -> Self {
         ExprBuilder::new().contains_any(e1, e2)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a `isEmpty` expression. Argument must evaluate to Set type
     pub fn is_empty(e: Expr) -> Self {
         ExprBuilder::new().is_empty(e)
@@ -694,11 +798,13 @@ impl Expr {
         ExprBuilder::new().has_tag(expr, tag)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
     pub fn set(exprs: impl IntoIterator<Item = Expr>) -> Self {
         ExprBuilder::new().set(exprs)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     pub fn record(
         pairs: impl IntoIterator<Item = (SmolStr, Expr)>,
@@ -717,6 +823,7 @@ impl Expr {
         ExprBuilder::new().record_arc(map)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
     pub fn call_extension_fn(fn_name: Name, args: Vec<Expr>) -> Self {
@@ -768,16 +875,22 @@ impl Expr {
     }
 
     /// Create an `is` expression.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::Is { expr: e, entity_type: t } && *e == expr && t == entity_type,
+    ))]
     pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
         ExprBuilder::new().is_entity_type(expr, entity_type)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Check if an expression contains any symbolic unknowns
     pub fn contains_unknown(&self) -> bool {
         self.subexpressions()
             .any(|e| matches!(e.expr_kind(), ExprKind::Unknown(_)))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Get all unknowns in an expression
     pub fn unknowns(&self) -> impl Iterator<Item = &Unknown> {
         self.subexpressions()
@@ -787,6 +900,7 @@ impl Expr {
             })
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Substitute unknowns with concrete values.
     ///
     /// Ignores unmapped unknowns.
@@ -802,6 +916,7 @@ impl Expr {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Substitute unknowns with concrete values.
     ///
     /// Ignores unmapped unknowns.
@@ -817,6 +932,7 @@ impl Expr {
         self.substitute_general::<TypedSubstitution>(definitions)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Substitute unknowns with values
     ///
     /// Generic over the function implementing the substitution to allow for multiple error behaviors
@@ -907,6 +1023,7 @@ impl Expr {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Validate the expression is well-formed according to internal invariants.
     /// This is useful if you obtained an AST without parsing from Cedar text, but want to ensure
     /// the invariant obtained from parsing hold. Essentially, [`try_validate`] checks that
@@ -1042,6 +1159,7 @@ pub enum SubstitutionError {
 }
 
 /// Representation of a partial-evaluation Unknown at the AST level
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Hash, Debug, Clone, PartialEq, Eq)]
 pub struct Unknown {
     /// The name of the unknown
@@ -1085,6 +1203,7 @@ impl std::fmt::Display for Unknown {
 
 /// Builder for constructing `Expr` objects annotated with some `data`
 /// (possibly taking default value) and optionally a `source_loc`.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Debug)]
 pub struct ExprBuilder<T> {
     source_loc: Option<Loc>,
@@ -1093,6 +1212,7 @@ pub struct ExprBuilder<T> {
 
 impl<T: Default + Clone> expr_builder::ExprBuilderInfallibleBuild for ExprBuilder<T> {}
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     type Expr = Expr<T>;
 
@@ -1111,6 +1231,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         &self.data
     }
 
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_data() == data,
+    ))]
     fn with_data(data: T) -> Self {
         Self {
             source_loc: None,
@@ -1126,6 +1250,11 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     /// Create an `Expr` that's just a single `Literal`.
     ///
     /// Note that you can pass this a `Literal`, an `Integer`, a `String`, etc.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            crate::verification::conversions::obeys_into_literal(v) ==> r.spec_kind()
+                == ExprKind::<T>::Lit(crate::verification::conversions::into_literal(v)),
+    ))]
     fn val(self, v: impl Into<Literal>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Lit(v.into()))
     }
@@ -1136,13 +1265,63 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Create an `Expr` that's just this literal `Var`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == ExprKind::<T>::Var(v),
+    ))]
     fn var(self, v: Var) -> Expr<T> {
         self.with_expr_kind(ExprKind::Var(v))
     }
 
     /// Create an `Expr` that's just this `SlotId`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == ExprKind::<T>::Slot(s),
+    ))]
     fn slot(self, s: SlotId) -> Expr<T> {
         self.with_expr_kind(ExprKind::Slot(s))
+    }
+
+    // Copies of the trait's provided methods, which Verus can't specify.
+
+    fn new() -> Self {
+        Self::with_data(T::default())
+    }
+
+    fn ite(self, test_expr: Expr<T>, then_expr: Expr<T>, else_expr: Expr<T>) -> Expr<T> {
+        self.ite_arc(
+            Arc::new(test_expr),
+            Arc::new(then_expr),
+            Arc::new(else_expr),
+        )
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::BinaryApp { op, arg1, arg2 } && op == BinaryOp::In && *arg1 == e1 && *arg2 == e2,
+    ))]
+    fn is_in(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
+        self.is_in_arc(Arc::new(e1), Arc::new(e2))
+    }
+
+    fn get_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
+        self.get_attr_arc(Arc::new(expr), attr)
+    }
+
+    fn has_attr(self, expr: Expr<T>, attr: SmolStr) -> Expr<T> {
+        self.has_attr_arc(Arc::new(expr), attr)
+    }
+
+    fn extended_has_attr(self, expr: Expr<T>, attrs: NonEmpty<SmolStr>) -> Expr<T> {
+        self.extended_has_attr_arc(Arc::new(expr), attrs)
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::Is { expr: e, entity_type: t } && *e == expr && t == entity_type,
+    ))]
+    fn is_entity_type(self, expr: Expr<T>, entity_type: EntityType) -> Expr<T> {
+        self.is_entity_type_arc(Arc::new(expr), entity_type)
     }
 
     /// Create a ternary (if-then-else) `Expr`.
@@ -1170,6 +1349,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Create a '==' expression
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::BinaryApp { op, arg1, arg2 } && op == BinaryOp::Eq && *arg1 == e1 && *arg2 == e2,
+    ))]
     fn is_eq(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::Eq,
@@ -1179,6 +1362,14 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Create an 'and' expression. Arguments must evaluate to Bool type
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match (e1.spec_kind(), e2.spec_kind()) {
+                (ExprKind::Lit(Literal::Bool(b1)), ExprKind::Lit(Literal::Bool(b2))) =>
+                    r.spec_kind() == ExprKind::<T>::Lit(Literal::Bool(b1 && b2)),
+                _ => r.spec_kind() matches ExprKind::And { left, right } && *left == e1 && *right == e2,
+            },
+    ))]
     fn and(self, e1: Expr<T>, e2: Expr<T>) -> Expr<T> {
         self.with_expr_kind(match (&e1.expr_kind, &e2.expr_kind) {
             (ExprKind::Lit(Literal::Bool(b1)), ExprKind::Lit(Literal::Bool(b2))) => {
@@ -1261,6 +1452,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     /// Create an 'in' expression. First argument must evaluate to Entity type.
     /// Second argument must evaluate to either Entity type or Set type where
     /// all set elements have Entity type.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == (ExprKind::BinaryApp { op: BinaryOp::In, arg1, arg2 }),
+    ))]
     fn is_in_arc(self, arg1: Arc<Expr<T>>, arg2: Arc<Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::BinaryApp {
             op: BinaryOp::In,
@@ -1325,11 +1520,13 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         })
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     /// Create an `Expr` which evaluates to a Set of the given `Expr`s
     fn set(self, exprs: impl IntoIterator<Item = Expr<T>>) -> Expr<T> {
         self.with_expr_kind(ExprKind::Set(Arc::new(exprs.into_iter().collect())))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     /// Create an `Expr` which evaluates to a Record with the given (key, value) pairs.
     fn record(
         self,
@@ -1353,6 +1550,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         Ok(self.with_expr_kind(ExprKind::Record(Arc::new(map))))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     /// Create an `Expr` which calls the extension function with the given
     /// `Name` on `args`
     fn call_extension_fn(
@@ -1411,6 +1609,10 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Create an 'is' expression.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == (ExprKind::Is { expr, entity_type }),
+    ))]
     fn is_entity_type_arc(self, expr: Arc<Expr<T>>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is { expr, entity_type })
     }
@@ -1430,14 +1632,21 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
 
     /// Don't support AST Error nodes - return the error right back
     #[cfg(feature = "tolerant-ast")]
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     fn error(self, parse_errors: ParseErrors) -> Result<Self::Expr, Self::ErrorType> {
         Err(parse_errors)
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl<T> ExprBuilder<T> {
     /// Construct an `Expr` containing the `data` and `source_loc` in this
     /// `ExprBuilder` and the given `ExprKind`.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() == expr_kind,
+            r.spec_data() == self.spec_data(),
+    ))]
     pub fn with_expr_kind(self, expr_kind: ExprKind<T>) -> Expr<T> {
         Expr::new(expr_kind, self.source_loc, self.data)
     }
@@ -1934,6 +2143,7 @@ impl<T> Expr<T> {
 }
 
 /// AST variables
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -1949,6 +2159,7 @@ pub enum Var {
     Context,
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<PrincipalOrResource> for Var {
     fn from(v: PrincipalOrResource) -> Self {
         match v {

@@ -25,6 +25,9 @@ use crate::evaluator;
 
 use std::sync::Arc;
 
+#[cfg(feature = "verus")]
+use vstd::prelude::*;
+
 #[expect(clippy::expect_used, reason = "All the names are valid names")]
 pub(crate) mod names {
     use crate::ast::Name;
@@ -60,19 +63,25 @@ const ADVICE_MSG: &str = "maybe you forgot to apply the `ip` constructor?";
 const VALID_IP_HELP: &str = "valid IP strings are IPv4/IPv6 addresses or CIDR ranges like `127.0.0.1`, `127.0.0.1/24`, or `ffee::/64`";
 
 /// Maximum prefix size for IpV4 addresses
+#[cfg_attr(feature = "verus", verus_verify)]
 const PREFIX_MAX_LEN_V4: u8 = 32;
 /// Maximum prefix size for IpV6 addresses
+#[cfg_attr(feature = "verus", verus_verify)]
 const PREFIX_MAX_LEN_V6: u8 = 128;
 /// Maximum prefix string size for IpV4 addresses
 /// len('32') = 2
+#[cfg_attr(feature = "verus", verus_verify)]
 const PREFIX_STR_MAX_LEN_V4: u8 = 2;
 /// Maximum prefix string size for IpV6 addresses
 /// len('128') = 3
+#[cfg_attr(feature = "verus", verus_verify)]
 const PREFIX_STR_MAX_LEN_V6: u8 = 3;
 /// The maximum length of an IpNet in bytes is
 /// len('ABCD:EF01:2345:6789:ABCD:EF01:2345:6789/128') = 43
+#[cfg_attr(feature = "verus", verus_verify)]
 const IP_STR_REP_MAX_LEN: u8 = 43;
 
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct IPAddr {
     /// the actual address, without prefix
@@ -82,12 +91,253 @@ struct IPAddr {
     prefix: u8,
 }
 
+#[cfg(feature = "verus")]
+verus! {
+/// The model of an `IPAddr`
+pub(crate) closed spec fn abs_ipnet(a: IPAddr) -> crate::verification::model::ext::IPNet {
+    match a.addr {
+        std::net::IpAddr::V4(x) => crate::verification::model::ext::IPNet::V4(
+            crate::verification::ext_trusted::v4_bits(x), a.prefix),
+        std::net::IpAddr::V6(x) => crate::verification::model::ext::IPNet::V6(
+            crate::verification::ext_trusted::v6_bits(x), a.prefix),
+    }
+}
+
+/// The model of an `IpAddr`
+pub open spec fn abs_addr(a: std::net::IpAddr) -> crate::verification::model::ext::IPAddr {
+    match a {
+        std::net::IpAddr::V4(x) => crate::verification::model::ext::IPAddr::V4(
+            crate::verification::ext_trusted::v4_bits(x)),
+        std::net::IpAddr::V6(x) => crate::verification::model::ext::IPAddr::V6(
+            crate::verification::ext_trusted::v6_bits(x)),
+    }
+}
+
+/// The model of an IP-address argument
+pub(crate) open spec fn ip_arg(a: IPAddr) -> crate::verification::model::value::Value {
+    crate::verification::model::value::Value::Ext(crate::verification::model::ext::Ext::IPAddr(abs_ipnet(a)))
+}
+
+pub(crate) open spec fn ip_wf(a: IPAddr) -> bool {
+    crate::verification::model::ext::ext_wf(&crate::verification::model::ext::Ext::IPAddr(abs_ipnet(a)))
+}
+}
+
+#[cfg_attr(feature = "verus", verus_verify)]
 impl IPAddr {
     /// The Cedar typename of all ipaddr values
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     fn typename() -> Name {
         names::EXTENSION_NAME.clone()
     }
 
+    /// Return true if this is an IPv4 address
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures r == crate::verification::model::ext::ip_is_v4(&abs_ipnet(*self))
+    ))]
+    fn is_ipv4(&self) -> bool {
+        self.addr.is_ipv4()
+    }
+
+    /// Return true if this is an IPv6 address
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures r == crate::verification::model::ext::ip_is_v6(&abs_ipnet(*self))
+    ))]
+    fn is_ipv6(&self) -> bool {
+        self.addr.is_ipv6()
+    }
+
+    /// Return true if this is a loopback address
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures r == crate::verification::model::ext::ip_is_loopback(&abs_ipnet(*self))
+    ))]
+    fn is_loopback(&self) -> bool {
+        // Loopback addresses are "127.0.0.0/8" for IpV4 and "::1" for IpV6
+        // If `addr` is a loopback address, its prefix is `0x7f` or `0x00000000000000000000000000000001`
+        // We need to just make sure the prefix length (i.e., `prefix`) is greater than or equal to `8` or `128`
+        self.addr.is_loopback() && self.prefix >= if self.is_ipv4() { 8 } else { PREFIX_MAX_LEN_V6 }
+    }
+
+    /// Return true if this is a multicast address
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures r == crate::verification::model::ext::ip_is_multicast(&abs_ipnet(*self))
+    ))]
+    fn is_multicast(&self) -> bool {
+        // Multicast addresses are "224.0.0.0/4" for IpV4 and "ff00::/8" for IpV6
+        // Following the same reasoning as `is_loopback`
+        self.addr.is_multicast() && self.prefix >= if self.is_ipv4() { 4 } else { 8 }
+    }
+
+    /// Return true if this is contained in the given `IPAddr`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires ip_wf(*self), ip_wf(*other),
+        ensures r == crate::verification::model::ext::ip_in_range(&abs_ipnet(*self), &abs_ipnet(*other))
+    ))]
+    fn is_in_range(&self, other: &Self) -> bool {
+        match (&self.addr, &other.addr) {
+            (std::net::IpAddr::V4(self_v4), std::net::IpAddr::V4(other_v4)) => {
+                let self_network = u32::from(*self_v4) & v4_netmask(self.prefix);
+                let other_network = u32::from(*other_v4) & v4_netmask(other.prefix);
+                let self_broadcast = u32::from(*self_v4) | v4_hostmask(self.prefix);
+                let other_broadcast = u32::from(*other_v4) | v4_hostmask(other.prefix);
+                other_network <= self_network && self_broadcast <= other_broadcast
+            }
+            (std::net::IpAddr::V6(self_v6), std::net::IpAddr::V6(other_v6)) => {
+                let self_network = u128::from(*self_v6) & v6_netmask(self.prefix);
+                let other_network = u128::from(*other_v6) & v6_netmask(other.prefix);
+                let self_broadcast = u128::from(*self_v6) | v6_hostmask(self.prefix);
+                let other_broadcast = u128::from(*other_v6) | v6_hostmask(other.prefix);
+                other_network <= self_network && self_broadcast <= other_broadcast
+            }
+            (_, _) => false,
+        }
+    }
+}
+
+/// The network mask of an IPv4 prefix
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires prefix <= 32,
+    ensures r == crate::verification::model::ext::v4_netmask(prefix)
+))]
+fn v4_netmask(prefix: u8) -> u32 {
+    u32::MAX
+        .checked_shl((PREFIX_MAX_LEN_V4 - prefix).into())
+        .unwrap_or(0)
+}
+
+/// The host mask of an IPv4 prefix
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r => ensures r == crate::verification::model::ext::v4_hostmask(prefix)))]
+fn v4_hostmask(prefix: u8) -> u32 {
+    u32::MAX.checked_shr(prefix.into()).unwrap_or(0)
+}
+
+/// The network mask of an IPv6 prefix
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires prefix <= 128,
+    ensures r == crate::verification::model::ext::v6_netmask(prefix)
+))]
+fn v6_netmask(prefix: u8) -> u128 {
+    u128::MAX
+        .checked_shl((PREFIX_MAX_LEN_V6 - prefix).into())
+        .unwrap_or(0)
+}
+
+/// The host mask of an IPv6 prefix
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r => ensures r == crate::verification::model::ext::v6_hostmask(prefix)))]
+fn v6_hostmask(prefix: u8) -> u128 {
+    u128::MAX.checked_shr(prefix.into()).unwrap_or(0)
+}
+
+/// Error messages of the IP-address parser
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn prefix_too_long(s: &str) -> String {
+    format!(
+        "error parsing prefix: string length {} is too large",
+        s.len()
+    )
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn prefix_non_digit(s: &str) -> String {
+    format!("error parsing prefix `{s}`: encountered non-digit")
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn prefix_leading_zeros(s: &str) -> String {
+    format!("error parsing prefix `{s}`: leading zero(s)")
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn prefix_parse_error(s: &str, err: &std::num::ParseIntError) -> String {
+    format!("error parsing prefix from the string `{s}`: {err}")
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn prefix_too_large(res: u8, max: u8) -> String {
+    format!(
+        "error parsing prefix: {res} is larger than the limit {max}"
+    )
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn ip_too_long(s: &str) -> String {
+    format!(
+        "error parsing IP address from string `{s}`: string length is too large"
+    )
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn ip_addr_error(addr_str: &str, e: &std::net::AddrParseError) -> String {
+    format!("error parsing IP address from the string `{addr_str}`: {e}")
+}
+
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn ip_invalid(s: &str) -> String {
+    format!("invalid IP address: {s}")
+}
+
+#[cfg_attr(feature = "verus", verus_verify(spinoff_prover))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires max <= 128,
+    ensures
+        match r {
+            Ok(n) => crate::verification::model::ext::parse_prefix(
+                &crate::verification::abs::seq_to_list(s@), max, max_len as u32) == Some(n),
+            Err(_) => crate::verification::model::ext::parse_prefix(
+                &crate::verification::abs::seq_to_list(s@), max, max_len as u32) is None,
+        }
+))]
+fn parse_prefix(s: &str, max: u8, max_len: u8) -> Result<u8, String> {
+    proof! {
+        crate::verification::ext_trusted::axiom_str_len_bound(s);
+        crate::verification::ext_lemmas::lemma_utf8_len_le(s@, max_len as u32);
+        crate::verification::ext_lemmas::lemma_all_digits(s@);
+        crate::verification::ext_lemmas::lemma_starts_with(s@, '0');
+        crate::verification::ext_lemmas::lemma_is_char(s@, '0');
+    }
+    if s.len() > max_len as usize {
+        return Err(prefix_too_long(s));
+    }
+    let non_digit = s.chars().any(
+        #[cfg_attr(feature = "verus", verus_spec(r: bool => ensures r == !('0' <= c && c <= '9')))]
+        |c| !c.is_ascii_digit(),
+    );
+    if non_digit {
+        return Err(prefix_non_digit(s));
+    }
+    proof! {
+        broadcast use vstd::string::group_string_axioms;
+        reveal_strlit("0");
+        assert("0"@.len() == 1);
+        assert("0"@[0] == '0');
+        assert("0"@ =~= seq!['0']);
+    }
+    if super::starts_with_char(s, '0') && !super::str_eq(s, "0") {
+        return Err(prefix_leading_zeros(s));
+    }
+    let res: u8 = match <u8 as std::str::FromStr>::from_str(s) {
+        Ok(res) => res,
+        Err(err) => return Err(prefix_parse_error(s, &err)),
+    };
+    if res > max {
+        return Err(prefix_too_large(res, max));
+    }
+    Ok(res)
+}
+
+impl std::str::FromStr for IPAddr {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Self::parse(s)
+    }
+}
+
+#[cfg_attr(feature = "verus", verus_verify)]
+impl IPAddr {
     /// Convert an IP address or subnet, given as a string, into an `IPAddr`
     /// value.
     ///
@@ -98,116 +348,50 @@ impl IPAddr {
     /// These addresses can be written as hexadecimal IPv6. Comparisons between any IPv4 address
     ///  and any IPv6 address (including an IPv4 address embedded in IPv6) is false (e.g.,
     ///  `isLoopback("::ffff:ff00:1")` is `false`)
-    fn from_str(str: impl AsRef<str>) -> Result<Self, String> {
-        // Delegate to `FromStr` implementation
-        str.as_ref().parse()
-    }
-
-    /// Return true if this is an IPv4 address
-    fn is_ipv4(&self) -> bool {
-        self.addr.is_ipv4()
-    }
-
-    /// Return true if this is an IPv6 address
-    fn is_ipv6(&self) -> bool {
-        self.addr.is_ipv6()
-    }
-
-    /// Return true if this is a loopback address
-    fn is_loopback(&self) -> bool {
-        // Loopback addresses are "127.0.0.0/8" for IpV4 and "::1" for IpV6
-        // If `addr` is a loopback address, its prefix is `0x7f` or `0x00000000000000000000000000000001`
-        // We need to just make sure the prefix length (i.e., `prefix`) is greater than or equal to `8` or `128`
-        self.addr.is_loopback() && self.prefix >= if self.is_ipv4() { 8 } else { PREFIX_MAX_LEN_V6 }
-    }
-
-    /// Return true if this is a multicast address
-    fn is_multicast(&self) -> bool {
-        // Multicast addresses are "224.0.0.0/4" for IpV4 and "ff00::/8" for IpV6
-        // Following the same reasoning as `is_loopback`
-        self.addr.is_multicast() && self.prefix >= if self.is_ipv4() { 4 } else { 8 }
-    }
-
-    /// Return true if this is contained in the given `IPAddr`
-    fn is_in_range(&self, other: &Self) -> bool {
-        match (&self.addr, &other.addr) {
-            (std::net::IpAddr::V4(self_v4), std::net::IpAddr::V4(other_v4)) => {
-                let netmask = |prefix: u8| {
-                    u32::MAX
-                        .checked_shl((PREFIX_MAX_LEN_V4 - prefix).into())
-                        .unwrap_or(0)
-                };
-                let hostmask = |prefix: u8| u32::MAX.checked_shr(prefix.into()).unwrap_or(0);
-
-                let self_network = u32::from(*self_v4) & netmask(self.prefix);
-                let other_network = u32::from(*other_v4) & netmask(other.prefix);
-                let self_broadcast = u32::from(*self_v4) | hostmask(self.prefix);
-                let other_broadcast = u32::from(*other_v4) | hostmask(other.prefix);
-                other_network <= self_network && self_broadcast <= other_broadcast
+    #[cfg_attr(feature = "verus", verus_verify(spinoff_prover))]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(a) => crate::verification::model::ext::parse_ip(
+                    &crate::verification::abs::seq_to_list(s@)) == Some(abs_ipnet(a)) && ip_wf(a),
+                Err(_) => crate::verification::model::ext::parse_ip(
+                    &crate::verification::abs::seq_to_list(s@)) is None,
             }
-            (std::net::IpAddr::V6(self_v6), std::net::IpAddr::V6(other_v6)) => {
-                let netmask = |prefix: u8| {
-                    u128::MAX
-                        .checked_shl((PREFIX_MAX_LEN_V6 - prefix).into())
-                        .unwrap_or(0)
-                };
-                let hostmask = |prefix: u8| u128::MAX.checked_shr(prefix.into()).unwrap_or(0);
-
-                let self_network = u128::from(*self_v6) & netmask(self.prefix);
-                let other_network = u128::from(*other_v6) & netmask(other.prefix);
-                let self_broadcast = u128::from(*self_v6) | hostmask(self.prefix);
-                let other_broadcast = u128::from(*other_v6) | hostmask(other.prefix);
-                other_network <= self_network && self_broadcast <= other_broadcast
+    ))]
+    fn parse(s: &str) -> Result<Self, String> {
+        proof! {
+            crate::verification::ext_trusted::axiom_str_len_bound(s);
+            crate::verification::ext_lemmas::lemma_utf8_len_le(s@, 43);
+            if !s@.contains('/') {
+                crate::verification::ext_lemmas::lemma_split_at_char_none(s@, '/');
             }
-            (_, _) => false,
         }
-    }
-}
-
-fn parse_prefix(s: &str, max: u8, max_len: u8) -> Result<u8, String> {
-    if s.len() > max_len as usize {
-        return Err(format!(
-            "error parsing prefix: string length {} is too large",
-            s.len()
-        ));
-    }
-    if s.chars().any(|c| !c.is_ascii_digit()) {
-        return Err(format!("error parsing prefix `{s}`: encountered non-digit"));
-    }
-    if s.starts_with('0') && s != "0" {
-        return Err(format!("error parsing prefix `{s}`: leading zero(s)"));
-    }
-    let res: u8 = s
-        .parse()
-        .map_err(|err| format!("error parsing prefix from the string `{s}`: {err}"))?;
-    if res > max {
-        return Err(format!(
-            "error parsing prefix: {res} is larger than the limit {max}"
-        ));
-    }
-    Ok(res)
-}
-
-impl std::str::FromStr for IPAddr {
-    type Err = String;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Return Err if the input is too long
         if s.len() > IP_STR_REP_MAX_LEN as usize {
-            return Err(format!(
-                "error parsing IP address from string `{s}`: string length is too large"
-            ));
+            return Err(ip_too_long(s));
         }
         // Return Err if string is IPv4 embedded in IPv6 format
         str_contains_colons_and_dots(s)?;
 
         // Split over '/' first so we don't have to parse the address field twice
-        match s.split_once('/') {
+        match super::split_once_char(s, '/') {
             Some((addr_str, prefix_str)) => {
+                proof! {
+                    crate::verification::ext_lemmas::lemma_split_at_char(addr_str@, prefix_str@, '/');
+                    assert(s@ == addr_str@ + (seq!['/'] + prefix_str@));
+                    if crate::verification::model::ext::has_two(&crate::verification::abs::seq_to_list(addr_str@), ':') {
+                        crate::verification::ext_lemmas::lemma_has_two_prefix(addr_str@, seq!['/'] + prefix_str@, ':');
+                    }
+                    if crate::verification::model::ext::has_two(&crate::verification::abs::seq_to_list(addr_str@), '.') {
+                        crate::verification::ext_lemmas::lemma_has_two_prefix(addr_str@, seq!['/'] + prefix_str@, '.');
+                    }
+                }
                 // `addr` (the part before the slash) should be a valid IP address,
                 // while `prefix` should be either 0..32 or 0..128 depending on the version
-                let addr: std::net::IpAddr = addr_str.parse().map_err(|e| {
-                    format!("error parsing IP address from the string `{addr_str}`: {e}")
-                })?;
+                let addr: std::net::IpAddr = match <std::net::IpAddr as std::str::FromStr>::from_str(addr_str) {
+                    Ok(addr) => addr,
+                    Err(e) => return Err(ip_addr_error(addr_str, &e)),
+                };
                 let prefix = match addr {
                     std::net::IpAddr::V4(_) => {
                         parse_prefix(prefix_str, PREFIX_MAX_LEN_V4, PREFIX_STR_MAX_LEN_V4)?
@@ -218,7 +402,7 @@ impl std::str::FromStr for IPAddr {
                 };
                 Ok(Self { addr, prefix })
             }
-            None => match std::net::IpAddr::from_str(s) {
+            None => match <std::net::IpAddr as std::str::FromStr>::from_str(s) {
                 Ok(singleaddr) => Ok(Self {
                     addr: singleaddr,
                     prefix: if singleaddr.is_ipv4() {
@@ -227,7 +411,7 @@ impl std::str::FromStr for IPAddr {
                         PREFIX_MAX_LEN_V6
                     },
                 }),
-                Err(_) => Err(format!("invalid IP address: {s}")),
+                Err(_) => Err(ip_invalid(s)),
             },
         }
     }
@@ -267,6 +451,10 @@ fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::E
 }
 
 /// Check whether `s` contains at least three occurences of `c`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures r == crate::verification::model::ext::has_two(&crate::verification::abs::seq_to_list(s@), c)
+))]
 fn contains_at_least_two(s: &str, c: char) -> bool {
     let idx = s.find(c);
     match idx {
@@ -317,34 +505,78 @@ mod proof {
 /// We will, though, parse IPv4 embedded in IPv6 if it is provided in "normal" IPv6 format (e.g., "::ffff:ff00:1"). Such addresses are treated as IPv6 addresses
 /// These addresses must contain at least two colons and three periods. (We check for more than one to allow adding IPv4 addresses with ports in the future)
 /// To simplify the implementation, we reject addresses with at least two colons and two periods.
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures
+        r is Ok <==> !(crate::verification::model::ext::has_two(&crate::verification::abs::seq_to_list(s@), ':')
+            && crate::verification::model::ext::has_two(&crate::verification::abs::seq_to_list(s@), '.'))
+))]
 fn str_contains_colons_and_dots(s: &str) -> Result<(), String> {
     if contains_at_least_two(s, ':') && contains_at_least_two(s, '.') {
-        return Err(format!(
-            "error parsing IP address from string: We do not accept IPv4 embedded in IPv6 (e.g., ::ffff:127.0.0.1). Found: `{}`", s));
+        return Err(ip_embedded_v4(s));
     }
     Ok(())
 }
 
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn ip_embedded_v4(s: &str) -> String {
+    format!(
+        "error parsing IP address from string: We do not accept IPv4 embedded in IPv6 (e.g., ::ffff:127.0.0.1). Found: `{}`", s)
+}
+
 /// Cedar function which constructs an `ipaddr` Cedar type from a
 /// Cedar string
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::Ip,
+        &crate::verification::ext_abs::args1(*arg)))
+))]
 fn ip_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
+    let ipaddr = match IPAddr::parse(str.as_str()) {
+        Ok(ipaddr) => ipaddr,
+        Err(e) => return Err(ip_parse_error(e)),
+    };
+    Ok(ipaddr_value(ipaddr, arg))
+}
+
+/// The evaluation error for a failed parse
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn ip_parse_error(e: String) -> evaluator::EvaluationError {
+    extension_err(e, Some(VALID_IP_HELP.to_string()))
+}
+
+/// The `ipaddr` value `ipaddr`, constructed from the string `arg`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(Ok(r),
+        Ok(crate::verification::model::ext::ExtRes::Ext(
+            crate::verification::model::ext::Ext::IPAddr(abs_ipnet(ipaddr)))))
+))]
+fn ipaddr_value(ipaddr: IPAddr, arg: &Value) -> ExtensionOutputValue {
     let arg_source_loc = arg.source_loc();
     let ipaddr = RepresentableExtensionValue::new(
-        Arc::new(
-            IPAddr::from_str(str.as_str())
-                .map_err(|e| extension_err(e, Some(VALID_IP_HELP.to_string())))?,
-        ),
+        Arc::new(ipaddr),
         names::IP_FROM_STR_NAME.clone(),
         vec![arg.clone().into()],
     );
-    Ok(Value {
+    Value {
         value: ValueKind::ExtensionValue(Arc::new(ipaddr)),
         loc: arg_source_loc.cloned(), // this gives the loc of the arg. We could perhaps give instead the loc of the entire `ip("...")` call, but that is hard to do at this program point
     }
-    .into())
+    .into()
 }
 
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures
+        match r {
+            Ok(a) => crate::verification::ext_abs::ext_arg(*v) == ip_arg(*a) && ip_wf(*a),
+            Err(_) => !(crate::verification::ext_abs::ext_arg(*v) matches
+                crate::verification::model::value::Value::Ext(crate::verification::model::ext::Ext::IPAddr(_))),
+        }
+))]
 fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
     match &v.value {
         ValueKind::ExtensionValue(ev) if ev.typename() == IPAddr::typename() => {
@@ -376,44 +608,86 @@ fn as_ipaddr(v: &Value) -> Result<&IPAddr, evaluator::EvaluationError> {
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv4
 /// address, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::IsIpv4,
+        &crate::verification::ext_abs::args1(*arg)))
+))]
 fn is_ipv4(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr = as_ipaddr(arg)?;
-    Ok(ipaddr.is_ipv4().into())
+    Ok(super::bool_output(ipaddr.is_ipv4()))
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is an IPv6
 /// address, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::IsIpv6,
+        &crate::verification::ext_abs::args1(*arg)))
+))]
 fn is_ipv6(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr = as_ipaddr(arg)?;
-    Ok(ipaddr.is_ipv6().into())
+    Ok(super::bool_output(ipaddr.is_ipv6()))
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// loopback address, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::IsLoopback,
+        &crate::verification::ext_abs::args1(*arg)))
+))]
 fn is_loopback(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr = as_ipaddr(arg)?;
-    Ok(ipaddr.is_loopback().into())
+    Ok(super::bool_output(ipaddr.is_loopback()))
 }
 
 /// Cedar function which tests whether an `ipaddr` Cedar type is a
 /// multicast address, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::IsMulticast,
+        &crate::verification::ext_abs::args1(*arg)))
+))]
 fn is_multicast(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let ipaddr = as_ipaddr(arg)?;
-    Ok(ipaddr.is_multicast().into())
+    Ok(super::bool_output(ipaddr.is_multicast()))
 }
 
 /// Cedar function which tests whether the first `ipaddr` Cedar type is
 /// in the IP range represented by any of the following `ipaddr` Cedar types, returning
 /// a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires parents@.len() == 1,
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::IsInRange,
+        &crate::verification::ext_abs::args2(*child, parents@[0])))
+))]
 fn is_in_range(child: &Value, parents: &[Value]) -> evaluator::Result<ExtensionOutputValue> {
     let child_ip = as_ipaddr(child)?;
-    let parent_ips = parents
-        .iter()
-        .map(|parent| as_ipaddr(parent))
-        .try_fold(false, |acc, item| {
-            item.map(|parent| acc || child_ip.is_in_range(parent))
-        })?;
-    Ok(parent_ips.into())
+    let mut parent_ips = false;
+    #[cfg_attr(feature = "verus", verus_spec(
+        invariant
+            parents@.len() == 1,
+            crate::verification::ext_abs::ext_arg(*child) == ip_arg(*child_ip),
+            ip_wf(*child_ip),
+            i == 0 ==> !parent_ips,
+            i == 1 ==> (crate::verification::ext_abs::ext_arg(parents@[0]) matches
+                crate::verification::model::value::Value::Ext(crate::verification::model::ext::Ext::IPAddr(p))
+                && parent_ips == crate::verification::model::ext::ip_in_range(&abs_ipnet(*child_ip), &p)),
+    ))]
+    #[expect(clippy::needless_range_loop, reason = "the loop invariant refers to the index")]
+    for i in 0..parents.len() {
+        #[expect(clippy::indexing_slicing, reason = "`i < parents.len()`")]
+        let parent = as_ipaddr(&parents[i])?;
+        parent_ips = parent_ips || child_ip.is_in_range(parent);
+    }
+    Ok(super::bool_output(parent_ips))
 }
 
 /// Construct the extension

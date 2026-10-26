@@ -80,6 +80,16 @@
 #![warn(missing_docs)]
 // enable doc_cfg feature when building on docs.rs
 #![cfg_attr(docsrs, feature(doc_cfg))]
+// needed by some specifications in the Verus proofs
+#![cfg_attr(
+    all(feature = "verus", verus_keep_ghost),
+    feature(
+        allocator_api,
+        sized_hierarchy,
+        proc_macro_hygiene,
+        stmt_expr_attributes
+    )
+)]
 #![cfg_attr(
     feature = "wasm",
     allow(
@@ -90,6 +100,30 @@
 
 #[macro_use]
 extern crate lalrpop_util;
+
+/// Verus proof blocks, erased without the `verus` feature
+#[cfg(not(feature = "verus"))]
+macro_rules! proof {
+    ($($t:tt)*) => {};
+}
+
+/// Verus ghost declarations, erased without the `verus` feature
+#[cfg(not(feature = "verus"))]
+macro_rules! proof_decl {
+    ($($t:tt)*) => {};
+}
+
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::*;
+
+#[cfg(feature = "verus")]
+pub mod verification;
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+broadcast use crate::verification::trusted::group_trusted, crate::verification::expr_abs::group_expr_abs, crate::verification::value_abs::group_value_abs;
+}
 
 pub mod ast;
 pub mod authorizer;

@@ -19,6 +19,9 @@ use crate::parser::Loc;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::str::FromStr;
 use std::sync::Arc;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{int, proof, verus_spec, verus_verify, SpecOrd};
 
 use educe::Educe;
 use itertools::Itertools;
@@ -28,6 +31,7 @@ use thiserror::Error;
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Debug, Clone)]
 #[educe(PartialEq, Eq, PartialOrd, Ord)]
 pub struct Value {
@@ -41,6 +45,7 @@ pub struct Value {
 
 /// This describes all the values which could be the dynamic result of evaluating an `Expr`.
 /// Cloning is O(1).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, PartialOrd, Ord)]
 pub enum ValueKind {
     /// anything that is a Literal can also be the dynamic result of evaluating an `Expr`
@@ -53,7 +58,9 @@ pub enum ValueKind {
     ExtensionValue(Arc<RepresentableExtensionValue>),
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Value {
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a new empty set
     pub fn empty_set(loc: Option<Loc>) -> Self {
         Self {
@@ -62,6 +69,7 @@ impl Value {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a new empty record
     pub fn empty_record(loc: Option<Loc>) -> Self {
         Self {
@@ -72,13 +80,21 @@ impl Value {
 
     /// Create a `Value` from anything that implements `Into<ValueKind>` and an
     /// optional source location
-    pub fn new(value: impl Into<ValueKind>, loc: Option<Loc>) -> Self {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            <V as vstd::std_specs::convert::IntoSpec<ValueKind>>::obeys_into_spec() ==> r == (Value {
+                value: vstd::std_specs::convert::IntoSpec::<ValueKind>::into_spec(value),
+                loc,
+            }),
+    ))]
+    pub fn new<V: Into<ValueKind>>(value: V, loc: Option<Loc>) -> Self {
         Self {
             value: value.into(),
             loc,
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a set with the given `Value`s as elements
     pub fn set(vals: impl IntoIterator<Item = Value>, loc: Option<Loc>) -> Self {
         Self {
@@ -87,6 +103,7 @@ impl Value {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a set with the given `Literal`s as elements
     ///
     /// the resulting `Value` will have the given `loc` attached, but its
@@ -98,6 +115,7 @@ impl Value {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a record with the given (key, value) pairs
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(
         pairs: impl IntoIterator<Item = (K, V)>,
@@ -110,6 +128,7 @@ impl Value {
     }
 
     /// Create a record with the given attributes/value mapping.
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r.value == ValueKind::Record(pairs)))]
     pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>, loc: Option<Loc>) -> Self {
         Self {
             value: ValueKind::record_arc(pairs),
@@ -118,11 +137,13 @@ impl Value {
     }
 
     /// Return the `Value`, but with the given `Loc` (or `None`)
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r.value == self.value))]
     pub fn with_maybe_source_loc(self, loc: Option<Loc>) -> Self {
         Self { loc, ..self }
     }
 
     /// Get the `ValueKind` for this `Value`
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures *r == self.value))]
     pub fn value_kind(&self) -> &ValueKind {
         &self.value
     }
@@ -132,11 +153,13 @@ impl Value {
         self.loc.as_ref()
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
     pub(crate) fn try_as_lit(&self) -> Option<&Literal> {
         self.value.try_as_lit()
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// The `PartialEq` and `Eq` implementations for `Value` ignore the source location.
     /// If you actually want to check that two values are equal _and_ have the
     /// same source location, you can use this.
@@ -145,6 +168,7 @@ impl Value {
     }
 
     /// All literal uids referenced by this value
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
         self.value.all_literal_uids()
     }
@@ -156,27 +180,33 @@ impl BoundedDisplay for Value {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl ValueKind {
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a new empty set
     pub fn empty_set() -> Self {
         Self::Set(Set::empty())
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a new empty record
     pub fn empty_record() -> Self {
         Self::Record(Arc::new(BTreeMap::new()))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a set with the given `Value`s as elements
     pub fn set(vals: impl IntoIterator<Item = Value>) -> Self {
         Self::Set(Set::new(vals))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a set with the given `Literal`s as elements
     pub fn set_of_lits(lits: impl IntoIterator<Item = Literal>) -> Self {
         Self::Set(Set::from_lits(lits))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create a record with the given (key, value) pairs
     pub fn record<K: Into<SmolStr>, V: Into<Value>>(
         pairs: impl IntoIterator<Item = (K, V)>,
@@ -190,10 +220,15 @@ impl ValueKind {
     }
 
     /// Create a record with the given attributes/value mapping.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r == ValueKind::Record(pairs),
+    ))]
     pub fn record_arc(pairs: Arc<BTreeMap<SmolStr, Value>>) -> Self {
         Self::Record(pairs)
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// If the value is a `Literal`, get a reference to the underlying `Literal`
     pub(crate) fn try_as_lit(&self) -> Option<&Literal> {
         match &self {
@@ -202,6 +237,7 @@ impl ValueKind {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// All literal uids referenced by this value kind
     pub fn all_literal_uids(&self) -> HashSet<EntityUID> {
         match self {
@@ -380,6 +416,7 @@ impl TryFrom<Expr> for ValueKind {
 }
 
 /// `Value`'s internal representation of a `Set`
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone)]
 pub struct Set {
     /// the values in the set, stored in a `BTreeSet`
@@ -701,6 +738,7 @@ impl<T: Into<Value>> From<Vec<T>> for ValueKind {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 /// Create a `Value` directly from a `Literal`, or from anything that implements
 /// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
 ///
@@ -715,6 +753,7 @@ impl<T: Into<Literal>> From<T> for Value {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 /// Create a `ValueKind` directly from a `Literal`, or from anything that implements
 /// `Into<Literal>` (so `Integer`, `&str`, `EntityUID`, etc)
 impl<T: Into<Literal>> From<T> for ValueKind {

@@ -16,6 +16,9 @@
 
 //! This module contains the Cedar 'decimal' extension.
 
+#[cfg(feature = "verus")]
+use vstd::prelude::*;
+
 use crate::ast::{
     CallStyle, Extension, ExtensionFunction, ExtensionOutputValue, ExtensionValue, Literal, Name,
     RepresentableExtensionValue, Type, Value, ValueKind,
@@ -32,10 +35,12 @@ use thiserror::Error;
 const VALID_DECIMAL_HELP: &str = "valid decimal strings look like `12.34`: digits are required on both sides of `.`, up to 4 fractional digits are allowed, and the value must be in range -922337203685477.5808 to 922337203685477.5807";
 
 /// Number of digits supported after the decimal
+#[cfg_attr(feature = "verus", verus_verify)]
 const NUM_DIGITS: u32 = 4;
 
 /// Decimal value, represented internally as an integer.
 /// `Decimal{value}` represents `value / 10^NUM_DIGITS`.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 struct Decimal {
     value: i64,
@@ -80,6 +85,7 @@ const ADVICE_MSG: &str = "maybe you forgot to apply the `decimal` constructor?";
 /// Potential errors when working with decimal values. Note that these are
 /// converted to evaluator::Err::ExtensionErr (which takes a string argument)
 /// before being reported to users.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Diagnostic, Error)]
 enum Error {
     /// Error parsing the input string as a decimal value
@@ -101,7 +107,21 @@ enum Error {
 }
 
 /// Computes x * 10 ^ y while checking for overflows
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires
+        y <= 4,
+    ensures
+        match r {
+            Ok(w) => vstd::arithmetic::power::pow(10, y as nat) * x == w as int,
+            Err(_) => !(i64::MIN <= vstd::arithmetic::power::pow(10, y as nat) * x
+                <= i64::MAX),
+        }
+))]
 fn checked_mul_pow(x: i64, y: u32) -> Result<i64, Error> {
+    proof! {
+        reveal_with_fuel(vstd::arithmetic::power::pow, 5);
+    }
     if let Some(z) = i64::checked_pow(10, y) {
         if let Some(w) = i64::checked_mul(x, z) {
             return Ok(w);
@@ -110,10 +130,28 @@ fn checked_mul_pow(x: i64, y: u32) -> Result<i64, Error> {
     Err(Error::Overflow)
 }
 
+/// The integer and fractional parts of `s`, as matched by `DECIMAL_REGEX`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_trusted::decimal_regex_spec(s, r)
+))]
+fn decimal_parts(s: &str) -> Option<(&str, &str)> {
+    let caps = constants::DECIMAL_REGEX.captures(s)?;
+    Some((caps.get(1)?.as_str(), caps.get(2)?.as_str()))
+}
+
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Decimal {
     /// The Cedar typename of decimal values
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     fn typename() -> Name {
         constants::DECIMAL_FROM_STR_NAME.clone()
+    }
+
+    /// `parse` on any string (used by the tests)
+    #[cfg(test)]
+    fn from_str(str: impl AsRef<str>) -> Result<Self, Error> {
+        Self::parse(str.as_ref())
     }
 
     /// Convert a string into a `Decimal` value.
@@ -124,40 +162,77 @@ impl Decimal {
     ///
     /// Our representation stores the decimal number `d` as the 64-bit integer
     /// `d * 10 ^ NUM_DIGITS`; this function will error on overflow.
-    fn from_str(str: impl AsRef<str>) -> Result<Self, Error> {
+    #[cfg_attr(feature = "verus", verus_verify(spinoff_prover))]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(d) => crate::verification::model::ext::parse_decimal(
+                    &crate::verification::abs::seq_to_list(str@)) == Some(d.value),
+                Err(_) => crate::verification::model::ext::parse_decimal(
+                    &crate::verification::abs::seq_to_list(str@)) is None,
+            }
+    ))]
+    fn parse(str: &str) -> Result<Self, Error> {
         // pull out the components: integer part, and fractional part
-        let caps = constants::DECIMAL_REGEX
-            .captures(str.as_ref())
-            .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?;
-        let l_str = caps
-            .get(1)
-            .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?
-            .as_str();
-        let r_str = caps
-            .get(2)
-            .ok_or_else(|| Error::FailedParse(str.as_ref().to_owned()))?
-            .as_str();
+        let (l_str, r_str) = match decimal_parts(str) {
+            Some(parts) => parts,
+            None => return Err(Error::FailedParse(str.to_owned())),
+        };
+        proof! {
+            crate::verification::ext_lemmas::lemma_decimal_parts(str, l_str, r_str);
+            crate::verification::ext_trusted::axiom_str_len_bound(r_str);
+            reveal_with_fuel(vstd::arithmetic::power::pow, 5);
+            assert(vstd::arithmetic::power::pow(10, 4) == 10000);
+        }
 
         // convert the integer component to i64 and multiply by `10 ^ NUM_DIGITS`
-        let l = i64::from_str(l_str).map_err(|_| Error::Overflow)?;
+        let l = match i64::from_str(l_str) {
+            Ok(l) => l,
+            Err(_) => return Err(Error::Overflow),
+        };
+        proof! {
+            assert(vstd::arithmetic::power::pow(10, 4) * l == l * 10000);
+        }
         let l = checked_mul_pow(l, NUM_DIGITS)?;
 
         // convert the fractional component to i64 and multiply by `10 ^ (NUM_DIGITS - len)`
-        let len: u32 = r_str.len().try_into().map_err(|_| Error::Overflow)?;
+        let len: u32 = match u32::try_from(r_str.len()) {
+            Ok(len) => len,
+            Err(_) => return Err(Error::Overflow),
+        };
         if NUM_DIGITS < len {
-            return Err(Error::TooManyDigits(str.as_ref().to_string()));
+            return Err(Error::TooManyDigits(str.to_string()));
         }
-        let r = i64::from_str(r_str).map_err(|_| Error::Overflow)?;
+        let r = match i64::from_str(r_str) {
+            Ok(r) => r,
+            Err(_) => return Err(Error::Overflow),
+        };
+        proof! {
+            if crate::verification::model::ext::decimal_split(
+                &crate::verification::abs::seq_to_list(str@)) is Some {
+                assert(vstd::utf8::encode_utf8(r_str@).len() == r_str@.len());
+                assert(r_str@.len() >= 1);
+                assert(1 <= len <= 4);
+                let ghost k = vstd::arithmetic::power::pow(10, (NUM_DIGITS - len) as nat);
+                assert(k == 1 || k == 10 || k == 100 || k == 1000) by {
+                    if len == 1 { assert(k == 1000); } else if len == 2 { assert(k == 100); }
+                    else if len == 3 { assert(k == 10); } else { assert(k == 1); }
+                }
+                assert(k * r == r * k) by (nonlinear_arith);
+            }
+        }
         let r = checked_mul_pow(r, NUM_DIGITS - len)?;
 
         // compute the value
-        if !l_str.starts_with('-') {
+        let value = if !super::starts_with_char(l_str, '-') {
             l.checked_add(r)
         } else {
             l.checked_sub(r)
+        };
+        match value {
+            Some(value) => Ok(Self { value }),
+            None => Err(Error::Overflow),
         }
-        .map(|value| Self { value })
-        .ok_or(Error::Overflow)
     }
 }
 
@@ -203,24 +278,59 @@ fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::E
 
 /// Cedar function that constructs a `decimal` Cedar type from a
 /// Cedar string
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::Decimal,
+        &crate::verification::ext_abs::args1(*arg)))
+))]
 fn decimal_from_str(arg: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let str = arg.get_as_string()?;
-    let decimal = Decimal::from_str(str.as_str())
-        .map_err(|e| extension_err(e.to_string(), e.help().map(|h| h.to_string())))?;
+    let decimal = match Decimal::parse(str.as_str()) {
+        Ok(decimal) => decimal,
+        Err(e) => return Err(parse_error(&e)),
+    };
+    Ok(decimal_value(decimal, arg))
+}
+
+/// The evaluation error for a failed parse
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn parse_error(e: &Error) -> evaluator::EvaluationError {
+    extension_err(e.to_string(), e.help().map(|h| h.to_string()))
+}
+
+/// The `decimal` value `decimal`, constructed from the string `arg`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(Ok(r),
+        Ok(crate::verification::model::ext::ExtRes::Ext(
+            crate::verification::model::ext::Ext::Decimal(decimal.value))))
+))]
+fn decimal_value(decimal: Decimal, arg: &Value) -> ExtensionOutputValue {
     let arg_source_loc = arg.source_loc();
     let e = RepresentableExtensionValue::new(
         Arc::new(decimal),
         constants::DECIMAL_FROM_STR_NAME.clone(),
         vec![arg.clone().into()],
     );
-    Ok(Value {
+    Value {
         value: ValueKind::ExtensionValue(Arc::new(e)),
         loc: arg_source_loc.cloned(), // this gives the loc of the arg. We could perhaps give instead the loc of the entire `decimal("x.yz")` call, but that is hard to do at this program point
     }
-    .into())
+    .into()
 }
 
 /// Check that `v` is a decimal type and, if it is, return the wrapped value
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures
+        match r {
+            Ok(d) => crate::verification::ext_abs::ext_arg(*v) == crate::verification::model::value::Value::Ext(
+                crate::verification::model::ext::Ext::Decimal(d.value)),
+            Err(_) => !(crate::verification::ext_abs::ext_arg(*v) matches
+                crate::verification::model::value::Value::Ext(crate::verification::model::ext::Ext::Decimal(_))),
+        }
+))]
 fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
     match &v.value {
         ValueKind::ExtensionValue(ev) if ev.typename() == Decimal::typename() => {
@@ -252,34 +362,58 @@ fn as_decimal(v: &Value) -> Result<&Decimal, evaluator::EvaluationError> {
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// less than the second `decimal` Cedar type, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::LessThan,
+        &crate::verification::ext_abs::args2(*left, *right)))
+))]
 fn decimal_lt(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(left)?;
     let right = as_decimal(right)?;
-    Ok(Value::from(left < right).into())
+    Ok(super::bool_output(left.value < right.value))
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// less than or equal to the second `decimal` Cedar type, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::LessThanOrEqual,
+        &crate::verification::ext_abs::args2(*left, *right)))
+))]
 fn decimal_le(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(left)?;
     let right = as_decimal(right)?;
-    Ok(Value::from(left <= right).into())
+    Ok(super::bool_output(left.value <= right.value))
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// greater than the second `decimal` Cedar type, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::GreaterThan,
+        &crate::verification::ext_abs::args2(*left, *right)))
+))]
 fn decimal_gt(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(left)?;
     let right = as_decimal(right)?;
-    Ok(Value::from(left > right).into())
+    Ok(super::bool_output(left.value > right.value))
 }
 
 /// Cedar function that tests whether the first `decimal` Cedar type is
 /// greater than or equal to the second `decimal` Cedar type, returning a Cedar bool
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_abs::ext_out_rel(r, crate::verification::model::ext::call(
+        &crate::verification::model::ext::ExtFun::GreaterThanOrEqual,
+        &crate::verification::ext_abs::args2(*left, *right)))
+))]
 fn decimal_ge(left: &Value, right: &Value) -> evaluator::Result<ExtensionOutputValue> {
     let left = as_decimal(left)?;
     let right = as_decimal(right)?;
-    Ok(Value::from(left >= right).into())
+    Ok(super::bool_output(left.value >= right.value))
 }
 
 /// Construct the extension

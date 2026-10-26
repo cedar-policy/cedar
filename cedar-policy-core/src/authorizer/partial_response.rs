@@ -14,7 +14,10 @@
  * limitations under the License.
  */
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{int, old, proof, proof_decl, verus_spec, verus_verify, SpecOrd, View};
 
 use either::Either;
 use std::sync::Arc;
@@ -54,6 +57,7 @@ pub enum ErrorState {
 /// Also tracks all the errors that were encountered during evaluation.
 /// This structure currently has to own all of the `PolicyID` objects due to the [`Self::reauthorize`]
 /// method. If [`PolicySet`] could borrow its PolicyID/contents then this whole structured could be borrowed.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone)]
 pub struct PartialResponse {
     /// All of the [`Effect::Permit`] policies that were satisfied
@@ -78,6 +82,38 @@ pub struct PartialResponse {
     #[cfg(feature = "partial-eval")]
     request: Arc<Request>,
 }
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+broadcast use crate::verification::trusted::group_trusted, vstd::std_specs::hash::group_hash_axioms;
+
+impl PartialResponse {
+    /// The IDs of the satisfied permits (for specifications)
+    pub closed spec fn spec_satisfied_permits(self) -> vstd::set::Set<PolicyID> {
+        vstd::prelude::View::view(&self.satisfied_permits).dom()
+    }
+
+    /// The IDs of the satisfied forbids (for specifications)
+    pub closed spec fn spec_satisfied_forbids(self) -> vstd::set::Set<PolicyID> {
+        vstd::prelude::View::view(&self.satisfied_forbids).dom()
+    }
+
+    /// The IDs of the residual permits (for specifications)
+    pub closed spec fn spec_residual_permits(self) -> vstd::set::Set<PolicyID> {
+        vstd::prelude::View::view(&self.residual_permits).dom()
+    }
+
+    /// The IDs of the residual forbids (for specifications)
+    pub closed spec fn spec_residual_forbids(self) -> vstd::set::Set<PolicyID> {
+        vstd::prelude::View::view(&self.residual_forbids).dom()
+    }
+
+    /// The errors (for specifications)
+    pub closed spec fn spec_errors(self) -> vstd::prelude::Seq<AuthorizationError> {
+        vstd::prelude::View::view(&self.errors)
+    }
+}
+} // verus!
 
 impl PartialResponse {
     /// Create a partial response from each of the policy result categories
@@ -112,6 +148,11 @@ impl PartialResponse {
 
     /// Convert this response into a concrete evaluation response.
     /// All residuals are treated as errors
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            crate::verification::authorizer_lemmas::concretized(self, r),
+    ))]
     pub fn concretize(self) -> Response {
         self.into()
     }
@@ -408,20 +449,6 @@ impl PartialResponse {
         })
     }
 
-    fn errors(self) -> impl Iterator<Item = AuthorizationError> {
-        self.residual_forbids
-            .into_iter()
-            .chain(self.residual_permits)
-            .map(
-                |(id, (expr, _))| AuthorizationError::PolicyEvaluationError {
-                    id,
-                    error: EvaluationError::non_value(expr.as_ref().clone()),
-                },
-            )
-            .chain(self.errors)
-            .collect::<Vec<_>>()
-            .into_iter()
-    }
 }
 
 impl EntityUIDEntry {
@@ -472,18 +499,139 @@ impl EntityUIDEntry {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
+impl PartialResponse {
+    /// The IDs of the `must_be_determining` policies
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r@ == if self.spec_satisfied_forbids().is_empty() && self.spec_residual_forbids().is_empty() {
+                self.spec_satisfied_permits()
+            } else {
+                self.spec_satisfied_forbids()
+            },
+    ))]
+    fn must_be_determining_ids(&self) -> HashSet<PolicyID> {
+        if self.satisfied_forbids.is_empty() && self.residual_forbids.is_empty() {
+            policy_ids(&self.satisfied_permits)
+        } else {
+            policy_ids(&self.satisfied_forbids)
+        }
+    }
+
+    /// The residuals (forbids, then permits) as errors, then the evaluation errors
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            crate::verification::trusted::error_ids(r@) == self.spec_residual_forbids()
+                + self.spec_residual_permits() + crate::verification::trusted::error_ids(self.spec_errors()),
+    ))]
+    fn errors(self) -> Vec<AuthorizationError> {
+        let mut errors = Vec::new();
+        residual_errors(&self.residual_forbids, &mut errors);
+        residual_errors(&self.residual_permits, &mut errors);
+        let mut evaluation_errors = self.errors;
+        proof_decl! {
+            let ghost errors0 = errors@;
+            let ghost evaluation_errors0 = evaluation_errors@;
+        }
+        errors.append(&mut evaluation_errors);
+        proof! {
+            crate::verification::authorizer_lemmas::lemma_error_ids_append(errors0, evaluation_errors0);
+        }
+        errors
+    }
+}
+
+/// The IDs of the policies of `policies`
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures
+        r@ == policies@.dom(),
+))]
+fn policy_ids<V>(policies: &HashMap<PolicyID, V>) -> HashSet<PolicyID> {
+    let mut ids = HashSet::new();
+    let keys = policies.keys();
+    proof_decl! {
+        let ghost ks = vstd::std_specs::hash::into_iter_keys(keys);
+    }
+    #[cfg_attr(feature = "verus", verus_spec(it =>
+        invariant
+            it.seq().unref() == ks,
+            ks.to_set() == policies@.dom(),
+            ids@ == ks.take(it.index() as int).to_set(),
+            it.index() == ks.len() ==> ids@ == policies@.dom(),
+    ))]
+    for id in keys {
+        proof! {
+            crate::verification::authorizer_lemmas::lemma_take_push_set(ks, it.index() as int);
+        }
+        ids.insert(id.clone());
+    }
+    ids
+}
+
+/// Appends the errors of the residual policies `residuals` to `errors`
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(
+    ensures
+        crate::verification::trusted::error_ids(final(errors)@)
+            == crate::verification::trusted::error_ids(old(errors)@) + residuals@.dom(),
+))]
+fn residual_errors(
+    residuals: &HashMap<PolicyID, (Arc<Expr>, Arc<Annotations>)>,
+    errors: &mut Vec<AuthorizationError>,
+) {
+    proof_decl! {
+        let ghost errors0 = errors@;
+    }
+    let entries = residuals.iter();
+    proof_decl! {
+        let ghost es = vstd::std_specs::hash::into_iter(entries);
+        let ghost ks = crate::verification::authorizer_lemmas::entry_keys(es);
+    }
+    proof! {
+        crate::verification::authorizer_lemmas::lemma_entry_keys(*residuals, es);
+    }
+    #[cfg_attr(feature = "verus", verus_spec(it =>
+        invariant
+            it.seq().unref() == es,
+            ks == crate::verification::authorizer_lemmas::entry_keys(es),
+            ks.len() == es.len(),
+            forall|i: int| 0 <= i < es.len() ==> #[trigger] ks[i] == es[i].0,
+            ks.to_set() == residuals@.dom(),
+            crate::verification::trusted::error_ids(errors@)
+                == crate::verification::trusted::error_ids(errors0) + ks.take(it.index() as int).to_set(),
+            it.index() == ks.len() ==> crate::verification::trusted::error_ids(errors@)
+                == crate::verification::trusted::error_ids(errors0) + residuals@.dom(),
+    ))]
+    for (id, (expr, _)) in entries {
+        let error = AuthorizationError::PolicyEvaluationError {
+            id: id.clone(),
+            error: EvaluationError::non_value(expr.as_ref().clone()),
+        };
+        proof! {
+            assert(it.index() < es.len());
+            assert(es[it.index() as int].0 == *id);
+            crate::verification::authorizer_lemmas::lemma_take_push_set(ks, it.index() as int);
+            crate::verification::authorizer_lemmas::lemma_error_ids_push_set(errors@, error);
+        }
+        errors.push(error);
+    }
+}
+
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<PartialResponse> for Response {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            crate::verification::authorizer_lemmas::concretized(p, r),
+    ))]
     fn from(p: PartialResponse) -> Self {
         let decision = if !p.satisfied_permits.is_empty() && p.satisfied_forbids.is_empty() {
             Decision::Allow
         } else {
             Decision::Deny
         };
-        Response::new(
-            decision,
-            p.must_be_determining().map(|p| p.id().clone()).collect(),
-            p.errors().collect(),
-        )
+        let reason = p.must_be_determining_ids();
+        Response::new(decision, reason, p.errors())
     }
 }
 

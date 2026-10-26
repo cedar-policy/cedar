@@ -565,6 +565,7 @@ pub mod evaluation_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
+    #[cfg_attr(feature = "verus", vstd::prelude::verus_verify(external_derive))]
     #[derive(Debug, PartialEq, Eq, Clone, Diagnostic, Error)]
     pub enum IntegerOverflowError {
         /// Overflow during a binary operation
@@ -599,6 +600,7 @@ pub mod evaluation_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
+    #[cfg_attr(feature = "verus", vstd::prelude::verus_verify(external_derive))]
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("integer overflow while attempting to {} the values `{arg1}` and `{arg2}`", match .op { BinaryOp::Add => "add", BinaryOp::Sub => "subtract", BinaryOp::Mul => "multiply", _ => "perform an operation on" })]
     pub struct BinaryOpOverflowError {
@@ -621,6 +623,7 @@ pub mod evaluation_errors {
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
+    #[cfg_attr(feature = "verus", vstd::prelude::verus_verify(external_derive))]
     #[derive(Debug, PartialEq, Eq, Clone, Error)]
     #[error("integer overflow while attempting to {} the value `{arg}`", match .op { UnaryOp::Neg => "negate", _ => "perform an operation on" })]
     pub struct UnaryOpOverflowError {

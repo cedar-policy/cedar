@@ -16,11 +16,21 @@
 
 //! This module contains the Cedar evaluator.
 
+#[cfg(feature = "verus")]
+use crate::verification::{abs::*, expr_abs::*, lemmas::*, map_entries::*, model_lemmas::*, trusted::*, value_abs::*};
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{
+    int, nat, proof, verus_spec, verus_verify, Seq, SpecAdd, SpecOrd, SpecSub, View,
+};
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+broadcast use crate::verification::trusted::group_trusted, crate::verification::value_abs::group_value_abs, crate::verification::expr_abs::group_expr_abs, crate::verification::model_lemmas::group_model_eq, crate::verification::lemmas::group_lemmas, crate::ast::lemma_request_spec_fields;
+}
 use crate::ast::*;
 use crate::entities::{Dereference, Entities};
 use crate::extensions::Extensions;
 use crate::parser::Loc;
-#[cfg(any(feature = "partial-eval", feature = "tpe"))]
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -44,13 +54,80 @@ type UnknownsMapper<'e> = Box<dyn Fn(&str) -> Option<Value> + 'e>;
 mod names {
     use super::Name;
     use std::sync::LazyLock;
+    #[cfg(feature = "verus")]
+    use vstd::prelude::*;
 
     pub static ANY_ENTITY_TYPE: LazyLock<Name> = LazyLock::new(|| {
         Name::parse_unqualified_name("any_entity_type").expect("valid identifier")
     });
+
+    /// A clone of [`ANY_ENTITY_TYPE`] (Verus can't reason about `LazyLock`)
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
+    pub fn any_entity_type() -> Name {
+        ANY_ENTITY_TYPE.clone()
+    }
+}
+
+/// Adds advice to the type error `e` for the first argument of `arg1 in arg2`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn add_in_advice(mut e: EvaluationError, arg2: &Value) -> EvaluationError {
+    // If arg1 is not an entity and arg2 is a set, then possibly
+    // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
+    // If arg2 is a record, then possibly they intended `arg2 has arg1`.
+    if let EvaluationError::TypeError(TypeError { advice, .. }) = &mut e {
+        match arg2.type_of() {
+            Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
+            Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
+            _ => {}
+        }
+    };
+    e
+}
+
+/// The error for `uid.getTag(tag)` when `entity` (with UID `uid`) does not have the tag
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn tag_does_not_exist_error(
+    uid: &EntityUID,
+    tag: &SmolStr,
+    entity: &Entity,
+    loc: Option<&Loc>,
+) -> EvaluationError {
+    EvaluationError::entity_tag_does_not_exist(
+        Arc::new(uid.clone()),
+        tag.clone(),
+        entity.tag_keys(),
+        entity.get(tag).is_some(),
+        entity.tags_len(),
+        loc.cloned(),
+    )
+}
+
+/// The error for `uid.attr` when `entity` (with UID `uid`) does not have the attribute
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn attr_does_not_exist_error(
+    uid: Arc<EntityUID>,
+    attr: &SmolStr,
+    entity: &Entity,
+    source_loc: Option<&Loc>,
+) -> EvaluationError {
+    EvaluationError::entity_attr_does_not_exist(
+        uid,
+        attr.clone(),
+        entity.keys(),
+        entity.get_tag(attr).is_some(),
+        entity.attrs_len(),
+        source_loc.cloned(),
+    )
 }
 
 /// Apply a `UnaryOp` to `arg` of type `Value`
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures
+        modeled(arg) ==> match abs_unary_op(op) {
+            Some(mop) => result_rel(r, crate::verification::model::evaluator::apply1(&mop, &abs_value(arg))),
+            None => true,
+        }
+))]
 pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
     match op {
         UnaryOp::Not => match arg.get_as_bool()? {
@@ -77,6 +154,20 @@ pub fn unary_app(op: UnaryOp, arg: Value, loc: Option<&Loc>) -> Result<Value> {
 }
 
 /// Evaluate binary relations (i.e., `BinaryOp::Eq`, `BinaryOp::Less`, and `BinaryOp::LessEq`)
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires
+        op is Eq || op is Less || op is LessEq,
+    ensures
+        modeled(*arg1) && modeled(*arg2) ==> result_rel(
+            r,
+            crate::verification::model::evaluator::apply2(
+                &abs_binary_op(op),
+                &abs_value(*arg1),
+                &abs_value(*arg2),
+                &crate::verification::model::value::List::Nil,
+            ),
+        )
+))]
 pub fn binary_relation(
     op: BinaryOp,
     arg1: &Value,
@@ -87,26 +178,17 @@ pub fn binary_relation(
         BinaryOp::Eq => Ok((arg1 == arg2).into()),
         // comparison and arithmetic operators, which only work on Longs
         BinaryOp::Less | BinaryOp::LessEq => {
-            let long_op = if matches!(op, BinaryOp::Less) {
-                |x, y| x < y
-            } else {
-                |x, y| x <= y
-            };
-            let ext_op = if matches!(op, BinaryOp::Less) {
-                |x, y| x < y
-            } else {
-                |x, y| x <= y
-            };
+            let is_less = matches!(op, BinaryOp::Less);
             match (arg1.value_kind(), arg2.value_kind()) {
                 (ValueKind::Lit(Literal::Long(x)), ValueKind::Lit(Literal::Long(y))) => {
-                    Ok(long_op(x, y).into())
+                    Ok((if is_less { x < y } else { x <= y }).into())
                 }
                 (ValueKind::ExtensionValue(x), ValueKind::ExtensionValue(y))
                     if x.supports_operator_overloading()
                         && y.supports_operator_overloading()
                         && x.typename() == y.typename() =>
                 {
-                    Ok(ext_op(x, y).into())
+                    Ok(ext_compare(is_less, x, y).into())
                 }
                 // throw type errors
                 (ValueKind::Lit(Literal::Long(_)), _) => {
@@ -127,17 +209,7 @@ pub fn binary_relation(
                         arg1,
                     ))
                 }
-                _ => {
-                    let expected_types = valid_comparison_op_types(extensions);
-                    Err(EvaluationError::type_error_with_advice(
-                        expected_types.clone(),
-                        arg1,
-                        format!(
-                            "Only types {} support comparison",
-                            expected_types.into_iter().sorted().join(", ")
-                        ),
-                    ))
-                }
+                _ => Err(comparison_type_error(arg1, extensions)),
             }
         }
         #[expect(clippy::unreachable, reason = "`op` is checked by the caller")]
@@ -147,7 +219,74 @@ pub fn binary_relation(
     }
 }
 
+/// Calls the extension function `fn_name` on `vals`. Trusted (see `ext_trusted`).
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures
+        crate::verification::ext_trusted::extensions_all(*extensions)
+            && crate::verification::ext_abs::ext_fun_of_name(*fn_name) is Some ==> pv_result_rel(r,
+            crate::verification::model::evaluator::call_ext(
+                &crate::verification::ext_abs::ext_fun_of(*fn_name),
+                &seq_to_list(vals@.map_values(|v: Value| abs_value(v))),
+            )),
+))]
+fn call_extension_fn(extensions: &Extensions<'_>, fn_name: &Name, vals: &[Value]) -> Result<PartialValue> {
+    let efunc = extensions.func(fn_name)?;
+    efunc.call(vals)
+}
+
+/// `x < y` (if `is_less`) or `x <= y`, for extension values of the same type
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires
+        crate::verification::ext_trusted::ext_kind(crate::verification::ext_trusted::ext_of(**x))
+            == crate::verification::ext_trusted::ext_kind(crate::verification::ext_trusted::ext_of(**y)),
+        crate::verification::ext_trusted::ext_kind(crate::verification::ext_trusted::ext_of(**x)) >= 2,
+    ensures
+        r == crate::verification::ext_trusted::ext_cmp(is_less,
+            crate::verification::ext_trusted::ext_of(**x), crate::verification::ext_trusted::ext_of(**y)),
+))]
+fn ext_compare(
+    is_less: bool,
+    x: &Arc<RepresentableExtensionValue>,
+    y: &Arc<RepresentableExtensionValue>,
+) -> bool {
+    if is_less {
+        x < y
+    } else {
+        x <= y
+    }
+}
+
+/// The type error for a comparison whose first operand `arg1` is not comparable
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+fn comparison_type_error(arg1: &Value, extensions: &Extensions<'_>) -> EvaluationError {
+    let expected_types = valid_comparison_op_types(extensions);
+    EvaluationError::type_error_with_advice(
+        expected_types.clone(),
+        arg1,
+        format!(
+            "Only types {} support comparison",
+            expected_types.into_iter().sorted().join(", ")
+        ),
+    )
+}
+
 /// Evaluate binary arithmetic operations (i.e., `BinaryOp::Add`, `BinaryOp::Sub`, and `BinaryOp::Mul`)
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    requires
+        op is Add || op is Sub || op is Mul,
+    ensures
+        modeled(arg1) && modeled(arg2) ==> result_rel(
+            r,
+            crate::verification::model::evaluator::apply2(
+                &abs_binary_op(op),
+                &abs_value(arg1),
+                &abs_value(arg2),
+                &crate::verification::model::value::List::Nil,
+            ),
+        )
+))]
 pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -> Result<Value> {
     let i1 = arg1.get_as_long()?;
     let i2 = arg2.get_as_long()?;
@@ -194,6 +333,7 @@ pub fn binary_arith(op: BinaryOp, arg1: Value, arg2: Value, loc: Option<&Loc>) -
 /// Conceptually keeps the evaluation environment as part of its internal state,
 /// because we will be repeatedly invoking the evaluator on every policy in a
 /// Slice.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 pub struct Evaluator<'e> {
     /// `Principal` for the current request
     principal: EntityUIDEntry,
@@ -215,6 +355,45 @@ pub struct Evaluator<'e> {
     #[cfg(feature = "partial-eval")]
     unknowns_mapper: UnknownsMapper<'e>,
 }
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+use crate::verification::model as m;
+
+impl<'e> Evaluator<'e> {
+    /// The request and entities are concrete and modeled (for specifications)
+    pub closed spec fn spec_wf(&self) -> bool {
+        &&& self.principal is Known
+        &&& self.action is Known
+        &&& self.resource is Known
+        &&& self.context matches PartialValue::Value(v) && v.value is Record && modeled(v)
+        &&& entities_wf(*self.entities)
+    }
+
+    /// The request, in the model (for specifications)
+    pub closed spec fn spec_request(&self) -> m::request::Request {
+        m::request::Request {
+            principal: abs_entry(self.principal),
+            action: abs_entry(self.action),
+            resource: abs_entry(self.resource),
+            context: match self.context {
+                PartialValue::Value(Value { value: ValueKind::Record(r), .. }) => abs_record(*r),
+                _ => m::value::List::Nil,
+            },
+        }
+    }
+
+    /// The entities, in the model (for specifications)
+    pub closed spec fn spec_entities(&self) -> m::entities::Entities {
+        abs_entities(*self.entities)
+    }
+
+    /// The evaluator has all the extensions (for specifications)
+    pub closed spec fn spec_ext_ok(&self) -> bool {
+        crate::verification::ext_trusted::extensions_all(*self.extensions)
+    }
+}
+} // verus!
 
 /// Evaluator for "restricted" expressions. See notes on `RestrictedExpr`.
 #[derive(Debug)]
@@ -339,10 +518,18 @@ pub(crate) fn valid_comparison_op_types(extensions: &Extensions<'_>) -> nonempty
     expected_types
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl<'e> Evaluator<'e> {
     /// Create a fresh `Evaluator` for the given `request`, which uses the given
     /// `Entities` to resolve entity references. Use the given `Extension`s when
     /// evaluating.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            request_wf(q) && entities_wf(*entities) ==> r.spec_wf(),
+            request_wf(q) ==> r.spec_request() == abs_request(q),
+            r.spec_entities() == abs_entities(*entities),
+            r.spec_ext_ok() == crate::verification::ext_trusted::extensions_all(*extensions),
+    ))]
     pub fn new(q: Request, entities: &'e Entities, extensions: &'e Extensions<'e>) -> Self {
         Self {
             principal: q.principal,
@@ -361,6 +548,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     // Constructs an Evaluator for a given unknowns mapper function.
     #[cfg(feature = "partial-eval")]
     pub(crate) fn with_unknowns_mapper(self, unknowns_mapper: UnknownsMapper<'e>) -> Self {
@@ -381,7 +569,24 @@ impl<'e> Evaluator<'e> {
     /// This is _different than_ "if the current `request` should be allowed" --
     /// it doesn't consider whether we're processing a `Permit` policy or a
     /// `Forbid` policy.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            crate::verification::policy_abs::policy_modeled(*p, self.spec_ext_ok()),
+        ensures
+            match r {
+                Ok(b) => m::evaluator::evaluate(&abs_policy(*p).condition, &self.spec_request(), &self.spec_entities())
+                    == Ok::<m::value::Value, m::value::Error>(m::evaluator::bool_val(b)),
+                Err(_) => m::evaluator::as_bool(m::evaluator::evaluate(&abs_policy(*p).condition, &self.spec_request(), &self.spec_entities())) is Err,
+            },
+    ))]
     pub fn evaluate(&self, p: &Policy) -> Result<bool> {
+        proof! {
+            let b = crate::verification::policy_abs::policy_body(*p);
+            crate::verification::policy_abs::lemma_policy_to_expr_id(
+                b, abs_policy_id(crate::verification::policy_abs::policy_id(*p)), p.spec_values());
+        }
         self.interpret(&p.condition(), p.env())?.get_as_bool()
     }
 
@@ -394,9 +599,30 @@ impl<'e> Evaluator<'e> {
     ///    This is _different than_ "if the current `request` should be allowed" --
     ///    it doesn't consider whether we're processing a `Permit` policy or a
     ///    `Forbid` policy.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            crate::verification::policy_abs::policy_modeled(*p, self.spec_ext_ok()),
+        ensures
+            match r {
+                Ok(Either::Left(b)) => m::evaluator::evaluate(&abs_policy(*p).condition, &self.spec_request(), &self.spec_entities())
+                    == Ok::<m::value::Value, m::value::Error>(m::evaluator::bool_val(b)),
+                Ok(Either::Right(_)) => false,
+                Err(_) => m::evaluator::as_bool(m::evaluator::evaluate(&abs_policy(*p).condition, &self.spec_request(), &self.spec_entities())) is Err,
+            },
+    ))]
     pub fn partial_evaluate(&self, p: &Policy) -> Result<Either<bool, Expr>> {
+        proof! {
+            let b = crate::verification::policy_abs::policy_body(*p);
+            crate::verification::policy_abs::lemma_policy_to_expr_id(
+                b, abs_policy_id(crate::verification::policy_abs::policy_id(*p)), p.spec_values());
+        }
         match self.partial_interpret(&p.condition(), p.env())? {
-            PartialValue::Value(v) => v.get_as_bool().map(Either::Left),
+            PartialValue::Value(v) => match v.get_as_bool() {
+                Ok(b) => Ok(Either::Left(b)),
+                Err(e) => Err(e),
+            },
             PartialValue::Residual(e) => Ok(Either::Right(e)),
         }
     }
@@ -406,6 +632,14 @@ impl<'e> Evaluator<'e> {
     /// Ensures the result is not a residual.
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(*e, *slots, self.spec_ext_ok()),
+        ensures
+            result_rel(r, m::evaluator::evaluate(&abs_expr(*e, *slots), &self.spec_request(), &self.spec_entities())),
+    ))]
     pub fn interpret(&self, e: &Expr, slots: &SlotEnv) -> Result<Value> {
         match self.partial_interpret(e, slots)? {
             PartialValue::Value(v) => Ok(v),
@@ -418,6 +652,15 @@ impl<'e> Evaluator<'e> {
     /// May return a residual expression, if the input expression is symbolic.
     /// May return an error, for instance if the `Expr` tries to access an
     /// attribute that doesn't exist.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(*expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&abs_expr(*expr, *slots), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
     pub fn partial_interpret(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
         stack_size_check()?;
 
@@ -430,14 +673,14 @@ impl<'e> Evaluator<'e> {
         // also, if there is an error, set its source location to the source
         // location of the input expression as well, unless it already had a
         // more specific location
-        res.map(|pval| pval.with_maybe_source_loc(expr.source_loc().cloned()))
-            .map_err(|err| {
-                if err.source_loc().is_none() {
-                    err.with_maybe_source_loc(expr.source_loc().cloned())
-                } else {
-                    err
-                }
-            })
+        match res {
+            Ok(pval) => Ok(pval.with_maybe_source_loc(expr.source_loc().cloned())),
+            Err(err) => Err(if err.source_loc().is_none() {
+                err.with_maybe_source_loc(expr.source_loc().cloned())
+            } else {
+                err
+            }),
+        }
     }
 
     /// Internal function to interpret an `Expr`. (External callers, use
@@ -449,14 +692,27 @@ impl<'e> Evaluator<'e> {
     /// `partial_interpret()` -- ie, so we can make sure the source locations of
     /// all errors are set properly before returning them from
     /// `partial_interpret()`.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(*expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&abs_expr(*expr, *slots), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
     fn partial_interpret_internal(&self, expr: &Expr, slots: &SlotEnv) -> Result<PartialValue> {
+        proof! {
+            lemma_abs_expr(*expr, *slots);
+            lemma_expr_modeled(*expr, *slots, self.spec_ext_ok());
+        }
         let loc = expr.source_loc(); // the `loc` describing the location of the entire expression
         match expr.expr_kind() {
             ExprKind::Lit(lit) => Ok(lit.clone().into()),
-            ExprKind::Slot(id) => slots
-                .get(id)
-                .ok_or_else(|| err::EvaluationError::unlinked_slot(*id, loc.cloned()))
-                .map(|euid| PartialValue::from(euid.clone())),
+            ExprKind::Slot(id) => match slots.get(id) {
+                Some(euid) => Ok(PartialValue::from(euid.clone())),
+                None => Err(err::EvaluationError::unlinked_slot(*id, loc.cloned())),
+            },
             ExprKind::Var(v) => match v {
                 Var::Principal => Ok(self.principal.evaluate(*v)),
                 Var::Action => Ok(self.action.evaluate(*v)),
@@ -469,313 +725,22 @@ impl<'e> Evaluator<'e> {
                 then_expr,
                 else_expr,
             } => self.eval_if(test_expr, then_expr, else_expr, slots),
-            ExprKind::And { left, right } => {
-                match self.partial_interpret(left, slots)? {
-                    // PE Case: Try to partial interpret right expression in best-effort.
-                    // If it fails, fall back to original right expression.
-                    PartialValue::Residual(e) => Ok(PartialValue::Residual(Expr::and(
-                        e,
-                        self.partial_interpret(right, slots)
-                            .map_or_else(|_| right.as_ref().clone(), Into::into),
-                    ))),
-                    // Full eval case
-                    PartialValue::Value(v) => {
-                        if v.get_as_bool()? {
-                            match self.partial_interpret(right, slots)? {
-                                // you might think that `true && <residual>` can be optimized to `<residual>`, but this isn't true because
-                                // <residual> must be boolean, or else it needs to type error. So return `true && <residual>` to ensure
-                                // type check happens
-                                PartialValue::Residual(right) => {
-                                    Ok(PartialValue::Residual(Expr::and(Expr::val(true), right)))
-                                }
-                                // If it's an actual value, compute and
-                                PartialValue::Value(v) => Ok(v.get_as_bool()?.into()),
-                            }
-                        } else {
-                            // We can short circuit here
-                            Ok(false.into())
-                        }
-                    }
-                }
-            }
-            ExprKind::Or { left, right } => {
-                match self.partial_interpret(left, slots)? {
-                    // PE Case: Try to partial interpret right expression in best-effort.
-                    // If it fails, fall back to original right expression.
-                    PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::or(
-                        r,
-                        self.partial_interpret(right, slots)
-                            .map_or_else(|_| right.as_ref().clone(), Into::into),
-                    ))),
-                    // Full eval case
-                    PartialValue::Value(lhs) => {
-                        if lhs.get_as_bool()? {
-                            // We can short circuit here
-                            Ok(true.into())
-                        } else {
-                            match self.partial_interpret(right, slots)? {
-                                PartialValue::Residual(rhs) =>
-                                // you might think that `false || <residual>` can be optimized to `<residual>`, but this isn't true because
-                                // <residual> must be boolean, or else it needs to type error. So return `false || <residual>` to ensure
-                                // type check happens
-                                {
-                                    Ok(PartialValue::Residual(Expr::or(Expr::val(false), rhs)))
-                                }
-                                PartialValue::Value(v) => Ok(v.get_as_bool()?.into()),
-                            }
-                        }
-                    }
-                }
-            }
-            ExprKind::UnaryApp { op, arg } => match self.partial_interpret(arg, slots)? {
-                PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
-                // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
-                // Could be a nice target for fault injection
-                PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
-            },
+            ExprKind::And { left, right } => self.eval_and(left, right, slots),
+            ExprKind::Or { left, right } => self.eval_or(left, right, slots),
+            ExprKind::UnaryApp { op, arg } => self.eval_unary_app(op, arg, slots, loc),
             ExprKind::BinaryApp { op, arg1, arg2 } => {
-                // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
-                // Current limitations:
-                //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
-                //   implemented in short_circuit_*
-                let (arg1, arg2) = match (
-                    self.partial_interpret(arg1, slots)?,
-                    self.partial_interpret(arg2, slots)?,
-                ) {
-                    (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
-                    (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
-                        if let Some(val) = self.short_circuit_value_and_residual(&v1, &e2, *op) {
-                            return Ok(val);
-                        }
-                        return Ok(PartialValue::Residual(Expr::binary_app(*op, v1.into(), e2)));
-                    }
-                    (PartialValue::Residual(e1), PartialValue::Value(v2)) => {
-                        if let Some(val) = self.short_circuit_residual_and_value(&e1, &v2, *op) {
-                            return Ok(val);
-                        }
-                        return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, v2.into())));
-                    }
-                    (PartialValue::Residual(e1), PartialValue::Residual(e2)) => {
-                        if let Some(val) = self.short_circuit_two_typed_residuals(&e1, &e2, *op) {
-                            return Ok(val);
-                        }
-                        return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, e2)));
-                    }
-                };
-                match op {
-                    BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
-                        binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
-                    }
-                    BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
-                        binary_arith(*op, arg1, arg2, loc).map(Into::into)
-                    }
-                    // hierarchy membership operator; see note on `BinaryOp::In`
-                    BinaryOp::In => {
-                        let uid1 = arg1.get_as_entity().map_err(|mut e|
-                            {
-                                // If arg1 is not an entity and arg2 is a set, then possibly
-                                // the user intended `arg2.contains(arg1)` rather than `arg1 in arg2`.
-                                // If arg2 is a record, then possibly they intended `arg2 has arg1`.
-                                if let EvaluationError::TypeError(TypeError { advice, .. }) = &mut e {
-                                    match arg2.type_of() {
-                                        Type::Set => *advice = Some("`in` is for checking the entity hierarchy; use `.contains()` to test set membership".into()),
-                                        Type::Record => *advice = Some("`in` is for checking the entity hierarchy; use `has` to test if a record has a key".into()),
-                                        _ => {}
-                                    }
-                                };
-                                e
-                            })?;
-                        match self.entities.entity(uid1) {
-                            Dereference::Residual(r) => Ok(PartialValue::Residual(
-                                Expr::binary_app(BinaryOp::In, r, arg2.into()),
-                            )),
-                            Dereference::NoSuchEntity => self.eval_in(uid1, None, &arg2),
-                            Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), &arg2),
-                        }
-                    }
-                    // contains, which works on Sets
-                    BinaryOp::Contains => {
-                        if let Ok(s) = arg1.get_as_set() {
-                            Ok(s.contains(&arg2).into())
-                        } else {
-                            Err(EvaluationError::type_error_single(Type::Set, &arg1))
-                        }
-                    }
-                    // ContainsAll, which works on Sets
-                    BinaryOp::ContainsAll => {
-                        let arg1_set = arg1.get_as_set()?;
-                        let arg2_set = arg2.get_as_set()?;
-
-                        Ok((arg2_set.is_subset(arg1_set)).into())
-                    }
-                    // ContainsAny, which works on Sets
-                    BinaryOp::ContainsAny => {
-                        let arg1_set = arg1.get_as_set()?;
-                        let arg2_set = arg2.get_as_set()?;
-                        Ok((!arg1_set.is_disjoint(arg2_set)).into())
-                    }
-                    // GetTag and HasTag, which require an Entity on the left and a String on the right
-                    BinaryOp::GetTag | BinaryOp::HasTag => {
-                        let uid = arg1.get_as_entity()?;
-                        let tag = arg2.get_as_string()?;
-                        match op {
-                            BinaryOp::GetTag => {
-                                match self.entities.entity(uid) {
-                                    Dereference::NoSuchEntity => {
-                                        // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
-                                        Err(EvaluationError::entity_does_not_exist(
-                                            Arc::new(uid.clone()),
-                                            arg1.source_loc().cloned(),
-                                        ))
-                                    }
-                                    Dereference::Residual(r) => Ok(PartialValue::Residual(
-                                        Expr::get_tag(r, Expr::val(tag.clone())),
-                                    )),
-                                    Dereference::Data(entity) => entity
-                                        .get_tag(tag)
-                                        .ok_or_else(|| {
-                                            EvaluationError::entity_tag_does_not_exist(
-                                                Arc::new(uid.clone()),
-                                                tag.clone(),
-                                                entity.tag_keys(),
-                                                entity.get(tag).is_some(),
-                                                entity.tags_len(),
-                                                loc.cloned(), // intentionally using the location of the entire `GetTag` expression
-                                            )
-                                        })
-                                        .cloned(),
-                                }
-                            }
-                            BinaryOp::HasTag => match self.entities.entity(uid) {
-                                Dereference::NoSuchEntity => Ok(false.into()),
-                                Dereference::Residual(r) => Ok(PartialValue::Residual(
-                                    Expr::has_tag(r, Expr::val(tag.clone())),
-                                )),
-                                Dereference::Data(entity) => {
-                                    Ok(entity.get_tag(tag).is_some().into())
-                                }
-                            },
-                            #[expect(
-                                clippy::unreachable,
-                                reason = "`op` is checked to be one of these two above"
-                            )]
-                            _ => {
-                                unreachable!("Should have already checked that op was one of these")
-                            }
-                        }
-                    }
-                }
+                self.eval_binary_app(op, arg1, arg2, slots, loc)
             }
             ExprKind::ExtensionFunctionApp { fn_name, args } => {
-                let args = args
-                    .iter()
-                    .map(|arg| self.partial_interpret(arg, slots))
-                    .collect::<Result<Vec<_>>>()?;
-                match split(args) {
-                    Either::Left(vals) => {
-                        let vals: Vec<_> = vals.collect();
-                        let efunc = self.extensions.func(fn_name)?;
-                        efunc.call(&vals)
-                    }
-                    Either::Right(residuals) => Ok(PartialValue::Residual(
-                        Expr::call_extension_fn(fn_name.clone(), residuals.collect()),
-                    )),
-                }
+                self.eval_extension_function_app(fn_name, args, slots)
             }
             ExprKind::GetAttr { expr, attr } => self.get_attr(expr.as_ref(), attr, slots, loc),
-            ExprKind::HasAttr { expr, attr } => match self.partial_interpret(expr, slots)? {
-                PartialValue::Value(Value {
-                    value: ValueKind::Record(record),
-                    ..
-                }) => Ok(record.get(attr).is_some().into()),
-                PartialValue::Value(Value {
-                    value: ValueKind::Lit(Literal::EntityUID(uid)),
-                    ..
-                }) => match self.entities.entity(&uid) {
-                    Dereference::NoSuchEntity => Ok(false.into()),
-                    Dereference::Residual(r) => {
-                        Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
-                    }
-                    Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
-                },
-                PartialValue::Value(val) => Err(err::EvaluationError::type_error(
-                    nonempty![
-                        Type::Record,
-                        Type::entity_type(names::ANY_ENTITY_TYPE.clone())
-                    ],
-                    &val,
-                )),
-                PartialValue::Residual(r) => match r.expr_kind() {
-                    // If the residual is a known record and is projectable (it’s guaranteed to never error on evaluation),
-                    // then check for the attribute existency.
-                    ExprKind::Record(rec) if r.is_projectable() => {
-                        Ok(rec.contains_key(attr).into())
-                    }
-                    // Otherwise, leave the expression as is.
-                    _ => Ok(Expr::has_attr(r, attr.clone()).into()),
-                },
-            },
+            ExprKind::HasAttr { expr, attr } => self.eval_has_attr(expr, attr, slots),
             ExprKind::ExtHasAttr { expr, attrs } => self.eval_extended_has_attr(expr, attrs, slots),
-            ExprKind::Like { expr, pattern } => {
-                let v = self.partial_interpret(expr, slots)?;
-                match v {
-                    PartialValue::Value(v) => {
-                        Ok((pattern.wildcard_match(v.get_as_string()?)).into())
-                    }
-                    PartialValue::Residual(r) => Ok(Expr::like(r, pattern.clone()).into()),
-                }
-            }
-            ExprKind::Is { expr, entity_type } => {
-                let v = self.partial_interpret(expr, slots)?;
-                match v {
-                    PartialValue::Value(v) => {
-                        Ok((v.get_as_entity()?.entity_type() == entity_type).into())
-                    }
-                    PartialValue::Residual(r) => {
-                        if let ExprKind::Unknown(Unknown {
-                            type_annotation:
-                                Some(Type::Entity {
-                                    ty: type_of_unknown,
-                                }),
-                            ..
-                        }) = r.expr_kind()
-                        {
-                            return Ok((type_of_unknown == entity_type).into());
-                        }
-                        Ok(Expr::is_entity_type(r, entity_type.clone()).into())
-                    }
-                }
-            }
-            ExprKind::Set(items) => {
-                let vals = items
-                    .iter()
-                    .map(|item| self.partial_interpret(item, slots))
-                    .collect::<Result<Vec<_>>>()?;
-                match split(vals) {
-                    Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
-                    Either::Right(r) => Ok(Expr::set(r).into()),
-                }
-            }
-            ExprKind::Record(map) => {
-                let map = map
-                    .iter()
-                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?)))
-                    .collect::<Result<Vec<_>>>()?;
-                let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
-                match split(evalled) {
-                    Either::Left(vals) => {
-                        Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
-                    }
-                    Either::Right(rs) => {
-                        #[expect(clippy::expect_used, reason = "can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")]
-                        Ok(
-                            Expr::record(names.into_iter().zip(rs))
-                                .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
-                                .into()
-                        )
-                    }
-                }
-            }
+            ExprKind::Like { expr, pattern } => self.eval_like(expr, pattern, slots),
+            ExprKind::Is { expr, entity_type } => self.eval_is(expr, entity_type, slots),
+            ExprKind::Set(items) => self.eval_set(items, slots, loc),
+            ExprKind::Record(map) => self.eval_record(map, slots, loc),
             #[cfg(feature = "tolerant-ast")]
             ExprKind::Error { .. } => Err(ASTErrorExpr(ASTErrorExprError {
                 source_loc: loc.cloned(),
@@ -783,6 +748,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     // Never map unknowns when feature flag is not set
     #[cfg(not(feature = "partial-eval"))]
     #[inline(always)]
@@ -790,6 +756,7 @@ impl<'e> Evaluator<'e> {
         Ok(PartialValue::Residual(Expr::unknown(u.clone())))
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     // Try resolving a named Unknown into a Value
     #[cfg(feature = "partial-eval")]
     fn unknown_to_partialvalue(&self, u: &Unknown) -> Result<PartialValue> {
@@ -808,6 +775,716 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**left, *slots, self.spec_ext_ok()),
+            expr_modeled(**right, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::And(Box::new(abs_expr(**left, *slots)), Box::new(abs_expr(**right, *slots))), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_and(
+        &self,
+        left: &Arc<Expr>,
+        right: &Arc<Expr>,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        match self.partial_interpret(left, slots)? {
+            // PE Case: Try to partial interpret right expression in best-effort.
+            // If it fails, fall back to original right expression.
+            PartialValue::Residual(e) => Ok(PartialValue::Residual(Expr::and(
+                e,
+                self.partial_interpret(right, slots)
+                    .map_or_else(|_| right.as_ref().clone(), Into::into),
+            ))),
+            // Full eval case
+            PartialValue::Value(v) => {
+                if v.get_as_bool()? {
+                    match self.partial_interpret(right, slots)? {
+                        // you might think that `true && <residual>` can be optimized to `<residual>`, but this isn't true because
+                        // <residual> must be boolean, or else it needs to type error. So return `true && <residual>` to ensure
+                        // type check happens
+                        PartialValue::Residual(right) => {
+                            Ok(PartialValue::Residual(Expr::and(Expr::val(true), right)))
+                        }
+                        // If it's an actual value, compute and
+                        PartialValue::Value(v) => Ok(v.get_as_bool()?.into()),
+                    }
+                } else {
+                    // We can short circuit here
+                    Ok(false.into())
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**left, *slots, self.spec_ext_ok()),
+            expr_modeled(**right, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::Or(Box::new(abs_expr(**left, *slots)), Box::new(abs_expr(**right, *slots))), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_or(
+        &self,
+        left: &Arc<Expr>,
+        right: &Arc<Expr>,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        match self.partial_interpret(left, slots)? {
+            // PE Case: Try to partial interpret right expression in best-effort.
+            // If it fails, fall back to original right expression.
+            PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::or(
+                r,
+                self.partial_interpret(right, slots)
+                    .map_or_else(|_| right.as_ref().clone(), Into::into),
+            ))),
+            // Full eval case
+            PartialValue::Value(lhs) => {
+                if lhs.get_as_bool()? {
+                    // We can short circuit here
+                    Ok(true.into())
+                } else {
+                    match self.partial_interpret(right, slots)? {
+                        PartialValue::Residual(rhs) =>
+                        // you might think that `false || <residual>` can be optimized to `<residual>`, but this isn't true because
+                        // <residual> must be boolean, or else it needs to type error. So return `false || <residual>` to ensure
+                        // type check happens
+                        {
+                            Ok(PartialValue::Residual(Expr::or(Expr::val(false), rhs)))
+                        }
+                        PartialValue::Value(v) => Ok(v.get_as_bool()?.into()),
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**arg, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::UnaryApp(abs_unary_op(*op).unwrap(), Box::new(abs_expr(**arg, *slots))), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    #[expect(clippy::trivially_copy_pass_by_ref, reason = "matches the other `eval_*` helpers")]
+    fn eval_unary_app(
+        &self,
+        op: &UnaryOp,
+        arg: &Arc<Expr>,
+        slots: &SlotEnv,
+        loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        match self.partial_interpret(arg, slots)? {
+            PartialValue::Value(arg) => unary_app(*op, arg, loc).map(Into::into),
+            // NOTE, there was a bug here found during manual review. (I forgot to wrap in unary_app call)
+            // Could be a nice target for fault injection
+            PartialValue::Residual(r) => Ok(PartialValue::Residual(Expr::unary_app(*op, r))),
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**arg1, *slots, self.spec_ext_ok()),
+            expr_modeled(**arg2, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::BinaryApp(abs_binary_op(*op), Box::new(abs_expr(**arg1, *slots)), Box::new(abs_expr(**arg2, *slots))), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    #[expect(clippy::trivially_copy_pass_by_ref, reason = "matches the other `eval_*` helpers")]
+    fn eval_binary_app(
+        &self,
+        op: &BinaryOp,
+        arg1: &Arc<Expr>,
+        arg2: &Arc<Expr>,
+        slots: &SlotEnv,
+        loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        // NOTE: There are more precise partial eval opportunities here, esp w/ typed unknowns
+        // Current limitations:
+        //   Operators are not partially evaluated, except in a few 'simple' cases when comparing a concrete value with an unknown of known type
+        //   implemented in short_circuit_*
+        let (arg1, arg2) = match (
+            self.partial_interpret(arg1, slots)?,
+            self.partial_interpret(arg2, slots)?,
+        ) {
+            (PartialValue::Value(v1), PartialValue::Value(v2)) => (v1, v2),
+            (PartialValue::Value(v1), PartialValue::Residual(e2)) => {
+                if let Some(val) = self.short_circuit_value_and_residual(&v1, &e2, *op) {
+                    return Ok(val);
+                }
+                return Ok(PartialValue::Residual(Expr::binary_app(*op, v1.into(), e2)));
+            }
+            (PartialValue::Residual(e1), PartialValue::Value(v2)) => {
+                if let Some(val) = self.short_circuit_residual_and_value(&e1, &v2, *op) {
+                    return Ok(val);
+                }
+                return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, v2.into())));
+            }
+            (PartialValue::Residual(e1), PartialValue::Residual(e2)) => {
+                if let Some(val) = self.short_circuit_two_typed_residuals(&e1, &e2, *op) {
+                    return Ok(val);
+                }
+                return Ok(PartialValue::Residual(Expr::binary_app(*op, e1, e2)));
+            }
+        };
+        match op {
+            BinaryOp::Eq | BinaryOp::Less | BinaryOp::LessEq => {
+                binary_relation(*op, &arg1, &arg2, self.extensions).map(Into::into)
+            }
+            BinaryOp::Add | BinaryOp::Sub | BinaryOp::Mul => {
+                binary_arith(*op, arg1, arg2, loc).map(Into::into)
+            }
+            // hierarchy membership operator; see note on `BinaryOp::In`
+            BinaryOp::In => {
+                let uid1 = arg1.get_as_entity().map_err(|e| add_in_advice(e, &arg2))?;
+                match self.entities.entity(uid1) {
+                    Dereference::Residual(r) => Ok(PartialValue::Residual(Expr::binary_app(
+                        BinaryOp::In,
+                        r,
+                        arg2.into(),
+                    ))),
+                    Dereference::NoSuchEntity => self.eval_in(uid1, None, &arg2),
+                    Dereference::Data(entity1) => self.eval_in(uid1, Some(entity1), &arg2),
+                }
+            }
+            // contains, which works on Sets
+            BinaryOp::Contains => {
+                if let Ok(s) = arg1.get_as_set() {
+                    Ok(s.contains(&arg2).into())
+                } else {
+                    Err(EvaluationError::type_error_single(Type::Set, &arg1))
+                }
+            }
+            // ContainsAll, which works on Sets
+            BinaryOp::ContainsAll => {
+                let arg1_set = arg1.get_as_set()?;
+                let arg2_set = arg2.get_as_set()?;
+
+                Ok((arg2_set.is_subset(arg1_set)).into())
+            }
+            // ContainsAny, which works on Sets
+            BinaryOp::ContainsAny => {
+                let arg1_set = arg1.get_as_set()?;
+                let arg2_set = arg2.get_as_set()?;
+                Ok((!arg1_set.is_disjoint(arg2_set)).into())
+            }
+            // GetTag and HasTag, which require an Entity on the left and a String on the right
+            BinaryOp::GetTag | BinaryOp::HasTag => {
+                let uid = arg1.get_as_entity()?;
+                let tag = arg2.get_as_string()?;
+                match op {
+                    BinaryOp::GetTag => {
+                        match self.entities.entity(uid) {
+                            Dereference::NoSuchEntity => {
+                                // intentionally using the location of the euid (the LHS) and not the entire GetTag expression
+                                Err(EvaluationError::entity_does_not_exist(
+                                    Arc::new(uid.clone()),
+                                    arg1.source_loc().cloned(),
+                                ))
+                            }
+                            Dereference::Residual(r) => Ok(PartialValue::Residual(Expr::get_tag(
+                                r,
+                                Expr::val(tag.clone()),
+                            ))),
+                            Dereference::Data(entity) => match entity.get_tag(tag) {
+                                Some(v) => Ok(v.clone()),
+                                // intentionally using the location of the entire `GetTag` expression
+                                None => Err(tag_does_not_exist_error(uid, tag, entity, loc)),
+                            },
+                        }
+                    }
+                    BinaryOp::HasTag => match self.entities.entity(uid) {
+                        Dereference::NoSuchEntity => Ok(false.into()),
+                        Dereference::Residual(r) => Ok(PartialValue::Residual(Expr::has_tag(
+                            r,
+                            Expr::val(tag.clone()),
+                        ))),
+                        Dereference::Data(entity) => Ok(entity.get_tag(tag).is_some().into()),
+                    },
+                    #[expect(
+                        clippy::unreachable,
+                        reason = "`op` is checked to be one of these two above"
+                    )]
+                    _ => {
+                        unreachable!("Should have already checked that op was one of these")
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::HasAttr(Box::new(abs_expr(**expr, *slots)), abs_str(*attr)), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_has_attr(
+        &self,
+        expr: &Arc<Expr>,
+        attr: &SmolStr,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        match self.partial_interpret(expr, slots)? {
+            PartialValue::Value(Value {
+                value: ValueKind::Record(record),
+                ..
+            }) => Ok(record.get(attr).is_some().into()),
+            PartialValue::Value(Value {
+                value: ValueKind::Lit(Literal::EntityUID(uid)),
+                ..
+            }) => match self.entities.entity(&uid) {
+                Dereference::NoSuchEntity => Ok(false.into()),
+                Dereference::Residual(r) => {
+                    Ok(PartialValue::Residual(Expr::has_attr(r, attr.clone())))
+                }
+                Dereference::Data(e) => Ok(e.get(attr).is_some().into()),
+            },
+            PartialValue::Value(val) => Err(err::EvaluationError::type_error(
+                nonempty![Type::Record, Type::entity_type(names::any_entity_type())],
+                &val,
+            )),
+            PartialValue::Residual(r) => match r.expr_kind() {
+                // If the residual is a known record and is projectable (it’s guaranteed to never error on evaluation),
+                // then check for the attribute existency.
+                ExprKind::Record(rec) if r.is_projectable() => Ok(rec.contains_key(attr).into()),
+                // Otherwise, leave the expression as is.
+                _ => Ok(Expr::has_attr(r, attr.clone()).into()),
+            },
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::UnaryApp(m::expr::UnaryOp::Like(abs_pattern(*pattern)), Box::new(abs_expr(**expr, *slots))), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_like(
+        &self,
+        expr: &Arc<Expr>,
+        pattern: &Pattern,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        let v = self.partial_interpret(expr, slots)?;
+        match v {
+            PartialValue::Value(v) => Ok((pattern.wildcard_match(v.get_as_string()?)).into()),
+            PartialValue::Residual(r) => Ok(Expr::like(r, pattern.clone()).into()),
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, m::evaluator::evaluate(&m::expr::Expr::UnaryApp(m::expr::UnaryOp::Is(abs_entity_type(*entity_type)), Box::new(abs_expr(**expr, *slots))), &self.spec_request(), &self.spec_entities())),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_is(
+        &self,
+        expr: &Arc<Expr>,
+        entity_type: &EntityType,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        let v = self.partial_interpret(expr, slots)?;
+        match v {
+            PartialValue::Value(v) => Ok((v.get_as_entity()?.entity_type() == entity_type).into()),
+            PartialValue::Residual(r) => {
+                if let ExprKind::Unknown(Unknown {
+                    type_annotation:
+                        Some(Type::Entity {
+                            ty: type_of_unknown,
+                        }),
+                    ..
+                }) = r.expr_kind()
+                {
+                    return Ok((type_of_unknown == entity_type).into());
+                }
+                Ok(Expr::is_entity_type(r, entity_type.clone()).into())
+            }
+        }
+    }
+
+    /// Evaluates a set literal
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            forall|i: int| 0 <= i < items@.len() ==> #[trigger] expr_modeled(items@[i], *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, match m::evaluator::evaluate_list(&abs_exprs(**items, *slots), &self.spec_request(), &self.spec_entities()) {
+                Ok(vs) => Ok(m::value::Value::Set(Box::new(m::value::values_canonicalize(vs)))),
+                Err(e) => Err(e),
+            }),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_set(
+        &self,
+        items: &Arc<Vec<Expr>>,
+        slots: &SlotEnv,
+        loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        // Collect values until the first residual, then continue in `eval_set_residual`.
+        let mut vals: Vec<Value> = Vec::with_capacity(items.len());
+        proof! {
+            lemma_evaluated_prefix_empty(abs_exprs(**items, *slots), self.spec_request(), self.spec_entities());
+        }
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                self.spec_wf(),
+                !stack_exhausted(),
+                forall|i: int| 0 <= i < items@.len() ==> #[trigger] expr_modeled(items@[i], *slots, self.spec_ext_ok()),
+                it.seq().len() == items@.len(),
+                forall|i: int| 0 <= i < items@.len() ==> *#[trigger] it.seq()[i] == items@[i],
+                vals@.len() == it.index(),
+                evaluated_prefix(abs_exprs(**items, *slots), self.spec_request(), self.spec_entities(), vals@),
+        ))]
+        for item in items.iter() {
+            proof! {
+                assert(list_view(abs_exprs(**items, *slots))[vals@.len() as int] == abs_expr(*item, *slots));
+                lemma_evaluated_prefix_err(abs_exprs(**items, *slots), self.spec_request(), self.spec_entities(), vals@, abs_expr(*item, *slots));
+            }
+            match self.partial_interpret(item, slots)? {
+                PartialValue::Value(v) => {
+                    proof! {
+                        lemma_evaluated_prefix_push(abs_exprs(**items, *slots), self.spec_request(), self.spec_entities(), vals@, abs_expr(*item, *slots), v);
+                    }
+                    vals.push(v)
+                }
+                PartialValue::Residual(r) => {
+                    return self.eval_set_residual(vals, r, items, slots, loc);
+                }
+            }
+        }
+        proof! {
+            lemma_evaluated_prefix_full(abs_exprs(**items, *slots), self.spec_request(), self.spec_entities(), vals@);
+        }
+        Ok(value_set_from_vec(vals, loc.cloned()).into())
+    }
+
+    /// Finishes `eval_set` after element `vals.len()` evaluated to `residual`
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
+    fn eval_set_residual(
+        &self,
+        vals: Vec<Value>,
+        residual: Expr,
+        items: &Arc<Vec<Expr>>,
+        slots: &SlotEnv,
+        loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        let done = vals.len() + 1;
+        let vals = vals
+            .into_iter()
+            .map(|v| Ok(PartialValue::Value(v)))
+            .chain(std::iter::once(Ok(PartialValue::Residual(residual))))
+            .chain(
+                items
+                    .iter()
+                    .skip(done)
+                    .map(|item| self.partial_interpret(item, slots)),
+            )
+            .collect::<Result<Vec<_>>>()?;
+        match split(vals) {
+            Either::Left(vals) => Ok(Value::set(vals, loc.cloned()).into()),
+            Either::Right(r) => Ok(Expr::set(r).into()),
+        }
+    }
+
+    /// Evaluates a record literal
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            forall|i: int| 0 <= i < expr_entries(**map).len() ==> #[trigger] expr_modeled(expr_entries(**map)[i].1, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, match m::evaluator::evaluate_attrs(&abs_expr_record(**map, *slots), &self.spec_request(), &self.spec_entities()) {
+                Ok(avs) => Ok(m::value::Value::Record(Box::new(m::value::attrs_canonicalize(avs)))),
+                Err(e) => Err(e),
+            }),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_record(
+        &self,
+        map: &Arc<BTreeMap<SmolStr, Expr>>,
+        slots: &SlotEnv,
+        loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        // Collect values until the first residual, then continue in `eval_record_residual`.
+        let mut pairs: Vec<(SmolStr, Value)> = Vec::with_capacity(map.len());
+        let iter = map.iter();
+        proof! {
+            broadcast use vstd::std_specs::btree::axiom_key_obeys_cmp_spec_meaning;
+            let t = vstd::std_specs::iter::IteratorSpec::remaining(&iter).map_values(|kv: (&SmolStr, &Expr)| *kv.0);
+            lemma_increasing_seq_smol(t);
+            let s = vstd::std_specs::iter::IteratorSpec::remaining(&iter).unref();
+            assert forall|i: int, j: int| #![trigger s[i], s[j]] 0 <= i < j < s.len()
+                implies lex_cmp(smol_view(s[i].0), smol_view(s[j].0)) is Less by {
+                assert(t[i] == s[i].0 && t[j] == s[j].0);
+            }
+            lemma_expr_entries_unique(**map, s);
+            lemma_expr_entries(**map);
+            lemma_evaluated_attrs_prefix_empty(abs_expr_record(**map, *slots), self.spec_request(), self.spec_entities());
+        }
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                self.spec_wf(),
+                !stack_exhausted(),
+                forall|i: int| 0 <= i < expr_entries(**map).len() ==> #[trigger] expr_modeled(expr_entries(**map)[i].1, *slots, self.spec_ext_ok()),
+                sorted_by_key(expr_entries(**map)),
+                it.seq().len() == expr_entries(**map).len(),
+                forall|i: int| 0 <= i < expr_entries(**map).len() ==> *(#[trigger] it.seq()[i]).0 == expr_entries(**map)[i].0
+                    && *it.seq()[i].1 == expr_entries(**map)[i].1,
+                pairs@.len() == it.index(),
+                forall|j: int| 0 <= j < it.index() ==> (#[trigger] pairs@[j]).0 == expr_entries(**map)[j].0,
+                evaluated_attrs_prefix(abs_expr_record(**map, *slots), self.spec_request(), self.spec_entities(), pairs@),
+        ))]
+        for (k, v) in iter {
+            proof! {
+                assert(list_view(abs_expr_record(**map, *slots))[pairs@.len() as int] == (abs_str(*k), abs_expr(*v, *slots)));
+                lemma_evaluated_attrs_prefix_err(abs_expr_record(**map, *slots), self.spec_request(), self.spec_entities(), pairs@, abs_expr(*v, *slots));
+            }
+            match self.partial_interpret(v, slots)? {
+                PartialValue::Value(val) => {
+                    proof! {
+                        lemma_evaluated_attrs_prefix_push(abs_expr_record(**map, *slots), self.spec_request(), self.spec_entities(), pairs@, *k, abs_expr(*v, *slots), val);
+                    }
+                    pairs.push((k.clone(), val))
+                }
+                PartialValue::Residual(r) => {
+                    return self.eval_record_residual(pairs, k, r, map, slots, loc);
+                }
+            }
+        }
+        proof! {
+            lemma_evaluated_attrs_prefix_full(abs_expr_record(**map, *slots), self.spec_request(), self.spec_entities(), pairs@);
+            assert forall|i: int, j: int| #![trigger pairs@[i], pairs@[j]] 0 <= i < j < pairs@.len()
+                implies pairs@[i].0 != pairs@[j].0 by {
+                lemma_sorted_by_key(expr_entries(**map), i, j);
+            }
+        }
+        Ok(value_record_from_vec(pairs, loc.cloned()).into())
+    }
+
+    /// Finishes `eval_record` after attribute `key` evaluated to `residual`
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
+    fn eval_record_residual(
+        &self,
+        pairs: Vec<(SmolStr, Value)>,
+        key: &SmolStr,
+        residual: Expr,
+        map: &Arc<BTreeMap<SmolStr, Expr>>,
+        slots: &SlotEnv,
+        loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        let done = pairs.len() + 1;
+        let map = pairs
+            .into_iter()
+            .map(|(k, v)| Ok((k, PartialValue::Value(v))))
+            .chain(std::iter::once(Ok((
+                key.clone(),
+                PartialValue::Residual(residual),
+            ))))
+            .chain(
+                map.iter()
+                    .skip(done)
+                    .map(|(k, v)| Ok((k.clone(), self.partial_interpret(v, slots)?))),
+            )
+            .collect::<Result<Vec<_>>>()?;
+        let (names, evalled): (Vec<SmolStr>, Vec<PartialValue>) = map.into_iter().unzip();
+        match split(evalled) {
+                    Either::Left(vals) => {
+                        Ok(Value::record(names.into_iter().zip(vals), loc.cloned()).into())
+                    }
+                    Either::Right(rs) => {
+                        #[expect(clippy::expect_used, reason = "can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")]
+                        Ok(
+                            Expr::record(names.into_iter().zip(rs))
+                                .expect("can't have a duplicate key here because `names` is the set of keys of the input `BTreeMap`")
+                                .into()
+                        )
+                    }
+                }
+    }
+
+    /// Evaluates an extension function application
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            self.spec_ext_ok(),
+            crate::verification::ext_abs::ext_fun_of_name(*fn_name) is Some,
+            forall|i: int| 0 <= i < args@.len() ==> #[trigger] expr_modeled(args@[i], *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, match m::evaluator::evaluate_list(&abs_exprs(**args, *slots), &self.spec_request(), &self.spec_entities()) {
+                Ok(vs) => m::evaluator::call_ext(&crate::verification::ext_abs::ext_fun_of(*fn_name), &vs),
+                Err(e) => Err(e),
+            }),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+    fn eval_extension_function_app(
+        &self,
+        fn_name: &Name,
+        args: &Arc<Vec<Expr>>,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        // Collect values until the first residual, then continue in
+        // `eval_extension_function_app_residual`.
+        let mut vals: Vec<Value> = Vec::with_capacity(args.len());
+        proof! {
+            lemma_evaluated_prefix_empty(abs_exprs(**args, *slots), self.spec_request(), self.spec_entities());
+        }
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                self.spec_wf(),
+                !stack_exhausted(),
+                forall|i: int| 0 <= i < args@.len() ==> #[trigger] expr_modeled(args@[i], *slots, self.spec_ext_ok()),
+                it.seq().len() == args@.len(),
+                forall|i: int| 0 <= i < args@.len() ==> *#[trigger] it.seq()[i] == args@[i],
+                vals@.len() == it.index(),
+                evaluated_prefix(abs_exprs(**args, *slots), self.spec_request(), self.spec_entities(), vals@),
+        ))]
+        for arg in args.iter() {
+            proof! {
+                assert(list_view(abs_exprs(**args, *slots))[vals@.len() as int] == abs_expr(*arg, *slots));
+                lemma_evaluated_prefix_err(abs_exprs(**args, *slots), self.spec_request(), self.spec_entities(), vals@, abs_expr(*arg, *slots));
+            }
+            match self.partial_interpret(arg, slots)? {
+                PartialValue::Value(v) => {
+                    proof! {
+                        lemma_evaluated_prefix_push(abs_exprs(**args, *slots), self.spec_request(), self.spec_entities(), vals@, abs_expr(*arg, *slots), v);
+                    }
+                    vals.push(v)
+                }
+                PartialValue::Residual(r) => {
+                    return self.eval_extension_function_app_residual(vals, r, fn_name, args, slots);
+                }
+            }
+        }
+        proof! {
+            lemma_evaluated_prefix_full(abs_exprs(**args, *slots), self.spec_request(), self.spec_entities(), vals@);
+        }
+        call_extension_fn(self.extensions, fn_name, &vals)
+    }
+
+    /// Finishes `eval_extension_function_app` after argument `vals.len()` evaluated to `residual`
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
+    fn eval_extension_function_app_residual(
+        &self,
+        vals: Vec<Value>,
+        residual: Expr,
+        fn_name: &Name,
+        args: &Arc<Vec<Expr>>,
+        slots: &SlotEnv,
+    ) -> Result<PartialValue> {
+        let done = vals.len() + 1;
+        let args = vals
+            .into_iter()
+            .map(|v| Ok(PartialValue::Value(v)))
+            .chain(std::iter::once(Ok(PartialValue::Residual(residual))))
+            .chain(
+                args.iter()
+                    .skip(done)
+                    .map(|arg| self.partial_interpret(arg, slots)),
+            )
+            .collect::<Result<Vec<_>>>()?;
+        match split(args) {
+            Either::Left(vals) => {
+                let vals: Vec<_> = vals.collect();
+                call_extension_fn(self.extensions, fn_name, &vals)
+            }
+            Either::Right(residuals) => Ok(PartialValue::Residual(Expr::call_extension_fn(
+                fn_name.clone(),
+                residuals.collect(),
+            ))),
+        }
+    }
+
+    /// `res.attr`, for a residual `res`
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
+    fn get_attr_residual(
+        &self,
+        res: Expr,
+        attr: &SmolStr,
+        slots: &SlotEnv,
+        source_loc: Option<&Loc>,
+    ) -> Result<PartialValue> {
+        match res.expr_kind() {
+            ExprKind::Record(map) => {
+                // If we have a residual record, we evaluate as follows:
+                // 1) If it's safe to project, we can project. We can evaluate to see if this attribute can become a value
+                // 2) If it's not safe to project, we can check to see if the requested key exists in the record
+                //    if it doesn't, we can fail early
+                if res.is_projectable() {
+                    map.as_ref()
+                        .iter()
+                        .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
+                        .next()
+                        .ok_or_else(|| {
+                            EvaluationError::record_attr_does_not_exist(
+                                attr.clone(),
+                                map.keys(),
+                                map.len(),
+                                source_loc.cloned(),
+                            )
+                        })
+                        .and_then(|e| self.partial_interpret(e, slots))
+                } else if map.keys().any(|k| k == attr) {
+                    Ok(PartialValue::Residual(Expr::get_attr(
+                        Expr::record_arc(Arc::clone(map)),
+                        attr.clone(),
+                    )))
+                } else {
+                    Err(EvaluationError::record_attr_does_not_exist(
+                        attr.clone(),
+                        map.keys(),
+                        map.len(),
+                        source_loc.cloned(),
+                    ))
+                }
+            }
+            // We got a residual, that is not a record at the top level
+            _ => Ok(PartialValue::Residual(Expr::get_attr(res, attr.clone()))),
+        }
+    }
+
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            modeled(*arg2),
+            match entity1 {
+                Some(e) => entity_wf(*e) && m::entities::entities_find(&self.spec_entities(), &abs_uid(*uid1))
+                    == Some(&abs_entity_data(*e)),
+                None => m::entities::entities_find(&self.spec_entities(), &abs_uid(*uid1)) is None,
+            },
+        ensures
+            pv_result_rel(
+                r,
+                m::evaluator::apply2(
+                    &m::expr::BinaryOp::Mem,
+                    &m::value::Value::Prim(m::value::Prim::EntityUID(abs_uid(*uid1))),
+                    &abs_value(*arg2),
+                    &self.spec_entities(),
+                ),
+            ),
+    ))]
     fn eval_in(
         &self,
         uid1: &EntityUID,
@@ -821,13 +1498,61 @@ impl<'e> Evaluator<'e> {
             ValueKind::Set(_) => arg2.get_as_entity_set()?,
             _ => {
                 return Err(EvaluationError::type_error(
-                    nonempty![Type::Set, Type::entity_type(names::ANY_ENTITY_TYPE.clone())],
+                    nonempty![Type::Set, Type::entity_type(names::any_entity_type())],
                     arg2,
                 ))
             }
         };
+        proof! {
+            if let ValueKind::Set(s) = arg2.value {
+                let lv = crate::verification::abs::list_view(abs_set(s));
+                assert forall|i: int| 0 <= i < lv.len() implies is_uid_value(#[trigger] lv[i])
+                    && value_uid(lv[i]) == abs_uid(*rhs@[i]) by {
+                    assert(lv[i] == abs_value(set_elems(s)[i]));
+                }
+            }
+        }
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                match entity1 {
+                    Some(e) => m::entities::entities_find(&self.spec_entities(), &abs_uid(*uid1))
+                        == Some(&abs_entity_data(*e)),
+                    None => m::entities::entities_find(&self.spec_entities(), &abs_uid(*uid1)) is None,
+                },
+                match arg2.value {
+                    ValueKind::Lit(Literal::EntityUID(u)) => it.seq().len() == 1 && *it.seq()[0] == *u,
+                    ValueKind::Set(s) => {
+                        let lv = crate::verification::abs::list_view(abs_set(s));
+                        &&& lv.len() == it.seq().len()
+                        &&& forall|i: int| 0 <= i < lv.len() ==> is_uid_value(#[trigger] lv[i])
+                            && value_uid(lv[i]) == abs_uid(*it.seq()[i])
+                        &&& forall|j: int| 0 <= j < it.index() ==> !#[trigger] m::evaluator::in_e(
+                            &abs_uid(*uid1),
+                            &value_uid(lv[j]),
+                            &self.spec_entities(),
+                        )
+                    },
+                    _ => false,
+                },
+                forall|j: int| 0 <= j < it.index() ==> !m::evaluator::in_e(
+                    &abs_uid(*uid1),
+                    &abs_uid(*it.seq()[j]),
+                    &self.spec_entities(),
+                ),
+        ))]
         for uid2 in rhs {
-            if uid1 == uid2 || entity1.map(|e1| e1.is_descendant_of(uid2)).unwrap_or(false) {
+            if uid1 == uid2
+                || match entity1 {
+                    Some(e1) => e1.is_descendant_of(uid2),
+                    None => false,
+                }
+            {
+                proof! {
+                    if let ValueKind::Set(s) = arg2.value {
+                        let lv = crate::verification::abs::list_view(abs_set(s));
+                        assert(m::evaluator::in_e(&abs_uid(*uid1), &value_uid(lv[it.index() as int]), &self.spec_entities()));
+                    }
+                }
                 return Ok(true.into());
             }
         }
@@ -838,6 +1563,21 @@ impl<'e> Evaluator<'e> {
 
     /// Evaluation of conditionals
     /// Must be sure to respect short-circuiting semantics
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(*guard, *slots, self.spec_ext_ok()),
+            expr_modeled(**consequent, *slots, self.spec_ext_ok()),
+            expr_modeled(**alternative, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, match m::evaluator::as_bool(m::evaluator::evaluate(&abs_expr(*guard, *slots), &self.spec_request(), &self.spec_entities())) {
+                Ok(true) => m::evaluator::evaluate(&abs_expr(**consequent, *slots), &self.spec_request(), &self.spec_entities()),
+                Ok(false) => m::evaluator::evaluate(&abs_expr(**alternative, *slots), &self.spec_request(), &self.spec_entities()),
+                Err(e) => Err(e),
+            }),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
     fn eval_if(
         &self,
         guard: &Expr,
@@ -873,6 +1613,18 @@ impl<'e> Evaluator<'e> {
     /// `expr has attr1.attr2.attr3` evaluates as:
     /// `expr has attr1 && expr.attr1 has attr2 && expr.attr1.attr2 has attr3`
     /// with short-circuit semantics.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(**expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, match m::evaluator::evaluate(&abs_expr(**expr, *slots), &self.spec_request(), &self.spec_entities()) {
+                Ok(v1) => m::evaluator::has_attrs(&v1, &abs_attr_path(*attrs), &self.spec_entities()),
+                Err(e) => Err(e),
+            }),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
     fn eval_extended_has_attr(
         &self,
         expr: &Arc<Expr>,
@@ -889,75 +1641,134 @@ impl<'e> Evaluator<'e> {
 
     /// Evaluate an extended has attribute on a concrete value, walking the
     /// attribute chain with short-circuit semantics.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            modeled(*initial_val),
+        ensures
+            pv_result_rel(r, m::evaluator::has_attrs(&abs_value(*initial_val), &abs_attr_path(*attrs), &self.spec_entities())),
+    ))]
     fn eval_extended_has_attr_value(
         &self,
         initial_val: &Value,
         attrs: &nonempty::NonEmpty<SmolStr>,
     ) -> Result<PartialValue> {
         let mut current_val = initial_val;
-        let mut iter = attrs.iter().peekable();
-        while let Some(attr) = iter.next() {
+        // `i` indexes the attribute path `[attrs.head, attrs.tail[0], ...]`
+        let last = attrs.tail.len();
+        let mut i: usize = 0;
+        proof! {
+            let ps = attr_path_seq(*attrs);
+            crate::verification::wildcard_lemmas::lemma_seq_to_list_full(ps);
+            assert(ps.subrange(1, ps.len() as int) =~= attrs.tail@.map_values(|a: SmolStr| abs_str(a)));
+        }
+        #[cfg_attr(feature = "verus", verus_spec(
+            invariant
+                self.spec_wf(),
+                modeled(*current_val),
+                last == attrs.tail@.len(),
+                i <= last,
+                m::evaluator::has_attrs(&abs_value(*initial_val), &abs_attr_path(*attrs), &self.spec_entities())
+                    == m::evaluator::has_attrs(
+                        &abs_value(*current_val),
+                        &seq_to_list(attr_path_seq(*attrs).subrange(i as int, last + 1)),
+                        &self.spec_entities(),
+                    ),
+            decreases last - i
+        ))]
+        loop {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "`0 < i <= attrs.tail.len()` in the `else` branch"
+            )]
+            let attr = if i == 0 {
+                &attrs.head
+            } else {
+                &attrs.tail[i - 1]
+            };
+            let is_last = i == last;
+            proof! {
+                let ps = attr_path_seq(*attrs);
+                let rest = seq_to_list(ps.subrange(i + 1, last + 1));
+                crate::verification::wildcard_lemmas::lemma_seq_to_list_suffix(ps, i as int);
+                crate::verification::wildcard_lemmas::lemma_seq_to_list_suffix(ps, i + 1);
+                assert(ps[i as int] == abs_str(*attr));
+                assert(seq_to_list(ps.subrange(i as int, last + 1)) == m::value::List::Cons(abs_str(*attr), Box::new(rest)));
+                if is_last {
+                    assert(rest == m::value::List::<m::value::Str>::Nil);
+                }
+                match current_val.value {
+                    ValueKind::Record(r) => lemma_has_attrs_record(abs_record(*r), abs_str(*attr), rest, self.spec_entities()),
+                    ValueKind::Lit(Literal::EntityUID(u)) => lemma_has_attrs_entity(abs_uid(*u), abs_str(*attr), rest, self.spec_entities()),
+                    _ => lemma_has_attrs_type_error(abs_value(*current_val), abs_str(*attr), rest, self.spec_entities()),
+                }
+            }
             // like tpe, extract information about "has attr" and something to resolve
             // get attr if this is not the last iteration.
             // unlike in tpe, record and entites are not symmetric in their attribute maps,
             // so it's harder to treat them uniformly
-            let maybe_next_val = match &current_val.value {
-                ValueKind::Record(record) => record.get(attr).map(Either::Left),
+            let next_val = match &current_val.value {
+                ValueKind::Record(record) => match record.get(attr) {
+                    Some(next_val) => next_val,
+                    None => return Ok(false.into()),
+                },
                 ValueKind::Lit(Literal::EntityUID(uid)) => match self.entities.entity(uid) {
                     Dereference::Data(e) => match e.get(attr) {
-                        Some(PartialValue::Value(next_val)) => Some(Either::Left(next_val)),
-                        Some(PartialValue::Residual(res)) => Some(Either::Right(res)),
-                        None => None,
+                        Some(PartialValue::Value(next_val)) => next_val,
+                        Some(PartialValue::Residual(res)) => {
+                            // only use information about deref when not last attr in chain
+                            if is_last {
+                                return Ok(true.into());
+                            }
+                            // residual obtained *after* get_attr contains the rest of attr path
+                            return Ok(Expr::extended_has_attr(
+                                res.clone(),
+                                attr_path_from(attrs, i + 1),
+                            )
+                            .into());
+                        }
+                        None => return Ok(false.into()),
                     },
-                    Dereference::NoSuchEntity => None, // no entity same as no attr
+                    Dereference::NoSuchEntity => return Ok(false.into()), // no entity same as no attr
                     Dereference::Residual(r) => {
                         // no information about having the given attr, return residual
                         // this residual got here before getting the attr, so the residual also
                         // contains the current attr in the path
-                        let from_here = nonempty::NonEmpty {
-                            head: attr.clone(),
-                            tail: iter.cloned().collect(),
-                        };
-                        return Ok(Expr::extended_has_attr(r, from_here).into());
+                        return Ok(Expr::extended_has_attr(r, attr_path_from(attrs, i)).into());
                     }
                 },
                 _ => {
                     return Err(err::EvaluationError::type_error(
-                        nonempty![
-                            Type::Record,
-                            Type::entity_type(names::ANY_ENTITY_TYPE.clone())
-                        ],
+                        nonempty![Type::Record, Type::entity_type(names::any_entity_type())],
                         current_val,
                     ));
                 }
             };
-            let Some(next_val) = maybe_next_val else {
-                return Ok(false.into());
-            };
-            // only use information about deref when not last attr in chain
-            if iter.peek().is_some() {
-                match next_val {
-                    Either::Left(actual) => current_val = actual,
-                    Either::Right(residual) => {
-                        // residual obtained *after* get_attr contains the rest of attr path
-                        #[expect(
-                            clippy::expect_used,
-                            reason = "`iter.peek()` was `Some`, so at least one attr remains"
-                        )]
-                        let from_here = nonempty::NonEmpty::collect(iter.cloned())
-                            .expect("at least one attr remains after the current one");
-                        return Ok(Expr::extended_has_attr(residual.clone(), from_here).into());
-                    }
-                }
+            if is_last {
+                proof! { lemma_has_attrs_nil(abs_value(*next_val), self.spec_entities()); }
+                // All attributes are present
+                return Ok(true.into());
             }
+            current_val = next_val;
+            i += 1;
         }
-        // All attributes are present
-        Ok(true.into())
     }
 
     /// We don't use the `source_loc()` on `expr` because that's only the loc
     /// for the LHS of the GetAttr. `source_loc` argument should be the loc for
     /// the entire GetAttr expression
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            self.spec_wf(),
+            !stack_exhausted(),
+            expr_modeled(*expr, *slots, self.spec_ext_ok()),
+        ensures
+            pv_result_rel(r, match m::evaluator::evaluate(&abs_expr(*expr, *slots), &self.spec_request(), &self.spec_entities()) {
+                Ok(v1) => m::evaluator::get_attr(&v1, &abs_str(*attr), &self.spec_entities()),
+                Err(e) => Err(e),
+            }),
+    ))]
+    #[cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
     fn get_attr(
         &self,
         expr: &Expr,
@@ -967,60 +1778,19 @@ impl<'e> Evaluator<'e> {
     ) -> Result<PartialValue> {
         match self.partial_interpret(expr, slots)? {
             // PE Cases
-            PartialValue::Residual(res) => {
-                match res.expr_kind() {
-                    ExprKind::Record(map) => {
-                        // If we have a residual record, we evaluate as follows:
-                        // 1) If it's safe to project, we can project. We can evaluate to see if this attribute can become a value
-                        // 2) If it's not safe to project, we can check to see if the requested key exists in the record
-                        //    if it doesn't, we can fail early
-                        if res.is_projectable() {
-                            map.as_ref()
-                                .iter()
-                                .filter_map(|(k, v)| if k == attr { Some(v) } else { None })
-                                .next()
-                                .ok_or_else(|| {
-                                    EvaluationError::record_attr_does_not_exist(
-                                        attr.clone(),
-                                        map.keys(),
-                                        map.len(),
-                                        source_loc.cloned(),
-                                    )
-                                })
-                                .and_then(|e| self.partial_interpret(e, slots))
-                        } else if map.keys().any(|k| k == attr) {
-                            Ok(PartialValue::Residual(Expr::get_attr(
-                                Expr::record_arc(Arc::clone(map)),
-                                attr.clone(),
-                            )))
-                        } else {
-                            Err(EvaluationError::record_attr_does_not_exist(
-                                attr.clone(),
-                                map.keys(),
-                                map.len(),
-                                source_loc.cloned(),
-                            ))
-                        }
-                    }
-                    // We got a residual, that is not a record at the top level
-                    _ => Ok(PartialValue::Residual(Expr::get_attr(res, attr.clone()))),
-                }
-            }
+            PartialValue::Residual(res) => self.get_attr_residual(res, attr, slots, source_loc),
             PartialValue::Value(Value {
                 value: ValueKind::Record(record),
                 ..
-            }) => record
-                .as_ref()
-                .get(attr)
-                .ok_or_else(|| {
-                    EvaluationError::record_attr_does_not_exist(
-                        attr.clone(),
-                        record.keys(),
-                        record.len(),
-                        source_loc.cloned(),
-                    )
-                })
-                .map(|v| PartialValue::Value(v.clone())),
+            }) => match record.as_ref().get(attr) {
+                Some(v) => Ok(PartialValue::Value(v.clone())),
+                None => Err(EvaluationError::record_attr_does_not_exist(
+                    attr.clone(),
+                    record.keys(),
+                    record.len(),
+                    source_loc.cloned(),
+                )),
+            },
             PartialValue::Value(Value {
                 value: ValueKind::Lit(Literal::EntityUID(uid)),
                 loc,
@@ -1032,36 +1802,25 @@ impl<'e> Evaluator<'e> {
                 Dereference::Residual(r) => {
                     Ok(PartialValue::Residual(Expr::get_attr(r, attr.clone())))
                 }
-                Dereference::Data(entity) => entity
-                    .get(attr)
-                    .map(|pv| match pv {
+                Dereference::Data(entity) => match entity.get(attr) {
+                    Some(pv) => match pv {
                         PartialValue::Value(_) => Ok(pv.clone()),
                         PartialValue::Residual(e) => match e.expr_kind() {
                             ExprKind::Unknown(u) => self.unknown_to_partialvalue(u),
                             _ => Ok(pv.clone()),
                         },
-                    })
-                    .ok_or_else(|| {
-                        EvaluationError::entity_attr_does_not_exist(
-                            uid,
-                            attr.clone(),
-                            entity.keys(),
-                            entity.get_tag(attr).is_some(),
-                            entity.attrs_len(),
-                            source_loc.cloned(),
-                        )
-                    })?,
+                    },
+                    None => Err(attr_does_not_exist_error(uid, attr, entity, source_loc)),
+                },
             },
             PartialValue::Value(v) => Err(EvaluationError::type_error(
-                nonempty![
-                    Type::Record,
-                    Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
-                ],
+                nonempty![Type::Record, Type::entity_type(names::any_entity_type()),],
                 &v,
             )),
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     /// Evaluate a binary operation between a residual expression (left) and a value (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
     fn short_circuit_residual_and_value(
@@ -1079,6 +1838,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     /// Evaluate a binary operation between a value (left) and a residual expression (right). If despite the unknown contained in the residual, concrete result
     /// can be obtained (using the type annotation on the residual), it is returned.
     fn short_circuit_value_and_residual(
@@ -1110,6 +1870,7 @@ impl<'e> Evaluator<'e> {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     fn short_circuit_two_typed_residuals(
         &self,
         e1: &Expr,
@@ -1178,9 +1939,35 @@ impl std::fmt::Debug for Evaluator<'_> {
     }
 }
 
+/// The suffix of the attribute path `[attrs.head, attrs.tail[0], ...]` from index `start`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(
+    requires
+        start <= attrs.tail@.len(),
+))]
+fn attr_path_from(
+    attrs: &nonempty::NonEmpty<SmolStr>,
+    start: usize,
+) -> nonempty::NonEmpty<SmolStr> {
+    #[expect(
+        clippy::expect_used,
+        reason = "`start <= attrs.tail.len()`, so at least one attr remains"
+    )]
+    nonempty::NonEmpty::collect(attrs.iter().skip(start).cloned())
+        .expect("at least one attr remains from `start`")
+}
+
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Value {
     /// Convert the `Value` to a boolean, or throw a type error if it's not a
     /// boolean.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(b) => abs_value(*self) == crate::verification::model::evaluator::bool_val(b),
+                Err(_) => modeled(*self) ==> !(abs_value(*self) matches crate::verification::model::value::Value::Prim(crate::verification::model::value::Prim::Bool(_))),
+            }
+    ))]
     pub(crate) fn get_as_bool(&self) -> Result<bool> {
         match &self.value {
             ValueKind::Lit(Literal::Bool(b)) => Ok(*b),
@@ -1190,6 +1977,13 @@ impl Value {
 
     /// Convert the `Value` to a Long, or throw a type error if it's not a
     /// Long.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(i) => abs_value(*self) == crate::verification::model::value::Value::Prim(crate::verification::model::value::Prim::Int(i)),
+                Err(_) => modeled(*self) ==> !(abs_value(*self) matches crate::verification::model::value::Value::Prim(crate::verification::model::value::Prim::Int(_))),
+            }
+    ))]
     pub(crate) fn get_as_long(&self) -> Result<Integer> {
         match &self.value {
             ValueKind::Lit(Literal::Long(i)) => Ok(*i),
@@ -1199,6 +1993,13 @@ impl Value {
 
     /// Convert the `Value` to a String, or throw a type error if it's not a
     /// String.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(s) => self.value == ValueKind::Lit(Literal::String(*s)),
+                Err(_) => !(self.value matches ValueKind::Lit(Literal::String(_))),
+            }
+    ))]
     pub(crate) fn get_as_string(&self) -> Result<&SmolStr> {
         match &self.value {
             ValueKind::Lit(Literal::String(s)) => Ok(s),
@@ -1207,6 +2008,13 @@ impl Value {
     }
 
     /// Convert the `Value` to a Set, or throw a type error if it's not a Set.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(s) => self.value == ValueKind::Set(*s),
+                Err(_) => !(self.value is Set),
+            }
+    ))]
     pub(crate) fn get_as_set(&self) -> Result<&Set> {
         match &self.value {
             ValueKind::Set(set) => Ok(set),
@@ -1215,6 +2023,13 @@ impl Value {
     }
 
     /// Convert the `Value` to a Record, or throw a type error if it's not a Record.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(m) => self.value == ValueKind::Record(*m),
+                Err(_) => !(self.value is Record),
+            }
+    ))]
     #[cfg(any(feature = "partial-eval", feature = "tpe"))]
     pub(crate) fn get_as_record(&self) -> Result<&Arc<BTreeMap<SmolStr, Value>>> {
         match &self.value {
@@ -1225,11 +2040,18 @@ impl Value {
 
     /// Convert the `Value` to an Entity, or throw a type error if it's not a
     /// Entity.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match r {
+                Ok(u) => (self.value matches ValueKind::Lit(Literal::EntityUID(a)) && *a == *u),
+                Err(_) => !(self.value matches ValueKind::Lit(Literal::EntityUID(_))),
+            }
+    ))]
     pub(crate) fn get_as_entity(&self) -> Result<&EntityUID> {
         match &self.value {
             ValueKind::Lit(Literal::EntityUID(uid)) => Ok(uid.as_ref()),
             _ => Err(EvaluationError::type_error_single(
-                Type::entity_type(names::ANY_ENTITY_TYPE.clone()),
+                Type::entity_type(names::any_entity_type()),
                 self,
             )),
         }
@@ -1237,12 +2059,50 @@ impl Value {
 
     /// Convert the `Value` to a set of entities, throwing a type error if it's
     /// not a set, or a type error if any of its elements is not an entity.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match self.value {
+                ValueKind::Set(s) => {
+                    let elems = set_elems(s);
+                    match r {
+                        Ok(v) => v@.len() == elems.len() && forall|i: int| 0 <= i < elems.len() ==>
+                            ((#[trigger] elems[i]).value matches ValueKind::Lit(Literal::EntityUID(a)) && *a == *v@[i]),
+                        Err(_) => exists|i: int| 0 <= i < elems.len() &&
+                            !((#[trigger] elems[i]).value matches ValueKind::Lit(Literal::EntityUID(_))),
+                    }
+                },
+                _ => r is Err,
+            }
+    ))]
     pub(crate) fn get_as_entity_set(&self) -> Result<Vec<&EntityUID>> {
-        self.get_as_set()?
-            .iter()
-            .map(Value::get_as_entity)
-            .collect()
+        // `self.get_as_set()?.iter().map(Value::get_as_entity).collect()`
+        let set = self.get_as_set()?;
+        let mut uids: Vec<&EntityUID> = Vec::new();
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                self.value == ValueKind::Set(*set),
+                vstd::std_specs::iter::IteratorSpec::obeys_prophetic_iter_laws(&it.iter),
+                it.seq().len() == set_elems(*set).len(),
+                forall|i: int| 0 <= i < set_elems(*set).len() ==> *#[trigger] it.seq()[i] == set_elems(*set)[i],
+                uids@.len() == it.index(),
+                forall|i: int| 0 <= i < it.index() ==>
+                    ((#[trigger] set_elems(*set)[i]).value matches ValueKind::Lit(Literal::EntityUID(a)) && *a == *uids@[i]),
+        ))]
+        for v in set.iter() {
+            uids.push(v.get_as_entity()?);
+        }
+        Ok(uids)
     }
+}
+
+/// `Value::set` (specified in `verification::trusted`)
+pub(crate) fn value_set_from_vec(vals: Vec<Value>, loc: Option<Loc>) -> Value {
+    Value::set(vals, loc)
+}
+
+/// `Value::record` (specified in `verification::trusted`)
+pub(crate) fn value_record_from_vec(pairs: Vec<(SmolStr, Value)>, loc: Option<Loc>) -> Value {
+    Value::record(pairs, loc)
 }
 
 #[inline(always)]

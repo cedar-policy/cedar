@@ -39,6 +39,64 @@ use smol_str::{SmolStr, ToSmolStr};
 use thiserror::Error;
 
 use self::extension_function_lookup_errors::FuncDoesNotExistError;
+#[cfg(any(feature = "decimal", feature = "ipaddr", feature = "datetime"))]
+use crate::ast::{ExtensionOutputValue, Literal, Value, ValueKind};
+#[cfg(feature = "verus")]
+use vstd::prelude::*;
+
+/// `Value::from(b).into()`
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures r == ExtensionOutputValue::Known(Value { value: ValueKind::Lit(Literal::Bool(b)), loc: None })
+))]
+#[cfg(any(feature = "decimal", feature = "ipaddr"))]
+pub(crate) fn bool_output(b: bool) -> ExtensionOutputValue {
+    ExtensionOutputValue::Known(Value {
+        value: ValueKind::Lit(Literal::Bool(b)),
+        loc: None,
+    })
+}
+
+/// `Value::from(i).into()`
+#[cfg_attr(feature = "verus", verus_verify)]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures r == ExtensionOutputValue::Known(Value { value: ValueKind::Lit(Literal::Long(i)), loc: None })
+))]
+#[cfg(feature = "datetime")]
+pub(crate) fn long_output(i: i64) -> ExtensionOutputValue {
+    ExtensionOutputValue::Known(Value {
+        value: ValueKind::Lit(Literal::Long(i)),
+        loc: None,
+    })
+}
+
+/// `s.starts_with(c)`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures r == crate::verification::ext_trusted::starts_with_spec(s, c)
+))]
+#[cfg(any(feature = "decimal", feature = "ipaddr", feature = "datetime"))]
+pub(crate) fn starts_with_char(s: &str, c: char) -> bool {
+    s.starts_with(c)
+}
+
+/// `a == b`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r => ensures r == (a@ == b@)))]
+#[cfg(any(feature = "ipaddr", feature = "datetime"))]
+pub(crate) fn str_eq(a: &str, b: &str) -> bool {
+    a == b
+}
+
+/// `s.split_once(c)`
+#[cfg_attr(feature = "verus", verus_verify(external_body))]
+#[cfg_attr(feature = "verus", verus_spec(r =>
+    ensures crate::verification::ext_trusted::split_once_spec(s, c, r)
+))]
+#[cfg(feature = "ipaddr")]
+pub(crate) fn split_once_char(s: &str, c: char) -> Option<(&str, &str)> {
+    s.split_once(c)
+}
 use self::extension_initialization_errors::FuncMultiplyDefinedError;
 
 static ALL_AVAILABLE_EXTENSION_OBJECTS: LazyLock<Vec<Extension>> = LazyLock::new(|| {

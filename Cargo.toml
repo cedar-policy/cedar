@@ -71,8 +71,10 @@ repository = "https://github.com/cedar-policy/cedar"
 # We actually deny all rustc warnings in CI, but it's clearer if we explicitly
 # "deny" here even if setting to "warn" has the same effect.
 [workspace.lints.rust]
-unsafe_code = "forbid"
-unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
+# `deny` rather than `forbid` so that the Verus proofs (`cedar-policy-core/src/verification`),
+# whose `assume_specification`s expand to `unsafe`, can opt out locally.
+unsafe_code = "deny"
+unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)', 'cfg(verus_only)', 'cfg(verus_keep_ghost)', 'cfg(verus_keep_ghost_body)'] }
 missing_debug_implementations = "deny"
 rust_2018_idioms = { level = "deny", priority = -1 }
 unused_assignments = "allow" # In Rust 1.92 this one erroneously identifies some fields in error structs as unused, when they are actually used in the `#[error]` attribute

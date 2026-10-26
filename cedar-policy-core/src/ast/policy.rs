@@ -33,6 +33,12 @@ use std::{
 };
 use thiserror::Error;
 
+#[cfg(feature = "verus")]
+use crate::verification::policy_abs::*;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{int, proof, verus_spec, verus_verify, View};
+
 #[cfg(feature = "wasm")]
 extern crate tsify;
 
@@ -81,6 +87,7 @@ cfg_tolerant_ast! {
 /// Contains both the AST for template, and the list of open slots in the template.
 ///
 /// Note that this "template" may have no slots, in which case this `Template` represents a static policy
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub struct Template {
     body: TemplateBody,
@@ -90,6 +97,33 @@ pub struct Template {
     /// Note that `slots` may be empty, in which case this `Template` represents a static policy
     slots: Vec<Slot>,
 }
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Template {
+    /// The body (for specifications)
+    pub closed spec fn spec_body(self) -> TemplateBody {
+        self.body
+    }
+}
+
+impl Policy {
+    /// The template (for specifications)
+    pub closed spec fn spec_template(self) -> Template {
+        *self.template
+    }
+
+    /// The ID of the link, `None` for a static policy (for specifications)
+    pub closed spec fn spec_link(self) -> Option<PolicyID> {
+        self.link
+    }
+
+    /// The slot environment (for specifications)
+    pub closed spec fn spec_values(self) -> SlotEnv {
+        self.values
+    }
+}
+} // verus!
 
 impl From<Template> for TemplateBody {
     fn from(val: Template) -> Self {
@@ -238,6 +272,8 @@ impl Template {
     }
 
     /// Get the PolicyID of this template
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures *r == tbody_id(self.spec_body())))]
     pub fn id(&self) -> &PolicyID {
         self.body.id()
     }
@@ -256,6 +292,8 @@ impl Template {
     }
 
     /// Get the `Effect` (`Permit` or `Deny`) of this template
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r == tbody_effect(self.spec_body())))]
     pub fn effect(&self) -> Effect {
         self.body.effect()
     }
@@ -271,6 +309,7 @@ impl Template {
     }
 
     /// Get [`Arc`] owning the annotation data.
+    #[cfg_attr(feature = "verus", verus_verify)]
     pub fn annotations_arc(&self) -> &Arc<Annotations> {
         self.body.annotations_arc()
     }
@@ -280,6 +319,8 @@ impl Template {
     /// This will be a conjunction of the template's scope constraints (on
     /// principal, resource, and action); the template's "when" conditions; and
     /// the negation of each of the template's "unless" conditions.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures body_cond_rel(r, self.spec_body())))]
     pub fn condition(&self) -> Expr {
         self.body.condition()
     }
@@ -502,6 +543,7 @@ fn describe_arity_error(
 ///
 /// Policies are not directly serializable (due to the Arc pointer to the
 /// template).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Policy {
     /// Reference to the template
@@ -588,6 +630,8 @@ impl Policy {
     }
 
     /// Get the effect (forbid or permit) of this policy.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r == policy_effect(*self)))]
     pub fn effect(&self) -> Effect {
         self.template.effect()
     }
@@ -603,6 +647,7 @@ impl Policy {
     }
 
     /// Get [`Arc`] owning annotation data.
+    #[cfg_attr(feature = "verus", verus_verify)]
     pub fn annotations_arc(&self) -> &Arc<Annotations> {
         self.template.annotations_arc()
     }
@@ -649,19 +694,28 @@ impl Policy {
     }
 
     /// Get the expression that represents this policy.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures body_cond_rel(r, policy_body(*self))))]
     pub fn condition(&self) -> Expr {
         self.template.condition()
     }
 
     /// Get the mapping from SlotIds to EntityUIDs for this policy. (This will
     /// be empty for inline policies.)
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures *r == self.spec_values()))]
     pub fn env(&self) -> &SlotEnv {
         &self.values
     }
 
     /// Get the ID of this policy.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures *r == policy_id(*self)))]
     pub fn id(&self) -> &PolicyID {
-        self.link.as_ref().unwrap_or_else(|| self.template.id())
+        match &self.link {
+            Some(id) => id,
+            None => self.template.id(),
+        }
     }
 
     /// Clone this policy or instance with a new ID
@@ -897,6 +951,7 @@ impl From<StaticPolicy> for Arc<Template> {
 
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Clone, Debug)]
 #[educe(PartialEq, Eq, Hash)]
 pub struct TemplateBodyImpl {
@@ -931,8 +986,58 @@ pub struct TemplateBodyImpl {
     non_scope_constraints: Option<Arc<Expr>>,
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl TemplateBodyImpl {
+    /// The ID (for specifications)
+    pub closed spec fn spec_id(self) -> PolicyID {
+        self.id
+    }
+
+    /// The effect (for specifications)
+    pub closed spec fn spec_effect(self) -> Effect {
+        self.effect
+    }
+
+    /// The principal constraint (for specifications)
+    pub closed spec fn spec_principal_constraint(self) -> PrincipalConstraint {
+        self.principal_constraint
+    }
+
+    /// The action constraint (for specifications)
+    pub closed spec fn spec_action_constraint(self) -> ActionConstraint {
+        self.action_constraint
+    }
+
+    /// The resource constraint (for specifications)
+    pub closed spec fn spec_resource_constraint(self) -> ResourceConstraint {
+        self.resource_constraint
+    }
+
+    /// The non-scope constraints (for specifications)
+    pub closed spec fn spec_non_scope_constraints(self) -> Option<Arc<Expr>> {
+        self.non_scope_constraints
+    }
+}
+
+impl PrincipalConstraint {
+    /// The constraint (for specifications)
+    pub closed spec fn spec_constraint(self) -> PrincipalOrResourceConstraint {
+        self.constraint
+    }
+}
+
+impl ResourceConstraint {
+    /// The constraint (for specifications)
+    pub closed spec fn spec_constraint(self) -> PrincipalOrResourceConstraint {
+        self.constraint
+    }
+}
+} // verus!
+
 /// Policy datatype. This is used for both templates (in which case it contains
 /// slots) and static policies (in which case it contains zero slots).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Hash, Eq, PartialEq, Debug)]
 pub enum TemplateBody {
     /// Represents a valid template body
@@ -944,6 +1049,8 @@ pub enum TemplateBody {
 
 impl TemplateBody {
     /// Get the `Id` of this policy.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures *r == tbody_id(*self)))]
     pub fn id(&self) -> &PolicyID {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { id, .. }) => id,
@@ -953,6 +1060,7 @@ impl TemplateBody {
     }
 
     /// Get the location of this policy
+    #[cfg_attr(feature = "verus", verus_verify(external_body))]
     pub fn loc(&self) -> Option<&Loc> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { loc, .. }) => loc.as_ref(),
@@ -983,6 +1091,11 @@ impl TemplateBody {
     }
 
     /// Get the `Effect` of this policy.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r == tbody_effect(*self),
+    ))]
     pub fn effect(&self) -> Effect {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { effect, .. }) => *effect,
@@ -1003,6 +1116,7 @@ impl TemplateBody {
     }
 
     /// Get shared ref to annotations
+    #[cfg_attr(feature = "verus", verus_verify)]
     pub fn annotations_arc(&self) -> &Arc<Annotations> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { annotations, .. }) => annotations,
@@ -1037,6 +1151,11 @@ impl TemplateBody {
     /// Get the `principal` scope constraint as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `principal,`), or an equality or hierarchy constraint
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            *self matches TemplateBody::TemplateBody(i) ==> por_expr_rel(r, i.spec_principal_constraint().spec_constraint(), PrincipalOrResource::Principal),
+    ))]
     pub fn principal_constraint_expr(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
@@ -1062,6 +1181,11 @@ impl TemplateBody {
     /// Get the `action` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `action,`), or an equality or hierarchy constraint
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            *self matches TemplateBody::TemplateBody(i) ==> action_expr_rel(r, i.spec_action_constraint()),
+    ))]
     pub fn action_constraint_expr(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
@@ -1087,6 +1211,11 @@ impl TemplateBody {
     /// Get the `resource` scope constraint of this policy as an expression.
     /// This will be a boolean-valued expression: either `true` (if the policy
     /// just has `resource,`), or an equality or hierarchy constraint
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            *self matches TemplateBody::TemplateBody(i) ==> por_expr_rel(r, i.spec_resource_constraint().spec_constraint(), PrincipalOrResource::Resource),
+    ))]
     pub fn resource_constraint_expr(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
@@ -1102,12 +1231,24 @@ impl TemplateBody {
     ///
     /// This will be a conjunction of the policy's `when` conditions and the
     /// negation of each of the policy's `unless` conditions.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            *self matches TemplateBody::TemplateBody(i) ==> match (r, i.spec_non_scope_constraints()) {
+                (Some(e), Some(a)) => *e == *a,
+                (None, None) => true,
+                _ => false,
+            },
+    ))]
     pub fn non_scope_constraints(&self) -> Option<&Expr> {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl {
                 non_scope_constraints,
                 ..
-            }) => non_scope_constraints.as_ref().map(|e| e.as_ref()),
+            }) => match non_scope_constraints {
+                Some(e) => Some(&**e),
+                None => None,
+            },
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => Some(&DEFAULT_ERROR_EXPR),
         }
@@ -1168,25 +1309,36 @@ impl TemplateBody {
     /// This will be a conjunction of the policy's scope constraints (on
     /// principal, resource, and action); the policy's "when" conditions; and
     /// the negation of each of the policy's "unless" conditions.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            body_cond_rel(r, *self),
+    ))]
     pub fn condition(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => {
                 let loc = self.loc().cloned();
-                Expr::and(
-                    self.principal_constraint_expr(),
-                    Expr::and(
-                        self.action_constraint_expr(),
-                        Expr::and(
-                            self.resource_constraint_expr(),
-                            self.non_scope_constraints()
-                                .cloned()
-                                .unwrap_or_else(|| Expr::val(true)),
-                        )
-                        .with_maybe_source_loc(loc.clone()),
-                    )
-                    .with_maybe_source_loc(loc.clone()),
-                )
-                .with_maybe_source_loc(loc)
+                let principal = self.principal_constraint_expr();
+                let action = self.action_constraint_expr();
+                let resource = self.resource_constraint_expr();
+                let non_scope = match self.non_scope_constraints() {
+                    Some(e) => e.clone(),
+                    None => Expr::val(true),
+                };
+                let x2 = Expr::and(resource, non_scope).with_maybe_source_loc(loc.clone());
+                let x1 = Expr::and(action, x2).with_maybe_source_loc(loc.clone());
+                let r = Expr::and(principal, x1).with_maybe_source_loc(loc);
+                proof! {
+                    assert forall|env: SlotEnv, calls: bool| #[trigger] tbody_modeled(*self, env, calls) implies {
+                        &&& crate::verification::expr_abs::expr_modeled(r, env, calls)
+                        &&& crate::verification::expr_abs::abs_expr(r, env)
+                            == crate::verification::model::policy::policy_to_expr(
+                                &abs_tbody(*self, crate::verification::model::value::List::Nil, env))
+                    } by {
+                        lemma_body_cond(r, *self, principal, action, resource, non_scope, x2, x1, env, calls);
+                    }
+                }
+                r
             }
             #[cfg(feature = "tolerant-ast")]
             TemplateBody::TemplateBodyError(_, _) => DEFAULT_ERROR_EXPR.as_ref().clone(),
@@ -1282,6 +1434,7 @@ impl std::fmt::Display for TemplateBody {
 }
 
 /// Template constraint on principal scope variables
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct PrincipalConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
@@ -1304,6 +1457,11 @@ impl PrincipalConstraint {
     }
 
     /// Get the constraint as raw AST
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            por_expr_rel(r, self.spec_constraint(), PrincipalOrResource::Principal),
+    ))]
     pub fn as_expr(&self) -> Expr {
         self.constraint.as_expr(PrincipalOrResource::Principal)
     }
@@ -1400,6 +1558,7 @@ impl std::fmt::Display for PrincipalConstraint {
 }
 
 /// Template constraint on resource scope variables
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub struct ResourceConstraint {
     pub(crate) constraint: PrincipalOrResourceConstraint,
@@ -1422,6 +1581,11 @@ impl ResourceConstraint {
     }
 
     /// Convert into an Expression. It will be a boolean valued expression.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            por_expr_rel(r, self.spec_constraint(), PrincipalOrResource::Resource),
+    ))]
     pub fn as_expr(&self) -> Expr {
         self.constraint.as_expr(PrincipalOrResource::Resource)
     }
@@ -1518,6 +1682,7 @@ impl std::fmt::Display for ResourceConstraint {
 }
 
 /// A reference to an EntityUID that may be a Slot
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Educe, Clone, Debug, Eq)]
 #[educe(Hash, PartialEq, PartialOrd, Ord)]
 pub enum EntityReference {
@@ -1543,6 +1708,11 @@ impl EntityReference {
     /// `slot` indicates what `SlotId` would be implied by
     /// `EntityReference::Slot`, which is always clear from the caller's
     /// context.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            entity_ref_rel(r, *self, slot),
+    ))]
     pub fn into_expr(&self, slot: SlotId) -> Expr {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
@@ -1583,6 +1753,7 @@ impl From<EntityUID> for EntityReference {
 }
 
 /// Subset of AST variables that have the same constraint form
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum PrincipalOrResource {
@@ -1614,6 +1785,7 @@ impl TryFrom<Var> for PrincipalOrResource {
 
 /// Represents the constraints for principals and resources.
 /// Can either not constrain, or constrain via `==` or `in` for a single entity literal.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum PrincipalOrResourceConstraint {
     /// Unconstrained
@@ -1672,6 +1844,11 @@ impl PrincipalOrResourceConstraint {
     /// Turn the constraint into an expr
     /// # arguments
     /// * `v` - The variable name to be used in the expression.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            por_expr_rel(r, *self, v),
+    ))]
     pub fn as_expr(&self, v: PrincipalOrResource) -> Expr {
         match self {
             PrincipalOrResourceConstraint::Any => Expr::val(true),
@@ -1741,6 +1918,7 @@ impl PrincipalOrResourceConstraint {
 
 /// Constraint for action scope variables.
 /// Action variables can be constrained to be in any variable in a list.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone, Hash, Eq, PartialEq, PartialOrd, Ord, Debug)]
 pub enum ActionConstraint {
     /// Unconstrained
@@ -1770,33 +1948,59 @@ impl std::fmt::Display for ActionConstraint {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl ActionConstraint {
     /// Unconstrained action.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn any() -> Self {
         ActionConstraint::Any
     }
 
     /// Action constrained to being in a list of euids.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn is_in(euids: impl IntoIterator<Item = EntityUID>) -> Self {
         ActionConstraint::In(euids.into_iter().map(Arc::new).collect())
     }
 
     /// Action constrained to being equal to a euid.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn is_eq(euid: EntityUID) -> Self {
         ActionConstraint::Eq(Arc::new(euid))
     }
 
-    fn euids_into_expr(euids: impl IntoIterator<Item = Arc<EntityUID>>) -> Expr {
-        Expr::set(euids.into_iter().map(Expr::val))
+    /// The set expression of the entity literals `euids`, without source location
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.spec_kind() matches ExprKind::Set(xs) && euid_lits_rel(xs@, euids@),
+    ))]
+    fn euids_into_expr(euids: &[Arc<EntityUID>]) -> Expr {
+        let mut exprs = Vec::with_capacity(euids.len());
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                euid_lits_rel(exprs@, euids@.take(it.index() as int)),
+        ))]
+        for euid in euids.iter() {
+            exprs.push(Expr::val(euid.clone()));
+        }
+        proof! {
+            assert(euids@.take(euids@.len() as int) =~= euids@);
+        }
+        Expr::new(ExprKind::Set(Arc::new(exprs)), None, ())
     }
 
     /// Turn the constraint into an expression.
+    #[cfg_attr(feature = "verus", verus_verify)]
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            action_expr_rel(r, *self),
+    ))]
     pub fn as_expr(&self) -> Expr {
         match self {
             ActionConstraint::Any => Expr::val(true),
             ActionConstraint::In(euids) => Expr::is_in(
                 Expr::var(Var::Action),
-                ActionConstraint::euids_into_expr(euids.iter().cloned()),
+                ActionConstraint::euids_into_expr(euids),
             ),
             ActionConstraint::Eq(euid) => {
                 Expr::is_eq(Expr::var(Var::Action), Expr::val(euid.clone()))
@@ -1815,6 +2019,7 @@ impl ActionConstraint {
     }
 
     /// Get an iterator over all of the entity uids in this constraint.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn iter_euids(&self) -> impl Iterator<Item = &'_ EntityUID> {
         match self {
             ActionConstraint::Any => EntityIterator::None,
@@ -1828,6 +2033,7 @@ impl ActionConstraint {
     }
 
     /// Get an iterator over all of the entity types in this constraint.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn iter_entity_type_names(&self) -> impl Iterator<Item = &'_ EntityType> {
         self.iter_euids().map(|euid| euid.entity_type())
     }
@@ -1836,6 +2042,7 @@ impl ActionConstraint {
     /// `Action`, under an arbitrary namespace.
     ///
     /// Returns the non-action EUIDs if any are found.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn check_action_types(&self) -> Result<(), NonEmpty<Arc<EntityUID>>> {
         match self {
             ActionConstraint::Any => Ok(()),
@@ -1863,6 +2070,7 @@ impl ActionConstraint {
     /// Check that all of the EUIDs in an action constraint have the type
     /// `Action`, under an arbitrary namespace. Consumes and returns `self` on
     /// success.
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     pub fn contains_only_action_types(self) -> Result<Self, NonEmpty<Arc<EntityUID>>> {
         self.check_action_types()?;
         Ok(self)
@@ -1900,8 +2108,28 @@ impl std::fmt::Display for StaticPolicy {
 }
 
 /// A unique identifier for a policy statement
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct PolicyID(SmolStr);
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl PolicyID {
+    /// The string of the ID (for specifications)
+    pub closed spec fn spec_str(self) -> SmolStr {
+        self.0
+    }
+
+    /// A policy ID is determined by its string.
+    pub proof fn lemma_spec_str_injective(a: Self, b: Self)
+        requires
+            a.spec_str() == b.spec_str(),
+        ensures
+            a == b,
+    {
+    }
+}
+} // verus!
 
 impl PolicyID {
     /// Create a PolicyID from a string or string-like

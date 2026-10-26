@@ -15,6 +15,8 @@
  */
 
 use crate::ast::*;
+#[cfg(feature = "verus")]
+use vstd::prelude::verus_verify;
 use crate::entities::SchemaType;
 use crate::evaluator;
 use std::any::Any;
@@ -87,6 +89,7 @@ impl std::fmt::Debug for Extension {
 }
 
 /// The output of an extension call, either a value or an unknown
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone)]
 pub enum ExtensionOutputValue {
     /// A concrete value from an extension call

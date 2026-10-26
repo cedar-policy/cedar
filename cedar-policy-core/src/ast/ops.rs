@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 /// Built-in operators with exactly one argument
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum UnaryOp {
@@ -43,6 +47,7 @@ impl std::fmt::Display for UnaryOp {
 }
 
 /// Built-in operators with exactly two arguments
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum BinaryOp {

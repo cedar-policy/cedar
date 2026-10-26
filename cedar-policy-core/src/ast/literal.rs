@@ -18,6 +18,9 @@ use crate::ast::{EntityUID, Integer, StaticallyTyped, Type};
 use crate::parser;
 use smol_str::SmolStr;
 use std::sync::Arc;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 
 /// First-class values which may appear as literals in `Expr::Lit`.
 ///
@@ -31,6 +34,7 @@ use std::sync::Arc;
 /// `Expr::Set`, not `Expr::Lit`.
 ///
 /// Cloning is O(1).
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Hash, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub enum Literal {
     /// Boolean value
@@ -77,6 +81,7 @@ impl std::str::FromStr for Literal {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 /// Create a Literal directly from a bool
 impl From<bool> for Literal {
     fn from(b: bool) -> Self {
@@ -84,6 +89,7 @@ impl From<bool> for Literal {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 /// Create a Literal directly from an Integer
 impl From<Integer> for Literal {
     fn from(i: Integer) -> Self {
@@ -105,12 +111,14 @@ impl From<&str> for Literal {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<SmolStr> for Literal {
     fn from(s: SmolStr) -> Self {
         Self::String(s)
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 /// Create a Literal directly from an EntityUID
 impl From<EntityUID> for Literal {
     fn from(e: EntityUID) -> Self {
@@ -118,6 +126,7 @@ impl From<EntityUID> for Literal {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<Arc<EntityUID>> for Literal {
     fn from(ptr: Arc<EntityUID>) -> Self {
         Self::EntityUID(ptr)

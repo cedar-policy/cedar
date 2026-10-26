@@ -16,6 +16,9 @@
 
 use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 
 use crate::{
     ast::{is_normalized_any_ident, is_normalized_ident},
@@ -34,8 +37,19 @@ const RESERVED_ID: &str = "__cedar";
 /// `true | false | if | then | else | in | is | like | has`).
 //
 // For now, internally, `Id`s are just owned `SmolString`s.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Serialize, Debug, PartialEq, Eq, Clone, Hash, PartialOrd, Ord)]
 pub struct Id(SmolStr);
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Id {
+    /// The underlying string (for specifications)
+    pub closed spec fn spec_smolstr(self) -> SmolStr {
+        self.0
+    }
+}
+} // verus!
 
 impl Id {
     /// Create a new `Id` from a `String`, where it is the caller's

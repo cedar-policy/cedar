@@ -27,12 +27,16 @@ use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use thiserror::Error;
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{proof, verus_spec, verus_verify};
 
 use super::{
     BorrowedRestrictedExpr, BoundedDisplay, EntityType, EntityUID, Expr, ExprKind,
     ExpressionConstructionError, PartialValue, RestrictedExpr, Unknown, Value, ValueKind, Var,
 };
 
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 /// Represents the request tuple <P, A, R, C> (see the Cedar design doc).
 #[derive(Debug, Clone)]
 pub struct Request {
@@ -49,6 +53,41 @@ pub struct Request {
     /// `None` means that variable will result in a residual for partial evaluation.
     pub(crate) context: Option<Context>,
 }
+
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Request {
+    /// The principal (for specifications)
+    pub closed spec fn spec_principal(self) -> EntityUIDEntry {
+        self.principal
+    }
+
+    /// The action (for specifications)
+    pub closed spec fn spec_action(self) -> EntityUIDEntry {
+        self.action
+    }
+
+    /// The resource (for specifications)
+    pub closed spec fn spec_resource(self) -> EntityUIDEntry {
+        self.resource
+    }
+
+    /// The context (for specifications)
+    pub closed spec fn spec_context(self) -> Option<Context> {
+        self.context
+    }
+}
+
+/// The specification accessors return the fields.
+pub(crate) broadcast proof fn lemma_request_spec_fields(q: Request)
+    ensures
+        #[trigger] q.spec_principal() == q.principal,
+        q.spec_action() == q.action,
+        q.spec_resource() == q.resource,
+        q.spec_context() == q.context,
+{
+}
+} // verus!
 
 /// Represents the principal type, resource type, and action UID.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -68,6 +107,7 @@ pub struct RequestType {
 /// An entry in a request for a Entity UID.
 /// It may either be a concrete EUID
 /// or an unknown in the case of partial evaluation
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone)]
 pub enum EntityUIDEntry {
     /// A concrete EntityUID
@@ -100,10 +140,19 @@ impl From<EntityUID> for EntityUIDEntry {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl EntityUIDEntry {
     /// Evaluate the entry to either:
     /// A value, if the entry is concrete
     /// An unknown corresponding to the passed `var`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match *self {
+                EntityUIDEntry::Known { euid, .. } => r matches PartialValue::Value(v)
+                    && v.value == ValueKind::Lit(crate::ast::Literal::EntityUID(euid)),
+                _ => true,
+            }
+    ))]
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
             EntityUIDEntry::Known { euid, loc } => Value::new(euid.clone(), loc.clone()).into(),
@@ -127,6 +176,10 @@ impl EntityUIDEntry {
     }
 
     /// Create an entry with a concrete EntityUID and the given source location
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r matches EntityUIDEntry::Known { euid: e, loc: l } && *e == euid && l == loc,
+    ))]
     pub fn known(euid: EntityUID, loc: Option<Loc>) -> Self {
         Self::Known {
             euid: Arc::new(euid),
@@ -134,6 +187,7 @@ impl EntityUIDEntry {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create an entry with an entirely unknown EntityUID
     pub fn unknown() -> Self {
         Self::Unknown {
@@ -142,11 +196,13 @@ impl EntityUIDEntry {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Create an entry with an unknown EntityUID but known EntityType
     pub fn unknown_with_type(ty: EntityType, loc: Option<Loc>) -> Self {
         Self::Unknown { ty: Some(ty), loc }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Get the UID of the entry, or `None` if it is unknown (partial evaluation)
     pub fn uid(&self) -> Option<&EntityUID> {
         match self {
@@ -155,6 +211,7 @@ impl EntityUIDEntry {
         }
     }
 
+    #[cfg_attr(feature = "verus", verus_verify(external))]
     /// Get the type of the entry, or `None` if it is unknown (partial evaluation with no type annotation)
     pub fn get_type(&self) -> Option<&EntityType> {
         match self {
@@ -289,6 +346,7 @@ impl std::fmt::Display for Request {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 /// `Context` field of a `Request`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Context {
@@ -553,7 +611,15 @@ impl From<Context> for RestrictedExpr {
     }
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl From<Context> for PartialValue {
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            match ctx {
+                Context::Value(attrs) => r matches PartialValue::Value(v) && v.value == ValueKind::Record(attrs),
+                _ => true,
+            }
+    ))]
     fn from(ctx: Context) -> PartialValue {
         match ctx {
             Context::Value(attrs) => Value::record_arc(attrs, None).into(),

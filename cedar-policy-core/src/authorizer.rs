@@ -20,6 +20,15 @@
 //! Together with the parser, evaluator, and other components, this comprises
 //! the "authorization engine".
 
+#[cfg(feature = "verus")]
+use crate::verification::{abs::*, authorizer_lemmas::*, model as m, trusted::*, value_abs::*};
+#[cfg(feature = "verus")]
+#[allow(unused_imports)]
+use vstd::prelude::{int, proof, proof_decl, verus_spec, verus_verify, Seq, Set, View};
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+broadcast use crate::verification::trusted::group_trusted, crate::verification::value_abs::group_value_abs, crate::verification::model_lemmas::group_model_eq, crate::verification::lemmas::group_lemmas, crate::verification::authorizer_lemmas::group_authorizer_lemmas;
+}
 use crate::ast::*;
 use crate::entities::Entities;
 use crate::evaluator::Evaluator;
@@ -40,6 +49,7 @@ pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
 
 /// Authorizer
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Clone)] // `Debug` implemented manually below
 pub struct Authorizer {
     /// Cedar `Extension`s which will be used during requests to this `Authorizer`
@@ -52,6 +62,7 @@ pub struct Authorizer {
 /// We currently only have one mode: [`ErrorHandling::Skip`].
 /// Other modes were debated during development, so this is here as an easy
 /// way to add modes if the future if we so decide.
+#[cfg_attr(feature = "verus", verus_verify(external_derive))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 enum ErrorHandling {
     /// If a policy encounters an evaluation error, skip it.  The decision will
@@ -60,8 +71,20 @@ enum ErrorHandling {
     Skip,
 }
 
+#[cfg(feature = "verus")]
+vstd::prelude::verus! {
+impl Authorizer {
+    /// The authorizer has all the extensions (for specifications)
+    pub closed spec fn spec_ext_ok(&self) -> bool {
+        crate::verification::ext_trusted::extensions_all(*self.extensions)
+    }
+}
+} // verus!
+
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Authorizer {
     /// Create a new `Authorizer`
+    #[cfg_attr(feature = "verus", verus_spec(r => ensures r.spec_ext_ok()))]
     pub fn new() -> Self {
         Self {
             extensions: Extensions::all_available(), // set at compile time
@@ -73,13 +96,39 @@ impl Authorizer {
     ///
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            request_wf(q),
+            entities_wf(*entities),
+            policy_set_modeled(*pset, self.spec_ext_ok()),
+            !stack_exhausted(),
+        ensures
+            response_rel(r, m::authorizer::is_authorized(&abs_request(q), &abs_entities(*entities), &abs_policy_set(*pset))),
+    ))]
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
-        self.is_authorized_core(q, pset, entities).concretize()
+        let pr = self.is_authorized_core(q, pset, entities);
+        proof_decl! {
+            let ghost pr0 = pr;
+        }
+        let r = pr.concretize();
+        proof! {
+            lemma_response(pr0, r, pset_policies(*pset), abs_request(q), abs_entities(*entities));
+        }
+        r
     }
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
     /// Partial Evaluation of is_authorized
     ///
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            request_wf(q),
+            entities_wf(*entities),
+            policy_set_modeled(*pset, self.spec_ext_ok()),
+            !stack_exhausted(),
+        ensures
+            partial_response_rel(r, pset_policies(*pset), abs_request(q), abs_entities(*entities)),
+    ))]
     pub fn is_authorized_core(
         &self,
         q: Request,
@@ -92,6 +141,14 @@ impl Authorizer {
 
     /// The same as is_authorized_core, but for any Evaluator.
     /// A PartialResponse caller constructs its own evaluator, with an unknown mapper function.
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        requires
+            eval.spec_wf(),
+            policy_set_modeled(*pset, eval.spec_ext_ok()),
+            !stack_exhausted(),
+        ensures
+            partial_response_rel(r, pset_policies(*pset), eval.spec_request(), eval.spec_entities()),
+    ))]
     pub(crate) fn is_authorized_core_internal(
         &self,
         eval: &Evaluator<'_>,
@@ -105,8 +162,35 @@ impl Authorizer {
         let mut residual_permits = vec![];
         let mut residual_forbids = vec![];
         let mut errors = vec![];
+        proof! {
+            lemma_categorized_empty(pset_policies(*pset), Category::SatisfiedPermit, eval.spec_request(), eval.spec_entities());
+            lemma_categorized_empty(pset_policies(*pset), Category::SatisfiedForbid, eval.spec_request(), eval.spec_entities());
+            lemma_categorized_empty(pset_policies(*pset), Category::Error, eval.spec_request(), eval.spec_entities());
+        }
 
+        #[cfg_attr(feature = "verus", verus_spec(it =>
+            invariant
+                eval.spec_wf(),
+                !stack_exhausted(),
+                vstd::std_specs::iter::IteratorSpec::obeys_prophetic_iter_laws(&it.iter),
+                it.seq().len() == pset_policies(*pset).len(),
+                forall|i: int| 0 <= i < pset_policies(*pset).len() ==> *it.seq()[i] == pset_policies(*pset)[i],
+                forall|i: int| 0 <= i < pset_policies(*pset).len() ==> #[trigger] crate::verification::policy_abs::policy_modeled(pset_policies(*pset)[i], eval.spec_ext_ok()),
+                ids_of(true_permits@).to_iset() == categorized(pset_policies(*pset), it.index() as int, Category::SatisfiedPermit, eval.spec_request(), eval.spec_entities()),
+                ids_of(true_forbids@).to_iset() == categorized(pset_policies(*pset), it.index() as int, Category::SatisfiedForbid, eval.spec_request(), eval.spec_entities()),
+                error_ids(errors@).to_iset()
+                    == categorized(pset_policies(*pset), it.index() as int, Category::Error, eval.spec_request(), eval.spec_entities()),
+                residual_permits@.len() == 0,
+                residual_forbids@.len() == 0,
+        ))]
         for p in pset.policies() {
+            proof! {
+                let n = it.index() as int;
+                lemma_categorized_step(pset_policies(*pset), n, Category::SatisfiedPermit, eval.spec_request(), eval.spec_entities());
+                lemma_categorized_step(pset_policies(*pset), n, Category::SatisfiedForbid, eval.spec_request(), eval.spec_entities());
+                lemma_categorized_step(pset_policies(*pset), n, Category::Error, eval.spec_request(), eval.spec_entities());
+                lemma_policy_eval_bool(*p, eval.spec_request(), eval.spec_entities());
+            }
             let (id, annotations) = (p.id().clone(), p.annotations_arc().clone());
             match eval.partial_evaluate(p) {
                 Ok(Either::Left(satisfied)) => match (satisfied, p.effect()) {
@@ -679,8 +763,15 @@ pub struct Diagnostics {
     pub errors: Vec<AuthorizationError>,
 }
 
+#[cfg_attr(feature = "verus", verus_verify)]
 impl Response {
     /// Create a new `Response`
+    #[cfg_attr(feature = "verus", verus_spec(r =>
+        ensures
+            r.decision == decision,
+            r.diagnostics.reason == reason,
+            r.diagnostics.errors == errors,
+    ))]
     pub fn new(
         decision: Decision,
         reason: HashSet<PolicyID>,
