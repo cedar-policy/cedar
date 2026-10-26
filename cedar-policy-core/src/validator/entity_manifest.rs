@@ -1787,4 +1787,26 @@ when {
         .unwrap();
         assert_eq!(entity_manifest, expected);
     }
+
+    /// An extended `has` chain whose prefix is statically `false` is
+    /// short-circuited by the type checker, which never validates the suffix.
+    /// The analysis still walks the whole chain, and used to panic when a
+    /// suffix step dereferenced a set literal field. The `has` is nested in an
+    /// `==` so it survives type checking's `&&` folding and reaches analysis.
+    #[test]
+    fn test_entity_manifest_extended_has_short_circuit_set_literal() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource)
+when {
+    false == ({"s": [1, 2, 3]} has absent.s.foo)
+};"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let validator = Validator::new(schema());
+        compute_entity_manifest(&validator, &pset).expect("Should succeed");
+    }
 }

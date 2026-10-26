@@ -141,13 +141,10 @@ impl WrappedAccessPaths {
                     WrappedAccessPaths::RecordLiteral(record)
                 }
             }
-            #[expect(
-                clippy::panic,
-                reason = "Type checker should prevent using `.` operator on a set type."
-            )]
-            WrappedAccessPaths::SetLiteral(_) => {
-                panic!("Attempted to dereference a set literal.")
-            }
+            // Only reachable through an extended `has` chain whose prefix the
+            // type checker proved `false` and short-circuited, so the suffix is
+            // dead and requires no paths.
+            WrappedAccessPaths::SetLiteral(_) => WrappedAccessPaths::Empty,
             WrappedAccessPaths::Empty => WrappedAccessPaths::Empty,
             WrappedAccessPaths::Union(left, right) => WrappedAccessPaths::Union(
                 Box::new(left.get_or_has_attr(attr)),
