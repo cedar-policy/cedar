@@ -125,6 +125,10 @@ harness = false
 name = "from_ast"
 harness = false
 
+[[bench]]
+name = "schema_slicing"
+harness = false
+
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]
