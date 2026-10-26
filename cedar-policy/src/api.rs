@@ -2276,6 +2276,47 @@ impl Schema {
         linked.0.check_complete()?;
         Ok(linked)
     }
+
+    /// The partial schema holding `action`'s transitive closure, as a
+    /// [`SchemaFragment`] ready to be stored with
+    /// [`SchemaFragment::to_cedarschema`] or [`SchemaFragment::to_json_string`].
+    /// Returns `Ok(None)` if `action` is not declared in this schema.
+    ///
+    /// The result defines `action` and each action it is a member of, as
+    /// declared here, with their `appliesTo` and context inline. Of the entity
+    /// types those actions apply to or mention in their context, it defines
+    /// each enumerated type, with its values, and declares every other one
+    /// `external` with no parents.
+    ///
+    /// Parsed on its own, the result gives the same
+    /// [`Schema::action_entities`] as this schema for `action` and its
+    /// ancestors, and validates a request for `action` as this schema does.
+    /// It does not hold the entity types' attributes or hierarchy, so it
+    /// cannot validate entities.
+    ///
+    /// Linking the result (see [`Self::schema_link`]) with a schema that
+    /// defines the same enumerated type fails, since both define it.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`SchemaError::JsonSerialization`] if a type in the closure has
+    /// no schema syntax. Types read from a schema always have one.
+    pub fn action_closure_for(
+        &self,
+        action: &EntityUid,
+    ) -> Result<Option<SchemaFragment>, SchemaError> {
+        let Some(closure) = self.0.action_closure_for(action.as_ref()) else {
+            return Ok(None);
+        };
+        let json = closure.to_json_schema().map_err(|msg| {
+            SchemaError::JsonSerialization(
+                cedar_policy_core::validator::schema_errors::JsonSerializationError::from(
+                    <serde_json::Error as serde::ser::Error>::custom(msg),
+                ),
+            )
+        })?;
+        SchemaFragment::try_from(json).map(Some)
+    }
 }
 
 /// Convert a Cedar schema string to JSON format with resolved types.

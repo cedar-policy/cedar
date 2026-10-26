@@ -14,6 +14,13 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- `Schema::action_closure_for`, which returns a `SchemaFragment` holding an action's transitive closure: the action
+  and its ancestor actions, the enumerated entity types they refer to, and every other entity type they refer to
+  declared `external`. Parsed on its own, it gives the same action entities for the action and its ancestors, and
+  validates requests for the action as the original schema does, provided no context attribute has an action type.
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
