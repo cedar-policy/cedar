@@ -505,15 +505,16 @@ pub fn compute_entity_manifest(
         }
     }
 
-    #[expect(
-        clippy::unwrap_used,
-        reason = "entity manifest cannot be out of date, since it was computed from the schema given"
-    )]
     Ok(EntityManifest {
         per_action: manifest,
     }
     .to_typed(validator.schema())
-    .unwrap())
+    // The `entity-manifest` feature is deprecated, so we report this
+    // mismatch with the existing `UnsupportedCedarFeature` variant rather
+    // than adding a new `EntityManifestError` variant.
+    .map_err(|e| UnsupportedCedarFeatureError {
+        feature: e.to_string().into(),
+    })?)
 }
 
 /// A static analysis on type-annotated cedar expressions.
@@ -678,16 +679,15 @@ fn entity_manifest_from_expr(
             })
         }
         ExprKind::GetAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr))
+            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr)?)
         }
         ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
-            .get_or_has_attr(attr)
+            .get_or_has_attr(attr)?
             .empty_paths()),
         ExprKind::ExtHasAttr { expr, attrs } => {
-            // For extended has, we need to traverse the attribute chain
             let mut result = entity_manifest_from_expr(expr)?;
             for attr in attrs.iter() {
-                result = result.get_or_has_attr(attr);
+                result = result.get_or_has_attr(attr)?;
             }
             Ok(result.empty_paths())
         }
@@ -1786,5 +1786,52 @@ when {
         )
         .unwrap();
         assert_eq!(entity_manifest, expected);
+    }
+
+    /// Extended `has` with a short-circuited prefix: dereferencing a set
+    /// literal in the dead suffix errors instead of panicking. Nested in `==`
+    /// to survive the type checker's `&&` folding.
+    #[test]
+    fn test_entity_manifest_extended_has_short_circuit_set_literal() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource)
+when {
+    false == ({"s": [1, 2, 3]} has absent.s.foo)
+};"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let validator = Validator::new(schema());
+        let err = compute_entity_manifest(&validator, &pset).unwrap_err();
+        assert!(matches!(
+            err,
+            EntityManifestError::UnsupportedCedarFeature(_)
+        ));
+    }
+
+    /// Same short-circuit, different shape: the dead suffix extends a path past
+    /// a primitive attribute (`name.b`), which errors instead of panicking.
+    #[test]
+    fn test_entity_manifest_extended_has_short_circuit_primitive() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource)
+when {
+    false == ({"a": principal.name} has absent.a.b)
+};"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let validator = Validator::new(schema());
+        let err = compute_entity_manifest(&validator, &pset).unwrap_err();
+        assert!(matches!(
+            err,
+            EntityManifestError::UnsupportedCedarFeature(_)
+        ));
     }
 }

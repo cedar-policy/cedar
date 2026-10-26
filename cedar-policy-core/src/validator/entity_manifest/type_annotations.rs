@@ -126,7 +126,11 @@ impl AccessTrie {
             | Type::String
             | Type::Set { .. }
             | Type::ExtensionType { .. } => {
-                assert!(self.children.is_empty());
+                // Deprecated feature: error instead of asserting (see
+                // `WrappedAccessPaths::get_or_has_attr`).
+                if !self.children.is_empty() {
+                    Err(MismatchedNotStrictSchemaError {})?;
+                }
                 return Ok(HashMap::default());
             }
             Type::Record { attrs, .. } => attrs,
