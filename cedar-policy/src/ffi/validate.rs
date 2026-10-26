@@ -58,6 +58,8 @@ pub fn validate_wasm(call: Ts<ValidationCall>) -> Result<Ts<ValidationAnswer>, J
 /// [`ValidationAnswer`] types
 ///
 /// Reports error when the schema contains `external` entity types or actions.
+/// This check is done per policy, so no error is reported for such a schema if
+/// the policy set is empty.
 pub fn validate(call: ValidationCall) -> ValidationAnswer {
     match call.get_components() {
         WithWarnings {
