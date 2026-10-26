@@ -21,6 +21,12 @@ Cedar Language Version: TBD
 - The policy formatter no longer puts a line break between a method name and its argument list when it splits
   a long attribute access chain (#2119).
 
+- Fixed `Entities::add_entities` and the `add_entities_from_json_*` functions comparing a new entity's parents
+  with the transitive closure of the stored entity with the same id. An identical entity was rejected as a
+  duplicate when the stored one had indirect ancestors, and an entity whose parents differed but matched that
+  closure was accepted as identical and its parents dropped. Entities are now identical when they have the same
+  id, attributes, tags and parents.
+
 ## [4.14.0] - 2026-10-17
 
 Cedar Language Version: 4.6
