@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use smol_str::SmolStr;
 
 use crate::validator::{
-    entity_manifest::{AccessPath, AccessTrie, EntityRoot, RootAccessTrie},
+    entity_manifest::{
+        AccessPath, AccessTrie, EntityManifestError, EntityRoot, RootAccessTrie,
+        UnsupportedCedarFeatureError,
+    },
     types::Type,
 };
 
@@ -77,10 +80,10 @@ impl EntityManifestAnalysisResult {
 
     /// Extend all the access paths with this attr,
     /// adding all the new paths to the global trie.
-    pub fn get_or_has_attr(mut self, attr: &SmolStr) -> Self {
-        self.resulting_paths = self.resulting_paths.get_or_has_attr(attr);
+    pub fn get_or_has_attr(mut self, attr: &SmolStr) -> Result<Self, EntityManifestError> {
+        self.resulting_paths = self.resulting_paths.get_or_has_attr(attr)?;
 
-        self.restore_global_trie_invariant()
+        Ok(self.restore_global_trie_invariant())
     }
 
     /// Restores the `global_trie` invariant by adding all paths
@@ -125,8 +128,8 @@ impl EntityManifestAnalysisResult {
 
 impl WrappedAccessPaths {
     /// Add accessting this attribute to all access paths
-    fn get_or_has_attr(self, attr: &SmolStr) -> Self {
-        match self {
+    fn get_or_has_attr(self, attr: &SmolStr) -> Result<Self, EntityManifestError> {
+        Ok(match self {
             WrappedAccessPaths::AccessPath(mut access_path) => {
                 access_path.path.push(attr.clone());
                 WrappedAccessPaths::AccessPath(access_path)
@@ -141,19 +144,18 @@ impl WrappedAccessPaths {
                     WrappedAccessPaths::RecordLiteral(record)
                 }
             }
-            #[expect(
-                clippy::panic,
-                reason = "Type checker should prevent using `.` operator on a set type."
-            )]
-            WrappedAccessPaths::SetLiteral(_) => {
-                panic!("Attempted to dereference a set literal.")
-            }
+            // Reached only via an extended `has` chain whose prefix the type
+            // checker short-circuited. The `entity-manifest` feature is
+            // deprecated, so we error instead of fixing the analysis.
+            WrappedAccessPaths::SetLiteral(_) => Err(UnsupportedCedarFeatureError {
+                feature: "dereferencing a set literal in an extended `has`".into(),
+            })?,
             WrappedAccessPaths::Empty => WrappedAccessPaths::Empty,
             WrappedAccessPaths::Union(left, right) => WrappedAccessPaths::Union(
-                Box::new(left.get_or_has_attr(attr)),
-                Box::new(right.get_or_has_attr(attr)),
+                Box::new(left.get_or_has_attr(attr)?),
+                Box::new(right.get_or_has_attr(attr)?),
             ),
-        }
+        })
     }
 
     fn full_type_required(self, ty: &Type) -> RootAccessTrie {
