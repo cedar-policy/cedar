@@ -125,6 +125,26 @@ pub fn get_comment_after_end<'src>(
     Some(get_token_after_end(span, tokens)?.consume_comment())
 }
 
+#[cfg(feature = "extended-like")]
+fn get_token_before_start<'a, 'src>(
+    span: Option<miette::SourceSpan>,
+    tokens: &'a mut [WrappedToken<'src>],
+) -> Option<&'a mut WrappedToken<'src>> {
+    let span = span?;
+    tokens
+        .iter_mut()
+        .rev()
+        .find(|t| t.span.end <= span.offset())
+}
+
+#[cfg(feature = "extended-like")]
+pub fn get_comment_before_start<'src>(
+    span: Option<miette::SourceSpan>,
+    tokens: &mut [WrappedToken<'src>],
+) -> Option<Comment<'src>> {
+    Some(get_token_before_start(span, tokens)?.consume_comment())
+}
+
 pub fn get_comment_in_range<'src>(
     span: Option<miette::SourceSpan>,
     tokens: &mut [WrappedToken<'src>],
