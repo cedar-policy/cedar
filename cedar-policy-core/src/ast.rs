@@ -50,6 +50,8 @@ mod types;
 pub use types::*;
 mod value;
 pub use value::*;
+mod expr_depth;
+pub(crate) use expr_depth::conjunction_depth;
 mod expr_iterator;
 pub use expr_iterator::*;
 mod annotation;

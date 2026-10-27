@@ -14,6 +14,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- `*_with_depth_limit` parsing functions for `PolicySet`, `Policy`, and `Template` (Cedar and JSON formats), and for
+  `Expression` and `RestrictedExpression` (Cedar format), to avoid stack overflows on deeply nested input. See the crate
+  documentation for choosing a limit. (#2383)
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

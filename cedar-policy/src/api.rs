@@ -2611,7 +2611,26 @@ impl FromStr for PolicySet {
     ///
     /// See [`Policy`] for more.
     fn from_str(policies: &str) -> Result<Self, Self::Err> {
-        let (texts, pset) = parser::parse_policyset_and_also_return_policy_text(policies)?;
+        Self::from_str_impl(policies, None)
+    }
+}
+
+impl PolicySet {
+    /// Create a policy set as in [`PolicySet::from_str`], but rejecting any
+    /// policy whose expression depth exceeds `depth_limit`.
+    ///
+    /// See the [crate documentation](crate#untrusted-input-and-stack-overflows)
+    /// for choosing a limit.
+    pub fn from_str_with_depth_limit(
+        policies: &str,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        Self::from_str_impl(policies, Some(depth_limit))
+    }
+
+    fn from_str_impl(policies: &str, depth_limit: Option<usize>) -> Result<Self, ParseErrors> {
+        let (texts, pset) =
+            parser::parse_policyset_and_also_return_policy_text(policies, depth_limit)?;
         #[expect(clippy::expect_used, reason = "By the invariant on `parse_policyset_and_also_return_policy_text(policies)`, every `PolicyId` in `pset.policies()` occurs as a key in `text`.")]
         let policies = pset.policies().map(|p|
             (
@@ -2643,12 +2662,10 @@ impl FromStr for PolicySet {
             templates,
         })
     }
-}
 
-impl PolicySet {
     /// Build the policy set AST from the EST
-    fn from_est(est: &est::PolicySet) -> Result<Self, PolicySetError> {
-        let ast: ast::PolicySet = est.clone().try_into()?;
+    fn from_est(est: &est::PolicySet, depth_limit: Option<usize>) -> Result<Self, PolicySetError> {
+        let ast = est.clone().try_into_ast_with_depth_limit(depth_limit)?;
         #[expect(
             clippy::expect_used,
             reason = "Since conversion from EST to AST succeeded, every `PolicyId` in `ast.policies()` occurs in `est`"
@@ -2772,23 +2789,66 @@ impl PolicySet {
 
     /// Deserialize the [`PolicySet`] from a JSON string
     pub fn from_json_str(src: impl AsRef<str>) -> Result<Self, PolicySetError> {
-        let est: est::PolicySet = serde_json::from_str(src.as_ref())
-            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(&est)
+        Self::from_json_result(serde_json::from_str(src.as_ref()), None)
+    }
+
+    /// Like [`Self::from_json_str`], but rejecting any policy whose expression
+    /// depth exceeds `depth_limit`.
+    ///
+    /// `serde_json` limits the nesting of the JSON text, but many shallow
+    /// conditions can still combine into a deep expression, which `depth_limit`
+    /// bounds.
+    pub fn from_json_str_with_depth_limit(
+        src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, PolicySetError> {
+        Self::from_json_result(serde_json::from_str(src.as_ref()), Some(depth_limit))
     }
 
     /// Deserialize the [`PolicySet`] from a JSON value
     pub fn from_json_value(src: serde_json::Value) -> Result<Self, PolicySetError> {
-        let est: est::PolicySet = serde_json::from_value(src)
-            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(&est)
+        Self::from_json_result(serde_json::from_value(src), None)
+    }
+
+    /// Like [`Self::from_json_value`], but rejecting any policy whose
+    /// expression depth exceeds `depth_limit`.
+    ///
+    /// `serde_json`'s nesting limit applies only when parsing JSON text, so
+    /// `src` should come from parsing text (e.g., with `serde_json::from_str`).
+    /// Deserializing a deeper `serde_json::Value` may overflow the stack before
+    /// `depth_limit` is checked.
+    pub fn from_json_value_with_depth_limit(
+        src: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self, PolicySetError> {
+        Self::from_json_result(serde_json::from_value(src), Some(depth_limit))
     }
 
     /// Deserialize the [`PolicySet`] from a JSON reader
     pub fn from_json_file(r: impl std::io::Read) -> Result<Self, PolicySetError> {
-        let est: est::PolicySet = serde_json::from_reader(r)
-            .map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
-        Self::from_est(&est)
+        Self::from_json_result(serde_json::from_reader(r), None)
+    }
+
+    /// Like [`Self::from_json_file`], but rejecting any policy whose
+    /// expression depth exceeds `depth_limit`.
+    ///
+    /// `serde_json` limits the nesting of the JSON text, but many shallow
+    /// conditions can still combine into a deep expression, which `depth_limit`
+    /// bounds.
+    pub fn from_json_file_with_depth_limit(
+        r: impl std::io::Read,
+        depth_limit: usize,
+    ) -> Result<Self, PolicySetError> {
+        Self::from_json_result(serde_json::from_reader(r), Some(depth_limit))
+    }
+
+    /// Build the policy set from the result of deserializing its EST
+    fn from_json_result(
+        est: Result<est::PolicySet, serde_json::Error>,
+        depth_limit: Option<usize>,
+    ) -> Result<Self, PolicySetError> {
+        let est = est.map_err(|e| policy_set_errors::JsonPolicySetError { inner: e })?;
+        Self::from_est(&est, depth_limit)
     }
 
     /// Serialize the [`PolicySet`] as a JSON value
@@ -3618,10 +3678,28 @@ impl Template {
     /// If the `id` is None, the parser will use the default "policy0".
     /// The behavior around None may change in the future.
     pub fn parse(id: Option<PolicyId>, src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let ast = parser::parse_template(id.map(Into::into), src.as_ref())?;
+        Self::parse_impl(id, src.as_ref(), None)
+    }
+
+    /// Like [`Template::parse`], but rejects the template if its expression
+    /// depth exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        id: Option<PolicyId>,
+        src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        Self::parse_impl(id, src.as_ref(), Some(depth_limit))
+    }
+
+    fn parse_impl(
+        id: Option<PolicyId>,
+        src: &str,
+        depth_limit: Option<usize>,
+    ) -> Result<Self, ParseErrors> {
+        let ast = parser::parse_template_with_depth_limit(id.map(Into::into), src, depth_limit)?;
         Ok(Self {
             ast,
-            lossless: LosslessTemplate::from_text(Some(src.as_ref())),
+            lossless: LosslessTemplate::from_text(Some(src)),
         })
     }
 
@@ -3764,12 +3842,36 @@ impl Template {
         let est: est::Policy = serde_json::from_value(json)
             .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
-        Self::from_est(id, est)
+        Self::from_est(id, est, None)
     }
 
-    fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
+    /// Like [`Self::from_json`], but rejects the template if its expression
+    /// depth exceeds `depth_limit`.
+    ///
+    /// `serde_json`'s nesting limit applies only when parsing JSON text, so
+    /// `json` should come from parsing text (e.g., with `serde_json::from_str`).
+    /// Deserializing a deeper `serde_json::Value` may overflow the stack before
+    /// `depth_limit` is checked.
+    pub fn from_json_with_depth_limit(
+        id: Option<PolicyId>,
+        json: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self, PolicyFromJsonError> {
+        let est: est::Policy = serde_json::from_value(json)
+            .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
+            .map_err(cedar_policy_core::est::FromJsonError::from)?;
+        Self::from_est(id, est, Some(depth_limit))
+    }
+
+    fn from_est(
+        id: Option<PolicyId>,
+        est: est::Policy,
+        depth_limit: Option<usize>,
+    ) -> Result<Self, PolicyFromJsonError> {
         Ok(Self {
-            ast: est.clone().try_into_ast_template(id.map(PolicyId::into))?,
+            ast: est
+                .clone()
+                .try_into_ast_template_with_depth_limit(id.map(PolicyId::into), depth_limit)?,
             lossless: LosslessTemplate::Est(est),
         })
     }
@@ -4154,11 +4256,30 @@ impl Policy {
     /// It can also fail if a template was passed in, as this function only accepts static
     /// policies
     pub fn parse(id: Option<PolicyId>, policy_src: impl AsRef<str>) -> Result<Self, ParseErrors> {
-        let inline_ast = parser::parse_policy(id.map(Into::into), policy_src.as_ref())?;
+        Self::parse_impl(id, policy_src.as_ref(), None)
+    }
+
+    /// Like [`Policy::parse`], but rejects the policy if its expression depth
+    /// exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        id: Option<PolicyId>,
+        policy_src: impl AsRef<str>,
+        depth_limit: usize,
+    ) -> Result<Self, ParseErrors> {
+        Self::parse_impl(id, policy_src.as_ref(), Some(depth_limit))
+    }
+
+    fn parse_impl(
+        id: Option<PolicyId>,
+        policy_src: &str,
+        depth_limit: Option<usize>,
+    ) -> Result<Self, ParseErrors> {
+        let inline_ast =
+            parser::parse_policy_with_depth_limit(id.map(Into::into), policy_src, depth_limit)?;
         let (_, ast) = ast::Template::link_static_policy(inline_ast);
         Ok(Self {
             ast,
-            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src.as_ref())),
+            lossless: LosslessPolicy::policy_or_template_text(Some(policy_src)),
         })
     }
 
@@ -4234,7 +4355,7 @@ impl Policy {
         let est: est::Policy = serde_json::from_value(json)
             .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
             .map_err(cedar_policy_core::est::FromJsonError::from)?;
-        Self::from_est(id, est)
+        Self::from_est(id, est, None)
     }
 
     /// Get the valid [`RequestEnv`]s for this policy, according to the schema.
@@ -4294,9 +4415,33 @@ impl Policy {
         })
     }
 
-    fn from_est(id: Option<PolicyId>, est: est::Policy) -> Result<Self, PolicyFromJsonError> {
+    /// Like [`Self::from_json`], but rejects the policy if its expression
+    /// depth exceeds `depth_limit`.
+    ///
+    /// `serde_json`'s nesting limit applies only when parsing JSON text, so
+    /// `json` should come from parsing text (e.g., with `serde_json::from_str`).
+    /// Deserializing a deeper `serde_json::Value` may overflow the stack before
+    /// `depth_limit` is checked.
+    pub fn from_json_with_depth_limit(
+        id: Option<PolicyId>,
+        json: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self, PolicyFromJsonError> {
+        let est: est::Policy = serde_json::from_value(json)
+            .map_err(|e| entities_json_errors::JsonDeserializationError::Serde(e.into()))
+            .map_err(cedar_policy_core::est::FromJsonError::from)?;
+        Self::from_est(id, est, Some(depth_limit))
+    }
+
+    fn from_est(
+        id: Option<PolicyId>,
+        est: est::Policy,
+        depth_limit: Option<usize>,
+    ) -> Result<Self, PolicyFromJsonError> {
         Ok(Self {
-            ast: est.clone().try_into_ast_policy(id.map(PolicyId::into))?,
+            ast: est
+                .clone()
+                .try_into_ast_policy_with_depth_limit(id.map(PolicyId::into), depth_limit)?,
             lossless: LosslessPolicy::Est(est),
         })
     }
@@ -4822,6 +4967,16 @@ impl Expression {
     }
 }
 
+impl Expression {
+    /// Parse an [`Expression`] from Cedar syntax, rejecting if its depth
+    /// exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(src: &str, depth_limit: usize) -> Result<Self, ParseErrors> {
+        parser::parse_expr_with_depth_limit(src, Some(depth_limit))
+            .map(Expression)
+            .map_err(Into::into)
+    }
+}
+
 impl FromStr for Expression {
     type Err = ParseErrors;
 
@@ -5001,6 +5156,19 @@ fn duration_extension_name() -> ast::Name {
         reason = "This is a constant and is known to be safe, verified by a test"
     )]
     ast::Name::unqualified_name("duration".parse().unwrap())
+}
+
+impl RestrictedExpression {
+    /// Parse a [`RestrictedExpression`] from Cedar syntax, rejecting if its
+    /// depth exceeds `depth_limit`.
+    pub fn parse_with_depth_limit(
+        src: &str,
+        depth_limit: usize,
+    ) -> Result<Self, RestrictedExpressionParseError> {
+        cedar_policy_core::parser::parse_restrictedexpr_with_depth_limit(src, Some(depth_limit))
+            .map(RestrictedExpression)
+            .map_err(Into::into)
+    }
 }
 
 impl FromStr for RestrictedExpression {

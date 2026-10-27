@@ -406,3 +406,185 @@ impl Slot {
         )
     }
 }
+
+/// Drop without recursing on the stack
+///
+/// A custom drop is required to ensure that we don't stack overflow while
+/// dropping a CST after detecting that it's too deep. It also protects against
+/// a more subtle case where lalrpop returns with an error after constructing a
+/// deep CST. In this case we never have a chance to check the depth before it's
+/// dropped.
+impl Drop for Expr {
+    fn drop(&mut self) {
+        if let Some(data) = take_expr_data(self) {
+            stack_safe_drop::drop_expr_data(data);
+        }
+    }
+}
+
+fn take_expr_data(expr: &mut Expr) -> Option<ExprData> {
+    match expr {
+        Expr::Expr(e) => Some(std::mem::replace(
+            e.expr.as_mut(),
+            ExprData::Or(Node::new(None)),
+        )),
+        #[cfg(feature = "tolerant-ast")]
+        Expr::ErrorExpr => None,
+    }
+}
+
+#[yaspar_macros::stack_safe]
+mod stack_safe_drop {
+    use super::{
+        take_expr_data, Add, And, Expr, ExprData, MemAccess, Member, Mult, Node, Or, Primary,
+        RecInit, Relation, Unary,
+    };
+
+    fn drop_expr(expr_node: Node<Expr>) {
+        let Some(mut expr) = expr_node.node else {
+            return;
+        };
+        if let Some(data) = take_expr_data(&mut expr) {
+            drop_expr_data(data);
+        }
+    }
+
+    pub(super) fn drop_expr_data(data: ExprData) {
+        match data {
+            ExprData::Or(or) => drop_or(or),
+            ExprData::If(cond, then_expr, else_expr) => {
+                drop_expr(cond);
+                drop_expr(then_expr);
+                drop_expr(else_expr);
+            }
+        }
+    }
+
+    fn drop_or(or_node: Node<Or>) {
+        let Some(Or { initial, extended }) = or_node.node else {
+            return;
+        };
+        drop_and(initial);
+        for ext in extended {
+            drop_and(ext);
+        }
+    }
+
+    fn drop_and(and_node: Node<And>) {
+        let Some(And { initial, extended }) = and_node.node else {
+            return;
+        };
+        drop_relation(initial);
+        for ext in extended {
+            drop_relation(ext);
+        }
+    }
+
+    fn drop_relation(rel_node: Node<Relation>) {
+        let Some(rel) = rel_node.node else {
+            return;
+        };
+        match rel {
+            Relation::Common { initial, extended } => {
+                drop_add(initial);
+                for (_, ext) in extended {
+                    drop_add(ext);
+                }
+            }
+            Relation::Has { target, field } => {
+                drop_add(target);
+                drop_add(field);
+            }
+            Relation::Like { target, pattern } => {
+                drop_add(target);
+                drop_add(pattern);
+            }
+            Relation::IsIn {
+                target,
+                entity_type,
+                in_entity,
+            } => {
+                drop_add(target);
+                drop_add(entity_type);
+                if let Some(in_entity) = in_entity {
+                    drop_add(in_entity);
+                }
+            }
+        }
+    }
+
+    fn drop_add(add_node: Node<Add>) {
+        let Some(Add { initial, extended }) = add_node.node else {
+            return;
+        };
+        drop_mult(initial);
+        for (_, ext) in extended {
+            drop_mult(ext);
+        }
+    }
+
+    fn drop_mult(mult_node: Node<Mult>) {
+        let Some(Mult { initial, extended }) = mult_node.node else {
+            return;
+        };
+        drop_unary(initial);
+        for (_, ext) in extended {
+            drop_unary(ext);
+        }
+    }
+
+    fn drop_unary(unary_node: Node<Unary>) {
+        let Some(Unary { item, .. }) = unary_node.node else {
+            return;
+        };
+        drop_member(item);
+    }
+
+    fn drop_member(mem_node: Node<Member>) {
+        let Some(Member { item, access }) = mem_node.node else {
+            return;
+        };
+        drop_primary(item);
+        for acc_node in access {
+            drop_mem_access(acc_node);
+        }
+    }
+
+    fn drop_mem_access(acc_node: Node<MemAccess>) {
+        let Some(acc) = acc_node.node else {
+            return;
+        };
+        match acc {
+            MemAccess::Call(args) => {
+                for arg in args {
+                    drop_expr(arg);
+                }
+            }
+            MemAccess::Index(idx) => drop_expr(idx),
+            MemAccess::Field(_) => {}
+        }
+    }
+
+    fn drop_primary(prim_node: Node<Primary>) {
+        let Some(prim) = prim_node.node else {
+            return;
+        };
+        match prim {
+            Primary::Expr(e) => drop_expr(e),
+            Primary::EList(elts) => {
+                for elt in elts {
+                    drop_expr(elt);
+                }
+            }
+            Primary::RInits(inits) => {
+                for init_node in inits {
+                    if let Some(RecInit(key, value)) = init_node.node {
+                        drop_expr(key);
+                        drop_expr(value);
+                    }
+                }
+            }
+            Primary::Literal(_) | Primary::Ref(_) | Primary::Name(_) | Primary::Slot(_) => {}
+        }
+    }
+}

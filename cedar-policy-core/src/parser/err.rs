@@ -413,6 +413,14 @@ pub enum ToASTErrorKind {
     #[cfg(feature = "tolerant-ast")]
     #[error("Trying to convert AST error node")]
     ASTErrorNode,
+    /// Returned when an expression exceeds the configured depth limit
+    #[error("expression depth {depth} exceeds the configured limit of {limit}")]
+    ExpressionTooDeep {
+        /// Actual depth of the expression
+        depth: usize,
+        /// Configured limit
+        limit: usize,
+    },
 }
 
 fn invalid_is_help(lhs: &str, rhs: &str) -> String {
