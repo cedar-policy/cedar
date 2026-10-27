@@ -195,7 +195,7 @@ Cedar does not claim compliance with any security standard. The project publishe
 
 #### Ecosystem
 
-Cedar is a CNCF Sandbox project. AWS uses it in Amazon Verified Permissions and AWS Verified Access ([Amazon Science](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing)), and in Policy in Amazon Bedrock AgentCore ([AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreatePolicy.html)). The cedar-policy organization also maintains Java bindings ([cedar-java](https://github.com/cedar-policy/cedar-java)), an independent Go implementation ([cedar-go](https://github.com/cedar-policy/cedar-go)) that also runs the integration test corpus, and a Kubernetes authorizer ([cedar-access-control-for-k8s](https://github.com/cedar-policy/cedar-access-control-for-k8s)). [cedar-awesome](https://github.com/cedar-policy/cedar-awesome) lists community bindings and tools.
+Cedar is a CNCF Sandbox project. AWS uses it in Amazon Verified Permissions and AWS Verified Access ([Amazon Science](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing)), and in Policy in Amazon Bedrock AgentCore ([AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreatePolicy.html)). The cedar-policy organization also maintains Java bindings ([cedar-java](https://github.com/cedar-policy/cedar-java)) and an independent Go implementation ([cedar-go](https://github.com/cedar-policy/cedar-go)) that also runs the integration test corpus. [cedar-awesome](https://github.com/cedar-policy/cedar-awesome) lists community bindings and tools.
 
 ### Security issue resolution
 
