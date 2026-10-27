@@ -589,9 +589,13 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
 }
 
 #[cfg(feature = "extended-like")]
-pub fn string_like_extended(t: Term, p: OrdDelimPattern, delim: char) -> Term {
+pub fn string_like_extended(
+    t: Term,
+    p: OrdDelimPattern,
+    delim: cedar_policy_core::ast::LikeDelimiter,
+) -> Term {
     match t {
-        Term::Prim(TermPrim::String(s)) => p.wildcard_match_delimited(&s, delim).into(),
+        Term::Prim(TermPrim::String(s)) => p.wildcard_match_delimited(&s, delim.as_char()).into(),
         _ => Term::App {
             op: Op::StringLikeExtended(p, delim),
             args: Arc::new(vec![t]),

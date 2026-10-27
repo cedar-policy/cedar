@@ -245,7 +245,7 @@ pub trait ExprVisitor {
         &mut self,
         expr: &Arc<Expr>,
         _pattern: &crate::ast::DelimPattern,
-        _delim: char,
+        _delim: crate::ast::LikeDelimiter,
         _loc: Option<&Loc>,
     ) -> Option<Self::Output> {
         self.visit_expr(expr)

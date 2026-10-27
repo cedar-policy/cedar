@@ -380,7 +380,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         self,
         expr: Expr<T>,
         pattern: crate::ast::DelimPattern,
-        delim: char,
+        delim: crate::ast::LikeDelimiter,
     ) -> Expr<T> {
         self.with_expr_kind(ExprKind::LikeDelimited {
             expr: Arc::new(expr),

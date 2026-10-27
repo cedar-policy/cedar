@@ -82,7 +82,9 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeE
 
 /// Parse a pattern for the delimited `like(pattern, delim)` form.
 /// Same as [`to_pattern`], but pairs adjacent `*`s into `MultiWildcard`
-/// left-to-right; a trailing unpaired `*` stays `Wildcard`.
+/// left-to-right; a trailing unpaired `*` stays `Wildcard`. So `***` is
+/// `[MultiWildcard, Wildcard]`, never `[Wildcard, MultiWildcard]`; both match
+/// the same strings as `**`.
 #[cfg(feature = "extended-like")]
 pub(crate) fn to_pattern_delimited(
     s: &str,

@@ -258,7 +258,7 @@ fn compile_like(arg: CompileResult, pat: OrdPattern) -> Result<CompileResult> {
 fn compile_like_extended(
     arg: CompileResult,
     pat: OrdDelimPattern,
-    delim: char,
+    delim: cedar_policy_core::ast::LikeDelimiter,
 ) -> Result<CompileResult> {
     match arg.term.type_of() {
         TermType::String => {

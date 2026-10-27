@@ -223,13 +223,13 @@ mod policy_set;
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
 pub use err::error_body;
 pub use err::PstConstructionError;
-#[cfg(feature = "extended-like")]
-pub use expr::DelimPatternElem;
 #[cfg(feature = "variadic-is-in-range")]
 pub use expr::VariadicOp;
 pub use expr::{
     BinaryOp, EntityType, EntityUID, Expr, Id, Literal, Name, PatternElem, SlotId, UnaryOp, Var,
 };
+#[cfg(feature = "extended-like")]
+pub use expr::{DelimPatternElem, LikeDelimiter};
 pub use policy::{Clause, Effect, LinkedPolicy, Policy, PolicyID, StaticPolicy, Template};
 pub use policy_set::{PolicySet, TemplateLink};
 

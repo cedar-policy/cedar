@@ -163,7 +163,7 @@ pub enum ExprKind<T = ()> {
         /// `**` (as `DelimPatternElem::MultiWildcard`) matches any run of chars.
         pattern: crate::ast::DelimPattern,
         /// Single-character delimiter.
-        delim: char,
+        delim: crate::ast::LikeDelimiter,
     },
     /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.
@@ -795,7 +795,11 @@ impl Expr {
 
     /// Create a delimited 'like' expression.
     #[cfg(feature = "extended-like")]
-    pub fn like_delimited(expr: Expr, pattern: crate::ast::DelimPattern, delim: char) -> Self {
+    pub fn like_delimited(
+        expr: Expr,
+        pattern: crate::ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Self {
         ExprBuilder::new().like_delimited(expr, pattern, delim)
     }
 
@@ -1458,7 +1462,7 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         self,
         expr: Expr<T>,
         pattern: crate::ast::DelimPattern,
-        delim: char,
+        delim: crate::ast::LikeDelimiter,
     ) -> Expr<T> {
         self.with_expr_kind(ExprKind::LikeDelimited {
             expr: Arc::new(expr),

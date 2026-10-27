@@ -232,21 +232,139 @@ mod delim_pattern {
     /// SMT-LIB's max code point can't be encoded by the symbolic compiler.
     pub const MAX_LIKE_DELIMITER: char = '\u{2FFFF}';
 
-    /// Returns `true` if `c` is allowed as the delimiter of a
-    /// `like(pattern, delim)` expression: not `*` and at most U+2FFFF.
-    pub fn is_valid_like_delimiter(c: char) -> bool {
-        c != '*' && c <= MAX_LIKE_DELIMITER
+    /// A delimiter for `like(pattern, delim)`: one Unicode scalar value, not
+    /// `*`, at most U+2FFFF ([`MAX_LIKE_DELIMITER`]).
+    ///
+    /// The only way to create a `LikeDelimiter` is through
+    /// [`LikeDelimiter::new()`] or [`LikeDelimiter::parse()`], both of which
+    /// enforce these restrictions.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct LikeDelimiter(char);
+
+    impl LikeDelimiter {
+        /// Create a new `LikeDelimiter`, checking that `c` is not `*` and is
+        /// at most U+2FFFF.
+        pub fn new(c: char) -> Result<Self, InvalidLikeDelimiterError> {
+            if c == '*' {
+                Err(InvalidLikeDelimiterError::new(
+                    c.to_string(),
+                    InvalidLikeDelimiterReason::Wildcard,
+                ))
+            } else if c > MAX_LIKE_DELIMITER {
+                Err(InvalidLikeDelimiterError::new(
+                    c.to_string(),
+                    InvalidLikeDelimiterReason::TooLarge,
+                ))
+            } else {
+                Ok(Self(c))
+            }
+        }
+
+        /// Parse the (already unescaped) delimiter string of a
+        /// `like(pattern, delim)` expression. `s` must be exactly one
+        /// Unicode scalar value satisfying the restrictions of
+        /// [`LikeDelimiter::new()`].
+        pub fn parse(s: &str) -> Result<Self, InvalidLikeDelimiterError> {
+            let mut chars = s.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Self::new(c),
+                _ => Err(InvalidLikeDelimiterError::new(
+                    s,
+                    InvalidLikeDelimiterReason::NotSingleChar,
+                )),
+            }
+        }
+
+        /// Get the delimiter character
+        pub fn as_char(self) -> char {
+            self.0
+        }
     }
 
-    /// Parse the (already unescaped) delimiter string of a
-    /// `like(pattern, delim)` expression. Returns `None` unless `s` is
-    /// exactly one Unicode scalar value satisfying
-    /// [`is_valid_like_delimiter`].
-    pub fn parse_like_delimiter(s: &str) -> Option<char> {
-        let mut chars = s.chars();
-        match (chars.next(), chars.next()) {
-            (Some(c), None) if is_valid_like_delimiter(c) => Some(c),
-            _ => None,
+    impl std::fmt::Display for LikeDelimiter {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl From<LikeDelimiter> for char {
+        fn from(d: LikeDelimiter) -> Self {
+            d.0
+        }
+    }
+
+    #[cfg(feature = "arbitrary")]
+    impl<'a> arbitrary::Arbitrary<'a> for LikeDelimiter {
+        fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+            let c: char = u.arbitrary()?;
+            // Map invalid delimiters deterministically to valid ones.
+            let c = if c == '*' {
+                '.'
+            } else if c > MAX_LIKE_DELIMITER {
+                // Fold the out-of-range code point into U+0..=U+2FFFF,
+                // falling back to `.` if the result is a surrogate or `*`.
+                char::from_u32((c as u32) % (MAX_LIKE_DELIMITER as u32 + 1))
+                    .filter(|c| *c != '*')
+                    .unwrap_or('.')
+            } else {
+                c
+            };
+            Ok(Self(c))
+        }
+
+        fn size_hint(depth: usize) -> (usize, Option<usize>) {
+            <char as arbitrary::Arbitrary<'a>>::size_hint(depth)
+        }
+    }
+
+    /// Why a delimiter was rejected by [`LikeDelimiter`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum InvalidLikeDelimiterReason {
+        /// The input was empty or had more than one Unicode scalar value
+        NotSingleChar,
+        /// The input was `*`
+        Wildcard,
+        /// The input was greater than U+2FFFF
+        TooLarge,
+    }
+
+    impl std::fmt::Display for InvalidLikeDelimiterReason {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::NotSingleChar => write!(f, "it must be exactly one Unicode scalar value"),
+                Self::Wildcard => write!(f, "it must not be `*`"),
+                Self::TooLarge => write!(f, "it must be no greater than U+2FFFF"),
+            }
+        }
+    }
+
+    /// Error returned when constructing an invalid [`LikeDelimiter`]
+    #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+    #[error("invalid delimiter `{}` for a `like` expression: {reason}", input.escape_debug())]
+    #[diagnostic(help(
+        "the delimiter must be exactly one Unicode scalar value, other than `*`, no greater than U+2FFFF"
+    ))]
+    pub struct InvalidLikeDelimiterError {
+        input: String,
+        reason: InvalidLikeDelimiterReason,
+    }
+
+    impl InvalidLikeDelimiterError {
+        fn new(input: impl Into<String>, reason: InvalidLikeDelimiterReason) -> Self {
+            Self {
+                input: input.into(),
+                reason,
+            }
+        }
+
+        /// The rejected input
+        pub fn input(&self) -> &str {
+            &self.input
+        }
+
+        /// Why the input was rejected
+        pub fn reason(&self) -> InvalidLikeDelimiterReason {
+            self.reason
         }
     }
 
@@ -370,12 +488,26 @@ mod delim_pattern {
 
         #[test]
         fn like_delimiter_validation() {
-            assert_eq!(parse_like_delimiter("."), Some('.'));
-            assert_eq!(parse_like_delimiter("\u{2FFFF}"), Some('\u{2FFFF}'));
-            assert_eq!(parse_like_delimiter("\u{30000}"), None);
-            assert_eq!(parse_like_delimiter("*"), None);
-            assert_eq!(parse_like_delimiter(""), None);
-            assert_eq!(parse_like_delimiter(".."), None);
+            for c in ['.', '/', '\\', '\u{0}', '\u{2FFFF}'] {
+                assert_eq!(LikeDelimiter::new(c).map(LikeDelimiter::as_char), Ok(c));
+                assert_eq!(LikeDelimiter::parse(&c.to_string()).map(char::from), Ok(c));
+            }
+            assert_eq!(
+                LikeDelimiter::new('*').map_err(|e| e.reason()),
+                Err(InvalidLikeDelimiterReason::Wildcard)
+            );
+            assert_eq!(
+                LikeDelimiter::new('\u{30000}').map_err(|e| e.reason()),
+                Err(InvalidLikeDelimiterReason::TooLarge)
+            );
+            for s in ["", "ab", ".."] {
+                let err = LikeDelimiter::parse(s).unwrap_err();
+                assert_eq!(err.reason(), InvalidLikeDelimiterReason::NotSingleChar);
+                assert_eq!(err.input(), s);
+            }
+            assert!(LikeDelimiter::parse("*").is_err());
+            assert!(LikeDelimiter::parse("\u{30000}").is_err());
+            assert_eq!(LikeDelimiter::new('/').unwrap().to_string(), "/");
         }
 
         #[test]
@@ -403,8 +535,8 @@ mod delim_pattern {
 }
 #[cfg(feature = "extended-like")]
 pub use delim_pattern::{
-    is_valid_like_delimiter, parse_like_delimiter, DelimPattern, DelimPatternElem,
-    MAX_LIKE_DELIMITER,
+    DelimPattern, DelimPatternElem, InvalidLikeDelimiterError, InvalidLikeDelimiterReason,
+    LikeDelimiter, MAX_LIKE_DELIMITER,
 };
 
 #[cfg(test)]

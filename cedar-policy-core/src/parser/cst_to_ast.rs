@@ -1473,11 +1473,12 @@ impl Node<Option<cst::Relation>> {
                             .map(|e| delimiter.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
                     )
                 })?;
-                let delim_char = ast::parse_like_delimiter(&delim_unescaped).ok_or_else(|| {
-                    ParseErrors::from(delimiter.to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
-                        delim_unescaped.to_string(),
-                    )))
-                })?;
+                let delim =
+                    ast::LikeDelimiter::parse(&delim_unescaped).map_err(|e| {
+                        ParseErrors::from(delimiter.to_ast_err(
+                            ToASTErrorKind::InvalidLikeDelimiter(e.input().to_string()),
+                        ))
+                    })?;
                 let maybe_target = target.to_expr::<Build>();
                 let maybe_pattern = pattern
                     .to_expr_or_special::<Build>()?
@@ -1486,7 +1487,7 @@ impl Node<Option<cst::Relation>> {
                 Ok(ExprOrSpecial::Expr {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_ref())
-                        .like_delimited(target, pattern.into(), delim_char),
+                        .like_delimited(target, pattern.into(), delim),
                     loc: self.loc.clone(),
                 })
             }

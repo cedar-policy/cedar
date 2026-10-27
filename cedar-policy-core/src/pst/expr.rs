@@ -102,6 +102,64 @@ impl From<ast::Id> for Id {
     }
 }
 
+/// A validated delimiter for `like(pattern, delim)`.
+///
+/// Wraps a [`char`] that has been checked to be a valid delimiter: not `*`
+/// and at most U+2FFFF.
+///
+/// The only way to create a `LikeDelimiter` is through
+/// [`LikeDelimiter::new()`] (which validates the character) or through
+/// conversion from [`ast::LikeDelimiter`].
+///
+/// ```
+/// # use cedar_policy_core::pst::LikeDelimiter;
+/// let d = LikeDelimiter::new('.').expect("valid delimiter");
+/// assert_eq!(d.as_char(), '.');
+///
+/// assert!(LikeDelimiter::new('*').is_err());
+/// assert!(LikeDelimiter::new('\u{30000}').is_err());
+/// ```
+#[cfg(feature = "extended-like")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LikeDelimiter(ast::LikeDelimiter);
+
+#[cfg(feature = "extended-like")]
+impl LikeDelimiter {
+    /// Create a new `LikeDelimiter`, validating that `c` is not `*` and is at
+    /// most U+2FFFF.
+    pub fn new(c: char) -> Result<Self, PstConstructionError> {
+        Ok(Self(ast::LikeDelimiter::new(c)?))
+    }
+
+    /// Get the delimiter character. Zero-cost.
+    pub fn as_char(self) -> char {
+        self.0.as_char()
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl Display for LikeDelimiter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Infallible: `ast::LikeDelimiter` is already validated.
+#[cfg(feature = "extended-like")]
+impl From<ast::LikeDelimiter> for LikeDelimiter {
+    fn from(d: ast::LikeDelimiter) -> Self {
+        Self(d)
+    }
+}
+
+/// Infallible: `pst::LikeDelimiter` is already validated.
+#[cfg(feature = "extended-like")]
+impl From<LikeDelimiter> for ast::LikeDelimiter {
+    fn from(d: LikeDelimiter) -> Self {
+        d.0
+    }
+}
+
 /// Slot identifier for template policies.
 ///
 /// In Cedar, template slots are placeholders written as `?principal` or `?resource`
@@ -759,7 +817,7 @@ pub enum Expr {
         /// Pattern to match against
         pattern: Vec<DelimPatternElem>,
         /// Single-character delimiter
-        delim: char,
+        delim: LikeDelimiter,
     },
     /// Entity type test, optionally combined with a hierarchy check.
     ///
@@ -1294,11 +1352,16 @@ impl ExprBuilder for PstBuilder {
     }
 
     #[cfg(feature = "extended-like")]
-    fn like_delimited(self, expr: Expr, pattern: ast::DelimPattern, delim: char) -> Expr {
+    fn like_delimited(
+        self,
+        expr: Expr,
+        pattern: ast::DelimPattern,
+        delim: ast::LikeDelimiter,
+    ) -> Expr {
         Expr::LikeDelimited {
             expr: Arc::new(expr),
             pattern: pattern.into(),
-            delim,
+            delim: delim.into(),
         }
     }
 
@@ -1345,6 +1408,28 @@ mod tests {
 
     use super::*;
     use std::str::FromStr;
+
+    // --- LikeDelimiter tests ---
+
+    #[test]
+    #[cfg(feature = "extended-like")]
+    fn test_like_delimiter() {
+        assert_matches!(
+            LikeDelimiter::new('*'),
+            Err(PstConstructionError::InvalidLikeDelimiter(e)) if e.input() == "*"
+        );
+        assert_matches!(
+            LikeDelimiter::new('\u{30000}'),
+            Err(PstConstructionError::InvalidLikeDelimiter(_))
+        );
+        for c in ['.', '/', '\\', '\u{0}', '\u{2FFFF}'] {
+            let d = LikeDelimiter::new(c).unwrap();
+            assert_eq!(d.as_char(), c);
+            assert_eq!(d.to_string(), c.to_string());
+            let ast_d: ast::LikeDelimiter = d.into();
+            assert_eq!(LikeDelimiter::from(ast_d), d);
+        }
+    }
 
     // --- Id tests ---
 

@@ -405,7 +405,7 @@ pub enum ResidualKind {
         /// `**` matches any run of chars.
         pattern: crate::ast::DelimPattern,
         /// Single-character delimiter.
-        delim: char,
+        delim: crate::ast::LikeDelimiter,
     },
     /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.

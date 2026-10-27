@@ -251,7 +251,7 @@ pub trait ExprBuilder: Clone {
         self,
         expr: Self::Expr,
         pattern: crate::ast::DelimPattern,
-        delim: char,
+        delim: crate::ast::LikeDelimiter,
     ) -> Self::Expr;
 
     /// Create an 'is' expression.

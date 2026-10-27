@@ -2593,7 +2593,7 @@ mod test {
         });
         assert_matches!(
             est.try_into_ast(&ast::PolicyID::from_string("p")),
-            Err(FromJsonError::InvalidLikeDelimiter(d)) if d == "*"
+            Err(FromJsonError::InvalidLikeDelimiter(d)) if d.input() == "*"
         );
     }
 

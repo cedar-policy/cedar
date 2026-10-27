@@ -119,7 +119,11 @@ fn compile_like(t: Term, pat: OrdPattern) -> Result<Term> {
 
 /// Delimiter-aware `like(pattern, delim)`.
 #[cfg(feature = "extended-like")]
-fn compile_like_extended(t: Term, pat: OrdDelimPattern, delim: char) -> Result<Term> {
+fn compile_like_extended(
+    t: Term,
+    pat: OrdDelimPattern,
+    delim: cedar_policy_core::ast::LikeDelimiter,
+) -> Result<Term> {
     match t.type_of() {
         TermType::String => Ok(some_of(factory::string_like_extended(t, pat, delim))),
         _ => Err(CompileError::TypeError),

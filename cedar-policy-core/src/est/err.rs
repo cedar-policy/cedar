@@ -86,11 +86,9 @@ pub enum FromJsonError {
     ASTErrorNode,
     /// Returned when the delimiter of a `likeDelimited` expression is invalid
     #[cfg(feature = "extended-like")]
-    #[error("delimiter of a `like` expression must be a single character, but got `{0}`")]
-    #[diagnostic(help(
-        "the delimiter must be exactly one Unicode scalar value, other than `*`, no greater than U+2FFFF"
-    ))]
-    InvalidLikeDelimiter(SmolStr),
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidLikeDelimiter(#[from] crate::ast::InvalidLikeDelimiterError),
 }
 
 /// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST

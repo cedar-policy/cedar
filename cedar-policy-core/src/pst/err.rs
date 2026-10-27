@@ -110,6 +110,12 @@ pub enum PstConstructionError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ContainsSlots(#[from] error_body::ContainsSlotError),
+
+    /// Invalid delimiter for `like(pattern, delim)`
+    #[cfg(feature = "extended-like")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidLikeDelimiter(#[from] error_body::InvalidLikeDelimiterError),
 }
 
 #[doc(hidden)]
@@ -146,9 +152,7 @@ impl From<est::FromJsonError> for PstConstructionError {
                 error_body::ParsingFailedError::new(err.to_string()).into()
             }
             #[cfg(feature = "extended-like")]
-            est::FromJsonError::InvalidLikeDelimiter(_) => {
-                error_body::ParsingFailedError::new(err.to_string()).into()
-            }
+            est::FromJsonError::InvalidLikeDelimiter(e) => e.into(),
             est::FromJsonError::TemplateToPolicy(e) => {
                 let mut slots: HashSet<pst::SlotId, _> = HashSet::new();
                 slots.insert(e.slot.id.into());
@@ -184,6 +188,14 @@ impl From<ast::ExpressionConstructionError> for PstConstructionError {
 impl From<crate::parser::err::ParseErrors> for PstConstructionError {
     fn from(value: crate::parser::err::ParseErrors) -> Self {
         error_body::ParsingFailedError::from(value).into()
+    }
+}
+
+#[doc(hidden)]
+#[cfg(feature = "extended-like")]
+impl From<ast::InvalidLikeDelimiterError> for PstConstructionError {
+    fn from(err: ast::InvalidLikeDelimiterError) -> Self {
+        error_body::InvalidLikeDelimiterError { source: err }.into()
     }
 }
 
@@ -393,6 +405,24 @@ pub mod error_body {
             match err {
                 LinkingError::MissedSlot { slot } => Self::MissedSlot { slot: slot.into() },
             }
+        }
+    }
+
+    /// Invalid delimiter for `like(pattern, delim)`: it must be exactly one
+    /// Unicode scalar value, not `*`, and at most U+2FFFF
+    #[cfg(feature = "extended-like")]
+    #[derive(Debug, Clone, PartialEq, Eq, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct InvalidLikeDelimiterError {
+        pub(crate) source: crate::ast::InvalidLikeDelimiterError,
+    }
+
+    #[cfg(feature = "extended-like")]
+    impl InvalidLikeDelimiterError {
+        /// The rejected delimiter input
+        pub fn input(&self) -> &str {
+            self.source.input()
         }
     }
 

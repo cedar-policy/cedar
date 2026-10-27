@@ -504,7 +504,7 @@ impl Expr {
             } => builder.like_delimited(
                 Arc::unwrap_or_clone(expr).into_expr::<B>(),
                 elements_into_ast_delim_pattern(pattern),
-                delim,
+                delim.into(),
             ),
             Expr::Record(elems) =>
             {

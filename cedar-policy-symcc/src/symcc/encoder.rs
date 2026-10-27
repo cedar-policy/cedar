@@ -113,8 +113,8 @@ pub enum EncodeError {
     EncodePatternFailed(OrdPattern),
     /// Unable to encode delimited pattern.
     #[cfg(feature = "extended-like")]
-    #[error("unable to encode pattern {0:?} with delimiter {1:?} in SMT as it exceeds the max supported code point")]
-    EncodeDelimPatternFailed(OrdDelimPattern, char),
+    #[error("unable to encode delimited pattern {0:?} in SMT as it exceeds the max supported code point")]
+    EncodeDelimPatternFailed(OrdDelimPattern),
     /// Bit-vector error.
     #[error("bit-vector error")]
     BitVecError(#[from] BitVecError),
@@ -476,9 +476,8 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
                     ty_enc,
                     &format_smolstr!(
                         "(str.in_re {args} {})",
-                        encode_delim_pattern(p, *delim).ok_or_else(|| {
-                            EncodeError::EncodeDelimPatternFailed(p.clone(), *delim)
-                        })?
+                        encode_delim_pattern(p, *delim)
+                            .ok_or_else(|| EncodeError::EncodeDelimPatternFailed(p.clone()))?
                     ),
                 )
                 .await
@@ -780,11 +779,8 @@ fn encode_pattern(pattern: &OrdPattern) -> Option<SmolStr> {
 /// SMT-LIB `re.range` intervals. Avoids `re.comp` / `re.inter`, which force
 /// NFA to DFA determinization in cvc5 (cvc5#12815).
 #[cfg(feature = "extended-like")]
-fn encode_non_delim(delim: char) -> Option<SmolStr> {
-    let d = delim as u32;
-    if d > SMT_LIB_MAX_CODE_POINT {
-        return None;
-    }
+fn encode_non_delim(delim: cedar_policy_core::ast::LikeDelimiter) -> SmolStr {
+    let d = delim.as_char() as u32;
     let max = SMT_LIB_MAX_CODE_POINT;
     let low = if d == 0 {
         None
@@ -803,13 +799,18 @@ fn encode_non_delim(delim: char) -> Option<SmolStr> {
             max
         ))
     };
-    Some(match (low, high) {
+    match (low, high) {
         (Some(l), Some(h)) => format_smolstr!("(re.union {l} {h})"),
         (Some(l), None) => l,
         (None, Some(h)) => h,
         (None, None) => SmolStr::new_static("re.none"),
-    })
+    }
 }
+
+// `LikeDelimiter` guarantees the delimiter is at most `MAX_LIKE_DELIMITER`, so
+// `encode_non_delim` cannot underflow/overflow the SMT-LIB code point range.
+#[cfg(feature = "extended-like")]
+const _: () = assert!(cedar_policy_core::ast::MAX_LIKE_DELIMITER as u32 <= SMT_LIB_MAX_CODE_POINT,);
 
 /// Encode a `DelimPatternElem` to an SMT-LIB regex fragment. `non_delim` is
 /// the encoding of the set of non-delimiter characters.
@@ -829,8 +830,11 @@ fn encode_delim_pat_elem(
 }
 
 #[cfg(feature = "extended-like")]
-fn encode_delim_pattern(pattern: &OrdDelimPattern, delim: char) -> Option<SmolStr> {
-    let non_delim = encode_non_delim(delim)?;
+fn encode_delim_pattern(
+    pattern: &OrdDelimPattern,
+    delim: cedar_policy_core::ast::LikeDelimiter,
+) -> Option<SmolStr> {
+    let non_delim = encode_non_delim(delim);
     if pattern.get_elems().is_empty() {
         Some(SmolStr::new_static("(str.to_re \"\")"))
     } else if pattern.get_elems().len() == 1 {
@@ -870,29 +874,28 @@ mod unit_tests {
     mod encoding {
         use super::super::{encode_delim_pat_elem, encode_delim_pattern, encode_non_delim};
         use crate::symcc::type_abbrevs::OrdDelimPattern;
-        use cedar_policy_core::ast::{DelimPattern, DelimPatternElem};
+        use cedar_policy_core::ast::{DelimPattern, DelimPatternElem, LikeDelimiter};
+
+        fn d(c: char) -> LikeDelimiter {
+            LikeDelimiter::new(c).unwrap()
+        }
 
         fn pat(elems: Vec<DelimPatternElem>) -> OrdDelimPattern {
             OrdDelimPattern::from(DelimPattern::from(elems))
         }
 
         fn wildcard(delim: char) -> String {
-            encode_delim_pat_elem(
-                DelimPatternElem::Wildcard,
-                &encode_non_delim(delim).unwrap(),
-            )
-            .unwrap()
-            .to_string()
+            encode_delim_pat_elem(DelimPatternElem::Wildcard, &encode_non_delim(d(delim)))
+                .unwrap()
+                .to_string()
         }
 
         #[test]
         fn multi_wildcard_always_allchar() {
-            for d in ['.', '/'] {
-                let s = encode_delim_pat_elem(
-                    DelimPatternElem::MultiWildcard,
-                    &encode_non_delim(d).unwrap(),
-                )
-                .unwrap();
+            for c in ['.', '/'] {
+                let s =
+                    encode_delim_pat_elem(DelimPatternElem::MultiWildcard, &encode_non_delim(d(c)))
+                        .unwrap();
                 assert_eq!(s.as_str(), "(re.* re.allchar)");
             }
         }
@@ -949,9 +952,8 @@ mod unit_tests {
         }
 
         #[test]
-        fn delimiter_above_max_code_point_fails() {
-            assert!(encode_non_delim('\u{30000}').is_none());
-            assert!(encode_delim_pattern(&pat(vec![]), '\u{30000}').is_none());
+        fn delimiter_above_max_code_point_rejected() {
+            assert!(LikeDelimiter::new('\u{30000}').is_err());
         }
 
         #[test]
@@ -965,7 +967,7 @@ mod unit_tests {
             let elems = std::iter::once(DelimPatternElem::Wildcard)
                 .chain(".example.com".chars().map(DelimPatternElem::Char))
                 .collect();
-            let s = encode_delim_pattern(&pat(elems), '.').unwrap();
+            let s = encode_delim_pattern(&pat(elems), d('.')).unwrap();
             assert!(
                 s.as_str().starts_with("(re.++ (re.* (re.union"),
                 "unexpected encoding: {s}"
@@ -979,7 +981,7 @@ mod unit_tests {
             let elems = std::iter::once(DelimPatternElem::MultiWildcard)
                 .chain(".com".chars().map(DelimPatternElem::Char))
                 .collect();
-            let s = encode_delim_pattern(&pat(elems), '.').unwrap();
+            let s = encode_delim_pattern(&pat(elems), d('.')).unwrap();
             assert!(
                 s.as_str().starts_with("(re.++ (re.* re.allchar)"),
                 "unexpected encoding for **: {s}"
@@ -988,7 +990,7 @@ mod unit_tests {
 
         #[test]
         fn empty_pattern_still_matches_empty_string() {
-            let s = encode_delim_pattern(&pat(vec![]), '.').unwrap();
+            let s = encode_delim_pattern(&pat(vec![]), d('.')).unwrap();
             assert_eq!(s.as_str(), "(str.to_re \"\")");
         }
     }

@@ -251,7 +251,9 @@ impl Evaluator<'_> {
                 let expr = self.interpret(expr);
                 match &expr {
                     Residual::Concrete { value, .. } => match value.get_as_string() {
-                        Ok(s) => mk_concrete(pattern.wildcard_match_delimited(s, *delim).into()),
+                        Ok(s) => {
+                            mk_concrete(pattern.wildcard_match_delimited(s, delim.as_char()).into())
+                        }
                         Err(_) => mk_error(), // <error> like <pattern> => <error>
                     },
                     Residual::Partial { .. } => mk_residual(ResidualKind::LikeDelimited {

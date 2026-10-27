@@ -213,20 +213,18 @@ where
     D: serde::Deserializer<'de>,
 {
     let s = SmolStr::deserialize(deserializer)?;
-    if ast::parse_like_delimiter(&s).is_some() {
-        Ok(s)
-    } else {
-        Err(serde::de::Error::custom(
-            FromJsonError::InvalidLikeDelimiter(s),
-        ))
+    match ast::LikeDelimiter::parse(&s) {
+        Ok(_) => Ok(s),
+        Err(e) => Err(serde::de::Error::custom(
+            FromJsonError::InvalidLikeDelimiter(e),
+        )),
     }
 }
 
 /// Validate the `delim` field of `likeDelimited` during conversion.
 #[cfg(feature = "extended-like")]
-fn like_delim_char(delim: &SmolStr) -> Result<char, FromJsonError> {
-    ast::parse_like_delimiter(delim)
-        .ok_or_else(|| FromJsonError::InvalidLikeDelimiter(delim.clone()))
+fn like_delim(delim: &SmolStr) -> Result<ast::LikeDelimiter, FromJsonError> {
+    Ok(ast::LikeDelimiter::parse(delim)?)
 }
 
 /// Represents the variants of the `has` operation, either a simple operation or
@@ -805,7 +803,12 @@ impl ExprBuilder for Builder {
 
     /// `left like(pattern, delim)`
     #[cfg(feature = "extended-like")]
-    fn like_delimited(self, expr: Expr, pattern: ast::DelimPattern, delim: char) -> Expr {
+    fn like_delimited(
+        self,
+        expr: Expr,
+        pattern: ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Expr {
         Expr::ExprNoExt(ExprNoExt::LikeDelimited {
             left: Arc::new(expr),
             pattern: pattern.into(),
@@ -1333,7 +1336,7 @@ impl Expr {
                 pattern,
                 delim,
             }) => {
-                let delim = like_delim_char(&delim).map_err(B::BuildError::from)?;
+                let delim = like_delim(&delim).map_err(B::BuildError::from)?;
                 Ok(builder.like_delimited(
                     Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
                     ast::DelimPattern::from(pattern.as_slice()),
@@ -1516,7 +1519,7 @@ impl Expr {
                 pattern,
                 delim,
             }) => {
-                let delim = like_delim_char(&delim)?;
+                let delim = like_delim(&delim)?;
                 Ok(ast::Expr::like_delimited(
                     Arc::unwrap_or_clone(left).try_into_ast(id)?,
                     crate::ast::DelimPattern::from(pattern.as_slice()),

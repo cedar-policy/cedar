@@ -254,7 +254,7 @@ impl std::fmt::Display for Term {
                         Op::StringLikeExtended(pat, delim) => format_smolstr!(
                             "like[\"{pat}\", '{delim}']",
                             pat = pat.deref(),
-                            delim = delim.escape_debug(),
+                            delim = delim.as_char().escape_debug(),
                         ),
                         _ => SmolStr::new(op.mk_name()),
                     }

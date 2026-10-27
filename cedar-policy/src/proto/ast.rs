@@ -388,12 +388,8 @@ impl TryFrom<models::Expr> for ast::Expr {
                 let arg = *msg
                     .expr
                     .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
-                let delim = ast::parse_like_delimiter(&msg.delim).ok_or_else(|| {
-                    ProtobufConversionError::InvalidValue(format!(
-                        "invalid `like` delimiter `{}`: must be exactly one Unicode scalar value, other than `*`, no greater than U+2FFFF",
-                        msg.delim.escape_debug()
-                    ))
-                })?;
+                let delim = ast::LikeDelimiter::parse(&msg.delim)
+                    .map_err(|e| ProtobufConversionError::InvalidValue(e.to_string()))?;
                 ast::Expr::like_delimited(
                     ast::Expr::try_from(arg)?,
                     msg.pattern
