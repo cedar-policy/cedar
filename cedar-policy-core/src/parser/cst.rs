@@ -212,6 +212,7 @@ pub enum Relation {
         pattern: Node<Add>,
     },
     /// Built-in 'like(pattern, delimiter)' operation
+    #[cfg(feature = "extended-like")]
     LikeDelimited {
         /// element to test
         target: Node<Add>,

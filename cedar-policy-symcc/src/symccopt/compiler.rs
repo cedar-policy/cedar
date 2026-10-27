@@ -22,6 +22,8 @@ use std::{
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
 pub use crate::symcc::compiler::Result;
+#[cfg(feature = "extended-like")]
+use crate::term_factory::string_like_extended;
 use crate::{
     err::{CompileError, ExtError},
     ext::Ext,
@@ -38,7 +40,7 @@ use crate::{
         bvadd, bvmul, bvneg, bvnego, bvsaddo, bvsle, bvslt, bvsmulo, bvssubo, bvsub, eq,
         ext_datetime_val, ext_duration_val, if_all_some, if_false, if_some, is_some, ite, not,
         option_get, record_get, record_of, set_intersects, set_is_empty, set_member, set_of,
-        set_subset, some_of, string_like, string_like_extended,
+        set_subset, some_of, string_like,
     },
     term_type::TermType,
     type_abbrevs::*,
@@ -252,9 +254,10 @@ fn compile_like(arg: CompileResult, pat: OrdPattern) -> Result<CompileResult> {
 }
 
 /// Delimiter-aware `like(pattern, delim)`.
+#[cfg(feature = "extended-like")]
 fn compile_like_extended(
     arg: CompileResult,
-    pat: OrdPattern,
+    pat: OrdDelimPattern,
     delim: char,
 ) -> Result<CompileResult> {
     match arg.term.type_of() {
@@ -1090,6 +1093,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res = compile_like(res1.map_term(option_get), pattern.clone().into())?;
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
+        #[cfg(feature = "extended-like")]
         ExprKind::LikeDelimited {
             expr,
             pattern,

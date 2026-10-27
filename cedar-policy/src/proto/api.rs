@@ -611,7 +611,6 @@ mod encode_test {
                             data: Some(like::pattern_elem::Data::C("x".to_string())),
                         },
                     ],
-                    delim: None,
                 }))),
             };
         }

@@ -118,7 +118,8 @@ fn compile_like(t: Term, pat: OrdPattern) -> Result<Term> {
 }
 
 /// Delimiter-aware `like(pattern, delim)`.
-fn compile_like_extended(t: Term, pat: OrdPattern, delim: char) -> Result<Term> {
+#[cfg(feature = "extended-like")]
+fn compile_like_extended(t: Term, pat: OrdDelimPattern, delim: char) -> Result<Term> {
     match t.type_of() {
         TermType::String => Ok(some_of(factory::string_like_extended(t, pat, delim))),
         _ => Err(CompileError::TypeError),
@@ -787,6 +788,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<Term> {
                 compile_like(option_get(t1), pattern.clone().into())?,
             ))
         }
+        #[cfg(feature = "extended-like")]
         ExprKind::LikeDelimited {
             expr,
             pattern,

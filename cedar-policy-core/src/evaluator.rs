@@ -719,10 +719,13 @@ impl<'e> Evaluator<'e> {
             ExprKind::Like { expr, pattern } => {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {
-                    PartialValue::Value(v) => Ok(pattern.wildcard_match(v.get_as_string()?).into()),
+                    PartialValue::Value(v) => {
+                        Ok((pattern.wildcard_match(v.get_as_string()?)).into())
+                    }
                     PartialValue::Residual(r) => Ok(Expr::like(r, pattern.clone()).into()),
                 }
             }
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited {
                 expr,
                 pattern,

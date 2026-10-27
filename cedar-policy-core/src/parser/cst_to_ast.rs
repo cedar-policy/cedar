@@ -35,7 +35,9 @@
 
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::node::Node;
-use super::unescape::{to_pattern, to_pattern_delimited, to_unescaped_string};
+#[cfg(feature = "extended-like")]
+use super::unescape::to_pattern_delimited;
+use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use super::{cst, Loc};
 #[cfg(feature = "tolerant-ast")]
@@ -1237,7 +1239,8 @@ where
         }
     }
 
-    pub(crate) fn into_pattern_delimited(self) -> Result<Vec<PatternElem>> {
+    #[cfg(feature = "extended-like")]
+    pub(crate) fn into_pattern_delimited(self) -> Result<Vec<ast::DelimPatternElem>> {
         match &self {
             Self::StrLit { lit, .. } => to_pattern_delimited(lit).map_err(|escape_errs| {
                 ParseErrors::new_from_nonempty(
@@ -1457,6 +1460,7 @@ impl Node<Option<cst::Relation>> {
                     loc: self.loc.clone(),
                 })
             }
+            #[cfg(feature = "extended-like")]
             cst::Relation::LikeDelimited {
                 target,
                 pattern,
@@ -1469,33 +1473,11 @@ impl Node<Option<cst::Relation>> {
                             .map(|e| delimiter.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
                     )
                 })?;
-                let mut chars = delim_unescaped.chars();
-                let delim_char = match (chars.next(), chars.next()) {
-                    (Some(c), None) => c,
-                    _ => {
-                        return Err(delimiter
-                            .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
-                                delim_unescaped.to_string(),
-                            ))
-                            .into())
-                    }
-                };
-                if delim_char == '*' {
-                    return Err(delimiter
-                        .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
-                            delim_unescaped.to_string(),
-                        ))
-                        .into());
-                }
-                // Delimiters above SMT-LIB's max code point can't be encoded by
-                // the symbolic compiler.
-                if (delim_char as u32) > 0x2FFFF {
-                    return Err(delimiter
-                        .to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
-                            delim_unescaped.to_string(),
-                        ))
-                        .into());
-                }
+                let delim_char = ast::parse_like_delimiter(&delim_unescaped).ok_or_else(|| {
+                    ParseErrors::from(delimiter.to_ast_err(ToASTErrorKind::InvalidLikeDelimiter(
+                        delim_unescaped.to_string(),
+                    )))
+                })?;
                 let maybe_target = target.to_expr::<Build>();
                 let maybe_pattern = pattern
                     .to_expr_or_special::<Build>()?

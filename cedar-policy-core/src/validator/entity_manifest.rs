@@ -640,14 +640,18 @@ fn entity_manifest_from_expr(
             Ok(res)
         }
         ExprKind::Like { expr, pattern: _ }
-        | ExprKind::LikeDelimited {
-            expr,
-            pattern: _,
-            delim: _,
-        }
         | ExprKind::Is {
             expr,
             entity_type: _,
+        } => {
+            // drop paths since boolean returned
+            Ok(entity_manifest_from_expr(expr)?.empty_paths())
+        }
+        #[cfg(feature = "extended-like")]
+        ExprKind::LikeDelimited {
+            expr,
+            pattern: _,
+            delim: _,
         } => {
             // drop paths since boolean returned
             Ok(entity_manifest_from_expr(expr)?.empty_paths())

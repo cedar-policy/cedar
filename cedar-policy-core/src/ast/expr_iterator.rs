@@ -71,14 +71,17 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             | ExprKind::HasAttr { expr, attr: _ }
             | ExprKind::ExtHasAttr { expr, attrs: _ }
             | ExprKind::Like { expr, pattern: _ }
-            | ExprKind::LikeDelimited {
-                expr,
-                pattern: _,
-                delim: _,
-            }
             | ExprKind::Is {
                 expr,
                 entity_type: _,
+            } => {
+                self.expression_stack.push(expr);
+            }
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited {
+                expr,
+                pattern: _,
+                delim: _,
             } => {
                 self.expression_stack.push(expr);
             }

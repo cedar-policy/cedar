@@ -145,6 +145,10 @@ impl From<est::FromJsonError> for PstConstructionError {
             est::FromJsonError::InvalidSlotName => {
                 error_body::ParsingFailedError::new(err.to_string()).into()
             }
+            #[cfg(feature = "extended-like")]
+            est::FromJsonError::InvalidLikeDelimiter(_) => {
+                error_body::ParsingFailedError::new(err.to_string()).into()
+            }
             est::FromJsonError::TemplateToPolicy(e) => {
                 let mut slots: HashSet<pst::SlotId, _> = HashSet::new();
                 slots.insert(e.slot.id.into());

@@ -155,12 +155,13 @@ pub enum ExprKind<T = ()> {
     },
     /// Delimiter-aware regex-like string matching, `like(pattern, delimiter)`.
     /// `*` in the pattern does not match the delimiter; `**` does.
+    #[cfg(feature = "extended-like")]
     LikeDelimited {
         /// Expression to test. Must evaluate to String type
         expr: Arc<Expr<T>>,
         /// Pattern to match on. `*` matches any run of non-delimiter chars;
-        /// `**` (as `PatternElem::MultiWildcard`) matches any run of chars.
-        pattern: Pattern,
+        /// `**` (as `DelimPatternElem::MultiWildcard`) matches any run of chars.
+        pattern: crate::ast::DelimPattern,
         /// Single-character delimiter.
         delim: char,
     },
@@ -207,6 +208,7 @@ impl<T> ExprKind<T> {
             ExprKind::HasAttr { .. } => 11,
             ExprKind::ExtHasAttr { .. } => 12,
             ExprKind::Like { .. } => 13,
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited { .. } => 21,
             ExprKind::Set(_) => 14,
             ExprKind::Record(_) => 15,
@@ -445,6 +447,7 @@ impl<T> Expr<T> {
             ExprKind::HasAttr { .. } => Some(Type::Bool),
             ExprKind::ExtHasAttr { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
@@ -515,6 +518,7 @@ impl<T> Expr<T> {
             ExprKind::Like { expr, pattern } => {
                 Ok(builder.like(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, pattern))
             }
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited {
                 expr,
                 pattern,
@@ -790,7 +794,8 @@ impl Expr {
     }
 
     /// Create a delimited 'like' expression.
-    pub fn like_delimited(expr: Expr, pattern: Pattern, delim: char) -> Self {
+    #[cfg(feature = "extended-like")]
+    pub fn like_delimited(expr: Expr, pattern: crate::ast::DelimPattern, delim: char) -> Self {
         ExprBuilder::new().like_delimited(expr, pattern, delim)
     }
 
@@ -906,6 +911,7 @@ impl Expr {
                 expr.substitute_general::<T>(definitions)?,
                 pattern.clone(),
             )),
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited {
                 expr,
                 pattern,
@@ -1447,7 +1453,13 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
     }
 
     /// Create a delimited 'like' expression.
-    fn like_delimited(self, expr: Expr<T>, pattern: Pattern, delim: char) -> Expr<T> {
+    #[cfg(feature = "extended-like")]
+    fn like_delimited(
+        self,
+        expr: Expr<T>,
+        pattern: crate::ast::DelimPattern,
+        delim: char,
+    ) -> Expr<T> {
         self.with_expr_kind(ExprKind::LikeDelimited {
             expr: Arc::new(expr),
             pattern,
@@ -1709,6 +1721,7 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern == pattern1 && expr.eq_shape(expr1),
+            #[cfg(feature = "extended-like")]
             (
                 LikeDelimited {
                     expr,
@@ -1808,6 +1821,7 @@ impl<T> Expr<T> {
                 expr.hash_shape(state);
                 pattern.hash(state);
             }
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited {
                 expr,
                 pattern,
@@ -1954,6 +1968,7 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern.cmp(pattern1).then_with(|| expr.cmp_shape(expr1)),
+            #[cfg(feature = "extended-like")]
             (
                 LikeDelimited {
                     expr,

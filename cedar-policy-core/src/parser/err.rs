@@ -257,6 +257,7 @@ pub enum ToASTErrorKind {
     #[error("right hand side of a `like` expression must be a pattern literal, but got `{0}`")]
     InvalidPattern(String),
     /// Returned when the delimiter of a `like(pattern, delim)` expression is not a single character
+    #[cfg(feature = "extended-like")]
     #[error("delimiter of a `like` expression must be a single character, but got `{0}`")]
     #[diagnostic(help(
         "the delimiter must be exactly one Unicode scalar value, e.g. `like(\"*\", \".\")`"

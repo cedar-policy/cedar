@@ -312,6 +312,7 @@ impl Term {
                     factory::string_like(arg.interpret_memoized(interp, cache), ord_pattern.clone())
                 }
 
+                #[cfg(feature = "extended-like")]
                 (Op::StringLikeExtended(ord_pattern, delim), [arg]) => {
                     factory::string_like_extended(
                         arg.interpret_memoized(interp, cache),

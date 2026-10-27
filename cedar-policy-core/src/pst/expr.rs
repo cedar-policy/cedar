@@ -652,7 +652,17 @@ pub enum PatternElem {
     Char(char),
     /// A wildcard (`*`) matching zero or more characters
     Wildcard,
-    /// The double wildcard `**`
+}
+
+/// Pattern element for delimited `like(pattern, delim)` expressions.
+#[cfg(feature = "extended-like")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DelimPatternElem {
+    /// A literal character in the pattern
+    Char(char),
+    /// A wildcard (`*`) matching zero or more non-delimiter characters
+    Wildcard,
+    /// A double wildcard (`**`) matching zero or more characters
     MultiWildcard,
 }
 
@@ -736,8 +746,20 @@ pub enum Expr {
         expr: Arc<Expr>,
         /// Pattern to match against
         pattern: Vec<PatternElem>,
-        /// Optional single-character delimiter for the delimited 'like' form.
-        delim: Option<char>,
+    },
+    /// Delimiter-aware pattern matching with `like(pattern, delim)`.
+    ///
+    /// ```cedar
+    /// resource.host like("*.example.com", ".")
+    /// ```
+    #[cfg(feature = "extended-like")]
+    LikeDelimited {
+        /// Expression to match
+        expr: Arc<Expr>,
+        /// Pattern to match against
+        pattern: Vec<DelimPatternElem>,
+        /// Single-character delimiter
+        delim: char,
     },
     /// Entity type test, optionally combined with a hierarchy check.
     ///
@@ -918,6 +940,8 @@ impl Expr {
             | Expr::GetAttr { expr, .. }
             | Expr::HasAttr { expr, .. }
             | Expr::Like { expr, .. } => recurse(expr),
+            #[cfg(feature = "extended-like")]
+            Expr::LikeDelimited { expr, .. } => recurse(expr),
             Expr::BinaryOp { left, right, .. } => op(recurse(left), recurse(right)),
             Expr::Is { expr, in_expr, .. } => match in_expr {
                 Some(e) => op(recurse(expr), recurse(e)),
@@ -1266,15 +1290,15 @@ impl ExprBuilder for PstBuilder {
         Expr::Like {
             expr: Arc::new(expr),
             pattern: pattern.into(),
-            delim: None,
         }
     }
 
-    fn like_delimited(self, expr: Expr, pattern: ast::Pattern, delim: char) -> Expr {
-        Expr::Like {
+    #[cfg(feature = "extended-like")]
+    fn like_delimited(self, expr: Expr, pattern: ast::DelimPattern, delim: char) -> Expr {
+        Expr::LikeDelimited {
             expr: Arc::new(expr),
             pattern: pattern.into(),
-            delim: Some(delim),
+            delim,
         }
     }
 

@@ -74,6 +74,7 @@ pub trait ExprVisitor {
             ExprKind::HasAttr { expr, attr } => self.visit_has_attr(expr, attr, loc),
             ExprKind::ExtHasAttr { expr, attrs } => self.visit_extended_has_attr(expr, attrs, loc),
             ExprKind::Like { expr, pattern } => self.visit_like(expr, pattern, loc),
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited {
                 expr,
                 pattern,
@@ -239,10 +240,11 @@ pub trait ExprVisitor {
     /// Visits a delimited pattern-matching expression (e.g., `expr like("pat", ".")`).
     ///
     /// Recursively visits the target expression.
+    #[cfg(feature = "extended-like")]
     fn visit_like_delimited(
         &mut self,
         expr: &Arc<Expr>,
-        _pattern: &Pattern,
+        _pattern: &crate::ast::DelimPattern,
         _delim: char,
         _loc: Option<&Loc>,
     ) -> Option<Self::Output> {

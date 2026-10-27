@@ -173,6 +173,7 @@ message Expr {
         Set set = 14;
         Record record = 15;
         ExtHasAttr extHasAttr = 16;
+        LikeDelimited likeDelimited = 17;
     }
 
     message Literal {
@@ -262,26 +263,35 @@ message Expr {
     message Like {
         Expr expr = 1;
         repeated PatternElem pattern = 2;
-        // Single-character delimiter for the delimited 'like' form.
-        // Absent for the undelimited form. Must be exactly one Unicode scalar
-        // value, encoded as UTF-8.
-        optional string delim = 3;
 
         message PatternElem {
             oneof data {
                 Wildcard wildcard = 1;
                 string c = 2;
-                MultiWildcard multi_wildcard = 3;
             }
 
-            // Zero-arity constructors represented as enums with only one
-            // member each. Proto3 hoists enum values to the parent scope, so
-            // the two markers must have distinct names.
+            // Zero-arity constructors represented as enums with only one member
             enum Wildcard {
-                WILDCARD_UNIT = 0;
+                // the one option for the enum
+                unit = 0;
+            }
+        }
+    }
+
+    message LikeDelimited {
+        Expr expr = 1;
+        repeated PatternElem pattern = 2;
+        // Exactly one Unicode scalar value, UTF-8.
+        string delim = 3;
+
+        message PatternElem {
+            oneof data {
+                Like.PatternElem.Wildcard wildcard = 1;
+                string c = 2;
+                MultiWildcard multi_wildcard = 3;
             }
             enum MultiWildcard {
-                MULTI_WILDCARD_UNIT = 0;
+                unit = 0;
             }
         }
     }

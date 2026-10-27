@@ -588,7 +588,8 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
     }
 }
 
-pub fn string_like_extended(t: Term, p: OrdPattern, delim: char) -> Term {
+#[cfg(feature = "extended-like")]
+pub fn string_like_extended(t: Term, p: OrdDelimPattern, delim: char) -> Term {
     match t {
         Term::Prim(TermPrim::String(s)) => p.wildcard_match_delimited(&s, delim).into(),
         _ => Term::App {

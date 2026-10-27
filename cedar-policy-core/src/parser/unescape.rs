@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "extended-like")]
+use crate::ast::DelimPatternElem;
 use crate::ast::PatternElem;
 use itertools::Itertools;
 use miette::Diagnostic;
@@ -81,29 +83,35 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeE
 /// Parse a pattern for the delimited `like(pattern, delim)` form.
 /// Same as [`to_pattern`], but pairs adjacent `*`s into `MultiWildcard`
 /// left-to-right; a trailing unpaired `*` stays `Wildcard`.
-pub(crate) fn to_pattern_delimited(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeError>> {
+#[cfg(feature = "extended-like")]
+pub(crate) fn to_pattern_delimited(
+    s: &str,
+) -> Result<Vec<DelimPatternElem>, NonEmpty<UnescapeError>> {
     let raw = to_pattern(s)?;
-    let mut out: Vec<PatternElem> = Vec::with_capacity(raw.len());
+    let mut out: Vec<DelimPatternElem> = Vec::with_capacity(raw.len());
     let mut i = 0;
     while i < raw.len() {
         #[expect(clippy::indexing_slicing, reason = "i < raw.len() by loop condition")]
         let elem = raw[i];
-        if matches!(elem, PatternElem::Wildcard) {
-            let mut count = 1;
-            #[expect(clippy::indexing_slicing, reason = "index checked in the guard")]
-            while i + count < raw.len() && matches!(raw[i + count], PatternElem::Wildcard) {
-                count += 1;
+        match elem {
+            PatternElem::Wildcard => {
+                let mut count = 1;
+                #[expect(clippy::indexing_slicing, reason = "index checked in the guard")]
+                while i + count < raw.len() && matches!(raw[i + count], PatternElem::Wildcard) {
+                    count += 1;
+                }
+                for _ in 0..(count / 2) {
+                    out.push(DelimPatternElem::MultiWildcard);
+                }
+                if count % 2 == 1 {
+                    out.push(DelimPatternElem::Wildcard);
+                }
+                i += count;
             }
-            for _ in 0..(count / 2) {
-                out.push(PatternElem::MultiWildcard);
+            PatternElem::Char(c) => {
+                out.push(DelimPatternElem::Char(c));
+                i += 1;
             }
-            if count % 2 == 1 {
-                out.push(PatternElem::Wildcard);
-            }
-            i += count;
-        } else {
-            out.push(elem);
-            i += 1;
         }
     }
     Ok(out)
@@ -272,7 +280,6 @@ skipped";
             ast::ExprKind::Like {
                 expr: _,
                 pattern,
-            ..
             } if
                 pattern.to_string() ==
                 format!("{}{}", "\t\r\n\\\0\x42".escape_debug(), r"\*")
@@ -294,7 +301,7 @@ skipped";
             .expect("failed parsing")
             .to_expr::<ast::ExprBuilder<()>>()
             .expect("failed conversion").expr_kind(),
-            ast::ExprKind::Like { expr: _, pattern, .. } if pattern.to_string() == *r"👀👀\*🤞🤞\*🤝")
+            ast::ExprKind::Like { expr: _, pattern} if pattern.to_string() == *r"👀👀\*🤞🤞\*🤝")
         );
 
         // invalid escapes
@@ -307,6 +314,7 @@ skipped";
         assert_matches!(&errs[1], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_parses() {
         assert!(
@@ -322,10 +330,11 @@ skipped";
                     ..
                 }
             ),
-            "like(pattern, delim) should parse and lower to ExprKind::Like"
+            "like(pattern, delim) should parse and lower to ExprKind::LikeDelimited"
         );
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_slash_delimiter() {
         assert!(matches!(
@@ -342,6 +351,7 @@ skipped";
         ));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_escaped_delimiter() {
         assert!(matches!(
@@ -358,6 +368,7 @@ skipped";
         ));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_double_star_pattern() {
         assert!(matches!(
@@ -374,83 +385,91 @@ skipped";
         ));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_star_runs_left_assoc() {
         use super::to_pattern_delimited;
-        use crate::ast::{Pattern, PatternElem};
+        use crate::ast::{DelimPattern, DelimPatternElem};
 
         let p = to_pattern_delimited("**").unwrap();
-        assert_eq!(p, vec![PatternElem::MultiWildcard]);
-        assert_eq!(Pattern::from(p).to_string(), "**");
+        assert_eq!(p, vec![DelimPatternElem::MultiWildcard]);
+        assert_eq!(DelimPattern::from(p).to_string(), "**");
 
         let p = to_pattern_delimited("***").unwrap();
-        assert_eq!(p, vec![PatternElem::MultiWildcard, PatternElem::Wildcard]);
-        assert_eq!(Pattern::from(p).to_string(), "***");
+        assert_eq!(
+            p,
+            vec![DelimPatternElem::MultiWildcard, DelimPatternElem::Wildcard]
+        );
+        assert_eq!(DelimPattern::from(p).to_string(), "***");
 
         let p = to_pattern_delimited("****").unwrap();
         assert_eq!(
             p,
-            vec![PatternElem::MultiWildcard, PatternElem::MultiWildcard]
+            vec![
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::MultiWildcard
+            ]
         );
-        assert_eq!(Pattern::from(p).to_string(), "****");
+        assert_eq!(DelimPattern::from(p).to_string(), "****");
 
         let p = to_pattern_delimited("*****").unwrap();
         assert_eq!(
             p,
             vec![
-                PatternElem::MultiWildcard,
-                PatternElem::MultiWildcard,
-                PatternElem::Wildcard
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::Wildcard
             ]
         );
-        assert_eq!(Pattern::from(p).to_string(), "*****");
+        assert_eq!(DelimPattern::from(p).to_string(), "*****");
 
         let p = to_pattern_delimited(r"*\**").unwrap();
         assert_eq!(
             p,
             vec![
-                PatternElem::Wildcard,
-                PatternElem::Char('*'),
-                PatternElem::Wildcard
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Char('*'),
+                DelimPatternElem::Wildcard
             ]
         );
-        assert_eq!(Pattern::from(p).to_string(), r"*\**");
+        assert_eq!(DelimPattern::from(p).to_string(), r"*\**");
 
         let p = to_pattern_delimited("a***b").unwrap();
         assert_eq!(
             p,
             vec![
-                PatternElem::Char('a'),
-                PatternElem::MultiWildcard,
-                PatternElem::Wildcard,
-                PatternElem::Char('b')
+                DelimPatternElem::Char('a'),
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Char('b')
             ]
         );
-        assert_eq!(Pattern::from(p).to_string(), "a***b");
+        assert_eq!(DelimPattern::from(p).to_string(), "a***b");
     }
 
     /// All three parses of `a***b` under delimited matching admit the same strings.
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_star_run_equivalence() {
-        use crate::ast::{Pattern, PatternElem};
+        use crate::ast::{DelimPattern, DelimPatternElem};
 
         // A = a ** b, B = a * ** b, C = a ** * b. Parser produces B.
-        let a_pat = Pattern::from(vec![
-            PatternElem::Char('a'),
-            PatternElem::MultiWildcard,
-            PatternElem::Char('b'),
+        let a_pat = DelimPattern::from(vec![
+            DelimPatternElem::Char('a'),
+            DelimPatternElem::MultiWildcard,
+            DelimPatternElem::Char('b'),
         ]);
-        let b_pat = Pattern::from(vec![
-            PatternElem::Char('a'),
-            PatternElem::Wildcard,
-            PatternElem::MultiWildcard,
-            PatternElem::Char('b'),
+        let b_pat = DelimPattern::from(vec![
+            DelimPatternElem::Char('a'),
+            DelimPatternElem::Wildcard,
+            DelimPatternElem::MultiWildcard,
+            DelimPatternElem::Char('b'),
         ]);
-        let c_pat = Pattern::from(vec![
-            PatternElem::Char('a'),
-            PatternElem::MultiWildcard,
-            PatternElem::Wildcard,
-            PatternElem::Char('b'),
+        let c_pat = DelimPattern::from(vec![
+            DelimPatternElem::Char('a'),
+            DelimPatternElem::MultiWildcard,
+            DelimPatternElem::Wildcard,
+            DelimPatternElem::Char('b'),
         ]);
 
         let inputs = [
@@ -467,19 +486,20 @@ skipped";
     }
 
     /// `**` is allowed in any position, not just at the end.
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_interleaved_wildcards() {
-        use crate::ast::{Pattern, PatternElem};
+        use crate::ast::{DelimPattern, DelimPatternElem};
 
         // `s` = Wildcard, `S` = MultiWildcard, any other char = literal.
-        fn mkpat(mnemonic: &str) -> Pattern {
-            Pattern::from(
+        fn mkpat(mnemonic: &str) -> DelimPattern {
+            DelimPattern::from(
                 mnemonic
                     .chars()
                     .map(|c| match c {
-                        's' => PatternElem::Wildcard,
-                        'S' => PatternElem::MultiWildcard,
-                        c => PatternElem::Char(c),
+                        's' => DelimPatternElem::Wildcard,
+                        'S' => DelimPatternElem::MultiWildcard,
+                        c => DelimPatternElem::Char(c),
                     })
                     .collect::<Vec<_>>(),
             )
@@ -531,6 +551,7 @@ skipped";
         }
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_empty_delimiter_error() {
         let errs = text_to_cst::parse_expr(r#""a" like("*", "")"#)
@@ -541,6 +562,7 @@ skipped";
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_multi_char_delimiter_error() {
         let errs = text_to_cst::parse_expr(r#""a" like("*", "..")"#)
@@ -551,6 +573,7 @@ skipped";
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_star_delimiter_error() {
         let errs = text_to_cst::parse_expr(r#""a" like("*", "*")"#)
@@ -561,6 +584,7 @@ skipped";
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_out_of_range_delimiter_error() {
         let errs = text_to_cst::parse_expr(r#""a" like("*", "\u{30000}")"#)
@@ -571,6 +595,7 @@ skipped";
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_boundary_delimiter_ok() {
         assert!(matches!(
@@ -583,6 +608,7 @@ skipped";
         ));
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_non_string_delimiter_error() {
         let bad_forms = [
@@ -606,6 +632,7 @@ skipped";
         }
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_non_string_pattern_error() {
         let bad_forms = [
@@ -629,6 +656,7 @@ skipped";
         }
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_evaluator_hostname() {
         use crate::ast::{Expr, Value};
@@ -702,6 +730,7 @@ skipped";
         );
     }
 
+    #[cfg(feature = "extended-like")]
     #[test]
     fn test_like_delimited_evaluator_paths() {
         use crate::ast::{Expr, Value};
@@ -759,5 +788,47 @@ skipped";
                 ..
             }
         ));
+    }
+
+    /// The undelimited parser never produces `**` semantics: `**` is just two
+    /// plain wildcards, which together match anything (including `/`).
+    #[test]
+    fn test_like_undelimited_double_star_is_two_wildcards() {
+        use crate::ast::{Expr, PatternElem, Value};
+        use crate::entities::Entities;
+        use crate::evaluator::Evaluator;
+        use crate::extensions::Extensions;
+
+        let expr: Expr = text_to_cst::parse_expr(r#""a/b" like "a**b""#)
+            .expect("failed parsing")
+            .to_expr::<ast::ExprBuilder<()>>()
+            .expect("failed conversion");
+        match expr.expr_kind() {
+            ast::ExprKind::Like { pattern, .. } => {
+                assert_eq!(
+                    pattern.get_elems(),
+                    &[
+                        PatternElem::Char('a'),
+                        PatternElem::Wildcard,
+                        PatternElem::Wildcard,
+                        PatternElem::Char('b'),
+                    ]
+                );
+            }
+            k => panic!("expected ExprKind::Like, got {k:?}"),
+        }
+        let request = crate::ast::Request::new_unchecked(
+            crate::ast::EntityUIDEntry::unknown(),
+            crate::ast::EntityUIDEntry::unknown(),
+            crate::ast::EntityUIDEntry::unknown(),
+            None,
+        );
+        let entities = Entities::new();
+        let eval = Evaluator::new(request, &entities, Extensions::all_available());
+        assert_eq!(
+            eval.interpret(&expr, &std::collections::HashMap::new())
+                .expect("evaluation should succeed"),
+            Value::from(true)
+        );
     }
 }

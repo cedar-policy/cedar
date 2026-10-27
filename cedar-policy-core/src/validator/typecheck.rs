@@ -1101,6 +1101,7 @@ impl<'a> SingleEnvTypechecker<'a> {
                 })
             }
 
+            #[cfg(feature = "extended-like")]
             ExprKind::LikeDelimited {
                 expr,
                 pattern,

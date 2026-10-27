@@ -326,6 +326,7 @@ impl Doc for Node<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
+            #[cfg(feature = "extended-like")]
             Relation::LikeDelimited {
                 target,
                 pattern,

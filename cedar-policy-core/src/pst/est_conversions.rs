@@ -600,73 +600,35 @@ mod tests {
         let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"Wildcard": null}, {"Literal": "@example.com"}]}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert_matches!(pst_expr, Expr::Like { delim: None, .. });
+        assert_matches!(pst_expr, Expr::Like { .. });
         roundtrips(pst_expr);
     }
 
     #[test]
+    #[cfg(feature = "extended-like")]
     fn test_est_expr_like_delimited() {
-        let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"MultiWildcard": null}, {"Literal": ".example.com"}], "delim": "."}}"#;
+        let json = r#"{"likeDelimited": {"left": {"Var": "principal"}, "pattern": ["MultiWildcard", {"Literal": ".example.com"}], "delim": "."}}"#;
         let est_expr: est::Expr = serde_json::from_str(json).unwrap();
         let pst_expr: Expr = est_expr.try_into().unwrap();
-        assert_matches!(
-            pst_expr,
-            Expr::Like {
-                delim: Some('.'),
-                ..
-            }
-        );
+        assert_matches!(pst_expr, Expr::LikeDelimited { delim: '.', .. });
         roundtrips(pst_expr);
     }
 
     #[test]
-    fn test_est_expr_like_delim_absent_defaults_to_none() {
-        let json = r#"{"like": {"left": {"Var": "principal"}, "pattern": [{"Wildcard": null}]}}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        assert_matches!(
-            &est_expr,
-            est::Expr::ExprNoExt(est::ExprNoExt::Like { delim: None, .. })
-        );
-    }
-
-    #[test]
-    fn test_est_expr_like_undelimited_serializes_without_delim_field() {
-        use crate::ast;
-        let ast_expr = ast::Expr::like(
-            ast::Expr::val("x"),
-            ast::Pattern::from(vec![ast::PatternElem::Wildcard]),
-        );
-        let pst: Expr = ast_expr.try_into().unwrap();
-        let est: est::Expr = pst.try_into().unwrap();
-        let json = serde_json::to_string(&est).unwrap();
-        assert!(
-            !json.contains("delim"),
-            "unexpected `delim` in JSON: {json}"
-        );
-    }
-
-    #[test]
-    fn test_est_expr_like_delimited_serializes_delim_field() {
+    #[cfg(feature = "extended-like")]
+    fn test_est_expr_like_delimited_from_ast() {
         use crate::ast;
         let ast_expr = ast::Expr::like_delimited(
             ast::Expr::val("x"),
-            ast::Pattern::from(vec![ast::PatternElem::MultiWildcard]),
+            ast::DelimPattern::from(vec![ast::DelimPatternElem::MultiWildcard]),
             '.',
         );
         let pst: Expr = ast_expr.try_into().unwrap();
         let est: est::Expr = pst.try_into().unwrap();
-        let json = serde_json::to_string(&est).unwrap();
-        assert!(
-            json.contains("\"delim\":\".\""),
-            "expected `delim` field in JSON: {json}"
-        );
-        let parsed: est::Expr = serde_json::from_str(&json).unwrap();
-        assert_matches!(
-            &parsed,
-            est::Expr::ExprNoExt(est::ExprNoExt::Like {
-                delim: Some('.'),
-                ..
-            })
+        let json = serde_json::to_value(&est).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"likeDelimited": {"left": {"Value": "x"}, "pattern": ["MultiWildcard"], "delim": "."}})
         );
     }
 
@@ -837,11 +799,7 @@ mod tests {
             est::PatternElem::Wildcard,
             est::PatternElem::Literal("test".try_into().unwrap()),
         ];
-        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Like {
-            left,
-            pattern,
-            delim: None,
-        });
+        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::Like { left, pattern });
         let pst_expr: Expr = est_expr.try_into().unwrap();
         assert_matches!(pst_expr, Expr::Like { .. });
         roundtrips(pst_expr);

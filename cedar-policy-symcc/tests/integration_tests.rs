@@ -2722,6 +2722,7 @@ mod bool_tags {
 
 /// SMT-solver tests for delimited `like(pattern, delim)`. The per-query
 /// timeout guards against the cvc5#12815 regression under `re.comp`.
+#[cfg(feature = "extended-like")]
 mod delimited_like_smt {
     use std::time::Instant;
 

@@ -223,6 +223,8 @@ mod policy_set;
 pub use constraints::{ActionConstraint, EntityOrSlot, PrincipalConstraint, ResourceConstraint};
 pub use err::error_body;
 pub use err::PstConstructionError;
+#[cfg(feature = "extended-like")]
+pub use expr::DelimPatternElem;
 #[cfg(feature = "variadic-is-in-range")]
 pub use expr::VariadicOp;
 pub use expr::{
