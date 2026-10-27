@@ -219,6 +219,13 @@ mod delim_pattern {
         /// Find if the argument text matches the pattern under a delimiter.
         /// `*` matches any run of non-delimiter characters, `**` matches any
         /// run of characters.
+        ///
+        /// This is more expensive than [`super::Pattern::wildcard_match`], which is a
+        /// greedy scan using constant extra memory. Here every (text index,
+        /// pattern index) pair is memoised, so time and memory are
+        /// O(text length * pattern length), and the recursion can go
+        /// text length + pattern length deep.
+        // TODO: replace with a non-recursive matcher closer to `wildcard_match`.
         pub fn wildcard_match_delimited(&self, text: &str, delim: char) -> bool {
             let pattern = self.get_elems();
             let text: Vec<char> = text.chars().collect();
