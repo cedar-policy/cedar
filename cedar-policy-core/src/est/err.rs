@@ -84,6 +84,14 @@ pub enum FromJsonError {
     #[cfg(feature = "tolerant-ast")]
     #[error("AST error node")]
     ASTErrorNode,
+    /// Returned when a policy's expression depth exceeds the configured limit
+    #[error("expression depth {depth} exceeds the configured limit of {limit}")]
+    ExpressionTooDeep {
+        /// Actual depth of the expression
+        depth: usize,
+        /// Configured limit
+        limit: usize,
+    },
 }
 
 /// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST

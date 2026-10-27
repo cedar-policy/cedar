@@ -437,7 +437,7 @@ dependencies = [
  "miette",
  "owo-colors",
  "predicates",
- "rstest",
+ "rstest 0.28.0",
  "semver",
  "serde",
  "serde_json",
@@ -465,6 +465,7 @@ dependencies = [
  "nonempty",
  "ref-cast",
  "regex",
+ "rstest 0.27.0",
  "rustc-literal-escaper",
  "serde",
  "serde-wasm-bindgen",
@@ -477,6 +478,8 @@ dependencies = [
  "tsify",
  "unicode-security",
  "wasm-bindgen",
+ "yaspar-macros",
+ "yaspar-macros-defs",
 ]
 
 [[package]]
@@ -509,7 +512,7 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "ref-cast",
- "rstest",
+ "rstest 0.28.0",
  "smol_str",
  "thiserror",
  "tokio",
@@ -523,7 +526,7 @@ dependencies = [
  "cedar-policy-cli",
  "escargot",
  "miette",
- "rstest",
+ "rstest 0.28.0",
  "serde",
  "serde_json",
  "smol_str",
@@ -2469,13 +2472,42 @@ dependencies = [
 
 [[package]]
 name = "rstest"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "948203e6d13b83e51a90d7cf236dd58a0065f23f4b902f00f306e7eb2bd09b9c"
+dependencies = [
+ "futures-timer",
+ "futures-util",
+ "rstest_macros 0.27.0",
+]
+
+[[package]]
+name = "rstest"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b376e512f30a7686a8dbc6aeaace99b3ade1c26c1c63473473a817ade226dafc"
 dependencies = [
  "futures-timer",
  "futures-util",
- "rstest_macros",
+ "rstest_macros 0.28.0",
+]
+
+[[package]]
+name = "rstest_macros"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8d92eaf7b6e51e12471d71ddc72608e7151573de44099aacfbb1128177c0da4"
+dependencies = [
+ "cfg-if",
+ "glob",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "relative-path",
+ "rustc_version",
+ "syn 2.0.119",
+ "unicode-ident",
 ]
 
 [[package]]
@@ -3691,6 +3723,23 @@ name = "writeable"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
+
+[[package]]
+name = "yaspar-macros"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a55d3b3340fab7beaff899bb6e1ccfd72b8042dd59760116e359082db55e2cbc"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.9",
+]
+
+[[package]]
+name = "yaspar-macros-defs"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8549760e65119d93a4685ba26a22cacb7398f0e244bfde1687a82a99aaed0b5f"
 
 [[package]]
 name = "yoke"
