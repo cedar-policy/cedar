@@ -21,7 +21,7 @@
 //! computed to obtain a `descendants` relation.
 
 use crate::{
-    ast::{Entity, EntityType, EntityUID, InternalName, Name, UnreservedId},
+    ast::{Entity, EntityType, EntityUID, Id, InternalName, Name, UnreservedId},
     entities::{err::EntitiesError, Entities, TCComputation},
     extensions::Extensions,
     parser::Loc,
@@ -36,7 +36,6 @@ use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use smol_str::ToSmolStr;
 use std::collections::{hash_map::Entry, BTreeSet, HashMap, HashSet};
-use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 
 use crate::validator::{
@@ -1564,24 +1563,25 @@ fn single_alias_in_empty_namespace(
 /// Get the names of all primitive types, as unqualified `UnreservedId`s,
 /// paired with the primitive [`json_schema::Type`]s they represent
 fn primitive_types<N>() -> impl Iterator<Item = (UnreservedId, json_schema::Type<N>)> {
-    #[expect(clippy::unwrap_used, reason = "these are valid `UnreservedId`s")]
+    // Constructed primitive type identifiers without parsing. Each is an ASCII
+    // string and not a reserved identifier.
     [
         (
-            UnreservedId::from_str("Bool").unwrap(),
+            UnreservedId(Id::new_unchecked_const("Bool")),
             json_schema::Type::Type {
                 ty: json_schema::TypeVariant::Boolean,
                 loc: None,
             },
         ),
         (
-            UnreservedId::from_str("Long").unwrap(),
+            UnreservedId(Id::new_unchecked_const("Long")),
             json_schema::Type::Type {
                 ty: json_schema::TypeVariant::Long,
                 loc: None,
             },
         ),
         (
-            UnreservedId::from_str("String").unwrap(),
+            UnreservedId(Id::new_unchecked_const("String")),
             json_schema::Type::Type {
                 ty: json_schema::TypeVariant::String,
                 loc: None,

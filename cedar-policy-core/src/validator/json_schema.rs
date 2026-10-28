@@ -17,7 +17,7 @@
 //! Structures defining the JSON syntax for Cedar schemas
 
 use crate::{
-    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
+    ast::{Eid, EntityUID, Id, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     est::Annotations,
     extensions::Extensions,
@@ -40,7 +40,6 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     marker::PhantomData,
-    str::FromStr,
 };
 use thiserror::Error;
 
@@ -1319,10 +1318,9 @@ impl ActionEntityUID<RawName> {
         ActionEntityUID {
             id: self.id,
             ty: {
-                #[expect(clippy::expect_used, reason = "this is a valid raw name")]
                 let raw_name = self
                     .ty
-                    .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
+                    .unwrap_or_else(|| RawName::new(Id::new_unchecked_const("Action"), None));
                 Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
             },
             #[cfg(feature = "extended-schema")]
@@ -1337,10 +1335,9 @@ impl ActionEntityUID<RawName> {
         ActionEntityUID {
             id: self.id,
             ty: {
-                #[expect(clippy::expect_used, reason = "this is a valid raw name")]
                 let raw_name = self
                     .ty
-                    .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
+                    .unwrap_or_else(|| RawName::new(Id::new_unchecked_const("Action"), None));
                 Some(raw_name.qualify_with(ns))
             },
             #[cfg(feature = "extended-schema")]
