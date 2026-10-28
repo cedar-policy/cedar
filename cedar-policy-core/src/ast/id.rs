@@ -18,7 +18,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
 use crate::{
-    ast::{is_normalized_any_ident, is_normalized_ident},
+    ast::{is_normalized_any_ident, is_normalized_ident, is_reserved_keyword},
     default_from_normalized_str,
     parser::err::ParseErrors,
     FromNormalizedStr,
@@ -327,6 +327,15 @@ impl AnyId {
     /// Get the underlying string
     pub fn into_smolstr(self) -> SmolStr {
         self.0
+    }
+
+    /// Get this `AnyId` as an `Id`, if it isn't a reserved identifier
+    pub fn try_into_id(self) -> Option<Id> {
+        if is_reserved_keyword(self.0.as_ref()) {
+            None
+        } else {
+            Some(Id::new_unchecked(self.0))
+        }
     }
 }
 

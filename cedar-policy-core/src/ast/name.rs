@@ -244,7 +244,7 @@ impl FromNormalizedStr for InternalName {
         if VALID_NAME_REGEX.is_match(s) {
             let path_parts: Vec<&str> = s.split("::").collect();
             // unlike a `Name`, an `InternalName` may contain `__cedar`
-            if !path_parts.iter().any(|s| RESERVED_KEYWORDS.contains(s)) {
+            if !path_parts.iter().copied().any(is_reserved_keyword) {
                 if let Some((last, prefix)) = path_parts.split_last() {
                     return Ok(InternalName::new(
                         Id::new_unchecked(*last),
@@ -481,6 +481,13 @@ pub fn is_normalized_ident(s: &str) -> bool {
 /// as an [`AnyId`](super::AnyId) may be one of them.
 pub(crate) fn is_normalized_any_ident(s: &str) -> bool {
     VALID_ANY_IDENT_REGEX.is_match(s)
+}
+
+/// Is `s` a reserved keywords
+///
+/// These are the identifiers which an [`Id`] cannot be
+pub(crate) fn is_reserved_keyword(s: &str) -> bool {
+    RESERVED_KEYWORDS.contains(s)
 }
 
 impl FromNormalizedStr for Name {
