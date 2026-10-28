@@ -318,6 +318,47 @@ pub enum Type {
     Record(Vec<Node<Annotated<AttrDecl>>>),
 }
 
+// Dropping a deeply nested type recursively could overflow the stack, so
+// nested types are moved onto a heap-allocated work list instead.
+impl Drop for Type {
+    fn drop(&mut self) {
+        let mut work: Vec<Node<Type>> = Vec::new();
+        take_child_types(self, &mut work);
+        while let Some(mut type_node) = work.pop() {
+            take_child_types(&mut type_node.node, &mut work);
+        }
+    }
+}
+
+impl Type {
+    fn is_leaf(&self) -> bool {
+        match self {
+            Type::Ident(_) => true,
+            Type::Set(_) => false,
+            Type::Record(attrs) => attrs.is_empty(),
+        }
+    }
+}
+
+/// Move the non-leaf types nested directly in `ty` into `out`
+fn take_child_types(ty: &mut Type, out: &mut Vec<Node<Type>>) {
+    match ty {
+        Type::Ident(_) => {}
+        Type::Set(inner) => {
+            if !inner.node.is_leaf() {
+                let leaf = Node::with_maybe_source_loc(Type::Record(vec![]), None);
+                out.push(std::mem::replace(inner.as_mut(), leaf));
+            }
+        }
+        Type::Record(attrs) => out.extend(
+            std::mem::take(attrs)
+                .into_iter()
+                .map(|attr| attr.node.data.ty)
+                .filter(|ty| !ty.node.is_leaf()),
+        ),
+    }
+}
+
 /// Primitive Type Definitions
 #[derive(Debug, Clone)]
 pub enum PrimitiveType {
