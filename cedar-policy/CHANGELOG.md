@@ -14,6 +14,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- Errors found while reading a schema in the JSON format now say which entity type, common type or action they are in,
+  e.g. ``in entity type `User`: invalid name ``: unexpected end of input`` or ``in name of common type `My Type`: ...``.
+  (#435)
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
