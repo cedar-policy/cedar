@@ -90,10 +90,34 @@ repository:
   bug-fixes-only: false
   no-third-party-packages: false
   core-team:
+    - name: Darin McAdams
+      affiliation: SPIRL
+      social: https://github.com/D-McAdams
+      primary: false
+    - name: Emina Torlak
+      affiliation: Amazon
+      social: https://github.com/emina
+      primary: false
+    - name: Shaobo He
+      affiliation: Amazon
+      social: https://github.com/shaobo-he-aws
+      primary: false
+    - name: Craig Disselkoen
+      affiliation: Amazon
+      social: https://github.com/cdisselkoen
+      primary: false
     - name: John Kastner
       affiliation: Amazon
       social: https://github.com/john-h-kastner-aws
       primary: true
+    - name: Adrian Palacios
+      affiliation: Code Metal
+      social: https://github.com/adpaco
+      primary: false
+    - name: Charlie Murphy
+      affiliation: Montana State University
+      social: https://github.com/chaluli
+      primary: false
     - name: Katherine Hough
       affiliation: Amazon
       social: https://github.com/katherine-hough
@@ -102,9 +126,32 @@ repository:
       affiliation: Amazon
       social: https://github.com/lianah
       primary: false
+    - name: Ali Dowair
+      affiliation: Delinea
+      social: https://github.com/adowair
+      primary: false
+    - name: Patrick Jakubowski
+      affiliation: Delinea
+      social: https://github.com/patjakdev
+      primary: false
+    - name: Yanran Zeng
+      affiliation: Delinea
+      social: https://github.com/YanranZeng1
+      primary: false
+    - name: Eitan Revach
+      social: https://github.com/eitanre2
+      primary: false
+    - name: Tom Paulus
+      affiliation: Cloudflare
+      social: https://github.com/tpaulus
+      primary: false
     - name: Victor Nicolet
       affiliation: Amazon
       social: https://github.com/victornicolet
+      primary: false
+    - name: Julian Lovelock
+      affiliation: Amazon
+      social: https://github.com/iamatjlovelock
       primary: false
     - name: Lucas Käldström
       affiliation: Amazon

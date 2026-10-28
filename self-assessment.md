@@ -43,6 +43,8 @@ Last reviewed: 2026-10-26
 | -- | -- |
 | Security policy | [SECURITY.md](SECURITY.md) |
 | Security Insights | [security-insights.yml](security-insights.yml) |
+| Governance | <https://github.com/cedar-policy/.github/blob/main/GOVERNANCE.md> |
+| Maintainers | <https://github.com/cedar-policy/.github/blob/main/MAINTAINERS.md> |
 | Security of Cedar, and best practices for applications | <https://docs.cedarpolicy.com/other/security.html> |
 | Policy validation and its guarantees | <https://docs.cedarpolicy.com/policies/validation.html> |
 | Published security advisories | <https://github.com/cedar-policy/cedar/security/advisories> |
@@ -187,9 +189,15 @@ Cedar does not claim compliance with any security standard. The project publishe
 * **Verification.** Cedar follows [verification-guided development (VGD)](https://arxiv.org/abs/2407.01688). Any language changes or significant new features are marked as experimental until the Lean model and proofs are updated, and the nightly fuzzing runs have ran successfully without any failures for at least 2 days. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
 * **Language changes.** Substantial changes to the language go through the [RFC process](https://github.com/cedar-policy/rfcs).
 
+#### Dependency management
+
+* **Selection.** No written policy governs which dependencies may be added. A new dependency goes through the same two-approval review as any other change, and cargo-deny rejects any dependency whose license is not on the allowlist in [deny.toml](deny.toml).
+* **Obtaining.** Rust dependencies come from crates.io. [Cargo.lock](Cargo.lock) is committed, so CI and release builds use the same resolved versions. Every third-party GitHub Action is pinned to a full commit SHA. Cedar's own reusable workflows in its sibling repositories are referenced by branch.
+* **Tracking.** Dependabot opens one grouped pull request a week each for Cargo and GitHub Actions updates ([dependabot.yml](.github/dependabot.yml)), and sends alerts and security updates. cargo-audit and cargo-deny run on every pull request and nightly, and the nightly advisories check opens an issue when it fails.
+
 #### Communication channels
 
-* **Internal.** Maintainers hold weekly meetings and communicate through Slack.
+* **Internal.** Maintainers communicate through Slack.
 * **Inbound.** [GitHub issues](https://github.com/cedar-policy/cedar/issues), the [#cedar-general](https://cloud-native.slack.com/archives/C0AQXC9M4G1) channel on the CNCF Slack, and `cedar-policy-security@lists.cncf.io` for security reports.
 * **Outbound.** [GitHub releases](https://github.com/cedar-policy/cedar/releases) and the changelogs, [security advisories](https://github.com/cedar-policy/cedar/security/advisories), the [Cedar blog](https://www.cedarpolicy.com/blog), and monthly meeting notes in [cedar-community](https://github.com/cedar-policy/cedar-community).
 
