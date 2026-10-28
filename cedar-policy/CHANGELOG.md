@@ -14,6 +14,13 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- `SchemaFragment::to_cedarschema` (and `Schema` conversion to the Cedar schema syntax) now accepts a schema in
+  which a common type shadows an entity type of the same name in the same namespace. It only returns
+  `NameCollisionsError` when a type explicitly refers to the shadowed entity type (`"type": "Entity"`),
+  including references nested in sets and records, since the Cedar syntax can't express that reference (#1272).
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

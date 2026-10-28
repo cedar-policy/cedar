@@ -1544,6 +1544,31 @@ impl<N> Type<N> {
         }
     }
 
+    /// Iterate over all references to entity types that are explicitly
+    /// written as entity type references (`"type": "Entity"`) in this
+    /// [`Type`], including references nested in sets and records.
+    pub(crate) fn entity_type_references(&self) -> Box<dyn Iterator<Item = &N> + '_> {
+        match self {
+            Type::Type {
+                ty: TypeVariant::Record(RecordType { attributes, .. }),
+                ..
+            } => Box::new(
+                attributes
+                    .values()
+                    .flat_map(|attr| attr.ty.entity_type_references()),
+            ),
+            Type::Type {
+                ty: TypeVariant::Set { element },
+                ..
+            } => element.entity_type_references(),
+            Type::Type {
+                ty: TypeVariant::Entity { name },
+                ..
+            } => Box::new(std::iter::once(name)),
+            _ => Box::new(std::iter::empty()),
+        }
+    }
+
     /// Is this [`Type`] an extension type, or does it contain one
     /// (recursively)? Returns `None` if this is a `CommonTypeRef` or
     /// `EntityOrCommon` because we can't easily check the type of a common type

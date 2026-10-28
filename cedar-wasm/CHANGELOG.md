@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- `schemaToText` now converts a JSON schema in which a common type shadows an entity type of the same name, unless a type explicitly refers to the shadowed entity type. (#1272)
+
 ## 4.14.0
 
 ### Added
