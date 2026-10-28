@@ -80,7 +80,7 @@ project:
     detailed-guide: https://docs.cedarpolicy.com/
     quickstart-guide: https://github.com/cedar-policy/cedar#quick-start
     code-of-conduct: https://github.com/cedar-policy/cedar/blob/main/CODE_OF_CONDUCT.md
-    design: https://www.amazon.science/publications/cedar-a-new-language-for-expressive-fast-safe-and-analyzable-authorization
+    design: https://dl.acm.org/doi/10.1145/3649835 
 
 repository:
   url: https://github.com/cedar-policy/cedar
@@ -94,26 +94,10 @@ repository:
       affiliation: SPIRL
       social: https://github.com/D-McAdams
       primary: false
-    - name: Emina Torlak
-      affiliation: Amazon
-      social: https://github.com/emina
-      primary: false
-    - name: Shaobo He
-      affiliation: Amazon
-      social: https://github.com/shaobo-he-aws
-      primary: false
-    - name: Craig Disselkoen
-      affiliation: Amazon
-      social: https://github.com/cdisselkoen
-      primary: false
     - name: John Kastner
       affiliation: Amazon
       social: https://github.com/john-h-kastner-aws
       primary: true
-    - name: Adrian Palacios
-      affiliation: Code Metal
-      social: https://github.com/adpaco
-      primary: false
     - name: Charlie Murphy
       affiliation: Montana State University
       social: https://github.com/chaluli
@@ -126,32 +110,13 @@ repository:
       affiliation: Amazon
       social: https://github.com/lianah
       primary: false
-    - name: Ali Dowair
-      affiliation: Delinea
-      social: https://github.com/adowair
-      primary: false
     - name: Patrick Jakubowski
       affiliation: Delinea
       social: https://github.com/patjakdev
       primary: false
-    - name: Yanran Zeng
-      affiliation: Delinea
-      social: https://github.com/YanranZeng1
-      primary: false
-    - name: Eitan Revach
-      social: https://github.com/eitanre2
-      primary: false
-    - name: Tom Paulus
-      affiliation: Cloudflare
-      social: https://github.com/tpaulus
-      primary: false
     - name: Victor Nicolet
       affiliation: Amazon
       social: https://github.com/victornicolet
-      primary: false
-    - name: Julian Lovelock
-      affiliation: Amazon
-      social: https://github.com/iamatjlovelock
       primary: false
     - name: Lucas Käldström
       affiliation: Amazon
@@ -176,18 +141,16 @@ repository:
         comment: GitHub releases, including prebuilt cedar-policy-cli binaries built with cargo-dist.
       - uri: https://crates.io/crates/cedar-policy
         comment: Main Rust crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
-      - uri: https://crates.io/crates/cedar-policy-core
-        comment: Core Rust crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
       - uri: https://crates.io/crates/cedar-policy-formatter
         comment: Policy formatter crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
       - uri: https://crates.io/crates/cedar-policy-symcc
-        comment: Symbolic compiler crate. Every release since 0.3.1 (March 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+        comment: 'Symbolic compiler crate. Every release since 0.3.1 (March 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository. Changelog: https://github.com/cedar-policy/cedar/blob/main/cedar-policy-symcc/CHANGELOG.md'
       - uri: https://crates.io/crates/cedar-policy-cli
-        comment: Command-line interface crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
+        comment: 'Command-line interface crate. Every release since 4.9.0 (February 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository. Changelog: https://github.com/cedar-policy/cedar/blob/main/cedar-policy-cli/CHANGELOG.md'
       - uri: https://crates.io/crates/cedar-policy-validator
         comment: Validator crate, still published for the 3.x release line. Release 3.4.3 (June 2026) was published through crates.io trusted publishing from a GitHub Actions workflow in this repository.
       - uri: https://www.npmjs.com/package/@cedar-policy/cedar-wasm
-        comment: WebAssembly bindings on npm.
+        comment: 'WebAssembly bindings on npm. Changelog: https://github.com/cedar-policy/cedar/blob/main/cedar-wasm/CHANGELOG.md'
     changelog: https://github.com/cedar-policy/cedar/blob/main/cedar-policy/CHANGELOG.md
     attestations:
       - name: npm provenance for @cedar-policy/cedar-wasm

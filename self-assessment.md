@@ -35,7 +35,7 @@ Last reviewed: 2026-10-28
 | Software | <https://github.com/cedar-policy/cedar> |
 | Security Provider | Yes. Applications use Cedar for access control. |
 | Languages | Rust. The formal model in [cedar-spec](https://github.com/cedar-policy/cedar-spec) is written in Lean. The npm package ships TypeScript type definitions. |
-| SBOM | No SBOM is published. [Cargo.lock](Cargo.lock) lists every resolved dependency. |
+| SBOM | No SBOM is published. [Cargo.lock](Cargo.lock) lists every resolved dependency for builds from this repository. |
 
 #### Security links
 
@@ -44,7 +44,7 @@ Last reviewed: 2026-10-28
 | Security policy | [SECURITY.md](SECURITY.md) |
 | Security Insights | [security-insights.yml](security-insights.yml) |
 | Governance | <https://github.com/cedar-policy/.github/blob/main/GOVERNANCE.md> |
-| Maintainers | <https://github.com/cedar-policy/.github/blob/main/MAINTAINERS.md> |
+| Maintainers | <https://github.com/cedar-policy/.project/blob/main/maintainers.yaml> |
 | Security of Cedar, and best practices for applications | <https://docs.cedarpolicy.com/other/security.html> |
 | Policy validation and its guarantees | <https://docs.cedarpolicy.com/policies/validation.html> |
 | Published security advisories | <https://github.com/cedar-policy/cedar/security/advisories> |
@@ -64,7 +64,7 @@ Cedar is an authorization policy language designed to be ergonomic, fast, safe, 
 Rather than embed authorization logic in an application's code, developers can write that logic as Cedar policies and delegate access decisions to Cedar's evaluation engine.
 Cedar's simple and intuitive syntax supports common authorization use cases with readable policies, naturally leveraging concepts from role-based, attribute-based, and relation-based access control models.
 Cedar's policy structure enables access requests to be decided quickly.
-Cedar's policy validator leverages optional typing to help policy writers avoid mistakes, but not get in their way.
+To help policy writers avoid mistakes, Cedar offers and encourges the use of _schema_ to type check policies. 
 Cedar's design has been finely balanced to allow for a sound and complete logical encoding, which enables precise policy analysis, e.g., to ensure that when refactoring a set of policies, the authorized permissions do not change.
 Cedar is implemented in Rust and modeled in the Lean programming language, where important formal properties of its design are proven to hold.
 Details about the Cedar language can be found in the [OOPSLA paper](https://doi.org/10.1145/3649835).
@@ -72,7 +72,7 @@ Details about the Cedar language can be found in the [OOPSLA paper](https://doi.
 Cedar was built with verification-guided development (VGD).
 A formal model in Lean defines Cedar's semantics, and Lean proofs establish properties of that model.
 The Rust implementation in this repository is then tested against the model with differential random testing (DRT).
-The approach is described in the Amazon Science post [How we built Cedar with automated reasoning and differential testing](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing) and the paper [How We Built Cedar: A Verification-Guided Approach](https://arxiv.org/abs/2407.01688).
+The approach is described in the Amazon Science post [How we built Cedar with automated reasoning and differential testing](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing) and the paper [How We Built Cedar: A Verification-Guided Approach](https://dl.acm.org/doi/10.1145/3663529.3663854).
 
 Security is shared between Cedar and the applications that use it, as the [Cedar security documentation](https://docs.cedarpolicy.com/other/security.html#security-shared-responsibility) describes. Cedar is responsible for evaluating policies correctly. The application is responsible for writing policies that express its intent and for giving Cedar accurate data.
 
@@ -113,12 +113,13 @@ This repository contains these crates:
 
 #### Goals
 
-* **Correctness of Cedar's core functionalities.** Authorization, validation, symbolic analysis with SymCC, and type-aware partial evaluation behave as Cedar's Lean model specifies. This holds for any input, including policies, schemas, entities, and requests written by an attacker. The [Cedar paper](https://arxiv.org/abs/2403.04651) lists some notable properties proved about the model: a satisfied `forbid` policy always denies the request, a request with no satisfied `permit` policy is denied, and validated policies evaluate without type errors.
+* **Correctness of Cedar's core functionalities.** Authorization, validation, symbolic analysis with SymCC, and type-aware partial evaluation behave as Cedar's Lean model specifies. This holds for any input, including policies, schemas, entities, and requests written by an attacker. The [Cedar paper](https://dl.acm.org/doi/10.1145/3649835) lists some notable properties proved about the model: a satisfied `forbid` policy always denies the request, a request with no satisfied `permit` policy is denied, and validated policies evaluate without type errors.
 A complete account of Cedar's formal semantics and proven properties can be found in the [cedar-spec GitHub repository](https://github.com/cedar-policy/cedar-spec).
+
+* **Faithfulness of policy to user intention.** Cedar syntax is designed for human readability and Cedar semantics is proven to have universally desirable properties. In addition, Cedar provides tools like schema and symbolic compiler for users automate policy analysis for better assurance.
 
 #### Non-goals
 
-* **Faithfulness of policy to user intention.** Do the application's policies, schemas, and entity data express the access control it intends?
 * **Policy enforcement.** Cedar returns a decision. The application must enforce it.
 * **Input size limits.** Cedar places no limit on the size of policies, schemas, or requests. Services that accept arbitrary input must bound its size to protect against memory exhaustion, as the [security documentation](https://docs.cedarpolicy.com/other/security.html#security-input-validation) says.
 * **Storage and distribution of policies.** Where policies and entity data are stored, and who may change them, is up to the application.
@@ -186,13 +187,16 @@ Cedar does not claim compliance with any security standard. The project publishe
 * **Checks against related repositories on every pull request.** Builds of the differential testing harness and Lean bindings from cedar-spec, the integration test corpus, and the examples ([build_downstream_deps.yml](.github/workflows/build_downstream_deps.yml)).
 * **Nightly.** The full build and test suite, a cargo-deny advisories check that opens an issue when it fails, and a cedar-java build ([nightly_build.yml](.github/workflows/nightly_build.yml), [cargo_audit.yml](.github/workflows/cargo_audit.yml), [nightly_build_downstream.yml](.github/workflows/nightly_build_downstream.yml)).
 * **Repository scanning.** CodeQL default setup, OpenSSF Scorecard, Dependabot alerts and security updates, and secret scanning with push protection.
-* **Verification.** Cedar follows [verification-guided development (VGD)](https://arxiv.org/abs/2407.01688). Any language changes or significant new features are marked as experimental until the Lean model and proofs are updated, and the nightly fuzzing runs have ran successfully without any failures for at least 2 days. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
+* **Verification.** Cedar follows [verification-guided development (VGD)](https://dl.acm.org/doi/10.1145/3663529.3663854). Any language changes or significant new features are marked as experimental until the Lean model and proofs are updated, and the nightly fuzzing runs have ran successfully without any failures for at least 2 days. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
 * **Language changes.** Substantial changes to the language go through the [RFC process](https://github.com/cedar-policy/rfcs).
 
 #### Dependency management
 
-* **Selection.** No written policy governs which dependencies may be added. A new dependency goes through the same two-approval review as any other change, and cargo-deny rejects any dependency whose license is not on the allowlist in [deny.toml](deny.toml).
-* **Obtaining.** Rust dependencies come from crates.io. [Cargo.lock](Cargo.lock) is committed, so CI and release builds use the same resolved versions. Every third-party GitHub Action is pinned to a full commit SHA. Cedar's own reusable workflows in its sibling repositories are referenced by branch.
+* **Selection.** Cargo-deny rejects any dependency whose license is not on the allowlist in [deny.toml](deny.toml). Any other new dependency goes through the same two-approval review as any other change. 
+* **Obtaining.** Rust dependencies come from crates.io. Every third-party GitHub Action is pinned to a full commit SHA. Cedar's own reusable workflows in its sibling repositories are referenced by branch. [Cargo.lock](Cargo.lock) is committed, but only some builds use it:
+  * CI, the prebuilt CLI binaries, and the npm package are built with the versions in Cargo.lock.
+  * `cargo install cedar-policy-cli --locked` uses the Cargo.lock published with the crate. Without `--locked`, Cargo ignores it and picks the newest versions that Cedar's `Cargo.toml` files allow.
+  * An application that depends on a Cedar crate never uses Cedar's Cargo.lock. Cargo picks versions that Cedar's `Cargo.toml` files allow and records them in the application's own lockfile. The application is responsible for auditing them.
 * **Tracking.** Dependabot opens one grouped pull request a week each for Cargo and GitHub Actions updates ([dependabot.yml](.github/dependabot.yml)), and sends alerts and security updates. cargo-audit and cargo-deny run on every pull request and nightly, and the nightly advisories check opens an issue when it fails.
 
 #### Communication channels
@@ -246,7 +250,7 @@ Practical use cases can be found in [cedar-examples](https://github.com/cedar-po
 
 #### Related projects
 
-Open Policy Agent's Rego and OpenFGA are the projects users most often compare with Cedar. The [Trail of Bits report](https://github.com/trailofbits/publications/blob/master/reports/Policy_Language_Security_Comparison_and_TM.pdf) compares the three by threat group, and the [OOPSLA 2024 paper](https://arxiv.org/abs/2403.04651) compares readability and performance.
+Open Policy Agent's Rego and OpenFGA are the projects users most often compare with Cedar. The [Trail of Bits report](https://github.com/trailofbits/publications/blob/master/reports/Policy_Language_Security_Comparison_and_TM.pdf) compares the three by threat group, and the [OOPSLA 2024 paper](https://dl.acm.org/doi/10.1145/3649835) compares readability and performance.
 
 #### Third-party security reviews
 
