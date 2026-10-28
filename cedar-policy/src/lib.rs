@@ -67,18 +67,19 @@
 //!
 //! # Untrusted input and stack overflows
 //!
-//! Most operations on Cedar polices, schema, and entities are defined recursively.
+//! Most operations on Cedar policies, schemas, and entities are defined recursively.
 //! Parsing, validation, evaluation, and even cloning or dropping Cedar data
 //! recurse once per level of nesting, so deep enough input may cause a stack
 //! overflow, aborting the process.  Cedar does not impose any limits on nesting
 //! by default, but provides a series of `*_with_depth_limit` functions for parsing
-//! untrusted data with an unforced depth limit.
+//! untrusted data with an enforced depth limit.
 //!
-//! These functions should be applied to input Cedar parsers itself and to JSON
-//! input, which is parsed with `serde_json`. `serde_json` parses recursively
-//! and imposes its own depth limit at 127 level of nesting, buy you should
-//! still apply Cedar's depth limits because certain structure encoded as flat
-//! JSON objects may be represented as a recursive datastructure internally.
+//! These functions should be applied to input in the Cedar syntax, which Cedar
+//! parses itself, and to JSON input, which is parsed with `serde_json`.
+//! `serde_json` parses recursively and imposes its own depth limit at 127
+//! levels of nesting, but you should still apply Cedar's depth limits because
+//! certain structures encoded as flat JSON objects may be represented as a
+//! recursive data structure internally.
 #![warn(clippy::pedantic, clippy::use_self, clippy::option_if_let_else)]
 #![deny(
     missing_docs,
