@@ -54,7 +54,8 @@ use crate::utils::ToRange;
 /// policy folding is typically done at the policy block level.
 #[must_use]
 pub(crate) fn fold_policy_set(policy_str: &str) -> Option<Vec<FoldingRange>> {
-    let policies = parse_policies_tolerant(policy_str)
+    let arena = cedar_policy_core::parser::cst::Arena::new();
+    let policies = parse_policies_tolerant(&arena, policy_str)
         .ok()
         .and_then(|policies| policies.node)?;
 

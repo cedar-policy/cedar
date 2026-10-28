@@ -147,7 +147,7 @@ impl RefKind for OneOrMultipleRefs {
     }
 }
 
-impl Node<Option<cst::Expr>> {
+impl Node<Option<cst::Expr<'_>>> {
     /// Extract a single `EntityUID` from this expression. The expression must
     /// be exactly a single entity literal expression.
     pub fn to_ref(&self, var: ast::Var) -> Result<EntityUID> {
@@ -232,7 +232,7 @@ impl Node<Option<cst::Expr>> {
     }
 }
 use super::TolerantAstSetting;
-impl Node<Option<cst::Primary>> {
+impl Node<Option<cst::Primary<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -327,7 +327,7 @@ impl Node<Option<cst::Primary>> {
     }
 }
 
-impl Node<Option<cst::Member>> {
+impl Node<Option<cst::Member<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -344,7 +344,7 @@ impl Node<Option<cst::Member>> {
     }
 }
 
-impl Node<Option<cst::Unary>> {
+impl Node<Option<cst::Unary<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -365,7 +365,7 @@ impl Node<Option<cst::Unary>> {
     }
 }
 
-impl Node<Option<cst::Mult>> {
+impl Node<Option<cst::Mult<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -386,7 +386,7 @@ impl Node<Option<cst::Mult>> {
     }
 }
 
-impl Node<Option<cst::Add>> {
+impl Node<Option<cst::Add<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -403,7 +403,7 @@ impl Node<Option<cst::Add>> {
     }
 }
 
-impl Node<Option<cst::Relation>> {
+impl Node<Option<cst::Relation<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -447,7 +447,7 @@ impl Node<Option<cst::Relation>> {
     }
 }
 
-impl Node<Option<cst::Or>> {
+impl Node<Option<cst::Or<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -468,7 +468,7 @@ impl Node<Option<cst::Or>> {
     }
 }
 
-impl Node<Option<cst::And>> {
+impl Node<Option<cst::And<'_>>> {
     fn to_ref_or_refs<T: RefKind>(
         &self,
         var: ast::Var,
@@ -494,6 +494,7 @@ impl Node<Option<cst::And>> {
 mod test {
     use crate::ast;
     use crate::ast::EntityUID;
+    use crate::parser;
     use crate::parser::cst;
     use crate::parser::cst::Name;
     use crate::parser::cst_to_ast::to_ref_or_refs::SingleEntity;
@@ -545,14 +546,14 @@ mod test {
         assert!(result.is_err());
     }
 
-    fn test_primary_rinits_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_rinits_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::RInits(vec![])),
             loc: Some(Loc::new(0..1, "This is also a test".into())),
         }
     }
 
-    fn test_primary_expr_error_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_expr_error_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::Expr(Node {
                 node: Some(cst::Expr::ErrorExpr),
@@ -562,7 +563,7 @@ mod test {
         }
     }
 
-    fn test_primary_elist_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_elist_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::EList(vec![
                 Node {
@@ -578,7 +579,7 @@ mod test {
         }
     }
 
-    fn test_unary_node() -> Node<Option<cst::Unary>> {
+    fn test_unary_node() -> Node<Option<cst::Unary<'static>>> {
         Node {
             node: Some(cst::Unary {
                 op: None,
@@ -594,7 +595,7 @@ mod test {
         }
     }
 
-    fn test_mult_node() -> Node<Option<cst::Mult>> {
+    fn test_mult_node() -> Node<Option<cst::Mult<'static>>> {
         Node {
             node: Some(cst::Mult {
                 initial: test_unary_node(),
@@ -604,7 +605,7 @@ mod test {
         }
     }
 
-    fn test_add_node() -> Node<Option<cst::Add>> {
+    fn test_add_node() -> Node<Option<cst::Add<'static>>> {
         Node {
             node: Some(cst::Add {
                 initial: test_mult_node(),
@@ -614,7 +615,7 @@ mod test {
         }
     }
 
-    fn test_relation_node() -> Node<Option<cst::Relation>> {
+    fn test_relation_node() -> Node<Option<cst::Relation<'static>>> {
         Node {
             node: Some(cst::Relation::Common {
                 initial: test_add_node(),
@@ -624,7 +625,7 @@ mod test {
         }
     }
 
-    fn test_expr_or_node() -> cst::ExprData {
+    fn test_expr_or_node() -> cst::ExprData<'static> {
         cst::ExprData::Or(Node {
             node: Some(cst::Or {
                 extended: vec![],
@@ -640,13 +641,13 @@ mod test {
         })
     }
 
-    fn test_expr() -> cst::Expr {
+    fn test_expr() -> cst::Expr<'static> {
         cst::Expr::Expr(cst::ExprImpl {
-            expr: Box::new(test_expr_or_node()),
+            expr: parser::test_arena().alloc(test_expr_or_node()),
         })
     }
 
-    fn test_primary_expr_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_expr_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::Expr(Node {
                 node: Some(test_expr()),
@@ -656,7 +657,7 @@ mod test {
         }
     }
 
-    fn test_primary_name_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_name_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::Name(Node {
                 node: Some(Name {
@@ -672,7 +673,7 @@ mod test {
         }
     }
 
-    fn test_primary_literal_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_literal_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::Literal(Node {
                 node: Some(cst::Literal::True),
@@ -682,7 +683,7 @@ mod test {
         }
     }
 
-    fn test_primary_slot_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_slot_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::Slot(Node {
                 node: Some(cst::Slot::Principal),
@@ -692,7 +693,7 @@ mod test {
         }
     }
 
-    fn test_primary_ref_node() -> Node<Option<cst::Primary>> {
+    fn test_primary_ref_node() -> Node<Option<cst::Primary<'static>>> {
         Node {
             node: Some(cst::Primary::Ref(Node {
                 node: Some(cst::Ref::Uid {

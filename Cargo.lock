@@ -475,6 +475,7 @@ dependencies = [
  "stacker",
  "thiserror",
  "tsify",
+ "typed-arena",
  "unicode-security",
  "wasm-bindgen",
 ]

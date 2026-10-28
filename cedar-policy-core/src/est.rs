@@ -161,9 +161,9 @@ impl Clause {
     }
 }
 
-impl TryFrom<cst::Policy> for Policy {
+impl TryFrom<cst::Policy<'_>> for Policy {
     type Error = ParseErrors;
-    fn try_from(policy: cst::Policy) -> Result<Policy, ParseErrors> {
+    fn try_from(policy: cst::Policy<'_>) -> Result<Policy, ParseErrors> {
         #[cfg_attr(
             not(feature = "tolerant-ast"),
             expect(
@@ -215,9 +215,9 @@ impl TryFrom<cst::Policy> for Policy {
     }
 }
 
-impl TryFrom<cst::Cond> for Clause {
+impl TryFrom<cst::Cond<'_>> for Clause {
     type Error = ParseErrors;
-    fn try_from(cond: cst::Cond) -> Result<Clause, ParseErrors> {
+    fn try_from(cond: cst::Cond<'_>) -> Result<Clause, ParseErrors> {
         let maybe_is_when = cond.cond.to_cond_is_when();
         match cond.expr {
             None => {
@@ -460,7 +460,7 @@ mod test {
     #[track_caller]
     fn text_roundtrip(est: &Policy) -> Policy {
         let text = est.to_string();
-        let cst = parser::text_to_cst::parse_policy(&text)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), &text)
             .expect("Failed to convert to CST")
             .node
             .expect("Node should not be empty");
@@ -495,7 +495,7 @@ mod test {
             .try_into_ast_policy(None)
             .expect("Failed to convert to AST");
         let text = ast.to_string();
-        let cst = parser::text_to_cst::parse_policy(&text)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), &text)
             .expect("Failed to convert to CST")
             .node
             .expect("Node should not be empty");
@@ -510,7 +510,7 @@ mod test {
             .try_into_ast_policy_or_template(None)
             .expect("Failed to convert to AST");
         let text = ast.to_string();
-        let cst = parser::text_to_cst::parse_policy(&text)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), &text)
             .expect("Failed to convert to CST")
             .node
             .expect("Node should not be empty");
@@ -520,7 +520,7 @@ mod test {
     #[test]
     fn empty_policy() {
         let policy = "permit(principal, action, resource);";
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -593,7 +593,7 @@ mod test {
             @this1is2a3valid_identifier("any arbitrary ! string \" is @ allowed in 🦀 here_")
             permit(principal, action, resource);
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -670,7 +670,7 @@ mod test {
     #[test]
     fn annotated_without_value_policy() {
         let policy = r#"@foo permit(principal, action, resource);"#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -756,7 +756,7 @@ mod test {
             permit(principal, action, resource) when { 2 == 2 };
         "#;
 
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -822,7 +822,7 @@ mod test {
             @foo("2")
             permit(principal, action, resource);
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -835,7 +835,7 @@ mod test {
             @foo("1")
             permit(principal, action, resource);
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -852,7 +852,7 @@ mod test {
             @foo("def")
             permit(principal, action, resource);
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -903,7 +903,7 @@ mod test {
                 resource in Folder::"abc"
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -984,7 +984,7 @@ mod test {
                 resource in ?resource
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(template)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();
@@ -1067,7 +1067,7 @@ mod test {
                 context.tls_version == "1.3"
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1133,7 +1133,7 @@ mod test {
                 resource
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1215,7 +1215,7 @@ mod test {
             permit(principal, action, resource)
             when { 1 == 2 };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1272,7 +1272,7 @@ mod test {
             permit(principal, action, resource)
             when { User::"alice" == Namespace::Type::"foo" };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1339,7 +1339,7 @@ mod test {
             permit(principal, action, resource)
             when { false == true };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1396,7 +1396,7 @@ mod test {
             permit(principal, action, resource)
             when { "spam" == "eggs" };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1453,7 +1453,7 @@ mod test {
             permit(principal, action, resource)
             when { [1, 2, "foo"] == [4, 5, "spam"] };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1518,7 +1518,7 @@ mod test {
             permit(principal, action, resource)
             when { {foo: "spam", bar: false} == {} };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1578,7 +1578,7 @@ mod test {
             permit(principal, action, resource)
             when { principal == action && resource == context };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1649,7 +1649,7 @@ mod test {
             permit(principal, action, resource)
             when { !context.foo && principal != context.bar };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1797,7 +1797,7 @@ mod test {
             permit(principal, action, resource)
             when { resource in principal.department };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1859,7 +1859,7 @@ mod test {
             permit(principal, action, resource)
             when { context.something1.something2.something3 };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -1924,7 +1924,7 @@ mod test {
             permit(principal, action, resource)
             when { -3 < 2 && 4 > -(23 - 1) || 0 <= 0 && 7 >= 1};
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2140,7 +2140,7 @@ mod test {
             permit(principal, action, resource)
             when { 2 + 3 - principal.numFoos * (-10) == 7 };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2228,7 +2228,7 @@ mod test {
                 && context.violations.isEmpty()
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2367,7 +2367,7 @@ mod test {
                 && principal.getTag(context.foo) == 72
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2498,7 +2498,7 @@ mod test {
             "" like "ḛ̶͑͝x̶͔͛a̵̰̯͛m̴͉̋́p̷̠͂l̵͇̍̔ȩ̶̣͝"
         };
     "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2693,7 +2693,7 @@ mod test {
                 else resource.email like "*@amazon.com"
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2810,7 +2810,7 @@ mod test {
                 context.confidenceScore.greaterThan(decimal("10.0"))
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2878,7 +2878,7 @@ mod test {
                 context.source_ip.isInRange(ip("222.222.222.0/24"))
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2944,7 +2944,7 @@ mod test {
         permit(principal, action, resource)
         when { -1 };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -2979,7 +2979,7 @@ mod test {
         permit(principal, action, resource)
         when { -(1) };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -3044,7 +3044,7 @@ mod test {
             unless { context.bar }
             when { principal.eggs };
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -3197,7 +3197,7 @@ mod test {
                 principal in resource.owners
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(template)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();
@@ -3297,7 +3297,7 @@ mod test {
             };
         "#;
 
-        let cst = parser::text_to_cst::parse_policy(template).unwrap();
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template).unwrap();
         let ast: ast::Template = cst
             .to_policy_template(ast::PolicyID::from_string("test"))
             .unwrap();
@@ -3375,7 +3375,7 @@ mod test {
             );
         "#;
 
-        let cst = parser::text_to_cst::parse_policy(template).unwrap();
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template).unwrap();
         let ast: ast::Template = cst
             .to_policy_template(ast::PolicyID::from_string("test"))
             .unwrap();
@@ -3433,7 +3433,7 @@ mod test {
                 resource
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(policy)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
             .unwrap()
             .node
             .unwrap();
@@ -3780,7 +3780,7 @@ mod test {
         #[test]
         fn principal() {
             let policy = r"permit(principal is User, action, resource);";
-            let cst = parser::text_to_cst::parse_policy(policy)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
                 .unwrap()
                 .node
                 .unwrap();
@@ -3851,7 +3851,7 @@ mod test {
         #[test]
         fn resource() {
             let policy = r"permit(principal, action, resource is Log);";
-            let cst = parser::text_to_cst::parse_policy(policy)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
                 .unwrap()
                 .node
                 .unwrap();
@@ -3922,7 +3922,7 @@ mod test {
         #[test]
         fn principal_in_entity() {
             let policy = r#"permit(principal is User in Group::"admin", action, resource);"#;
-            let cst = parser::text_to_cst::parse_policy(policy)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
                 .unwrap()
                 .node
                 .unwrap();
@@ -3995,7 +3995,7 @@ mod test {
         #[test]
         fn principal_in_slot() {
             let policy = r#"permit(principal is User in ?principal, action, resource);"#;
-            let cst = parser::text_to_cst::parse_policy(policy)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
                 .unwrap()
                 .node
                 .unwrap();
@@ -4070,7 +4070,7 @@ mod test {
             let policy = r#"
             permit(principal, action, resource)
             when { principal is User };"#;
-            let cst = parser::text_to_cst::parse_policy(policy)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
                 .unwrap()
                 .node
                 .unwrap();
@@ -4124,7 +4124,7 @@ mod test {
             let policy = r#"
             permit(principal, action, resource)
             when { principal is User in 1 };"#;
-            let cst = parser::text_to_cst::parse_policy(policy)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy)
                 .unwrap()
                 .node
                 .unwrap();
@@ -4327,7 +4327,7 @@ mod test {
                 resource is Doc in ?resource
             );
         "#;
-            let cst = parser::text_to_cst::parse_policy(template)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
                 .unwrap()
                 .node
                 .unwrap();
@@ -4400,7 +4400,7 @@ mod test {
         #[test]
         fn link_no_slot() {
             let template = r#"permit(principal is User, action, resource is Doc);"#;
-            let cst = parser::text_to_cst::parse_policy(template)
+            let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
                 .unwrap()
                 .node
                 .unwrap();
@@ -4615,7 +4615,7 @@ mod test {
         let policy_text = r#"
         permit(principal, action, resource) when
         { principal has a.b.c };"#;
-        let cst = parser::text_to_cst::parse_policy(policy_text).unwrap();
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy_text).unwrap();
         let est: Policy = cst.node.unwrap().try_into().unwrap();
         assert_eq!(
             est,
@@ -4646,7 +4646,7 @@ mod test {
     #[test]
     fn extended_has_roundtrips() {
         let policy_text = r#"permit(principal, action, resource) when { principal has a.b.c };"#;
-        let cst = parser::text_to_cst::parse_policy(policy_text).unwrap();
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), policy_text).unwrap();
         let est: Policy = cst.node.unwrap().try_into().unwrap();
 
         // EST JSON roundtrip preserves extended has
@@ -4667,7 +4667,8 @@ mod test {
 
         // Single-attribute extended has should produce Simple form
         let single_text = r#"permit(principal, action, resource) when { principal has x };"#;
-        let single_cst = parser::text_to_cst::parse_policy(single_text).unwrap();
+        let single_cst =
+            parser::text_to_cst::parse_policy(parser::test_arena(), single_text).unwrap();
         let single_est: Policy = single_cst.node.unwrap().try_into().unwrap();
         let single_json = serde_json::to_value(&single_est).unwrap();
         // Single attr has should use the simple "attr": "x" form, not array
@@ -4687,7 +4688,7 @@ mod test {
                 resource
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(template)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();
@@ -4707,7 +4708,7 @@ mod test {
                 resource in ?resource
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(template)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();
@@ -4727,7 +4728,7 @@ mod test {
                 resource
             );
         "#;
-        let cst = parser::text_to_cst::parse_policy(template)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();
@@ -4746,7 +4747,7 @@ mod test {
                 principal in resource.owners
             };
         "#;
-        let cst = parser::text_to_cst::parse_policy(template)
+        let cst = parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();

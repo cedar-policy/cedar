@@ -49,7 +49,8 @@ pub(crate) fn policy_goto_definition(
     schema: Option<SchemaInfo>,
     schema_uri: Option<&Uri>,
 ) -> Option<GotoDefinitionResponse> {
-    let cst = cedar_policy_core::parser::text_to_cst::parse_policies(policy_src)
+    let arena = cedar_policy_core::parser::cst::Arena::new();
+    let cst = cedar_policy_core::parser::text_to_cst::parse_policies(&arena, policy_src)
         .inspect_err(|e| tracing::error!("Error parsing policy to cst: {}", e))
         .ok()?;
 

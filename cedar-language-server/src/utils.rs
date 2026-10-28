@@ -702,8 +702,9 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn schema_document_context(policy: &str, position: Position) -> DocumentContext<'_> {
+        let arena = cedar_policy_core::parser::cst::Arena::new();
         let template =
-            cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(policy).unwrap();
+            cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(&arena, policy).unwrap();
         let ast = template
             .to_policy_template_tolerant(PolicyID::from_string("0"))
             .unwrap();

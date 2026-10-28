@@ -48,7 +48,8 @@ use crate::est;
 /// simple main function for parsing policies
 /// generates numbered ids
 pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
-    let cst = text_to_cst::parse_policies(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policies(&arena, text)?;
     cst.to_policyset()
 }
 
@@ -60,7 +61,8 @@ pub fn parse_policyset(text: &str) -> Result<ast::PolicySet, err::ParseErrors> {
 pub fn parse_policyset_and_also_return_policy_text(
     text: &str,
 ) -> Result<(HashMap<ast::PolicyID, Option<&str>>, ast::PolicySet), err::ParseErrors> {
-    let cst = text_to_cst::parse_policies(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policies(&arena, text)?;
     let pset = cst.to_policyset()?;
     #[expect(
         clippy::expect_used,
@@ -95,7 +97,8 @@ pub fn parse_policyset_and_also_return_policy_text(
 pub fn parse_policyset_to_ests_and_pset(
     text: &str,
 ) -> Result<(HashMap<ast::PolicyID, est::Policy>, ast::PolicySet), err::ParseErrors> {
-    let cst = text_to_cst::parse_policies(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policies(&arena, text)?;
     let pset = cst.to_policyset()?;
     #[expect(
         clippy::expect_used,
@@ -121,7 +124,8 @@ pub fn parse_policy_or_template(
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policy(&arena, text)?;
     cst.to_template(id)
 }
 
@@ -133,7 +137,8 @@ pub fn parse_policy_or_template_to_est_and_ast(
     text: &str,
 ) -> Result<(est::Policy, ast::Template), err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policy(&arena, text)?;
     let ast = cst.to_template(id)?;
     let est = cst.try_into_inner()?.try_into()?;
     Ok((est, ast))
@@ -148,7 +153,8 @@ pub fn parse_template(
     text: &str,
 ) -> Result<ast::Template, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policy(&arena, text)?;
     let template = cst.to_template(id)?;
     validate_template_has_slots(template, cst)
 }
@@ -162,7 +168,8 @@ pub fn parse_policy(
     text: &str,
 ) -> Result<ast::StaticPolicy, err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policy(&arena, text)?;
     cst.to_policy(id)
 }
 
@@ -174,7 +181,8 @@ pub fn parse_policy_to_est_and_ast(
     text: &str,
 ) -> Result<(est::Policy, ast::StaticPolicy), err::ParseErrors> {
     let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-    let cst = text_to_cst::parse_policy(text)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_policy(&arena, text)?;
     let ast = cst.to_policy(id)?;
     let est = cst.try_into_inner()?.try_into()?;
     Ok((est, ast))
@@ -194,7 +202,8 @@ pub fn parse_policy_or_template_to_est(text: &str) -> Result<est::Policy, err::P
 /// Private to this crate. Users outside Core should use `Expr`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_expr(ptext: &str) -> Result<ast::Expr, err::ParseErrors> {
-    let cst = text_to_cst::parse_expr(ptext)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_expr(&arena, ptext)?;
     cst.to_expr::<ast::ExprBuilder<()>>()
 }
 
@@ -232,7 +241,8 @@ pub(crate) fn parse_internal_name(name: &str) -> Result<ast::InternalName, err::
 /// Private to this crate. Users outside Core should use `Literal`'s `FromStr` impl
 /// or its constructors
 pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParseError> {
-    let cst = text_to_cst::parse_primary(val)?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_primary(&arena, val)?;
     match cst.to_expr::<ast::ExprBuilder<()>>() {
         Ok(ast) => match ast.expr_kind() {
             ast::ExprKind::Lit(v) => Ok(v.clone()),
@@ -254,7 +264,8 @@ pub(crate) fn parse_literal(val: &str) -> Result<ast::Literal, err::LiteralParse
 /// full expression parser for those.
 pub fn parse_internal_string(val: &str) -> Result<SmolStr, err::ParseErrors> {
     // we need to add quotes for this to be a valid string literal
-    let cst = text_to_cst::parse_primary(&format!(r#""{val}""#))?;
+    let arena = cst::Arena::new();
+    let cst = text_to_cst::parse_primary(&arena, &format!(r#""{val}""#))?;
     cst.to_string_literal::<ast::ExprBuilder<()>>()
 }
 
@@ -280,13 +291,19 @@ pub(crate) fn parse_anyid(id: &str) -> Result<ast::AnyId, err::ParseErrors> {
 /// error otherwise.
 fn validate_template_has_slots(
     template: ast::Template,
-    cst: Node<Option<cst::Policy>>,
+    cst: Node<Option<cst::Policy<'_>>>,
 ) -> Result<ast::Template, err::ParseErrors> {
     if template.slots().count() == 0 {
         Err(err::ToASTError::new(err::ToASTErrorKind::expected_template(), cst.loc).into())
     } else {
         Ok(template)
     }
+}
+
+/// A CST arena for tests, leaked so that test CSTs can outlive it
+#[cfg(test)]
+pub(crate) fn test_arena() -> &'static cst::Arena<'static> {
+    Box::leak(Box::default())
 }
 
 /// Utilities used in tests in this file (and maybe other files in this crate)

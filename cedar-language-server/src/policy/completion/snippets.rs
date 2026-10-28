@@ -76,7 +76,8 @@ pub(crate) fn should_show_policy_snippets(text: &str, cursor_position: Position)
     }
 
     // Now check the policy context using the Cedar CST parser
-    match cedar_policy_core::parser::text_to_cst::parse_policies(text) {
+    let arena = cedar_policy_core::parser::cst::Arena::new();
+    match cedar_policy_core::parser::text_to_cst::parse_policies(&arena, text) {
         Ok(cst) => {
             // If no policies exist, show snippets
             if cst.node.is_none() {

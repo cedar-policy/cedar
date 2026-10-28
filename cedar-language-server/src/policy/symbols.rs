@@ -58,7 +58,8 @@ use crate::{lsp::new_symbol, utils::ToRange};
 /// They provide navigation targets for the document outline and "go to symbol"
 /// functionality in IDEs.
 pub(crate) fn policy_set_symbols(policy_str: &str) -> Option<Vec<DocumentSymbol>> {
-    let policies = parse_policies_tolerant(policy_str)
+    let arena = cedar_policy_core::parser::cst::Arena::new();
+    let policies = parse_policies_tolerant(&arena, policy_str)
         .ok()
         .and_then(|policies| policies.to_policyset_tolerant().ok())?;
 

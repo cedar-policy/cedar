@@ -147,10 +147,10 @@ impl TryFrom<PolicySet> for ast::PolicySet {
     }
 }
 
-impl TryFrom<Node<Option<Policies>>> for PolicySet {
+impl TryFrom<Node<Option<Policies<'_>>>> for PolicySet {
     type Error = ParseErrors;
 
-    fn try_from(policies: Node<Option<Policies>>) -> Result<Self, Self::Error> {
+    fn try_from(policies: Node<Option<Policies<'_>>>) -> Result<Self, Self::Error> {
         let mut templates = LinkedHashMap::new();
         let mut static_policies = LinkedHashMap::new();
         let mut all_errs: Vec<ParseErrors> = vec![];
@@ -188,6 +188,7 @@ impl TryFrom<Node<Option<Policies>>> for PolicySet {
 
 #[cfg(test)]
 mod test {
+    use crate::parser;
     use serde_json::json;
 
     use super::*;
@@ -363,7 +364,8 @@ mod test {
             permit(principal == User::"alice", action, resource);
             permit(principal, action == Action::"view", resource);
         "#;
-        let node = crate::parser::text_to_cst::parse_policies(src).expect("Policies should parse");
+        let node = crate::parser::text_to_cst::parse_policies(parser::test_arena(), src)
+            .expect("Policies should parse");
         let policy_set =
             PolicySet::try_from(node).expect("Conversion to policy set should succeed");
         assert_eq!(policy_set.static_policies.len(), 2);
@@ -377,7 +379,8 @@ mod test {
             permit(principal == User::"alice", action, resource);
             permit(principal == ?principal, action == Action::"view", resource);
         "#;
-        let node = crate::parser::text_to_cst::parse_policies(src).expect("Policies should parse");
+        let node = crate::parser::text_to_cst::parse_policies(parser::test_arena(), src)
+            .expect("Policies should parse");
         let policy_set =
             PolicySet::try_from(node).expect("Conversion to policy set should succeed");
         assert_eq!(policy_set.static_policies.len(), 1);
@@ -388,7 +391,8 @@ mod test {
     #[test]
     fn try_from_policies_with_parse_error() {
         let src = r#"principal(p, action, resource);"#;
-        let node = crate::parser::text_to_cst::parse_policies(src).expect("policies should parse");
+        let node = crate::parser::text_to_cst::parse_policies(parser::test_arena(), src)
+            .expect("policies should parse");
         PolicySet::try_from(node).expect_err("Expected parse error to result in err");
     }
 

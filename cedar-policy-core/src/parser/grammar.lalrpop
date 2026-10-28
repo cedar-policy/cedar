@@ -27,7 +27,8 @@ use crate::parser::node::Node;
 ///
 /// `src` is the (full) original source being parsed, which the source locations l,r index into.
 /// `keep_src` is a flag that indicates whether we should keep source information or not
-grammar<'err, 's>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>, keep_src: bool);
+/// `arena` owns the `ExprData` nodes of the CST
+grammar<'err, 's, 'a>(errors: &'err mut Vec<RawErrorRecovery<'input>>, src: &'s Arc<str>, keep_src: bool, arena: &'a cst::Arena<'a>);
 
 extern {
     type Error = RawUserError;
@@ -95,7 +96,7 @@ Comma<E>: Vec<E> = {
 }
 
 // Policies := {Policy}
-pub Policies: Node<Option<cst::Policies>> = {
+pub Policies: Node<Option<cst::Policies<'a>>> = {
     <l:@L> <ps:Policy*> <r:@R> => Node::with_source_loc(Some(cst::Policies(ps)), Loc::new(l..r, Arc::clone(src))),
 }
 
@@ -105,7 +106,7 @@ Annotation: Node<Option<cst::Annotation>> = {
 }
 
 // Policy := "label" ('permit' | 'forbid') '(' {VariableDef} ')' {Cond} ;
-pub Policy: Node<Option<cst::Policy>> = {
+pub Policy: Node<Option<cst::Policy<'a>>> = {
     <l:@L>
     <annotations:Annotation*>
     <effect:AnyIdent>
@@ -131,7 +132,7 @@ pub Policy: Node<Option<cst::Policy>> = {
 // The argument to `is`, if present, is parsed as an `Add` rather than a `Name`
 // to enable better error reporting. It is parsed as an `Add` rather than an
 // `Expr` to void ambiguity with a subsequent `in`.
-VariableDef: Node<Option<cst::VariableDef>> = {
+VariableDef: Node<Option<cst::VariableDef<'a>>> = {
     <l:@L> <variable: AnyIdent> <unused_type_name: (":" <Name>)?> <entity_type: (IS <Add>)?>
         <ineq: (RelOp Expr)?> <r:@R>
         => Node::with_source_loc(Some(cst::VariableDef{ variable,unused_type_name,entity_type,ineq, }), Loc::new(l..r, Arc::clone(src))),
@@ -192,7 +193,7 @@ IfIdent: Node<Option<cst::Ident>> = {
 }
 
 // Cond := ('when' | 'unless') '{' Expr '}'
-Cond: Node<Option<cst::Cond>> = {
+Cond: Node<Option<cst::Cond<'a>>> = {
     <l:@L> <i:AnyIdent> "{" <e:Expr> "}" <r:@R>
         => Node::with_source_loc(Some(cst::Cond{cond: i, expr: Some(e)}), Loc::new(l..r, Arc::clone(src))),
     // specifically catch the error case for empty-body, so we can report a good
@@ -202,11 +203,11 @@ Cond: Node<Option<cst::Cond>> = {
 }
 
 // Expr := Or | 'if' Expr 'then' Expr 'else' Expr
-pub Expr: Node<Option<cst::Expr>> = {
+pub Expr: Node<Option<cst::Expr<'a>>> = {
     <l:@L> <o:Or> <r:@R>
-        => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::Or(o)) })), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: arena.alloc(cst::ExprData::Or(o)) })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IF <i:Expr> THEN <t:Expr> ELSE <e:Expr> <r:@R>
-        => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::If(i,t,e)) })), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: arena.alloc(cst::ExprData::If(i,t,e)) })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <err:!> <r:@R> => { 
         // Tolerant AST creates a valid CST node representing the unparsable expression
         #[cfg(feature = "tolerant-ast")]
@@ -221,17 +222,17 @@ pub Expr: Node<Option<cst::Expr>> = {
 }
 
 // Or := And {'||' And}
-Or: Node<Option<cst::Or>> = {
+Or: Node<Option<cst::Or<'a>>> = {
     <l:@L> <i:And> <e:("||" <And>)*> <r:@R>
         => Node::with_source_loc(Some(cst::Or{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // And := Relation {'&&' Relation}
-And: Node<Option<cst::And>> = {
+And: Node<Option<cst::And<'a>>> = {
     <l:@L> <i:Relation> <e:("&&" <Relation>)*> <r:@R>
         => Node::with_source_loc(Some(cst::And{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // Relation := Add {RelOp Add} | Add HAS Add | Add LIKE Add | Add IS Add (IN Add)?
-Relation: Node<Option<cst::Relation>> = {
+Relation: Node<Option<cst::Relation<'a>>> = {
     <l:@L> <i:Add> <e:(RelOp Add)*> <r:@R>
         => Node::with_source_loc(Some(cst::Relation::Common{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <t:Add> HAS <f:Add> <r:@R>
@@ -278,17 +279,17 @@ MultOp: cst::MultOp = {
 }
 
 // Add := Mult {('+' | '-') Mult}
-Add: Node<Option<cst::Add>> = {
+Add: Node<Option<cst::Add<'a>>> = {
     <l:@L> <i:Mult> <e:(AddOp Mult)*> <r:@R>
         => Node::with_source_loc(Some(cst::Add{initial:i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // Mult := Unary {('*' | '/' | '%') Unary}
-Mult: Node<Option<cst::Mult>> = {
+Mult: Node<Option<cst::Mult<'a>>> = {
     <l:@L> <i:Unary>  <e:(MultOp Unary)*> <r:@R>
         => Node::with_source_loc(Some(cst::Mult{initial: i, extended: e}), Loc::new(l..r, Arc::clone(src))),
 }
 // Unary := ['!' {'!'} | '-' {'-'}] Member
-Unary: Node<Option<cst::Unary>> = {
+Unary: Node<Option<cst::Unary<'a>>> = {
     <l:@L> <m:Member> <r:@R>
         => Node::with_source_loc(Some(cst::Unary{op: None, item:m}), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "!" <m:Member> <r:@R>
@@ -313,12 +314,12 @@ Unary: Node<Option<cst::Unary>> = {
         => Node::with_source_loc(Some(cst::Unary{op: Some(cst::NegOp::OverDash), item:m}), Loc::new(l..r, Arc::clone(src))),
 }
 // Member := Primary { MemAccess }
-Member: Node<Option<cst::Member>> = {
+Member: Node<Option<cst::Member<'a>>> = {
     <l:@L> <p:Primary> <a:MemAccess*> <r:@R>
         => Node::with_source_loc(Some(cst::Member{ item: p, access: a }), Loc::new(l..r, Arc::clone(src))),
 }
 // MemAccess := '.' IDENT | '(' [ExprList] ')' | '[' Expr ']'
-MemAccess: Node<Option<cst::MemAccess>> = {
+MemAccess: Node<Option<cst::MemAccess<'a>>> = {
     <l:@L> "." <i:AnyIdent> <r:@R>
         => Node::with_source_loc(Some(cst::MemAccess::Field(i)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> "(" <es:Comma<Expr>> ")" <r:@R>
@@ -333,7 +334,7 @@ MemAccess: Node<Option<cst::MemAccess>> = {
 //              '(' Expr ')' |
 //              '[' [ExprList] ']' |
 //              '{' [MapOrFieldInits] '}'
-pub Primary: Node<Option<cst::Primary>> = {
+pub Primary: Node<Option<cst::Primary<'a>>> = {
     <l:@L> <lit:Literal> <r:@R>
         => Node::with_source_loc(Some(cst::Primary::Literal(lit)), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <refr:Ref> <r:@R>
@@ -375,7 +376,7 @@ RefInit: Node<Option<cst::RefInit>> = {
         => Node::with_source_loc(Some(cst::RefInit(i,lit)), Loc::new(l..r, Arc::clone(src))),
 }
 // RecInit  := Expr ':' Expr   -or-   IDENT : Expr
-RecInit: Node<Option<cst::RecInit>> = {
+RecInit: Node<Option<cst::RecInit<'a>>> = {
     <l:@L> IF ":" <e2:Expr> <r:@R>
         => {
             // Create an expression from this identifier
@@ -389,7 +390,7 @@ RecInit: Node<Option<cst::RecInit>> = {
             let id7 = Node::with_source_loc(Some(cst::Relation::Common{initial: id6, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
             let id8 = Node::with_source_loc(Some(cst::And{initial: id7, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
             let id9 = Node::with_source_loc(Some(cst::Or{initial: id8, extended: vec![]}), Loc::new(l..r, Arc::clone(src)));
-            let e1 = Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: Box::new(cst::ExprData::Or(id9)) })), Loc::new(l..r, Arc::clone(src)));
+            let e1 = Node::with_source_loc(Some(cst::Expr::Expr(cst::ExprImpl { expr: arena.alloc(cst::ExprData::Or(id9)) })), Loc::new(l..r, Arc::clone(src)));
 
             Node::with_source_loc(Some(cst::RecInit(e1,e2)), Loc::new(l..r, Arc::clone(src)))
         },

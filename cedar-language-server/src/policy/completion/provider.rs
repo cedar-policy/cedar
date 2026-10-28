@@ -98,7 +98,8 @@ impl PolicyCompletionProvider {
         let (policy_text, position) = preprocess_policy(policy_string, self.cursor_position);
         self.cursor_position = position;
 
-        let Some(cst_policy) = self.get_cst_policy(&policy_text, features) else {
+        let arena = cedar_policy_core::parser::cst::Arena::new();
+        let Some(cst_policy) = self.get_cst_policy(&arena, &policy_text, features) else {
             info!("No policy found at cursor position");
             if should_show_policy_snippets(policy_string, self.cursor_position) {
                 return get_snippets();
@@ -136,22 +137,27 @@ impl PolicyCompletionProvider {
     /// # Returns
     ///
     /// An optional CST node representing the policy at the cursor position
-    fn get_cst_policy(
+    fn get_cst_policy<'a>(
         &self,
+        arena: &'a cedar_policy_core::parser::cst::Arena<'a>,
         policy_text: &str,
         features: PolicyLanguageFeatures,
-    ) -> Option<Node<Option<Policy>>> {
+    ) -> Option<Node<Option<Policy<'a>>>> {
         if !features.allow_multiple_policies {
-            return cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(policy_text)
-                .inspect_err(|e| error!("Error parsing policy to cst: {}", e))
-                .ok();
+            return cedar_policy_core::parser::text_to_cst::parse_policy_tolerant(
+                arena,
+                policy_text,
+            )
+            .inspect_err(|e| error!("Error parsing policy to cst: {}", e))
+            .ok();
         }
 
-        let policies = cedar_policy_core::parser::text_to_cst::parse_policies_tolerant(policy_text)
-            .inspect_err(|e| error!("Error parsing policy set to cst: {}", e))
-            .ok()
-            .and_then(|p| p.node)
-            .map(|p| p.0)?;
+        let policies =
+            cedar_policy_core::parser::text_to_cst::parse_policies_tolerant(arena, policy_text)
+                .inspect_err(|e| error!("Error parsing policy set to cst: {}", e))
+                .ok()
+                .and_then(|p| p.node)
+                .map(|p| p.0)?;
         policies
             .into_iter()
             .rfind(|p| position_within_loc(self.cursor_position, p.loc.as_ref()))

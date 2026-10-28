@@ -66,12 +66,12 @@ const INVALID_SNIPPET: &str = "<invalid>";
 /// Type alias for convenience
 type Result<T> = std::result::Result<T, ParseErrors>;
 
-impl Node<Option<cst::Policies>> {
+impl Node<Option<cst::Policies<'_>>> {
     /// Iterate over the `Policy` nodes in this `cst::Policies`, with
     /// corresponding generated `PolicyID`s
     pub fn with_generated_policyids(
         &self,
-    ) -> Result<impl Iterator<Item = (ast::PolicyID, &Node<Option<cst::Policy>>)>> {
+    ) -> Result<impl Iterator<Item = (ast::PolicyID, &Node<Option<cst::Policy<'_>>>)>> {
         let policies = self.try_as_inner()?;
 
         Ok(policies.0.iter().enumerate().map(|(count, node)| {
@@ -172,7 +172,7 @@ impl Node<Option<cst::Policies>> {
     }
 }
 
-impl Node<Option<cst::Policy>> {
+impl Node<Option<cst::Policy<'_>>> {
     /// Convert `cst::Policy` to `ast::Template`. Works for static policies as
     /// well, which will become templates with 0 slots
     pub fn to_template(&self, id: ast::PolicyID) -> Result<ast::Template> {
@@ -419,7 +419,7 @@ impl Node<Option<cst::Policy>> {
     }
 }
 
-impl cst::PolicyImpl {
+impl cst::PolicyImpl<'_> {
     /// Get the scope constraints from the `cst::Policy`
     pub fn extract_scope(
         &self,
@@ -480,8 +480,7 @@ impl cst::PolicyImpl {
                 extra_var
                     .try_as_inner()
                     .map(|def| {
-                        extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(Box::new(def.clone())))
+                        extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.to_string()))
                     })
                     .unwrap_or_else(|e| e)
                     .into()
@@ -561,8 +560,7 @@ impl cst::PolicyImpl {
                 extra_var
                     .try_as_inner()
                     .map(|def| {
-                        extra_var
-                            .to_ast_err(ToASTErrorKind::ExtraScopeElement(Box::new(def.clone())))
+                        extra_var.to_ast_err(ToASTErrorKind::ExtraScopeElement(def.to_string()))
                     })
                     .unwrap_or_else(|e| e)
                     .into()
@@ -837,7 +835,7 @@ enum TolerantAstSetting {
     Tolerant,
 }
 
-impl Node<Option<cst::VariableDef>> {
+impl Node<Option<cst::VariableDef<'_>>> {
     fn to_principal_constraint(
         &self,
         tolerant_setting: TolerantAstSetting,
@@ -1033,7 +1031,7 @@ impl Node<Option<cst::VariableDef>> {
     }
 }
 
-impl Node<Option<cst::Cond>> {
+impl Node<Option<cst::Cond<'_>>> {
     /// to expr. Also returns, for informational purposes, a `bool` which is
     /// `true` if the cond is a `when` clause, `false` if it is an `unless`
     /// clause. (The returned `expr` is already adjusted for this, the `bool` is
@@ -1274,7 +1272,7 @@ where
     }
 }
 
-impl Node<Option<cst::Expr>> {
+impl Node<Option<cst::Expr<'_>>> {
     /// convert `cst::Expr` to `ast::Expr`
     pub fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
@@ -1322,7 +1320,7 @@ impl Node<Option<cst::Expr>> {
     }
 }
 
-impl Node<Option<cst::Or>> {
+impl Node<Option<cst::Or<'_>>> {
     fn to_expr_or_special<Build: ExprBuilderInfallibleBuild>(
         &self,
     ) -> Result<ExprOrSpecial<'_, Build::Expr>> {
@@ -1347,7 +1345,7 @@ impl Node<Option<cst::Or>> {
     }
 }
 
-impl Node<Option<cst::And>> {
+impl Node<Option<cst::And<'_>>> {
     pub(crate) fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
@@ -1375,7 +1373,7 @@ impl Node<Option<cst::And>> {
     }
 }
 
-impl Node<Option<cst::Relation>> {
+impl Node<Option<cst::Relation<'_>>> {
     fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
@@ -1481,7 +1479,7 @@ impl Node<Option<cst::Relation>> {
     }
 }
 
-impl Node<Option<cst::Add>> {
+impl Node<Option<cst::Add<'_>>> {
     fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
@@ -1503,7 +1501,7 @@ impl Node<Option<cst::Add>> {
             ToASTError::new(ToASTErrorKind::InvalidHasRHS(inner.to_string().into()), loc).into()
         };
         let construct_attrs =
-            |first, rest: &[Node<Option<cst::MemAccess>>]| -> Result<NonEmpty<UnreservedId>> {
+            |first, rest: &[Node<Option<cst::MemAccess<'_>>>]| -> Result<NonEmpty<UnreservedId>> {
                 let mut acc = nonempty![first];
                 rest.iter().try_for_each(|ma_node| {
                     let ma = ma_node.try_as_inner()?;
@@ -1618,7 +1616,7 @@ impl Node<Option<cst::Add>> {
     }
 }
 
-impl Node<Option<cst::Mult>> {
+impl Node<Option<cst::Mult<'_>>> {
     fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
@@ -1654,7 +1652,7 @@ impl Node<Option<cst::Mult>> {
     }
 }
 
-impl Node<Option<cst::Unary>> {
+impl Node<Option<cst::Unary<'_>>> {
     fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
@@ -1743,7 +1741,7 @@ enum AstAccessor<Expr> {
     Index(SmolStr),
 }
 
-impl Node<Option<cst::Member>> {
+impl Node<Option<cst::Member<'_>>> {
     /// Try to convert `cst::Member` into a `cst::Literal`, i.e.
     /// match `Member(Primary(Literal(_), []))`.
     /// It does not match the `Expr` arm of `Primary`, which means expressions
@@ -1942,7 +1940,7 @@ impl Node<Option<cst::Member>> {
     }
 }
 
-impl Node<Option<cst::MemAccess>> {
+impl Node<Option<cst::MemAccess<'_>>> {
     fn to_access<Build: ExprBuilderInfallibleBuild>(&self) -> Result<AstAccessor<Build::Expr>> {
         let acc = self.try_as_inner()?;
 
@@ -1963,7 +1961,7 @@ impl Node<Option<cst::MemAccess>> {
     }
 }
 
-impl Node<Option<cst::Primary>> {
+impl Node<Option<cst::Primary<'_>>> {
     pub(crate) fn to_expr<Build: ExprBuilderInfallibleBuild>(&self) -> Result<Build::Expr> {
         self.to_expr_or_special::<Build>()?.into_expr::<Build>()
     }
@@ -2240,7 +2238,7 @@ impl Node<Option<cst::Literal>> {
     }
 }
 
-impl Node<Option<cst::RecInit>> {
+impl Node<Option<cst::RecInit<'_>>> {
     fn to_init<Build: ExprBuilderInfallibleBuild>(&self) -> Result<(SmolStr, Build::Expr)> {
         let lit = self.try_as_inner()?;
 
@@ -2338,6 +2336,7 @@ fn construct_expr_rel<Build: ExprBuilderInfallibleBuild>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser;
     use crate::{
         ast::{EntityUID, Expr},
         parser::{err::ParseErrors, test_utils::*, *},
@@ -2348,7 +2347,7 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_expr_succeeds(text: &str) -> Expr {
-        text_to_cst::parse_expr(text)
+        text_to_cst::parse_expr(parser::test_arena(), text)
             .expect("failed parser")
             .to_expr::<ast::ExprBuilder<()>>()
             .unwrap_or_else(|errs| {
@@ -2358,7 +2357,7 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_expr_fails(text: &str) -> ParseErrors {
-        let result = text_to_cst::parse_expr(text)
+        let result = text_to_cst::parse_expr(parser::test_arena(), text)
             .expect("failed parser")
             .to_expr::<ast::ExprBuilder<()>>();
         match result {
@@ -2371,7 +2370,7 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_policy_succeeds(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy(text)
+        text_to_cst::parse_policy(parser::test_arena(), text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"))
             .unwrap_or_else(|errs| {
@@ -2381,7 +2380,7 @@ mod tests {
 
     #[track_caller]
     fn assert_parse_policy_fails(text: &str) -> ParseErrors {
-        let result = text_to_cst::parse_policy(text)
+        let result = text_to_cst::parse_policy(parser::test_arena(), text)
             .expect("failed parser")
             .to_policy(ast::PolicyID::from_string("id"));
         match result {
@@ -2772,7 +2771,9 @@ mod tests {
     #[test]
     fn multiple_policys_and_annotations_ok() {
         // can have multiple annotations
+        let arena = cst::Arena::new();
         let policyset = text_to_cst::parse_policies(
+            &arena,
             r#"
             @anno1("first")
             permit(principal,action,resource);
@@ -2843,7 +2844,9 @@ mod tests {
     #[test]
     fn reserved_word_annotations_ok() {
         // can have Cedar reserved words as annotation keys
+        let arena = cst::Arena::new();
         let policyset = text_to_cst::parse_policies(
+            &arena,
             r#"
             @if("this is the annotation for `if`")
             @then("this is the annotation for `then`")
@@ -3525,7 +3528,7 @@ mod tests {
     #[test]
     fn template_tests() {
         for src in CORRECT_TEMPLATES {
-            text_to_cst::parse_policy(src)
+            text_to_cst::parse_policy(parser::test_arena(), src)
                 .expect("parse_error")
                 .to_template(ast::PolicyID::from_string("i0"))
                 .unwrap_or_else(|errs| {
@@ -5526,7 +5529,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors(text: &str) -> ast::StaticPolicy {
-        text_to_cst::parse_policy_tolerant(text)
+        text_to_cst::parse_policy_tolerant(parser::test_arena(), text)
             .expect("failed parser")
             .to_policy_tolerant(ast::PolicyID::from_string("id"))
             .unwrap_or_else(|errs| {
@@ -5537,7 +5540,7 @@ mod tests {
     #[cfg(feature = "tolerant-ast")]
     #[track_caller]
     fn assert_parse_policy_allows_errors_fails(text: &str) -> ParseErrors {
-        let result = text_to_cst::parse_policy_tolerant(text)
+        let result = text_to_cst::parse_policy_tolerant(parser::test_arena(), text)
             .expect("failed parser")
             .to_policy_tolerant(ast::PolicyID::from_string("id"));
         match result {
@@ -5853,7 +5856,9 @@ mod tests {
     #[test]
     fn multiple_policys_with_unparsable_policy_ok() {
         // When we have a malformed policy, it should become an error node but the rest of the policies should parse
+        let arena = cst::Arena::new();
         let policyset = text_to_cst::parse_policies_tolerant(
+            &arena,
             r#"
             // POLICY 1
             @id("Photo.owner")
@@ -6284,7 +6289,7 @@ mod tests {
         text: &str,
     ) -> Result<ast::Template> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("policy0"));
-        let cst = text_to_cst::parse_policy_tolerant(text)?;
+        let cst = text_to_cst::parse_policy_tolerant(parser::test_arena(), text)?;
         cst.to_template_tolerant(id)
     }
 }

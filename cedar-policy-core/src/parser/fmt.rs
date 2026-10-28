@@ -35,7 +35,7 @@ impl<T: fmt::Display> fmt::Display for View<'_, T> {
     }
 }
 
-impl fmt::Display for Policies {
+impl fmt::Display for Policies<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut ps = self.0.iter();
         if f.alternate() {
@@ -56,7 +56,7 @@ impl fmt::Display for Policies {
         Ok(())
     }
 }
-impl fmt::Display for Policy {
+impl fmt::Display for Policy<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         #[cfg_attr(
             not(feature = "tolerant-ast"),
@@ -136,7 +136,7 @@ impl fmt::Display for Annotation {
     }
 }
 
-impl fmt::Display for VariableDef {
+impl fmt::Display for VariableDef<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.variable))?;
         if let Some(name) = &self.unused_type_name {
@@ -148,7 +148,7 @@ impl fmt::Display for VariableDef {
         Ok(())
     }
 }
-impl fmt::Display for Cond {
+impl fmt::Display for Cond<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.expr.as_ref() {
             Some(expr_ref) => {
@@ -162,7 +162,7 @@ impl fmt::Display for Cond {
         }
     }
 }
-impl fmt::Display for Expr {
+impl fmt::Display for Expr<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // let expr_opt: &_ = &*self.expr;
         let expr = match self {
@@ -178,7 +178,7 @@ impl fmt::Display for Expr {
         }
     }
 }
-impl fmt::Display for Or {
+impl fmt::Display for Or<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
         for or in self.extended.iter() {
@@ -187,7 +187,7 @@ impl fmt::Display for Or {
         Ok(())
     }
 }
-impl fmt::Display for And {
+impl fmt::Display for And<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
         for and in self.extended.iter() {
@@ -196,7 +196,7 @@ impl fmt::Display for And {
         Ok(())
     }
 }
-impl fmt::Display for Relation {
+impl fmt::Display for Relation<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Relation::Common { initial, extended } => {
@@ -287,7 +287,7 @@ impl fmt::Display for NegOp {
         Ok(())
     }
 }
-impl fmt::Display for Add {
+impl fmt::Display for Add<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
         for (op, mult) in self.extended.iter() {
@@ -296,7 +296,7 @@ impl fmt::Display for Add {
         Ok(())
     }
 }
-impl fmt::Display for Mult {
+impl fmt::Display for Mult<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.initial))?;
         for (op, un) in self.extended.iter() {
@@ -305,7 +305,7 @@ impl fmt::Display for Mult {
         Ok(())
     }
 }
-impl fmt::Display for Unary {
+impl fmt::Display for Unary<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(op) = &self.op {
             write!(f, "{}{}", op, View(&self.item))
@@ -314,7 +314,7 @@ impl fmt::Display for Unary {
         }
     }
 }
-impl fmt::Display for Member {
+impl fmt::Display for Member<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", View(&self.item))?;
         for m in self.access.iter() {
@@ -323,7 +323,7 @@ impl fmt::Display for Member {
         Ok(())
     }
 }
-impl fmt::Display for MemAccess {
+impl fmt::Display for MemAccess<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MemAccess::Field(id) => write!(f, ".{}", View(id))?,
@@ -343,7 +343,7 @@ impl fmt::Display for MemAccess {
         Ok(())
     }
 }
-impl fmt::Display for Primary {
+impl fmt::Display for Primary<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Primary::Literal(lit) => write!(f, "{}", View(lit)),
@@ -411,7 +411,7 @@ impl fmt::Display for RefInit {
         write!(f, "{}: {}", View(&self.0), View(&self.1))
     }
 }
-impl fmt::Display for RecInit {
+impl fmt::Display for RecInit<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", View(&self.0), View(&self.1))
     }
@@ -509,6 +509,7 @@ pub fn join_with_conjunction<T, W: Write>(
 
 #[cfg(test)]
 mod test {
+    use crate::parser;
     use crate::parser::*;
 
     // Currently, hese tests supplement the ones in the main test
@@ -519,7 +520,9 @@ mod test {
         // Note: the context field in the scope is no longer supported and
         // will produce an error during CST -> AST conversion. But it is
         // still correctly parsed & displayed by the CST code.
+        let arena = cst::Arena::new();
         let cstnode1 = text_to_cst::parse_policies(
+            &arena,
             r#"
 
         permit(principal,action,resource,context)
@@ -532,14 +535,17 @@ mod test {
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
         let revert = format!("{cst1}");
-        let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
+        let cstnode2 =
+            text_to_cst::parse_policies(parser::test_arena(), &revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         println!("{cst2:#}");
         assert!(cst1 == cst2);
     }
     #[test]
     fn idempotent2() {
+        let arena = cst::Arena::new();
         let cstnode1 = text_to_cst::parse_policies(
+            &arena,
             r#"
 
         permit(principal,action,resource,context)
@@ -552,13 +558,16 @@ mod test {
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
         let revert = format!("{cst1}");
-        let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
+        let cstnode2 =
+            text_to_cst::parse_policies(parser::test_arena(), &revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
     }
     #[test]
     fn idempotent3() {
+        let arena = cst::Arena::new();
         let cstnode1 = text_to_cst::parse_policies(
+            &arena,
             r#"
 
         permit(principal,action,resource,context)
@@ -571,13 +580,16 @@ mod test {
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
         let revert = format!("{cst1}");
-        let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
+        let cstnode2 =
+            text_to_cst::parse_policies(parser::test_arena(), &revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
     }
     #[test]
     fn idempotent4() {
+        let arena = cst::Arena::new();
         let cstnode1 = text_to_cst::parse_policies(
+            &arena,
             r#"
 
         permit(principal,action,resource,context)
@@ -595,14 +607,17 @@ mod test {
         let cst1 = cstnode1.as_inner().expect("no data");
         let revert = format!("{cst1}");
         println!("{cst1:#}");
-        let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
+        let cstnode2 =
+            text_to_cst::parse_policies(parser::test_arena(), &revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
     }
 
     #[test]
     fn idempotent5() {
+        let arena = cst::Arena::new();
         let cstnode1 = text_to_cst::parse_policies(
+            &arena,
             r#"
 
         permit(principal,action,resource,context)
@@ -615,7 +630,8 @@ mod test {
         .expect("parse fail");
         let cst1 = cstnode1.as_inner().expect("no data");
         let revert = format!("{cst1}");
-        let cstnode2 = text_to_cst::parse_policies(&revert).expect("parse fail");
+        let cstnode2 =
+            text_to_cst::parse_policies(parser::test_arena(), &revert).expect("parse fail");
         let cst2 = cstnode2.as_inner().expect("no data");
         assert!(cst1 == cst2);
     }

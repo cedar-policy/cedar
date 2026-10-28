@@ -947,6 +947,7 @@ impl TryFrom<ActionConstraint> for ast::ActionConstraint {
 
 #[cfg(test)]
 mod test {
+    use crate::parser;
     use crate::{
         ast,
         est::{FromJsonError, PrincipalConstraint, ResourceConstraint},
@@ -954,7 +955,7 @@ mod test {
     use cool_asserts::assert_matches;
 
     fn parse_policy(template: &str) -> crate::est::Policy {
-        let cst = crate::parser::text_to_cst::parse_policy(template)
+        let cst = crate::parser::text_to_cst::parse_policy(parser::test_arena(), template)
             .unwrap()
             .node
             .unwrap();

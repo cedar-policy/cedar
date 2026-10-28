@@ -148,6 +148,7 @@ impl std::fmt::Display for UnescapeError {
 #[cfg(test)]
 #[expect(clippy::indexing_slicing, reason = "testing")]
 mod test {
+    use crate::parser;
     use cool_asserts::assert_matches;
     use rustc_literal_escaper::{unescape_str, EscapeError};
 
@@ -234,7 +235,7 @@ skipped";
     fn test_pattern_escape() {
         // valid ASCII escapes
         assert!(
-            matches!(text_to_cst::parse_expr(r#""aa" like "\t\r\n\\\0\x42\*""#)
+            matches!(text_to_cst::parse_expr(parser::test_arena(), r#""aa" like "\t\r\n\\\0\x42\*""#)
             .expect("failed parsing")
             .to_expr::<ast::ExprBuilder<()>>()
             .expect("failed conversion").expr_kind(),
@@ -248,7 +249,7 @@ skipped";
         );
 
         // invalid ASCII escapes
-        let errs = text_to_cst::parse_expr(r#""abc" like "abc\xFF\xFEdef""#)
+        let errs = text_to_cst::parse_expr(parser::test_arena(), r#""abc" like "abc\xFF\xFEdef""#)
             .expect("failed parsing")
             .to_expr::<ast::ExprBuilder<()>>()
             .unwrap_err();
@@ -258,7 +259,7 @@ skipped";
 
         // valid `\*` surrounded by chars
         assert!(
-            matches!(text_to_cst::parse_expr(r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
+            matches!(text_to_cst::parse_expr(parser::test_arena(), r#""aaa" like "👀👀\*🤞🤞\*🤝""#)
             .expect("failed parsing")
             .to_expr::<ast::ExprBuilder<()>>()
             .expect("failed conversion").expr_kind(),
@@ -266,7 +267,7 @@ skipped";
         );
 
         // invalid escapes
-        let errs = text_to_cst::parse_expr(r#""aaa" like "abc\d\bdef""#)
+        let errs = text_to_cst::parse_expr(parser::test_arena(), r#""aaa" like "abc\d\bdef""#)
             .expect("failed parsing")
             .to_expr::<ast::ExprBuilder<()>>()
             .unwrap_err();

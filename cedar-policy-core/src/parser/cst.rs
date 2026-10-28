@@ -16,6 +16,10 @@
 
 use smol_str::SmolStr;
 
+/// Owns the `ExprData` of a CST. Children are references into the arena rather
+/// than boxes, so dropping a CST doesn't recurse.
+pub type Arena<'a> = typed_arena::Arena<ExprData<'a>>;
+
 // shortcut because we need CST nodes to potentially be empty,
 // for example, if part of it failed the parse, we can
 // still recover other parts
@@ -23,7 +27,7 @@ type Node<N> = super::node::Node<Option<N>>;
 
 /// The set of policy statements that forms a policy set
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Policies(pub Vec<Node<Policy>>);
+pub struct Policies<'a>(pub Vec<Node<Policy<'a>>>);
 
 /// Annotations: application-defined data, as a key-value pair
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,22 +52,22 @@ pub enum Str {
 
 /// Policy statement, the main building block of the language
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PolicyImpl {
+pub struct PolicyImpl<'a> {
     /// Annotations
     pub annotations: Vec<Node<Annotation>>,
     /// policy effect
     pub effect: Node<Ident>,
     /// Variables
-    pub variables: Vec<Node<VariableDef>>,
+    pub variables: Vec<Node<VariableDef<'a>>>,
     /// Conditions
-    pub conds: Vec<Node<Cond>>,
+    pub conds: Vec<Node<Cond<'a>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Policy statement - can be an Error node when 'tolerant-ast' feature is switched on
-pub enum Policy {
+pub enum Policy<'a> {
     /// Valid policy CST node
-    Policy(PolicyImpl),
+    Policy(PolicyImpl<'a>),
     #[cfg(feature = "tolerant-ast")]
     /// Policy that has failed to parse
     PolicyError,
@@ -71,7 +75,7 @@ pub enum Policy {
 
 /// The variable part of one of the main item of a policy
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VariableDef {
+pub struct VariableDef<'a> {
     /// identifier, expected:
     /// principal, action, resource
     pub variable: Node<Ident>,
@@ -79,9 +83,9 @@ pub struct VariableDef {
     /// not used for anything other than error reporting.
     pub unused_type_name: Option<Node<Name>>,
     /// type of entity using current `var is type` syntax
-    pub entity_type: Option<Node<Add>>,
+    pub entity_type: Option<Node<Add<'a>>>,
     /// hierarchy of entity
-    pub ineq: Option<(RelOp, Node<Expr>)>,
+    pub ineq: Option<(RelOp, Node<Expr<'a>>)>,
 }
 
 /// Any identifier, including special ones
@@ -137,27 +141,27 @@ pub enum Ident {
 
 /// Conditions: powerful extensions to a policy
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Cond {
+pub struct Cond<'a> {
     /// initial ident, expected to be "when" or "unless"
     pub cond: Node<Ident>,
     /// related expression. expected to not be `None`, but if it's `None`, that
     /// indicates the body was empty (as in `when {}`), and we can report a good
     /// error message
-    pub expr: Option<Node<Expr>>,
+    pub expr: Option<Node<Expr<'a>>>,
 }
 
 /// The main computation aspect of a policy, outer
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExprImpl {
+pub struct ExprImpl<'a> {
     /// expression content
-    pub expr: Box<ExprData>,
+    pub expr: &'a ExprData<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 /// Expression CST Node
-pub enum Expr {
+pub enum Expr<'a> {
     /// Expression that has been successfully parsed
-    Expr(ExprImpl),
+    Expr(ExprImpl<'a>),
     /// To create a tolerant-ast, we keep a node to represented nodes that failed to parse
     #[cfg(feature = "tolerant-ast")]
     ErrorExpr,
@@ -165,60 +169,60 @@ pub enum Expr {
 
 /// The main computation aspect of a policy, inner
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExprData {
+pub enum ExprData<'a> {
     /// || Op
-    Or(Node<Or>),
+    Or(Node<Or<'a>>),
     /// if-then-else
-    If(Node<Expr>, Node<Expr>, Node<Expr>),
+    If(Node<Expr<'a>>, Node<Expr<'a>>, Node<Expr<'a>>),
 }
 /// Logical Or
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Or {
+pub struct Or<'a> {
     /// a singleton is a wrapper for a higher-priority node
-    pub initial: Node<And>,
+    pub initial: Node<And<'a>>,
     /// additional elements represent a chained `||` computation
-    pub extended: Vec<Node<And>>,
+    pub extended: Vec<Node<And<'a>>>,
 }
 /// Logical And
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct And {
+pub struct And<'a> {
     /// a singleton is a wrapper for a higher-priority node
-    pub initial: Node<Relation>,
+    pub initial: Node<Relation<'a>>,
     /// additional elements represent a chained `&&` computation
-    pub extended: Vec<Node<Relation>>,
+    pub extended: Vec<Node<Relation<'a>>>,
 }
 /// Comparison relations
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Relation {
+pub enum Relation<'a> {
     /// Regular relations
     Common {
         /// a singleton is a wrapper for a higher-priority node
-        initial: Node<Add>,
+        initial: Node<Add<'a>>,
         /// additional elements represent chained `>`, `<`, etc. computation
-        extended: Vec<(RelOp, Node<Add>)>,
+        extended: Vec<(RelOp, Node<Add<'a>>)>,
     },
     /// Built-in 'has' operation
     Has {
         /// element that may have a field
-        target: Node<Add>,
+        target: Node<Add<'a>>,
         /// a field the element may have
-        field: Node<Add>,
+        field: Node<Add<'a>>,
     },
     /// Built-in 'like' operation
     Like {
         /// element to test
-        target: Node<Add>,
+        target: Node<Add<'a>>,
         /// pattern to match on
-        pattern: Node<Add>,
+        pattern: Node<Add<'a>>,
     },
     /// Built-in '.. is .. (in ..)?' operation
     IsIn {
         /// element that may be an entity type and `in` an entity
-        target: Node<Add>,
+        target: Node<Add<'a>>,
         /// entity type to check for
-        entity_type: Node<Add>,
+        entity_type: Node<Add<'a>>,
         /// entity that the target may be `in`
-        in_entity: Option<Node<Add>>,
+        in_entity: Option<Node<Add<'a>>>,
     },
 }
 
@@ -280,49 +284,49 @@ pub enum NegOp {
 
 /// Additive arithmetic
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Add {
+pub struct Add<'a> {
     /// a singleton is a wrapper for a higher-priority node
-    pub initial: Node<Mult>,
+    pub initial: Node<Mult<'a>>,
     /// additional elements represent a chained `+`, `-`, etc. computation
-    pub extended: Vec<(AddOp, Node<Mult>)>,
+    pub extended: Vec<(AddOp, Node<Mult<'a>>)>,
 }
 /// Multiplicative arithmetic
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Mult {
+pub struct Mult<'a> {
     /// a singleton is a wrapper for a higher-priority node
-    pub initial: Node<Unary>,
+    pub initial: Node<Unary<'a>>,
     /// additional elements represent a chained `*`, `/`, etc. computation
-    pub extended: Vec<(MultOp, Node<Unary>)>,
+    pub extended: Vec<(MultOp, Node<Unary<'a>>)>,
 }
 /// Unary negations
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Unary {
+pub struct Unary<'a> {
     /// the negation operation, if any
     pub op: Option<NegOp>,
     /// higher-priority node the negation is applied to
-    pub item: Node<Member>,
+    pub item: Node<Member<'a>>,
 }
 /// Members on a primary item, accessed with '.'
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Member {
+pub struct Member<'a> {
     /// Main element
-    pub item: Node<Primary>,
+    pub item: Node<Primary<'a>>,
     /// fields, indexes, etc.
-    pub access: Vec<Node<MemAccess>>,
+    pub access: Vec<Node<MemAccess<'a>>>,
 }
 /// Forms of members and their accessors
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MemAccess {
+pub enum MemAccess<'a> {
     /// field identifier
     Field(Node<Ident>),
     /// function call
-    Call(Vec<Node<Expr>>),
+    Call(Vec<Node<Expr<'a>>>),
     /// index of a member
-    Index(Node<Expr>),
+    Index(Node<Expr<'a>>),
 }
 /// Low-level elements like literals
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Primary {
+pub enum Primary<'a> {
     /// Literal
     Literal(Node<Literal>),
     /// References to entities
@@ -332,11 +336,11 @@ pub enum Primary {
     /// Template Slots
     Slot(Node<Slot>),
     /// Parentheses
-    Expr(Node<Expr>),
+    Expr(Node<Expr<'a>>),
     /// Constructed array
-    EList(Vec<Node<Expr>>),
+    EList(Vec<Node<Expr<'a>>>),
     /// Constructed record
-    RInits(Vec<Node<RecInit>>),
+    RInits(Vec<Node<RecInit<'a>>>),
 }
 
 /// UID and Type of named items
@@ -370,7 +374,7 @@ pub enum Ref {
 pub struct RefInit(pub Node<Ident>, pub Node<Literal>);
 /// Elements of records: `field_from_expr: data_from_expr`
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecInit(pub Node<Expr>, pub Node<Expr>);
+pub struct RecInit<'a>(pub Node<Expr<'a>>, pub Node<Expr<'a>>);
 
 /// Raw values
 #[derive(Debug, Clone, PartialEq, Eq)]

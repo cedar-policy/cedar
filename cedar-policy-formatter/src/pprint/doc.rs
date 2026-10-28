@@ -35,7 +35,7 @@ impl Doc for Ident {
     }
 }
 
-impl Doc for Node<Option<VariableDef>> {
+impl Doc for Node<Option<VariableDef<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let vd = self.as_inner()?;
 
@@ -104,7 +104,7 @@ impl Doc for Node<Option<VariableDef>> {
     }
 }
 
-impl Doc for Node<Option<Cond>> {
+impl Doc for Node<Option<Cond<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let cond = self.as_inner()?;
         let lb_comment = get_comment_after_end(
@@ -177,15 +177,15 @@ impl Doc for Node<Option<Cond>> {
     }
 }
 
-impl Doc for Node<Option<Expr>> {
+impl Doc for Node<Option<Expr<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         match self.as_inner()? {
-            Expr::Expr(expr_impl) => match expr_impl.expr.as_ref() {
+            Expr::Expr(expr_impl) => match expr_impl.expr {
                 ExprData::If(c, t, e) => {
                     fn pp_group<'src>(
                         s: &'src str,
                         c: Comment<'src>,
-                        e: &Node<Option<Expr>>,
+                        e: &Node<Option<Expr<'_>>>,
                         context: &mut Context<'_, 'src>,
                     ) -> RcDoc<'src> {
                         add_comment(RcDoc::text(s), c, RcDoc::nil()).append(
@@ -223,7 +223,7 @@ impl Doc for Node<Option<Expr>> {
     }
 }
 
-impl Doc for Node<Option<Or>> {
+impl Doc for Node<Option<Or<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -244,7 +244,7 @@ impl Doc for Node<Option<Or>> {
     }
 }
 
-impl Doc for Node<Option<And>> {
+impl Doc for Node<Option<And<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -265,7 +265,7 @@ impl Doc for Node<Option<And>> {
     }
 }
 
-impl Doc for Node<Option<Relation>> {
+impl Doc for Node<Option<Relation<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
@@ -377,7 +377,7 @@ impl Doc for AddOp {
     }
 }
 
-impl Doc for Node<Option<Add>> {
+impl Doc for Node<Option<Add<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -416,7 +416,7 @@ impl Doc for MultOp {
     }
 }
 
-impl Doc for Node<Option<Mult>> {
+impl Doc for Node<Option<Mult<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let initial = &e.initial;
@@ -449,7 +449,7 @@ impl Doc for Node<Option<Mult>> {
     }
 }
 
-impl Doc for Node<Option<Unary>> {
+impl Doc for Node<Option<Unary<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         if let Some(op) = e.op {
@@ -492,7 +492,7 @@ impl Doc for Node<Option<Unary>> {
     }
 }
 
-impl Doc for Member {
+impl Doc for Member<'_> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let item_doc = self.item.to_doc(context)?;
         let mut access_doc = RcDoc::nil();
@@ -514,7 +514,7 @@ impl Doc for Member {
     }
 }
 
-impl Doc for Node<Option<RecInit>> {
+impl Doc for Node<Option<RecInit<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         let key_doc = e.0.to_doc(context)?;
@@ -633,7 +633,7 @@ impl Doc for Node<Option<Slot>> {
     }
 }
 
-impl Doc for Node<Option<Primary>> {
+impl Doc for Node<Option<Primary<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
@@ -750,7 +750,7 @@ impl Doc for Node<Option<Primary>> {
     }
 }
 
-impl Doc for Node<Option<MemAccess>> {
+impl Doc for Node<Option<MemAccess<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
         match e {
@@ -875,7 +875,7 @@ impl Doc for Node<Option<Ident>> {
     }
 }
 
-impl Doc for Node<Option<Policy>> {
+impl Doc for Node<Option<Policy<'_>>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let policy = self.as_inner()?;
         #[cfg_attr(

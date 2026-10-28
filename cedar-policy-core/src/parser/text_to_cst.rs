@@ -36,15 +36,17 @@ use std::sync::{Arc, LazyLock};
 /// This helper function calls a generated parser, collects errors that could be
 /// generated multiple ways, and returns a single Result where the error type is
 /// [`err::ParseErrors`].
-fn parse_collect_errors<'a, P, T>(
+fn parse_collect_errors<'a, 'arena, P, T>(
     parser: &P,
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
         bool,
+        &'arena cst::Arena<'arena>,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
+    arena: &'arena cst::Arena<'arena>,
     keep_src: bool,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
@@ -55,7 +57,7 @@ fn parse_collect_errors<'a, P, T>(
         Arc::from("")
     };
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &shared_src, keep_src, text);
+    let result = parse(parser, &mut errs, &shared_src, keep_src, arena, text);
 
     let errors = errs
         .into_iter()
@@ -80,19 +82,21 @@ fn parse_collect_errors<'a, P, T>(
 /// If a string is parsable but has errors, it will still return the parse expression
 /// NOTE: This should only be used to construct an AST that includes error nodes and NOT for evaluation
 #[cfg(feature = "tolerant-ast")]
-fn parse_collect_errors_tolerant<'a, P, T>(
+fn parse_collect_errors_tolerant<'a, 'arena, P, T>(
     parser: &P,
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
         &Arc<str>,
         bool,
+        &'arena cst::Arena<'arena>,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
+    arena: &'arena cst::Arena<'arena>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), true, text);
+    let result = parse(parser, &mut errs, &Arc::from(text), true, arena, text);
 
     let errors = errs
         .into_iter()
@@ -123,63 +127,118 @@ static NAME_PARSER: LazyLock<grammar::NameParser> = LazyLock::new(grammar::NameP
 static IDENT_PARSER: LazyLock<grammar::IdentParser> = LazyLock::new(grammar::IdentParser::new);
 
 /// Create CST for multiple policies from text
-pub fn parse_policies(text: &str) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
+pub fn parse_policies<'a>(
+    arena: &'a cst::Arena<'a>,
+    text: &str,
+) -> Result<Node<Option<cst::Policies<'a>>>, err::ParseErrors> {
     parse_collect_errors(
         &*POLICIES_PARSER,
         grammar::PoliciesParser::parse,
+        arena,
         true,
         text,
     )
 }
 
 /// Create CST for one policy statement from text
-pub fn parse_policy(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
-    parse_collect_errors(&*POLICY_PARSER, grammar::PolicyParser::parse, true, text)
+pub fn parse_policy<'a>(
+    arena: &'a cst::Arena<'a>,
+    text: &str,
+) -> Result<Node<Option<cst::Policy<'a>>>, err::ParseErrors> {
+    parse_collect_errors(
+        &*POLICY_PARSER,
+        grammar::PolicyParser::parse,
+        arena,
+        true,
+        text,
+    )
 }
 
 /// Create CST for one Expression from text
-pub fn parse_expr(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
-    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, true, text)
+pub fn parse_expr<'a>(
+    arena: &'a cst::Arena<'a>,
+    text: &str,
+) -> Result<Node<Option<cst::Expr<'a>>>, err::ParseErrors> {
+    parse_collect_errors(&*EXPR_PARSER, grammar::ExprParser::parse, arena, true, text)
 }
 
 /// Create CST for one Entity Ref (i.e., UID) from text
 pub fn parse_ref(text: &str) -> Result<Node<Option<cst::Ref>>, err::ParseErrors> {
-    parse_collect_errors(&*REF_PARSER, grammar::RefParser::parse, true, text)
+    parse_collect_errors(
+        &*REF_PARSER,
+        grammar::RefParser::parse,
+        &cst::Arena::new(),
+        true,
+        text,
+    )
 }
 
 /// Create CST for one Primary value from text
-pub fn parse_primary(text: &str) -> Result<Node<Option<cst::Primary>>, err::ParseErrors> {
-    parse_collect_errors(&*PRIMARY_PARSER, grammar::PrimaryParser::parse, true, text)
+pub fn parse_primary<'a>(
+    arena: &'a cst::Arena<'a>,
+    text: &str,
+) -> Result<Node<Option<cst::Primary<'a>>>, err::ParseErrors> {
+    parse_collect_errors(
+        &*PRIMARY_PARSER,
+        grammar::PrimaryParser::parse,
+        arena,
+        true,
+        text,
+    )
 }
 
 /// Parse text as a Name, or fail if it does not parse as a Name
 pub fn parse_name(text: &str) -> Result<Node<Option<cst::Name>>, err::ParseErrors> {
-    parse_collect_errors(&*NAME_PARSER, grammar::NameParser::parse, true, text)
+    parse_collect_errors(
+        &*NAME_PARSER,
+        grammar::NameParser::parse,
+        &cst::Arena::new(),
+        true,
+        text,
+    )
 }
 
 /// Parse text as an identifier, or fail if it does not parse as an identifier
 pub fn parse_ident(text: &str) -> Result<Node<Option<cst::Ident>>, err::ParseErrors> {
-    parse_collect_errors(&*IDENT_PARSER, grammar::IdentParser::parse, true, text)
+    parse_collect_errors(
+        &*IDENT_PARSER,
+        grammar::IdentParser::parse,
+        &cst::Arena::new(),
+        true,
+        text,
+    )
 }
 
 /// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
 #[cfg(feature = "tolerant-ast")]
-pub fn parse_policy_tolerant(text: &str) -> Result<Node<Option<cst::Policy>>, err::ParseErrors> {
-    parse_collect_errors_tolerant(&*POLICY_PARSER, grammar::PolicyParser::parse, text)
-}
-
-/// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
-#[cfg(feature = "tolerant-ast")]
-pub fn parse_policies_tolerant(
+pub fn parse_policy_tolerant<'a>(
+    arena: &'a cst::Arena<'a>,
     text: &str,
-) -> Result<Node<Option<cst::Policies>>, err::ParseErrors> {
-    parse_collect_errors_tolerant(&*POLICIES_PARSER, grammar::PoliciesParser::parse, text)
+) -> Result<Node<Option<cst::Policy<'a>>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*POLICY_PARSER, grammar::PolicyParser::parse, arena, text)
+}
+
+/// Create CST for one policy statement from text - allows CST error nodes on certain parse failures
+#[cfg(feature = "tolerant-ast")]
+pub fn parse_policies_tolerant<'a>(
+    arena: &'a cst::Arena<'a>,
+    text: &str,
+) -> Result<Node<Option<cst::Policies<'a>>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(
+        &*POLICIES_PARSER,
+        grammar::PoliciesParser::parse,
+        arena,
+        text,
+    )
 }
 
 /// Create CST for one Expression from text - allows CST error nodes on certain parse failures
 #[cfg(feature = "tolerant-ast")]
-pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::ParseErrors> {
-    parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, text)
+pub fn parse_expr_tolerant<'a>(
+    arena: &'a cst::Arena<'a>,
+    text: &str,
+) -> Result<Node<Option<cst::Expr<'a>>>, err::ParseErrors> {
+    parse_collect_errors_tolerant(&*EXPR_PARSER, grammar::ExprParser::parse, arena, text)
 }
 
 #[expect(clippy::panic, reason = "unit test code")]
@@ -187,6 +246,7 @@ pub fn parse_expr_tolerant(text: &str) -> Result<Node<Option<cst::Expr>>, err::P
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::parser;
     #[cfg(feature = "tolerant-ast")]
     use crate::parser::cst::Expr;
     #[cfg(feature = "tolerant-ast")]
@@ -194,6 +254,36 @@ mod tests {
     use crate::parser::test_utils::*;
     use crate::test_utils::*;
     use cool_asserts::assert_matches;
+
+    fn parse_policies(
+        text: &str,
+    ) -> Result<Node<Option<cst::Policies<'static>>>, err::ParseErrors> {
+        super::parse_policies(parser::test_arena(), text)
+    }
+    fn parse_policy(text: &str) -> Result<Node<Option<cst::Policy<'static>>>, err::ParseErrors> {
+        super::parse_policy(parser::test_arena(), text)
+    }
+    fn parse_expr(text: &str) -> Result<Node<Option<cst::Expr<'static>>>, err::ParseErrors> {
+        super::parse_expr(parser::test_arena(), text)
+    }
+    #[cfg(feature = "tolerant-ast")]
+    fn parse_policy_tolerant(
+        text: &str,
+    ) -> Result<Node<Option<cst::Policy<'static>>>, err::ParseErrors> {
+        super::parse_policy_tolerant(parser::test_arena(), text)
+    }
+    #[cfg(feature = "tolerant-ast")]
+    fn parse_policies_tolerant(
+        text: &str,
+    ) -> Result<Node<Option<cst::Policies<'static>>>, err::ParseErrors> {
+        super::parse_policies_tolerant(parser::test_arena(), text)
+    }
+    #[cfg(feature = "tolerant-ast")]
+    fn parse_expr_tolerant(
+        text: &str,
+    ) -> Result<Node<Option<cst::Expr<'static>>>, err::ParseErrors> {
+        super::parse_expr_tolerant(parser::test_arena(), text)
+    }
 
     #[track_caller]
     fn assert_parse_succeeds<T>(
@@ -277,6 +367,14 @@ mod tests {
         if 7 then 6 > 5 else !5 || "thursday" && ((8) >= "fish")
         "#,
         );
+    }
+
+    #[test]
+    fn drop_deep_cst() {
+        let depth = 100_000;
+        let src = "[".repeat(depth) + "1" + &"]".repeat(depth);
+        let arena = cst::Arena::new();
+        super::parse_expr(&arena, &src).expect("should parse");
     }
 
     #[test]
@@ -1068,7 +1166,13 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#;
         let policies = POLICIES_PARSER
-            .parse(&mut Vec::new(), &Arc::from(src), false, src)
+            .parse(
+                &mut Vec::new(),
+                &Arc::from(src),
+                false,
+                parser::test_arena(),
+                src,
+            )
             .expect("parser error")
             .node
             .expect("no data");

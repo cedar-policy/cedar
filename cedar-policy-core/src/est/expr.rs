@@ -1469,9 +1469,9 @@ impl From<ast::SlotId> for Expr {
     }
 }
 
-impl TryFrom<&Node<Option<cst::Expr>>> for Expr {
+impl TryFrom<&Node<Option<cst::Expr<'_>>>> for Expr {
     type Error = ParseErrors;
-    fn try_from(e: &Node<Option<cst::Expr>>) -> Result<Expr, ParseErrors> {
+    fn try_from(e: &Node<Option<cst::Expr<'_>>>) -> Result<Expr, ParseErrors> {
         e.to_expr::<Builder>()
     }
 }
@@ -2012,6 +2012,7 @@ fn maybe_with_parens(
 #[expect(clippy::indexing_slicing, reason = "this is unit test code")]
 #[expect(clippy::panic, reason = "Unit Test Code")]
 mod test {
+    use crate::parser;
     use crate::parser::{
         err::{ParseError, ToASTErrorKind},
         parse_expr,
@@ -2023,7 +2024,8 @@ mod test {
 
     #[test]
     fn test_invalid_expr_from_cst_name() {
-        let e = crate::parser::text_to_cst::parse_expr("some_long_str::else").unwrap();
+        let e = crate::parser::text_to_cst::parse_expr(parser::test_arena(), "some_long_str::else")
+            .unwrap();
         assert_matches!(Expr::try_from(&e), Err(e) => {
             assert!(e.len() == 1);
             assert_matches!(&e[0],
@@ -2593,17 +2595,18 @@ mod test {
 #[expect(clippy::panic, reason = "unit test code")]
 mod paren_omission {
     use super::*;
+    use crate::parser;
     use crate::parser::text_to_cst;
     use insta::assert_snapshot;
 
     #[track_caller]
     fn render(text: &str) -> String {
-        let cst =
-            text_to_cst::parse_expr(text).unwrap_or_else(|e| panic!("cannot parse {text:?}: {e}"));
+        let cst = text_to_cst::parse_expr(parser::test_arena(), text)
+            .unwrap_or_else(|e| panic!("cannot parse {text:?}: {e}"));
         let est =
             Expr::try_from(&cst).unwrap_or_else(|e| panic!("cannot build EST for {text:?}: {e}"));
         let printed = est.to_string();
-        let cst = text_to_cst::parse_expr(&printed)
+        let cst = text_to_cst::parse_expr(parser::test_arena(), &printed)
             .unwrap_or_else(|e| panic!("printed form {printed:?} does not parse: {e}"));
         let reparsed = Expr::try_from(&cst)
             .unwrap_or_else(|e| panic!("printed form {printed:?} is not a valid EST: {e}"));

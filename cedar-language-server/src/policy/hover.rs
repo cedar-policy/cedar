@@ -57,7 +57,8 @@ pub fn policy_hover(
     policy_string: &str,
     schema: Option<SchemaInfo>,
 ) -> Option<Hover> {
-    let cst = cedar_policy_core::parser::text_to_cst::parse_policies(policy_string)
+    let arena = cedar_policy_core::parser::cst::Arena::new();
+    let cst = cedar_policy_core::parser::text_to_cst::parse_policies(&arena, policy_string)
         .inspect_err(|e| tracing::error!("Error parsing policy to cst: {}", e))
         .ok()?;
 

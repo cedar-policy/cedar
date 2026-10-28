@@ -32,8 +32,9 @@ pub(crate) fn quickpick_list(
     policies: &str,
     selected_range: Range,
 ) -> anyhow::Result<Vec<QuickPickItem>> {
-    let policies =
-        parse_policies_tolerant(policies).and_then(|policies| policies.to_policyset_tolerant())?;
+    let arena = cedar_policy_core::parser::cst::Arena::new();
+    let policies = parse_policies_tolerant(&arena, policies)
+        .and_then(|policies| policies.to_policyset_tolerant())?;
 
     let items = policies
         .into_policies()
