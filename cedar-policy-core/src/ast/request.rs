@@ -106,9 +106,7 @@ impl EntityUIDEntry {
     /// An unknown corresponding to the passed `var`
     pub fn evaluate(&self, var: Var) -> PartialValue {
         match self {
-            EntityUIDEntry::Known { euid, loc } => {
-                Value::new(Arc::unwrap_or_clone(Arc::clone(euid)), loc.clone()).into()
-            }
+            EntityUIDEntry::Known { euid, loc } => Value::new(euid.clone(), loc.clone()).into(),
             EntityUIDEntry::Unknown { ty: None, loc } => {
                 Expr::unknown(Unknown::new_untyped(var.to_smolstr()))
                     .with_maybe_source_loc(loc.clone())

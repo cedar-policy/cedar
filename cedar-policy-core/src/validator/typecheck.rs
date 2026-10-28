@@ -29,7 +29,7 @@ use std::sync::Arc;
 use std::{borrow::Cow, collections::HashSet};
 
 use crate::ast::UnwrapInfallible;
-use crate::validator::types::{BoolType, EntityLUB};
+use crate::validator::types::BoolType;
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
@@ -784,7 +784,6 @@ impl<'a> SingleEnvTypechecker<'a> {
 
                 actual.then_typecheck(|typ_expr_actual, _| match typ_expr_actual.data() {
                     Some(typ_actual) => {
-                        let all_attrs = typ_actual.all_attributes(self.schema);
                         let attr_ty = Type::lookup_attribute_type(self.schema, typ_actual, attr);
                         let annot_expr = ExprBuilder::with_data(
                             attr_ty
@@ -836,8 +835,9 @@ impl<'a> SingleEnvTypechecker<'a> {
                                 )
                             }
                             None => {
+                                let all_attrs = typ_actual.all_attributes(self.schema);
                                 let borrowed =
-                                    all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                                    all_attrs.keys().map(|s| s.as_str()).collect::<Vec<_>>();
                                 let suggestion = fuzzy_search(attr, &borrowed);
                                 type_errors.push(ValidationError::unsafe_attribute_access(
                                     e.source_loc().cloned(),
@@ -1341,7 +1341,10 @@ impl<'a> SingleEnvTypechecker<'a> {
             }
             None => {
                 let all_attrs = actual_type.all_attributes(self.schema);
-                let borrowed = all_attrs.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+                let borrowed = all_attrs
+                    .iter()
+                    .map(|(s, _)| s.as_str())
+                    .collect::<Vec<_>>();
                 let suggestion = fuzzy_search(attr, &borrowed);
                 type_errors.push(ValidationError::unsafe_attribute_access(
                     expr.source_loc().cloned(),
@@ -1954,32 +1957,6 @@ impl<'a> SingleEnvTypechecker<'a> {
         }
     }
 
-    /// Checks if `lhs_ety` may be a descendant of `rhs_ety` in the action hierarchy.
-    /// We assume that `lhs_ety` is an action entity type, but `rhs_ety` can be any entity type.
-    /// Lean counterpart: <https://github.com/cedar-policy/cedar-spec/blob/7e231a68b0e0eb1b8ce1362e81de4568671a668a/cedar-lean/Cedar/Validation/Types.lean#L202>
-    fn check_action_in_entity_type(&self, lhs_ety: &EntityType, rhs_ety: &EntityType) -> bool {
-        lhs_ety == rhs_ety
-            || self.schema.action_ids().any(|action| {
-                action.name().entity_type() == rhs_ety
-                    && action
-                        .descendants()
-                        .any(|desc| desc.entity_type() == lhs_ety)
-            })
-    }
-
-    /// Check if an entity type in `lhs` may be a descendant of some entity type
-    /// in rhs, either in the entity or action hierarchy. If this function
-    /// returns `false`, then `lhs in rhs` cannot possibly evaluate to `true`,
-    /// meaning that the expression can have type `False`.
-    fn any_entity_type_decedent_of(&self, lhs: &EntityLUB, rhs: &EntityLUB) -> bool {
-        lhs.iter().any(|lhs| {
-            rhs.iter().any(|rhs| {
-                self.schema.get_entity_types_in(rhs).contains(&lhs)
-                    || self.check_action_in_entity_type(lhs, rhs)
-            })
-        })
-    }
-
     /// Handles typechecking of `in` expressions. This is complicated because it
     /// requires searching the schema to determine if an `in` expression
     /// consisting of variables and literals can ever be true. When we find that
@@ -2047,23 +2024,14 @@ impl<'a> SingleEnvTypechecker<'a> {
                             rhs_expr,
                         ),
                     _ => {
-                        let lhs_etys = match lhs_expr.data() {
-                            Some(Type::Entity(EntityKind::Entity(lhs_etys))) => Some(lhs_etys),
-                            _ => None,
-                        };
-                        let rhs_etys = match rhs_expr.data() {
-                            Some(Type::Entity(EntityKind::Entity(rhs_etys))) => Some(rhs_etys),
-                            Some(Type::Set {
-                                element_type: Some(element_type),
-                            }) => match element_type.as_ref() {
-                                Type::Entity(EntityKind::Entity(rhs_etys)) => Some(rhs_etys),
-                                _ => None,
-                            },
-                            _ => None,
-                        };
+                        let lhs_etys = lhs_expr.data().as_ref().and_then(Type::as_entity_lub);
+                        let rhs_etys = rhs_expr
+                            .data()
+                            .as_ref()
+                            .and_then(Type::as_set_or_entity_lub);
                         match (lhs_etys, rhs_etys) {
                             (Some(lhs_etys), Some(rhs_etys))
-                                if !self.any_entity_type_decedent_of(lhs_etys, rhs_etys) =>
+                                if !self.schema.any_descendent_of(lhs_etys, rhs_etys) =>
                             {
                                 TypecheckAnswer::success(
                                     ExprBuilder::with_data(Some(Type::Bool(BoolType::False)))

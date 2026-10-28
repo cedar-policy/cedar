@@ -204,6 +204,10 @@ impl Entities {
                             Arc::make_mut(entity).remove_indirect_ancestor(&uid_to_remove);
                             Arc::make_mut(entity).remove_parent(&uid_to_remove);
                             // remove any indirect link between `entity` and the ancestors of `entity_to_remove`
+                            // repair_tc re-adds edges that are reachable via alternate paths.
+                            // Determining whether an edge has an alternate path before removing it
+                            // could be done by processing descendants in topological order, but
+                            // the performance benefit over reusing `repair_tc` would be minimal.
                             for ancestor_uid in entity_to_remove.ancestors() {
                                 Arc::make_mut(entity).remove_indirect_ancestor(ancestor_uid);
                             }
@@ -212,10 +216,13 @@ impl Entities {
                 }
             }
         }
-        match tc_computation {
-            TCComputation::AssumeAlreadyComputed => (),
-            TCComputation::EnforceAlreadyComputed => enforce_tc_and_dag(&self.entities)?,
-            TCComputation::ComputeNow => repair_tc(&entities_touched, &mut self.entities, true)?,
+        repair_tc(
+            &entities_touched,
+            &mut self.entities,
+            matches!(tc_computation, TCComputation::ComputeNow),
+        )?;
+        if let TCComputation::EnforceAlreadyComputed = tc_computation {
+            enforce_tc_and_dag(&self.entities)?;
         }
         Ok(self)
     }
@@ -227,7 +234,8 @@ impl Entities {
     ///
     /// If `schema` is present, then the added entities will be validated
     /// against the `schema`, returning an error if they do not conform to the
-    /// schema.
+    /// schema. All versions of a duplicate are validated, even if only the
+    /// last version results in a change.
     /// (This method will not add action entities from the `schema`.)
     ///
     /// If you pass [`TCComputation::AssumeAlreadyComputed`], then the caller is
@@ -240,11 +248,27 @@ impl Entities {
         extensions: &Extensions<'_>,
     ) -> Result<Self> {
         let checker = schema.map(|schema| EntitySchemaConformanceChecker::new(schema, extensions));
+        let collection: Vec<Arc<Entity>> = collection.into_iter().collect();
+        // When the same entity is given more than once, only the last version
+        // is applied, as documented.
+        //
+        // `last_version` records, for each uid, the index of its last
+        // occurrence; only that occurrence is applied.
+        let last_version: HashMap<&EntityUID, usize> = collection
+            .iter()
+            .enumerate()
+            .map(|(i, entity)| (entity.uid(), i))
+            .collect();
         let mut entities_touched: HashSet<EntityUID> = HashSet::new();
-        for entity in collection.into_iter() {
+        for (i, entity) in collection.iter().enumerate() {
+            // Every version is checked against the schema, even skipped ones, for backwards compatibility.
             if let Some(checker) = checker.as_ref() {
-                checker.validate_entity(&entity)?;
+                checker.validate_entity(entity)?;
             }
+            if last_version.get(entity.uid()) != Some(&i) {
+                continue;
+            }
+            let entity = Arc::clone(entity);
             let uid = entity.uid().clone();
             // If overwriting an existing entity, strip stale TC edges from its descendants
             if let Some(old_entity) = self.entities.get(&uid) {
@@ -313,11 +337,12 @@ impl Entities {
             // actions were already validated as part of constructing the
             // `Schema`
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
-            for entity in entity_map.values() {
-                if !entity.uid().entity_type().is_action() {
-                    checker.validate_entity(entity)?;
-                }
-            }
+            validate_entities(
+                &checker,
+                entity_map
+                    .values()
+                    .filter(|entity| !entity.uid().entity_type().is_action()),
+            )?;
         }
         match tc_computation {
             TCComputation::AssumeAlreadyComputed => {}
@@ -335,11 +360,12 @@ impl Entities {
         // can never be in the same hierarchy when using schema-based parsing.
         if let Some(schema) = schema {
             let checker = EntitySchemaConformanceChecker::new(schema, extensions);
-            for entity in entity_map.values() {
-                if entity.uid().entity_type().is_action() {
-                    checker.validate_entity(entity)?;
-                }
-            }
+            validate_entities(
+                &checker,
+                entity_map
+                    .values()
+                    .filter(|entity| entity.uid().entity_type().is_action()),
+            )?;
             // Add the action entities from the schema
             entity_map.extend(
                 schema
@@ -484,6 +510,30 @@ impl Entities {
         }
 
         Ok(self)
+    }
+}
+
+/// Validates each of `entities` against the schema.
+///
+/// `entities` typically come from a `HashMap`, whose iteration order is
+/// arbitrary. So that the same input always produces the same error, when
+/// several entities are invalid we report the error for the one with the
+/// smallest `EntityUID`, rather than the first one we happen to visit.
+fn validate_entities<'a, S: Schema>(
+    checker: &EntitySchemaConformanceChecker<'_, S>,
+    entities: impl Iterator<Item = &'a Arc<Entity>>,
+) -> Result<()> {
+    match entities
+        .filter_map(|entity| {
+            checker
+                .validate_entity(entity)
+                .err()
+                .map(|err| (entity.uid(), err))
+        })
+        .min_by_key(|(uid, _)| *uid)
+    {
+        Some((_, err)) => Err(err.into()),
+        None => Ok(()),
     }
 }
 
@@ -2462,6 +2512,45 @@ mod entities_tests {
     }
 
     #[test]
+    fn test_remove_entities_preserves_alternate_pat() {
+        //   child -> removed -> ancestor
+        //   child -> sibling -> ancestor
+        let ancestor = EntityUID::with_eid("ancestor");
+        let removed = EntityUID::with_eid("removed");
+        let sibling = EntityUID::with_eid("sibling");
+        let child = EntityUID::with_eid("child");
+        let mut r = Entity::with_uid(removed.clone());
+        r.add_parent(ancestor.clone());
+        let mut s = Entity::with_uid(sibling.clone());
+        s.add_parent(ancestor.clone());
+        let mut c = Entity::with_uid(child.clone());
+        c.add_parent(removed.clone());
+        c.add_parent(sibling.clone());
+        let entities = Entities::from_entities(
+            vec![Entity::with_uid(ancestor.clone()), r, s, c],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .unwrap();
+        for tc in &[
+            TCComputation::AssumeAlreadyComputed,
+            TCComputation::EnforceAlreadyComputed,
+            TCComputation::ComputeNow,
+        ] {
+            let entities_copy = entities
+                .clone()
+                .remove_entities(vec![removed.clone()], *tc)
+                .unwrap();
+            assert_matches!(entities_copy.entity(&removed), Dereference::NoSuchEntity);
+            assert!(entities_copy
+                .entity(&child)
+                .unwrap()
+                .is_descendant_of(&ancestor));
+        }
+    }
+
+    #[test]
     fn test_upsert_entities() {
         // Original Hierarchy
         // F -> A
@@ -2529,6 +2618,98 @@ mod entities_tests {
 
         // Assert that there is no longer an edge from F to E
         assert!(!f.is_descendant_of(&eid));
+    }
+
+    #[test]
+    fn upsert_entities_repeated_in_batch() {
+        // An entity named twice in one `upsert_entities` batch
+        // should not leave a stale ancestor.
+        // Original hierarchy: A -> T -> O (O not stored), A -> T -> G -> R.
+        let aid = EntityUID::with_eid("A");
+        let tid = EntityUID::with_eid("T");
+        let oid = EntityUID::with_eid("O");
+        let gid = EntityUID::with_eid("G");
+        let rid = EntityUID::with_eid("R");
+        let mut a = Entity::with_uid(aid.clone());
+        a.add_parent(tid.clone());
+        let mut t = Entity::with_uid(tid);
+        t.add_parent(oid.clone());
+        t.add_parent(gid.clone());
+        let mut g = Entity::with_uid(gid.clone());
+        g.add_parent(rid.clone());
+
+        // Batch: O -> G, then O with no parents (last version wins), then G
+        // with no parents.
+        let mut o_first = Entity::with_uid(oid.clone());
+        o_first.add_parent(gid.clone());
+        let updates = vec![
+            o_first,
+            Entity::with_uid(oid),
+            Entity::with_uid(gid.clone()),
+        ]
+        .into_iter()
+        .map(Arc::new)
+        .collect::<Vec<_>>();
+        let entities = Entities::from_entities(
+            vec![a, t, g],
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to construct entities")
+        .upsert_entities(
+            updates,
+            None::<&NoEntitiesSchema>,
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        )
+        .expect("Failed to upsert entities");
+
+        // Final hierarchy: A -> T -> O, A -> T -> G. A no longer reaches R.
+        let a = entities.entity(&aid).unwrap();
+        assert!(a.is_descendant_of(&gid));
+        assert!(!a.is_descendant_of(&rid));
+    }
+
+    #[test]
+    fn upsert_entities_validates_every_version_in_batch() {
+        // Every version of a repeated entity is checked against the schema,
+        // even the earlier ones that are not applied. `AllEntitiesNoAttrsSchema`
+        // rejects any entity that has a parent.
+        let uid = EntityUID::with_eid("A");
+        let mut with_parent = Entity::with_uid(uid.clone());
+        with_parent.add_parent(EntityUID::with_eid("P"));
+        let no_parent = Entity::with_uid(uid);
+
+        // The invalid version comes first and loses the last-version race, but
+        // it is still validated, so the upsert errors.
+        let empty = || {
+            Entities::from_entities(
+                std::iter::empty::<Entity>(),
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .unwrap()
+        };
+        let err = empty().upsert_entities(
+            vec![Arc::new(with_parent), Arc::new(no_parent.clone())],
+            Some(&AllEntitiesNoAttrsSchema),
+            TCComputation::ComputeNow,
+            Extensions::all_available(),
+        );
+        assert_matches!(err, Err(EntitiesError::InvalidEntity(_)));
+
+        // Two valid versions of the same uid succeed: the duplicate itself is
+        // not the problem, the invalid earlier version was.
+        empty()
+            .upsert_entities(
+                vec![Arc::new(no_parent.clone()), Arc::new(no_parent)],
+                Some(&AllEntitiesNoAttrsSchema),
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .expect("two valid versions should upsert");
     }
 
     // ---- Vec-of-test-cases for add/remove/upsert with TC repair ----

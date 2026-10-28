@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Added
+
+- `run-tests` command now supports loading entities from external JSON files. Test cases can reference entity files using a file path string instead of inline JSON, improving test readability for large entity sets and enabling entity reuse across multiple test cases.
+
 ## 4.13.0
 
 ## 4.12.0

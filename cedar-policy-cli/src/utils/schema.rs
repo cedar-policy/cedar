@@ -106,7 +106,7 @@ mod tests {
               ╭────
             1 │ not a valid schema
               · ─┬─
-              ·  ╰── expected `@`, `action`, `entity`, `namespace`, or `type`
+              ·  ╰── expected `@`, `action`, `entity`, `external`, `namespace`, or `type`
               ╰────
             ");
         });

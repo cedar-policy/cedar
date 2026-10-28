@@ -60,7 +60,7 @@ similar.opt-level = 3
 [workspace.package]
 # Check the minimum supported Rust version with `cargo install cargo-msrv && cargo msrv --min 1.X.0` where `X` is something lower than the version noted here (to confirm that versions lower than the one noted here _don't_ work)
 rust-version = "1.89"
-version = "4.13.0"
+version = "4.14.0"
 homepage = "https://cedarpolicy.com"
 keywords = ["cedar", "authorization", "policy", "security"]
 categories = ["compilers", "config"]
@@ -74,7 +74,7 @@ repository = "https://github.com/cedar-policy/cedar"
 unsafe_code = "forbid"
 unexpected_cfgs = { level = 'deny', check-cfg = ['cfg(kani)', 'cfg(fuzzing)'] }
 missing_debug_implementations = "deny"
-rust-2018-idioms = "deny"
+rust_2018_idioms = { level = "deny", priority = -1 }
 unused_assignments = "allow" # In Rust 1.92 this one erroneously identifies some fields in error structs as unused, when they are actually used in the `#[error]` attribute
 
 # For clippy lints CI will only block on errors, so setting one to "warn" just

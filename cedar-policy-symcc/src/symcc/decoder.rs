@@ -540,7 +540,7 @@ impl SExpr {
                             (elts2, elts1)
                         };
                         let mut elts = Arc::unwrap_or_clone(elts);
-                        elts.extend(Arc::unwrap_or_clone(rest).into_iter());
+                        elts.extend(Arc::unwrap_or_clone(rest));
                         Ok(Term::Set {
                             elts: Arc::new(elts),
                             elts_ty,

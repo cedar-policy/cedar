@@ -10,9 +10,70 @@ The "Cedar Language Version" refers to the language version as documented in the
 
 Starting with version 3.2.4, changes marked with a star (*) are _language breaking changes_, meaning that they have the potential to affect users of Cedar, beyond users of the `cedar-policy` Rust crate. Changes marked with a star change the behavior of a Cedar parser, the authorization engine, or policy validator.
 
-## [Unreleased]
+## [Unreleased] - Coming Soon
 
 Cedar Language Version: TBD
+
+### Fixed
+
+- Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than
+  once in one batch.
+- The policy formatter no longer puts a line break between a method name and its argument list when it splits
+  a long attribute access chain (#2119).
+
+## [4.14.0] - 2026-10-17
+
+Cedar Language Version: 4.6
+
+### Added
+
+- Cedar now supports the `external` keyword to declare undefined entity type and action.
+- `Schema` can now hold a partial schema, one that still has `external` declarations.
+- `Schema::is_complete` reports whether any external entity type or action remain.
+- `Schema::external_entity_types`,
+  `Schema::defined_entity_types`, `Schema::external_actions` and `Schema::defined_actions` list the
+  declarations on each side of that split (#2615).
+- `Schema::schema_link` links any number of schemas, resolving each `external` declaration against a
+  definition of the same name, and may itself return a partial schema that holds external entity type or action. `Schema::schema_link_complete`
+  additionally requires the result to be complete. Both report the new `LinkError` (#2615).
+- The new `ValidationError::IncompleteSchema` reports that policy validation was given a partial
+  schema (#2615).
+- The FFI gains `link_schemas` and `schema_completeness`, with the usual `_json` and `_json_str`
+  variants, exposed to JavaScript as `linkSchemas` and `schemaCompleteness` (#2615).
+- The protobuf encoding of a schema now carries `external` declarations, so a partial schema can be
+  encoded and decoded (#2621).
+- For the experimental `tpe` feature, TPE now reduces `has`, `hasTag`, `in` and `==` applied to non-erroring but unknown expressions when the schema provides enough information to determine the concrete value of the operation.
+
+### Changed
+
+- All existing API behavior remain unchanged for inputs that do not involve the new `external` keyword.
+- Several `Schema` methods now have a defined behavior for `external` declarations: `Schema::entity_types`
+  and `Schema::actions` list them, `Schema::action_entities` excludes external actions, `Schema::principals_for_action` and
+  `Schema::resources_for_action` return `Some` with an empty iterator for external actions
+  and `Schema::ancestors` finds an external entity type and includes its declared parent types
+  in the hierarchy (#2615).
+- `Validator::validate` and `Validator::validate_with_level` refuse a partial schema, reporting
+  `ValidationError::IncompleteSchema`. Only a complete schema can be used to validate policies (#2615).
+- `Request::new` accepts a partial schema that holds `external` declarations, and refuses a request whose
+  action is external.
+- `Entities::from_json_value` and friends likewise accept a partial schema and
+  refuse an entity whose own type is external, while an entity of a defined type may refer to an
+  external type in its attributes, tags and ancestors (#2615).
+- `Context::from_json_value` and friends report `ContextJsonError::MissingAction` for an external
+  action, as they already did for an absent one, and the error message changed accordingly (#2615).
+- `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
+  parses the string and renders the result back out to check that the input was normalized. The same
+  optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+- Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
+  were previously accepted, but slots were not included in the manifest.
+
+### Fixed
+
+- `Entities::from_json_value()`, `from_json_str()`, `from_json_file()`, and `from_entities()` now return the same
+  error every time for the same input when more than one entity, attribute, tag, or ancestor is invalid. Previously
+  the reported error depended on `HashMap` iteration order and could change between calls. Schema conformance errors
+  are now reported for the entity with the smallest `EntityUid`, and within an entity for the lexicographically
+  smallest attribute or tag name (#2504).
 
 ## [4.13.0] - 2026-09-15
 

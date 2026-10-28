@@ -2116,7 +2116,7 @@ fn test_check_parse_invalid_schema() {
     2 │ @id("jane's friends view-permission policy")
     3 │ permit (
       · ───┬──
-      ·    ╰── expected `@`, `action`, `entity`, `namespace`, or `type`
+      ·    ╰── expected `@`, `action`, `entity`, `external`, `namespace`, or `type`
     4 │   principal in UserGroup::"jane_friends",
       ╰────
     "#);

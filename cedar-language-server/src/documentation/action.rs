@@ -83,7 +83,12 @@ impl ToDocumentationString for ActionDocumentation<'_> {
                 // Add context details from schema if available
                 if let Some(schema) = schema {
                     if let Some(action) = schema.get_action_id(entity_uid) {
-                        if let Type::Record { attrs, .. } = action.context() {
+                        if action.is_external() {
+                            builder.paragraph("Declared `external` in this schema.");
+                        }
+                        // `None` is an external action (RFC 116), which has no
+                        // context attributes to document.
+                        if let Some(Type::Record { attrs, .. }) = action.context() {
                             builder
                                 .header("Context Attributes")
                                 .code_block("cedarschema", &format_attributes(attrs.iter()));

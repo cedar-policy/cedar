@@ -14,7 +14,6 @@
 // limitations under the License.
 //
 
-use std::str::FromStr;
 use std::sync::Arc;
 use crate::validator::cedar_schema::err::{RawErrorRecovery, UserError};
 use crate::parser::{Node, Loc, unescape::to_unescaped_string, cst::Ref};
@@ -26,6 +25,7 @@ use crate::validator::cedar_schema::ast::{
     Path,
     EntityDecl,
     StandardEntityDecl,
+    ExternalEntityDecl,
     EnumEntityDecl,
     Declaration,
     Namespace,
@@ -33,6 +33,8 @@ use crate::validator::cedar_schema::ast::{
     Type as SType,
     AttrDecl,
     ActionDecl,
+    DefinedActionDecl,
+    ExternalActionDecl,
     PR,
     AppDecl,
     TypeDecl,
@@ -65,6 +67,7 @@ match {
 
     // keywords
     "namespace" => NAMESPACE,
+    "external" => EXTERNAL,
     "entity" => ENTITY,
     "in" => IN,
     "type" => TYPE,
@@ -129,8 +132,14 @@ Decl: Node<Declaration> = {
     <t:TypeDecl> => t,
 }
 
-// Entity := 'entity' Idents ['in' EntTypes] [['='] RecType] ';' <r:@R>
+// Entity := ExternalEntity | StandardEntity | EnumEntity
+// ExternalEntity := 'external' 'entity' Idents ['in' EntTypes] ';'
 Entity: Node<Declaration> = {
+    <l:@L> EXTERNAL ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Entity(EntityDecl::External(ExternalEntityDecl {
+            names: ets,
+            member_of_types: ps.unwrap_or_default(),
+        })), Loc::new(l..r, Arc::clone(src))),
     <l1:@L> ENTITY <ets: Idents> <ps:(IN <EntTypes>)?> <l2:@L> <ds:("="? "{" <AttrDecls?> "}")?> <r2:@R> <ts:(TAGS <Type>)?> ";" <r1:@R>
         => Node::with_source_loc(Declaration::Entity(EntityDecl::Standard(StandardEntityDecl {
             names: ets,
@@ -144,10 +153,21 @@ Entity: Node<Declaration> = {
     })), Loc::new(l..r, Arc::clone(src))),
 }
 
-// Action := 'action' Names ['in' QualNameOrNames]
+// Action := ExternalAction | DefinedAction
+// ExternalAction := 'external' 'action' Names ['in' QualNameOrNames] ';'
+// DefinedAction := 'action' Names ['in' QualNameOrNames] ['appliesTo' '{' AppDecls '}'] ['attributes' '{' '}'] ';'
 Action: Node<Declaration> = {
+    <l:@L> EXTERNAL ACTION <ns:Names> <ps:(IN <QualNameOrQualNames>)?> ";" <r:@R>
+        => Node::with_source_loc(Declaration::Action(ActionDecl::External(ExternalActionDecl {
+            names: ns,
+            parents: ps,
+        })), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ACTION <ns:Names> <ps:(IN <QualNameOrQualNames>)?> <ads:(APPLIESTO "{" <AppDecls> "}")?> <attrs:(ATTRIBUTES "{" "}")?>";" <r:@R>
-        => Node::with_source_loc(Declaration::Action(ActionDecl { names: ns, parents: ps, app_decls: ads}), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(Declaration::Action(ActionDecl::Defined(DefinedActionDecl {
+            names: ns,
+            parents: ps,
+            app_decls: ads,
+        })), Loc::new(l..r, Arc::clone(src))),
 }
 
 TypeDecl: Node<Declaration> = {
@@ -228,48 +248,61 @@ Comma<E>: Vec<E> = {
 }
 
 // IDENT := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']* - RESERVED
+//
+// We already have an `AnyIdent`. `AnyIdent::try_into_id` will check that it is
+// not a reserved keyword.
 Ident: Node<Id> = {
-    <id: AnyIdent> =>? Id::from_str(id.node.as_ref()).map(|i| Node::with_maybe_source_loc(i, id.loc.clone())).map_err(|err : crate::parser::err::ParseErrors| ParseError::User {
-        error: UserError::ReservedIdentifierUsed(Node::with_maybe_source_loc(id.node.to_smolstr(), id.loc.clone()))
-    }),
+    <id: AnyIdent> =>? id.node.clone().try_into_id()
+        .map(|i| Node::with_maybe_source_loc(i, id.loc.clone()))
+        .ok_or_else(|| ParseError::User {
+            error: UserError::ReservedIdentifierUsed(Node::with_maybe_source_loc(id.node.into_smolstr(), id.loc))
+        }),
 }
 
 // AnyIdent := ['_''a'-'z''A'-'Z']['_''a'-'z''A'-'Z''0'-'9']*
+//
+// Most of these cases are constructed from string literal which we know are
+// directly valid identifiers. In the final `IDENTIFIER` case, we know the
+// string matches the pattern for and identifier token as defined in this
+// grammar, which is exactly the same as the identifier token in the policy
+// grammar.
 AnyIdent: Node<AnyId> = {
     <l:@L> NAMESPACE <r:@R>
-        => Node::with_source_loc("namespace".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("namespace"), Loc::new(l..r, Arc::clone(src))),
+    <l:@L> EXTERNAL <r:@R>
+        => Node::with_source_loc(AnyId::new_unchecked("external"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ENTITY <r:@R>
-        => Node::with_source_loc("entity".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("entity"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> SET <r:@R>
-        => Node::with_source_loc("Set".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("Set"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> APPLIESTO <r:@R>
-        => Node::with_source_loc("appliesTo".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("appliesTo"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> PRINCIPAL <r:@R>
-        => Node::with_source_loc("principal".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("principal"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ACTION <r:@R>
-        => Node::with_source_loc("action".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("action"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> RESOURCE <r:@R>
-        => Node::with_source_loc("resource".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("resource"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> CONTEXT <r:@R>
-        => Node::with_source_loc("context".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("context"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ATTRIBUTES <r:@R>
-        => Node::with_source_loc("attributes".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("attributes"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> TAGS <r:@R>
-        => Node::with_source_loc("tags".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("tags"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> BOOL <r:@R>
-        => Node::with_source_loc("Bool".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("Bool"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> LONG <r:@R>
-        => Node::with_source_loc("Long".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("Long"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> STRING <r:@R>
-        => Node::with_source_loc("String".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("String"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> TYPE <r:@R>
-        => Node::with_source_loc("type".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("type"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> IN <r:@R>
-        => Node::with_source_loc("in".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("in"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> ENUM <r:@R>
-        => Node::with_source_loc("enum".parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked("enum"), Loc::new(l..r, Arc::clone(src))),
     <l:@L> <i:IDENTIFIER> <r:@R>
-        => Node::with_source_loc(i.parse().unwrap(), Loc::new(l..r, Arc::clone(src))),
+        => Node::with_source_loc(AnyId::new_unchecked(i), Loc::new(l..r, Arc::clone(src))),
 }
 
 STR: Node<SmolStr> = {

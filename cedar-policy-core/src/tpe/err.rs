@@ -26,7 +26,7 @@ use crate::{
     entities::{conformance::err::EntitySchemaConformanceError, err::Duplicate},
     evaluator::{evaluation_errors::UnlinkedSlotError, EvaluationError},
     transitive_closure::TcError,
-    validator::{RequestValidationError, ValidationError},
+    validator::{IncompleteSchemaError, RequestValidationError, ValidationError},
 };
 
 /// Error thrown when encountered an action
@@ -88,6 +88,11 @@ pub struct AncestorValidationError {
 /// Errors for TPE
 #[derive(Debug, Error, Diagnostic)]
 pub enum TpeError {
+    /// Error thrown when the schema still declares some names `external`
+    /// (RFC 116). TPE typechecks every policy, which needs every name defined.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompleteSchema(#[from] IncompleteSchemaError),
     /// Error thrown when there is no matching request environment according to
     /// a schema
     #[error(transparent)]

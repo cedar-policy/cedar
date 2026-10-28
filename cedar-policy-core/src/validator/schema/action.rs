@@ -41,8 +41,8 @@ pub struct ValidatorActionId {
     /// The name of the action.
     pub(crate) name: EntityUID,
 
-    /// The principals and resources that the action can be applied to.
-    pub(crate) applies_to: ValidatorApplySpec<ast::EntityType>,
+    /// The kind of action: defined, or external
+    pub(crate) kind: ValidatorActionIdKind,
 
     /// The set of actions that are members of this action. When this
     /// structure is initially constructed, the field will contain direct
@@ -50,20 +50,37 @@ pub struct ValidatorActionId {
     /// descendants before it is used in any validation.
     pub(crate) descendants: HashSet<EntityUID>,
 
-    /// The type of the context record associated with this action.
-    pub(crate) context: Type,
-
     /// Source location - if available
     #[educe(PartialEq(ignore))]
     pub(crate) loc: Option<Loc>,
 }
 
+/// The kind of validator action: Either defined or external.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ValidatorActionIdKind {
+    /// Defined by one of the fragments combined into this schema.
+    Defined(DefinedValidatorActionId),
+    /// Declared `external` and not defined in any fragment combined into this
+    /// schema (RFC 116).
+    External,
+}
+
+/// The parts of a [`ValidatorActionId`] that exist only for a defined action.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DefinedValidatorActionId {
+    /// The principals and resources that the action can be applied to.
+    pub(crate) applies_to: ValidatorApplySpec<ast::EntityType>,
+
+    /// The type of the context record associated with this action.
+    pub(crate) context: Type,
+}
+
 impl ValidatorActionId {
-    /// Construct a new `ValidatorActionId`.
+    /// Construct a new defined `ValidatorActionId`.
     ///
     /// This constructor assumes that `descendants` has TC already computed.
     /// That is, caller is responsible for TC.
-    pub fn new(
+    pub fn new_defined(
         name: EntityUID,
         principal_entity_types: impl IntoIterator<Item = ast::EntityType>,
         resource_entity_types: impl IntoIterator<Item = ast::EntityType>,
@@ -73,12 +90,32 @@ impl ValidatorActionId {
     ) -> Self {
         Self {
             name,
-            applies_to: ValidatorApplySpec::new(
-                principal_entity_types.into_iter().collect(),
-                resource_entity_types.into_iter().collect(),
-            ),
+            kind: ValidatorActionIdKind::Defined(DefinedValidatorActionId {
+                applies_to: ValidatorApplySpec::new(
+                    principal_entity_types.into_iter().collect(),
+                    resource_entity_types.into_iter().collect(),
+                ),
+                context,
+            }),
             descendants: descendants.into_iter().collect(),
-            context,
+            loc,
+        }
+    }
+
+    /// Construct a new external `ValidatorActionId`, for an action declared
+    /// `external` (RFC 116) and never defined.
+    ///
+    /// This constructor assumes that `descendants` has TC already computed.
+    /// That is, caller is responsible for TC.
+    pub fn new_external(
+        name: EntityUID,
+        descendants: impl IntoIterator<Item = EntityUID>,
+        loc: Option<Loc>,
+    ) -> Self {
+        Self {
+            name,
+            kind: ValidatorActionIdKind::External,
+            descendants: descendants.into_iter().collect(),
             loc,
         }
     }
@@ -98,46 +135,91 @@ impl ValidatorActionId {
         self.descendants.iter()
     }
 
-    /// Context type for this action
-    pub fn context(&self) -> &Type {
-        &self.context
+    /// The definition of this action, or `None` if it was only declared
+    /// `external`.
+    pub(crate) fn defined(&self) -> Option<&DefinedValidatorActionId> {
+        match &self.kind {
+            ValidatorActionIdKind::Defined(defined) => Some(defined),
+            ValidatorActionIdKind::External => None,
+        }
     }
 
-    /// Returns an iterator over all the principals that this action applies to
-    pub fn principals(&self) -> impl Iterator<Item = &EntityType> {
-        self.applies_to.principal_apply_spec.iter()
+    /// Is this action only declared `external`, rather than defined (RFC 116)?
+    ///
+    /// An external action has no context type and nothing is applicable to it.
+    pub fn is_external(&self) -> bool {
+        self.defined().is_none()
     }
 
-    /// Returns an iterator over all the resources that this action applies to
-    pub fn resources(&self) -> impl Iterator<Item = &EntityType> {
-        self.applies_to.resource_apply_spec.iter()
+    /// Context type for this action. `None` for an external action, whose
+    /// context type is unknown.
+    pub fn context(&self) -> Option<&Type> {
+        self.defined().map(DefinedValidatorActionId::context_type)
     }
 
     /// The `Type` that this action requires for its context.
     ///
-    /// This always returns a closed record type.
-    pub fn context_type(&self) -> &Type {
-        &self.context
+    /// When present this is always a closed record type. `None` for an external
+    /// action, whose context type is unknown.
+    pub fn context_type(&self) -> Option<&Type> {
+        self.context()
+    }
+
+    /// Returns an iterator over all the principals that this action applies to.
+    ///
+    /// Empty for an external action, as for the four accessors below.
+    pub fn principals(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to_principals()
+    }
+
+    /// Returns an iterator over all the resources that this action applies to.
+    pub fn resources(&self) -> impl Iterator<Item = &EntityType> {
+        self.applies_to_resources()
     }
 
     /// The [`ast::EntityType`]s that can be the `principal` for this action.
     pub fn applies_to_principals(&self) -> impl Iterator<Item = &ast::EntityType> {
-        self.applies_to.applicable_principal_types()
+        self.defined()
+            .into_iter()
+            .flat_map(DefinedValidatorActionId::applies_to_principals)
     }
 
     /// The [`ast::EntityType`]s that can be the `resource` for this action.
     pub fn applies_to_resources(&self) -> impl Iterator<Item = &ast::EntityType> {
-        self.applies_to.applicable_resource_types()
+        self.defined()
+            .into_iter()
+            .flat_map(DefinedValidatorActionId::applies_to_resources)
     }
 
     /// Is the given principal type applicable for this spec?
     pub fn is_applicable_principal_type(&self, ty: &ast::EntityType) -> bool {
-        self.applies_to.is_applicable_principal_type(ty)
+        self.defined()
+            .is_some_and(|d| d.applies_to.is_applicable_principal_type(ty))
     }
 
     /// Is the given resource type applicable for this spec?
     pub fn is_applicable_resource_type(&self, ty: &ast::EntityType) -> bool {
-        self.applies_to.is_applicable_resource_type(ty)
+        self.defined()
+            .is_some_and(|d| d.applies_to.is_applicable_resource_type(ty))
+    }
+}
+
+impl DefinedValidatorActionId {
+    /// The `Type` that this action requires for its context.
+    ///
+    /// This always returns a closed record type.
+    pub(crate) fn context_type(&self) -> &Type {
+        &self.context
+    }
+
+    /// The [`ast::EntityType`]s that can be the `principal` for this action.
+    pub(crate) fn applies_to_principals(&self) -> impl Iterator<Item = &ast::EntityType> {
+        self.applies_to.applicable_principal_types()
+    }
+
+    /// The [`ast::EntityType`]s that can be the `resource` for this action.
+    pub(crate) fn applies_to_resources(&self) -> impl Iterator<Item = &ast::EntityType> {
+        self.applies_to.applicable_resource_types()
     }
 }
 
@@ -271,25 +353,32 @@ impl ValidatorApplySpec<ConditionalName> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use cool_asserts::assert_matches;
 
     fn make_action() -> ValidatorActionId {
         ValidatorActionId {
             name: r#"Action::"foo""#.parse().unwrap(),
-            applies_to: ValidatorApplySpec {
-                principal_apply_spec: HashSet::from([
-                    // Make sure duplicates are handled as expected
-                    "User".parse().unwrap(),
-                    "User".parse().unwrap(),
-                ]),
-                resource_apply_spec: HashSet::from([
-                    "App".parse().unwrap(),
-                    "File".parse().unwrap(),
-                ]),
-            },
+            kind: ValidatorActionIdKind::Defined(DefinedValidatorActionId {
+                applies_to: ValidatorApplySpec {
+                    principal_apply_spec: HashSet::from([
+                        // Make sure duplicates are handled as expected
+                        "User".parse().unwrap(),
+                        "User".parse().unwrap(),
+                    ]),
+                    resource_apply_spec: HashSet::from([
+                        "App".parse().unwrap(),
+                        "File".parse().unwrap(),
+                    ]),
+                },
+                context: Type::any_record(),
+            }),
             descendants: HashSet::new(),
-            context: Type::any_record(),
             loc: None,
         }
+    }
+
+    fn make_external_action() -> ValidatorActionId {
+        ValidatorActionId::new_external(r#"Action::"bar""#.parse().unwrap(), [], None)
     }
 
     #[test]
@@ -306,5 +395,32 @@ mod test {
         let got = a.principals().cloned().collect::<Vec<EntityType>>();
         let expected: [EntityType; 1] = ["User".parse().unwrap()];
         assert_eq!(got, &expected);
+    }
+
+    /// An external action has no definition to read, and nothing is
+    /// applicable to it.
+    #[test]
+    fn external_action_has_no_definition() {
+        let a = make_external_action();
+        assert_matches!(a.kind, ValidatorActionIdKind::External);
+        assert!(a.defined().is_none());
+        assert!(a.context().is_none());
+        assert!(a.context_type().is_none());
+        assert_eq!(a.principals().count(), 0);
+        assert_eq!(a.resources().count(), 0);
+        assert_eq!(a.applies_to_principals().count(), 0);
+        assert_eq!(a.applies_to_resources().count(), 0);
+        assert!(!a.is_applicable_principal_type(&"User".parse().unwrap()));
+        assert!(!a.is_applicable_resource_type(&"App".parse().unwrap()));
+    }
+
+    #[test]
+    fn defined_action_has_a_definition() {
+        let a = make_action();
+        assert_matches!(a.kind, ValidatorActionIdKind::Defined(_));
+        assert!(a.defined().is_some());
+        assert!(a.context_type().is_some());
+        assert!(a.is_applicable_principal_type(&"User".parse().unwrap()));
+        assert!(!a.is_applicable_principal_type(&"App".parse().unwrap()));
     }
 }

@@ -780,6 +780,8 @@ impl PolicySet {
         entities: &Entities,
         schema: &Schema,
     ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
+        // Ahead of entity validation.
+        schema.0.check_complete().map_err(tpe_err::TpeError::from)?;
         let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
         let tpe_response = self.tpe(&request.0, &partial_entities, schema)?;
         let policies = tpe_response.policy_set();
@@ -826,6 +828,8 @@ impl PolicySet {
         entities: &Entities,
         schema: &Schema,
     ) -> Result<impl Iterator<Item = EntityUid>, PermissionQueryError> {
+        // Ahead of entity validation.
+        schema.0.check_complete().map_err(tpe_err::TpeError::from)?;
         let partial_entities = PartialEntities::from_concrete(entities.clone(), schema)?;
         let tpe_response = self.tpe(&request.0, &partial_entities, schema)?;
         let policies = tpe_response.policy_set();
@@ -935,6 +939,12 @@ impl PolicySet {
         request: &'a ActionQueryRequest,
         entities: &PartialEntities,
     ) -> Result<impl Iterator<Item = (&'a EntityUid, Option<Decision>)>, PermissionQueryError> {
+        // An external action applies to nothing, so it never reaches `tpe`.
+        request
+            .schema
+            .0
+            .check_complete()
+            .map_err(tpe_err::TpeError::from)?;
         let mut authorized_actions = Vec::new();
         // We only consider actions that apply to the type of the requested
         // principal and resource. Any requests for different actions would
@@ -2401,7 +2411,7 @@ when { principal in resource.admins };
             Context, Entities, PartialEntities, PartialEntityUid, PartialRequest, PolicyId,
             PolicySet, PrincipalQueryRequest, ResourceQueryRequest, Schema,
         };
-        use std::{i64, str::FromStr};
+        use std::str::FromStr;
 
         fn schema() -> Schema {
             Schema::from_str("entity P, R; action A appliesTo { principal: P, resource: R };")
@@ -2694,7 +2704,7 @@ when { principal in resource.admins };
     }
 
     mod response_iterators {
-        use std::{i64, str::FromStr};
+        use std::str::FromStr;
 
         use cedar_policy_core::authorizer::Decision;
 
@@ -3348,6 +3358,87 @@ when { principal in resource.admins };
             assert_eq!(response.decision(), None);
             assert!(response.reason().is_none());
             assert_eq!(residuals.len(), 1);
+        }
+    }
+
+    /// The permission queries refuse a schema that still declares some names
+    /// `external` (RFC 116).
+    mod incomplete_schema {
+        use cool_asserts::assert_matches;
+
+        use crate::{
+            tpe_err::TpeError, ActionQueryRequest, Context, Entities, EntityUid, PartialEntities,
+            PartialEntityUid, PermissionQueryError, PolicySet, PrincipalQueryRequest,
+            ResourceQueryRequest, Schema,
+        };
+        use std::str::FromStr;
+
+        fn schema() -> Schema {
+            Schema::from_str(
+                "
+            external entity Ext;
+            entity User, Photo;
+            external action audit;
+            action view appliesTo { principal: User, resource: Photo };
+            ",
+            )
+            .unwrap()
+        }
+
+        #[test]
+        fn query_resource_and_principal() {
+            let schema = schema();
+            let policies = PolicySet::new();
+            let view = EntityUid::from_str(r#"Action::"view""#).unwrap();
+
+            let request = ResourceQueryRequest::new(
+                EntityUid::from_str(r#"User::"alice""#).unwrap(),
+                view.clone(),
+                "Photo".parse().unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+            assert_matches!(
+                policies
+                    .query_resource(&request, &Entities::empty(), &schema)
+                    .err(),
+                Some(PermissionQueryError::TPE(TpeError::IncompleteSchema(_)))
+            );
+
+            let request = PrincipalQueryRequest::new(
+                "User".parse().unwrap(),
+                view,
+                EntityUid::from_str(r#"Photo::"p""#).unwrap(),
+                Context::empty(),
+                &schema,
+            )
+            .unwrap();
+            assert_matches!(
+                policies
+                    .query_principal(&request, &Entities::empty(), &schema)
+                    .err(),
+                Some(PermissionQueryError::TPE(TpeError::IncompleteSchema(_)))
+            );
+        }
+
+        /// `query_action` reaches `tpe` only through an action that applies to
+        /// the request, and no action applies to `Ext`.
+        #[test]
+        fn query_action_with_no_applicable_action() {
+            let schema = schema();
+            let request = ActionQueryRequest::new(
+                PartialEntityUid::from_concrete(EntityUid::from_str(r#"Ext::"e""#).unwrap()),
+                PartialEntityUid::from_concrete(EntityUid::from_str(r#"Ext::"e""#).unwrap()),
+                None,
+                schema.clone(),
+            )
+            .unwrap();
+            let entities = PartialEntities::from_concrete(Entities::empty(), &schema).unwrap();
+            assert_matches!(
+                PolicySet::new().query_action(&request, &entities).err(),
+                Some(PermissionQueryError::TPE(TpeError::IncompleteSchema(_)))
+            );
         }
     }
 }

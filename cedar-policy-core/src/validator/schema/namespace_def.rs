@@ -443,7 +443,7 @@ impl EntityTypesDef<ConditionalName> {
     }
 }
 
-/// Holds the attributes and parents information for an entity type definition.
+/// Holds the attributes and parents information for an entity type declaration.
 ///
 /// In this representation, references to common types may not yet have been
 /// fully resolved/inlined, and `parents`, `attributes`, and `tags` may all
@@ -477,12 +477,20 @@ pub enum EntityTypeFragment<N> {
         tags: Option<json_schema::Type<N>>,
     },
     Enum(NonEmpty<Eid>),
+    /// An entity type declared in this fragment but defined in another one.
+    /// Its attributes and tags are unknown.
+    External {
+        /// Known direct parent entity types for this entity type.
+        /// These entity types may be declared in a different namespace or schema
+        /// fragment.
+        parents: HashSet<N>,
+    },
 }
 
 impl<N> EntityTypeFragment<N> {
     pub(crate) fn parents(&self) -> Box<dyn Iterator<Item = &N> + '_> {
         match self {
-            Self::Standard { parents, .. } => Box::new(parents.iter()),
+            Self::Standard { parents, .. } | Self::External { parents } => Box::new(parents.iter()),
             Self::Enum(_) => Box::new(std::iter::empty()),
         }
     }
@@ -496,27 +504,39 @@ impl EntityTypeFragment<ConditionalName> {
         schema_file_type: json_schema::EntityType<RawName>,
         schema_namespace: Option<&InternalName>,
     ) -> Self {
+        let qualify_parents = |member_of_types: Vec<RawName>| -> HashSet<ConditionalName> {
+            member_of_types
+                .into_iter()
+                .map(|raw_name| {
+                    // Only entity, not common, here for now; see #1064
+                    raw_name.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
+                })
+                .collect()
+        };
+        // Checked before the kind, as in `from_raw_action`: a declaration
+        // contributes only a name and parents, so the kind supplies nothing else.
+        if schema_file_type.external {
+            return Self::External {
+                // Only `Standard` occurs here. The deserializer rejects
+                // `external` together with `enum`, and the Cedar grammar has no
+                // production for it.
+                parents: match schema_file_type.kind {
+                    EntityTypeKind::Standard(ty) => qualify_parents(ty.member_of_types),
+                    EntityTypeKind::Enum { .. } => HashSet::new(),
+                },
+            };
+        }
         match schema_file_type.kind {
             EntityTypeKind::Enum { choices } => Self::Enum(choices),
-            EntityTypeKind::Standard(ty) => {
-                Self::Standard {
-                    attributes: ty
-                        .shape
-                        .conditionally_qualify_type_references(schema_namespace),
-                    parents: ty
-                        .member_of_types
-                        .into_iter()
-                        .map(|raw_name| {
-                            // Only entity, not common, here for now; see #1064
-                            raw_name
-                                .conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                        })
-                        .collect(),
-                    tags: ty
-                        .tags
-                        .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
-                }
-            }
+            EntityTypeKind::Standard(ty) => Self::Standard {
+                attributes: ty
+                    .shape
+                    .conditionally_qualify_type_references(schema_namespace),
+                parents: qualify_parents(ty.member_of_types),
+                tags: ty
+                    .tags
+                    .map(|tags| tags.conditionally_qualify_type_references(schema_namespace)),
+            },
         }
     }
 
@@ -532,6 +552,14 @@ impl EntityTypeFragment<ConditionalName> {
     ) -> Result<EntityTypeFragment<InternalName>, TypeNotDefinedError> {
         match self {
             Self::Enum(choices) => Ok(EntityTypeFragment::Enum(choices)),
+            // Resolving a parent as an entity reference fails unless it is
+            // declared as an entity type.
+            Self::External { parents } => Ok(EntityTypeFragment::External {
+                parents: parents
+                    .into_iter()
+                    .map(|parent| parent.resolve(all_defs))
+                    .partition_nonempty()?,
+            }),
             Self::Standard {
                 attributes,
                 parents,
@@ -686,7 +714,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
     }
 }
 
-/// Holds the information about an action that comprises an action definition.
+/// Holds the information about an action that comprises an action declaration.
 ///
 /// In this representation, references to common types may not yet have been
 /// fully resolved/inlined, and entity/common type references (including
@@ -698,12 +726,8 @@ impl ActionsDef<ConditionalName, ConditionalName> {
 /// type references.
 #[derive(Debug, Clone)]
 pub struct ActionFragment<N, A> {
-    /// The type of the context record for this action. This may contain
-    /// references to common types which have not yet been resolved/inlined
-    /// (e.g., because they are not defined in this schema fragment).
-    pub(super) context: json_schema::Type<N>,
-    /// The principals and resources that an action can be applied to.
-    pub(super) applies_to: ValidatorApplySpec<A>,
+    /// Whether this action is defined in this fragment or external.
+    pub(super) kind: ActionFragmentKind<N, A>,
     /// The direct parent action entities for this action.
     /// These may be actions declared in a different namespace or schema
     /// fragment, and thus not declared yet.
@@ -714,39 +738,67 @@ pub struct ActionFragment<N, A> {
     pub(super) loc: Option<Loc>,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum ActionFragmentKind<N, A> {
+    Defined {
+        /// The type of the context record for this action. This may contain
+        /// references to external (entity) types
+        context: json_schema::Type<N>,
+        /// The principals and resources that an action can be applied to.
+        applies_to: ValidatorApplySpec<A>,
+    },
+    External,
+}
+
 impl ActionFragment<ConditionalName, ConditionalName> {
     pub(crate) fn from_raw_action(
         action_type: json_schema::ActionType<RawName>,
         schema_namespace: Option<&InternalName>,
     ) -> crate::validator::err::Result<Self> {
-        let (principal_types, resource_types, context) = action_type
-            .applies_to
-            .map(|applies_to| {
-                (
-                    applies_to.principal_types,
-                    applies_to.resource_types,
-                    applies_to.context,
-                )
-            })
-            .unwrap_or_default();
+        // As in `from_raw_entity_type`, `external` is part of the dispatch
+        // rather than a flag read on the side: an external action must not
+        // become a definition with an empty `appliesTo` and empty context.
+        let kind = match (action_type.external, action_type.applies_to) {
+            (true, _) => ActionFragmentKind::External,
+            (false, applies_to) => {
+                let (principal_types, resource_types, context) = applies_to
+                    .map(|applies_to| {
+                        (
+                            applies_to.principal_types,
+                            applies_to.resource_types,
+                            applies_to.context,
+                        )
+                    })
+                    .unwrap_or_default();
+                ActionFragmentKind::Defined {
+                    context: context
+                        .into_inner()
+                        .conditionally_qualify_type_references(schema_namespace),
+                    applies_to: ValidatorApplySpec::<ConditionalName>::new(
+                        principal_types
+                            .into_iter()
+                            .map(|pty| {
+                                pty.conditionally_qualify_with(
+                                    schema_namespace,
+                                    ReferenceType::Entity,
+                                )
+                            })
+                            .collect(),
+                        resource_types
+                            .into_iter()
+                            .map(|rty| {
+                                rty.conditionally_qualify_with(
+                                    schema_namespace,
+                                    ReferenceType::Entity,
+                                )
+                            })
+                            .collect(),
+                    ),
+                }
+            }
+        };
         Ok(Self {
-            context: context
-                .into_inner()
-                .conditionally_qualify_type_references(schema_namespace),
-            applies_to: ValidatorApplySpec::<ConditionalName>::new(
-                principal_types
-                    .into_iter()
-                    .map(|pty| {
-                        pty.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                    })
-                    .collect(),
-                resource_types
-                    .into_iter()
-                    .map(|rty| {
-                        rty.conditionally_qualify_with(schema_namespace, ReferenceType::Entity)
-                    })
-                    .collect(),
-            ),
+            kind,
             parents: action_type
                 .member_of
                 .unwrap_or_default()
@@ -768,8 +820,16 @@ impl ActionFragment<ConditionalName, ConditionalName> {
         all_defs: &AllDefs,
     ) -> Result<ActionFragment<InternalName, EntityType>, SchemaError> {
         Ok(ActionFragment {
-            context: self.context.fully_qualify_type_references(all_defs)?,
-            applies_to: self.applies_to.fully_qualify_type_references(all_defs)?,
+            kind: match self.kind {
+                ActionFragmentKind::Defined {
+                    context,
+                    applies_to,
+                } => ActionFragmentKind::Defined {
+                    context: context.fully_qualify_type_references(all_defs)?,
+                    applies_to: applies_to.fully_qualify_type_references(all_defs)?,
+                },
+                ActionFragmentKind::External => ActionFragmentKind::External,
+            },
             parents: self
                 .parents
                 .into_iter()
@@ -916,15 +976,16 @@ pub(crate) fn try_record_type_into_validator_type(
         Err(UnsupportedFeatureError(UnsupportedFeature::OpenRecordsAndEntities).into())
     } else {
         let attrs = parse_record_attributes(rty.attributes, extensions, common_type_defs)?;
+        let open_attributes = if rty.additional_attributes {
+            OpenTag::OpenAttributes
+        } else {
+            OpenTag::ClosedAttributes
+        };
         Ok(LocatedType::new_with_loc(
-            Type::record_with_attributes(
+            Type::Record {
                 attrs,
-                if rty.additional_attributes {
-                    OpenTag::OpenAttributes
-                } else {
-                    OpenTag::ClosedAttributes
-                },
-            ),
+                open_attributes,
+            },
             loc,
         ))
     }

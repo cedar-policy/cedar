@@ -58,6 +58,10 @@ pub enum EncodeError {
     /// The protobuf message could not be encoded (e.g., buffer too small)
     #[error(transparent)]
     Proto(#[from] prost::EncodeError),
+    /// The value has no protobuf representation, as a schema that still
+    /// declares some names `external` (RFC 116) does not.
+    #[error(transparent)]
+    Conversion(#[from] ProtobufConversionError),
 }
 
 /// Maximum allowed protobuf recursion depth for encoding.

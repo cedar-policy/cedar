@@ -106,9 +106,9 @@ macro_rules! standard_protobuf_impl {
 // standard implementations of `traits::Protobuf`
 
 standard_protobuf_impl!(api::Entity, models::Entity);
-standard_protobuf_impl!(api::Schema, models::Schema);
 standard_protobuf_impl!(api::EntityTypeName, models::Name);
 standard_protobuf_impl!(api::EntityNamespace, models::Name);
+standard_protobuf_impl!(api::Schema, models::Schema);
 standard_protobuf_impl!(api::Template, models::TemplateBody);
 standard_protobuf_impl!(api::Expression, models::Expr);
 standard_protobuf_impl!(api::Request, models::Request);

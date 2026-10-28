@@ -36,6 +36,33 @@ use crate::validator::ValidatorSchema;
 use itertools::Itertools;
 use smol_str::SmolStr;
 
+/// Structure containing details about a policy that could not be validated
+/// because the schema still declares some names `external` (RFC 116).
+///
+/// Nothing about the policy itself is wrong, and the policy was not
+/// typechecked.
+#[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
+#[error("for policy `{policy_id}`, {err}")]
+pub struct IncompleteSchema {
+    /// Source location of the policy. The declarations that make the schema
+    /// incomplete are named by `err`, and located in the schema source.
+    pub source_loc: Option<Loc>,
+    /// Policy ID that could not be validated
+    pub policy_id: PolicyID,
+    /// Which names are declared `external` but not defined
+    pub err: crate::validator::IncompleteSchemaError,
+}
+
+impl Diagnostic for IncompleteSchema {
+    impl_diagnostic_from_source_loc_opt_field!(source_loc);
+
+    fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
+        Some(Box::new(
+            "policy validation needs a definition for every name, so it cannot run until every `external` declaration has one",
+        ))
+    }
+}
+
 /// Structure containing details about an unrecognized entity type error.
 #[derive(Debug, Clone, Error, Hash, Eq, PartialEq)]
 // #[error(error_in_policy!("unrecognized entity type `{actual_entity_type}`"))]

@@ -708,7 +708,7 @@ mod extra_fields_forbidden {
                     "actions": {},
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `memberOfTypes`, `shape`, `tags`, `enum`, `annotations`").build(),
+            &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `memberOfTypes`, `shape`, `tags`, `enum`, `external`, `annotations`").build(),
             &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected `memberOfTypes` or `shape`").build(),
         );
     }
@@ -727,7 +727,7 @@ mod extra_fields_forbidden {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`, `annotations`").build(),
+            &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`, `external`, `annotations`").build(),
             &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`").build(),
         );
     }

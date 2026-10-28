@@ -6012,6 +6012,54 @@ mod invalid_action_application_tests {
     }
 }
 
+/// Tests involving external declarations (RFC 116)
+mod external_declarations {
+    use crate::{PolicyId, PolicySet, ValidationMode, Validator};
+    use std::str::FromStr;
+
+    use super::Schema;
+
+    /// Policy validation refuses a schema that still declares some names
+    /// `external`, once per policy.
+    #[test]
+    fn incomplete_schema_is_refused_per_policy() {
+        let policies = PolicySet::from_str(
+            r#"
+            permit(principal, action == Action::"audit", resource);
+            permit(principal, action, resource);
+            "#,
+        )
+        .unwrap();
+        let schema = Schema::from_str(
+            r#"
+            external entity User;
+            external action audit;
+            entity Document { owner: User };
+            action view appliesTo { principal: [Document], resource: [Document] };
+            "#,
+        )
+        .unwrap();
+
+        let result = Validator::new(schema).validate(&policies, ValidationMode::Strict);
+        assert!(!result.validation_passed());
+        let errs: Vec<_> = result.validation_errors().collect();
+        assert_eq!(errs.len(), 2);
+        for policy_id in ["policy0", "policy1"] {
+            assert!(
+                errs.iter().any(|e| {
+                    e.policy_id() == &PolicyId::new(policy_id)
+                        && matches!(e, crate::ValidationError::IncompleteSchema(_))
+                }),
+                "expected an `IncompleteSchema` error for `{policy_id}`, but saw {errs:?}"
+            );
+        }
+        assert_eq!(
+            errs[0].to_string(),
+            "for policy `policy0`, schema is incomplete: `User` and `Action::\"audit\"` are declared `external` but not defined"
+        );
+    }
+}
+
 mod issue_604 {
     use crate::Policy;
     use cedar_policy_core::parser::parse_policy_or_template_to_est;
@@ -6525,6 +6573,289 @@ mod issue_611 {
                 .build(),
             );
         });
+    }
+}
+
+mod issue_2504 {
+    //! When several entities, attributes, tags, or ancestors fail validation,
+    //! the reported error must not depend on `HashMap` iteration order.
+    use super::*;
+    use entities::err::EntitiesError;
+
+    /// `HashMap` iteration order differs between maps even within a single
+    /// process, so one call can report the expected error by luck. Repeating
+    /// the call makes an order-dependent result overwhelmingly likely to show.
+    const ITERATIONS: usize = 32;
+
+    fn schema() -> Schema {
+        r"
+            entity Group, Org, Team;
+            entity User in [Group] = {
+                name: String,
+                jobLevel: Long,
+            };
+            action view appliesTo { principal: User, resource: User };
+        "
+        .parse()
+        .expect("should be a valid schema")
+    }
+
+    /// Assert that every call to `f` fails, and always with an error whose
+    /// underlying cause is `expected`.
+    #[track_caller]
+    fn assert_same_error_every_time(
+        f: impl Fn() -> Result<Entities, EntitiesError>,
+        expected: &str,
+    ) {
+        for _ in 0..ITERATIONS {
+            let err = f().expect_err("entities should fail validation");
+            let cause = std::error::Error::source(&err).map(ToString::to_string);
+            assert_eq!(cause.as_deref(), Some(expected), "full error: {err}");
+        }
+    }
+
+    fn user(id: &str, attrs: &[(&str, RestrictedExpression)]) -> Entity {
+        Entity::new(
+            EntityUid::from_strs("User", id),
+            attrs
+                .iter()
+                .map(|(k, v)| ((*k).to_string(), v.clone()))
+                .collect(),
+            HashSet::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn multiple_invalid_entities_json() {
+        let schema = schema();
+        // Each entity has a different attribute type error. They are listed
+        // out of order to show that the error does not follow input order.
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "charlie" },
+                "attrs": { "name": true, "jobLevel": 5 },
+                "parents": []
+            },
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice", "jobLevel": "eight" },
+                "parents": []
+            },
+            {
+                "uid": { "type": "User", "id": "bob" },
+                "attrs": { "name": 999, "jobLevel": 10 },
+                "parents": []
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"in attribute `jobLevel` on `User::"alice"`, type mismatch: value was expected to have type long, but it actually has type string: `"eight"`"#,
+        );
+    }
+
+    #[test]
+    fn multiple_invalid_entities_from_entities() {
+        let schema = schema();
+        // Each entity is missing a different required attribute
+        let name = || RestrictedExpression::new_string("name".into());
+        let job_level = || RestrictedExpression::new_long(1);
+        let entities = [
+            user("charlie", &[("name", name())]),
+            user("alice", &[("jobLevel", job_level())]),
+            user("bob", &[("name", name())]),
+        ];
+        assert_same_error_every_time(
+            || Entities::from_entities(entities.clone(), Some(&schema)),
+            r#"expected entity `User::"alice"` to have attribute `name`, but it does not"#,
+        );
+    }
+
+    #[test]
+    fn multiple_invalid_actions() {
+        let schema = schema();
+        let json = serde_json::json!([
+            { "uid": { "type": "Action", "id": "edit" }, "attrs": {}, "parents": [] },
+            { "uid": { "type": "Action", "id": "delete" }, "attrs": {}, "parents": [] }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"found action entity `Action::"delete"`, but it was not declared as an action in the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_superfluous_attrs_json() {
+        let schema = schema();
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": {
+                    "name": "Alice",
+                    "jobLevel": 8,
+                    "favoriteColor": "blue",
+                    "age": 30,
+                    "nickname": "ally"
+                },
+                "parents": []
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"attribute `age` on `User::"alice"` should not exist according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_superfluous_attrs_from_entities() {
+        let schema = schema();
+        let entity = user(
+            "alice",
+            &[
+                ("name", RestrictedExpression::new_string("Alice".into())),
+                ("jobLevel", RestrictedExpression::new_long(8)),
+                (
+                    "favoriteColor",
+                    RestrictedExpression::new_string("blue".into()),
+                ),
+                ("age", RestrictedExpression::new_long(30)),
+                ("nickname", RestrictedExpression::new_string("ally".into())),
+            ],
+        );
+        assert_same_error_every_time(
+            || Entities::from_entities([entity.clone()], Some(&schema)),
+            r#"attribute `age` on `User::"alice"` should not exist according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_unexpected_tags_json() {
+        let schema = schema();
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice", "jobLevel": 8 },
+                "parents": [],
+                "tags": { "zeta": "z", "alpha": "a", "mu": "m" }
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"found a tag `alpha` on `User::"alice"`, but no tags should exist on `User::"alice"` according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_unexpected_tags_from_entities() {
+        let schema = schema();
+        let entity = Entity::new_with_tags(
+            EntityUid::from_strs("User", "alice"),
+            [
+                (
+                    "name".into(),
+                    RestrictedExpression::new_string("Alice".into()),
+                ),
+                ("jobLevel".into(), RestrictedExpression::new_long(8)),
+            ],
+            [],
+            ["zeta", "alpha", "mu"].map(|t| (t.into(), RestrictedExpression::new_string(t.into()))),
+        )
+        .unwrap();
+        assert_same_error_every_time(
+            || Entities::from_entities([entity.clone()], Some(&schema)),
+            r#"found a tag `alpha` on `User::"alice"`, but no tags should exist on `User::"alice"` according to the schema"#,
+        );
+    }
+
+    #[test]
+    fn multiple_invalid_ancestors() {
+        let schema = schema();
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": { "name": "Alice", "jobLevel": 8 },
+                "parents": [
+                    { "type": "Team", "id": "t" },
+                    { "type": "Org", "id": "o" }
+                ]
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"`User::"alice"` is not allowed to have an ancestor of type `Org` according to the schema"#,
+        );
+    }
+
+    /// An ancestor can be invalid because its type is not allowed, or because
+    /// it is not a valid entity of an enumerated type. Either way, the error
+    /// reported is the one for the smallest invalid ancestor.
+    #[test]
+    fn multiple_invalid_ancestors_mixed_reasons() {
+        let schema: Schema = r#"
+            entity Area, Zone;
+            entity Color enum ["red"];
+            entity User in [Color];
+            entity Guest;
+        "#
+        .parse()
+        .expect("should be a valid schema");
+        let entities = |parents: serde_json::Value| {
+            serde_json::json!([
+                { "uid": { "type": "User", "id": "alice" }, "attrs": {}, "parents": parents }
+            ])
+        };
+
+        let json = entities(serde_json::json!([
+            { "type": "Zone", "id": "z" },
+            { "type": "Color", "id": "blue" }
+        ]));
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"entity `Color::"blue"` is of an enumerated entity type, but `"blue"` is not declared as a valid eid"#,
+        );
+
+        let json = entities(serde_json::json!([
+            { "type": "Color", "id": "blue" },
+            { "type": "Area", "id": "a" }
+        ]));
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"`User::"alice"` is not allowed to have an ancestor of type `Area` according to the schema"#,
+        );
+
+        // When the smallest invalid ancestor is invalid for both reasons, the
+        // invalid entity ID is reported, as before.
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "Guest", "id": "g" },
+                "attrs": {},
+                "parents": [{ "type": "Zone", "id": "z" }, { "type": "Color", "id": "blue" }]
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), Some(&schema)),
+            r#"entity `Color::"blue"` is of an enumerated entity type, but `"blue"` is not declared as a valid eid"#,
+        );
+    }
+
+    #[cfg(feature = "ipaddr")]
+    #[test]
+    fn multiple_attr_evaluation_errors() {
+        // Without a schema, attribute values are evaluated while parsing
+        let json = serde_json::json!([
+            {
+                "uid": { "type": "User", "id": "alice" },
+                "attrs": {
+                    "zeta": { "__extn": { "fn": "ip", "arg": "not an ip" } },
+                    "alpha": { "__extn": { "fn": "ip", "arg": "also not an ip" } }
+                },
+                "parents": []
+            }
+        ]);
+        assert_same_error_every_time(
+            || Entities::from_json_value(json.clone(), None),
+            "failed to evaluate attribute `alpha` of `User::\"alice\"`: error while evaluating `ipaddr` extension function: invalid IP address: also not an ip",
+        );
     }
 }
 
@@ -7934,7 +8265,7 @@ mod context_tests {
             "",
             &Report::new(err),
             &ExpectedErrorMessageBuilder::error(
-                r#"action `Action::"foo"` does not exist in the supplied schema"#,
+                r#"action `Action::"foo"` is not defined in the supplied schema"#,
             )
             .build(),
         );
@@ -8540,12 +8871,12 @@ mod version_tests {
 
     #[test]
     fn test_sdk_version() {
-        assert_eq!(get_sdk_version().to_string(), "4.13.0");
+        assert_eq!(get_sdk_version().to_string(), "4.14.0");
     }
 
     #[test]
     fn test_lang_version() {
-        assert_eq!(get_lang_version().to_string(), "4.5.0");
+        assert_eq!(get_lang_version().to_string(), "4.6.0");
     }
 }
 
@@ -9303,6 +9634,58 @@ mod test_entities_api {
         entities = entities.upsert_entities(vec![e1_updated], None).unwrap();
         assert_eq!(entities.len(), 2);
         assert!(entities.is_ancestor_of(&e2_uid, &e1_uid));
+    }
+
+    #[test]
+    fn upsert_batch_repeated_entity_updates_authorization() {
+        use std::str::FromStr;
+
+        use crate::{Authorizer, Context, Decision, PolicySet, Request};
+
+        fn uid(s: &str) -> EntityUid {
+            EntityUid::from_str(s).unwrap()
+        }
+        fn entity(id: &str, parents: &[&str]) -> Entity {
+            Entity::new_no_attrs(uid(id), parents.iter().map(|p| uid(p)).collect())
+        }
+
+        // A -> T; T -> O (not stored) and G1; G1 -> G2.
+        let entities = Entities::from_entities(
+            [
+                entity(r#"User::"a""#, &[r#"Team::"t""#]),
+                entity(r#"Team::"t""#, &[r#"Org::"o""#, r#"Group::"g1""#]),
+                entity(r#"Group::"g1""#, &[r#"Group::"g2""#]),
+            ],
+            None,
+        )
+        .unwrap()
+        // One batch defines Org::"o" twice, the last version wins, relation between G1 and G2
+        // removed.
+        .upsert_entities(
+            [
+                entity(r#"Org::"o""#, &[r#"Group::"g1""#]),
+                entity(r#"Org::"o""#, &[]),
+                entity(r#"Group::"g1""#, &[]),
+            ],
+            None,
+        )
+        .unwrap();
+
+        // No relation between a and g2, so a policy scoped to g2 does not match.
+        let policies =
+            PolicySet::from_str(r#"permit(principal in Group::"g2", action, resource);"#).unwrap();
+        let request = Request::new(
+            uid(r#"User::"a""#),
+            uid(r#"Action::"view""#),
+            uid(r#"Doc::"d""#),
+            Context::empty(),
+            None,
+        )
+        .unwrap();
+        let decision = Authorizer::new()
+            .is_authorized(&request, &policies, &entities)
+            .decision();
+        assert_eq!(decision, Decision::Deny);
     }
 }
 
@@ -12344,5 +12727,164 @@ mod test_cedar_entities_roundtrip {
             original.deep_eq(&reparsed),
             "public-API round-trip is not deep-equal\n\nCedar text:\n{cedar_text}"
         );
+    }
+/// The `ValidationResult` wrapper must render exactly like the core
+/// `ValidationResult` it wraps (#1158).
+mod validation_result_display_tests {
+    use crate::{PolicySet, Schema, ValidationMode, ValidationResult, Validator};
+    use miette::Diagnostic;
+
+    fn schema() -> Schema {
+        r"
+        entity User;
+        entity Photo { owner: User };
+        action view appliesTo { principal: User, resource: Photo };
+        "
+        .parse()
+        .unwrap()
+    }
+
+    fn results(
+        src: &str,
+    ) -> (
+        cedar_policy_core::validator::ValidationResult,
+        ValidationResult,
+    ) {
+        let schema = schema();
+        let pset: PolicySet = src.parse().unwrap();
+        let core = cedar_policy_core::validator::Validator::new(schema.0.clone())
+            .validate(&pset.ast, ValidationMode::default().into());
+        let wrapper = Validator::new(schema).validate(&pset, ValidationMode::default());
+        (core, wrapper)
+    }
+
+    const SINGLE_ERROR: &str = "permit(principal, action, resource) when { resource.nope };";
+    const MULTIPLE: &str = concat!(
+        "permit(principal, action, resource) when { resource.nope };\n",
+        "permit(principal, action, resource) when { principal.missing };\n",
+        "permit(principal, action, resource) when { false };",
+    );
+
+    /// Checks the public `ValidationResult` against output pinned from `main`
+    /// (before #1158), including `Debug`, which the wrapper forwards by hand.
+    fn assert_pinned(src: &str, display: &str, debug: &str, report: &str) {
+        let (_, wrapper) = results(src);
+        assert_eq!(wrapper.to_string(), display);
+        assert_eq!(format!("{wrapper:?}"), debug);
+        assert_eq!(render(&wrapper), report);
+    }
+
+    fn render(d: &dyn Diagnostic) -> String {
+        let mut out = String::new();
+        miette::GraphicalReportHandler::new_themed(miette::GraphicalTheme::unicode_nocolor())
+            .render_report(&mut out, d)
+            .unwrap();
+        out
+    }
+
+    fn assert_same(src: &str) {
+        let (core, wrapper) = results(src);
+        assert_eq!(core.to_string(), wrapper.to_string());
+        assert_eq!(core.severity(), wrapper.severity());
+        assert_eq!(
+            core.code().map(|c| c.to_string()),
+            wrapper.code().map(|c| c.to_string())
+        );
+        assert_eq!(
+            core.help().map(|h| h.to_string()),
+            wrapper.help().map(|h| h.to_string())
+        );
+        assert_eq!(
+            core.labels().map(Iterator::collect::<Vec<_>>),
+            wrapper.labels().map(Iterator::collect::<Vec<_>>)
+        );
+        assert_eq!(
+            core.related()
+                .map(|r| r.map(|d| d.to_string()).collect::<Vec<_>>()),
+            wrapper
+                .related()
+                .map(|r| r.map(|d| d.to_string()).collect::<Vec<_>>())
+        );
+        assert_eq!(render(&core), render(&wrapper));
+        assert_eq!(
+            format!("{:?}", miette::Report::new(core)),
+            format!("{:?}", miette::Report::new(wrapper))
+        );
+    }
+
+    #[test]
+    fn no_errors_or_warnings() {
+        let (core, _) = results(r"permit(principal, action, resource);");
+        assert_eq!(core.to_string(), "no errors or warnings");
+        assert_eq!(core.severity(), Some(miette::Severity::Advice));
+        assert_same(r"permit(principal, action, resource);");
+    }
+
+    #[test]
+    fn single_error() {
+        let (core, wrapper) = results(SINGLE_ERROR);
+        assert!(!core.validation_passed());
+        assert!(!wrapper.validation_passed());
+        assert_same(SINGLE_ERROR);
+        assert_pinned(
+            SINGLE_ERROR,
+            "for policy `policy0`, attribute `nope` on entity type `Photo` not found",
+            "ValidationResult { validation_errors: [UnsafeAttributeAccess(UnsafeAttributeAccess(UnsafeAttributeAccess { source_loc: Some(Loc(`resource.nope`)), policy_id: PolicyID(\"policy0\"), attribute_access: EntityLUB(EntityLUB { lub_elements: NonEmpty { head: EntityType(Name(InternalName { id: Id(\"Photo\"), path: [] })), tail: [] } }, [\"nope\"]), suggestion: Some(\"owner\"), may_exist: false }))], validation_warnings: [] }",
+            concat!(
+            "  × for policy `policy0`, attribute `nope` on entity type `Photo` not found\n",
+            "   ╭────\n",
+            " 1 │ permit(principal, action, resource) when { resource.nope };\n",
+            "   ·                                            ─────────────\n",
+            "   ╰────\n",
+            "  help: did you mean `owner`?\n",
+        ),
+        );
+    }
+
+    #[test]
+    fn multiple_errors_and_warnings() {
+        assert_same(MULTIPLE);
+        assert_pinned(
+            MULTIPLE,
+            "for policy `policy0`, attribute `nope` on entity type `Photo` not found",
+            "ValidationResult { validation_errors: [UnsafeAttributeAccess(UnsafeAttributeAccess(UnsafeAttributeAccess { source_loc: Some(Loc(`resource.nope`)), policy_id: PolicyID(\"policy0\"), attribute_access: EntityLUB(EntityLUB { lub_elements: NonEmpty { head: EntityType(Name(InternalName { id: Id(\"Photo\"), path: [] })), tail: [] } }, [\"nope\"]), suggestion: Some(\"owner\"), may_exist: false })), UnsafeAttributeAccess(UnsafeAttributeAccess(UnsafeAttributeAccess { source_loc: Some(Loc(`principal.missing`)), policy_id: PolicyID(\"policy1\"), attribute_access: EntityLUB(EntityLUB { lub_elements: NonEmpty { head: EntityType(Name(InternalName { id: Id(\"User\"), path: [] })), tail: [] } }, [\"missing\"]), suggestion: None, may_exist: false }))], validation_warnings: [ImpossiblePolicy(ImpossiblePolicy(ImpossiblePolicy { source_loc: Some(Loc(`permit(principal, action, resource) when { false };`)), policy_id: PolicyID(\"policy2\") }))] }",
+            concat!(
+            "  × for policy `policy0`, attribute `nope` on entity type `Photo` not found\n",
+            "   ╭─[1:44]\n",
+            " 1 │ permit(principal, action, resource) when { resource.nope };\n",
+            "   ·                                            ─────────────\n",
+            " 2 │ permit(principal, action, resource) when { principal.missing };\n",
+            "   ╰────\n",
+            "  help: did you mean `owner`?\n",
+            "\n",
+            "Error: \n",
+            "  × for policy `policy1`, attribute `missing` on entity type `User` not found\n",
+            "   ╭─[2:44]\n",
+            " 1 │ permit(principal, action, resource) when { resource.nope };\n",
+            " 2 │ permit(principal, action, resource) when { principal.missing };\n",
+            "   ·                                            ─────────────────\n",
+            " 3 │ permit(principal, action, resource) when { false };\n",
+            "   ╰────\n",
+            "\n",
+            "Warning: \n",
+            "  ⚠ for policy `policy2`, policy is impossible: the policy expression evaluates to false for all valid requests\n",
+            "   ╭─[3:1]\n",
+            " 2 │ permit(principal, action, resource) when { principal.missing };\n",
+            " 3 │ permit(principal, action, resource) when { false };\n",
+            "   · ───────────────────────────────────────────────────\n",
+            "   ╰────\n",
+        ),
+        );
+    }
+
+    #[test]
+    fn only_warnings() {
+        let src = r"permit(principal, action, resource) when { false };";
+        let (core, wrapper) = results(src);
+        assert!(core.validation_passed());
+        assert!(wrapper.validation_passed());
+        assert!(!wrapper.validation_passed_without_warnings());
+        assert_eq!(core.severity(), Some(miette::Severity::Warning));
+        assert_same(src);
     }
 }

@@ -223,9 +223,9 @@ impl Validator {
         }
     }
 
-    pub(crate) fn validate_linked_action_application<'a>(
+    pub(crate) fn validate_linked_action_application(
         &self,
-        p: &'a Policy,
+        p: &Policy,
     ) -> Result<(), ValidationWarning> {
         self.validate_action_application(
             p.loc(),
@@ -236,9 +236,9 @@ impl Validator {
         )
     }
 
-    pub(crate) fn validate_template_action_application<'a>(
+    pub(crate) fn validate_template_action_application(
         &self,
-        t: &'a Template,
+        t: &Template,
     ) -> Result<(), ValidationWarning> {
         self.validate_action_application(
             t.loc(),
@@ -298,9 +298,10 @@ impl Validator {
     ) -> impl Iterator<Item = &'a ValidatorApplySpec<ast::EntityType>> + 'a {
         self.get_actions_satisfying_constraint(action_constraint)
             // Get the action type if the id string exists, and then the
-            // applies_to list.
+            // applies_to list. An external action contributes no spec.
             .filter_map(|action_id| self.schema.get_action_id(action_id))
-            .map(|action| &action.applies_to)
+            .filter_map(|action| action.defined())
+            .map(|defined| &defined.applies_to)
     }
 
     /// Get the set of actions (action entity id strings) that satisfy the
@@ -579,6 +580,7 @@ mod test {
             [(
                 foo_name.into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -717,6 +719,7 @@ mod test {
             [(
                 "foo_name".into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -754,6 +757,7 @@ mod test {
             [(
                 "Action::view".into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -999,6 +1003,7 @@ mod test {
             [(
                 foo_name.into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -1030,6 +1035,7 @@ mod test {
             [(
                 foo_name.into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -1061,6 +1067,7 @@ mod test {
             [(
                 foo_name.into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: None,
                     member_of: None,
                     attributes: None,
@@ -1145,6 +1152,7 @@ mod test {
             [(
                 action_name.into(),
                 json_schema::ActionType {
+                    external: false,
                     applies_to: Some(json_schema::ApplySpec {
                         resource_types: vec![resource_type.parse().unwrap()],
                         principal_types: vec![principal_type.parse().unwrap()],
@@ -1530,6 +1538,7 @@ mod test {
                 (
                     action_name.into(),
                     json_schema::ActionType {
+                        external: false,
                         applies_to: Some(json_schema::ApplySpec {
                             resource_types: vec![resource_type.parse().unwrap()],
                             principal_types: vec![principal_type.parse().unwrap()],
@@ -1549,6 +1558,7 @@ mod test {
                 (
                     action_parent_name.into(),
                     json_schema::ActionType {
+                        external: false,
                         applies_to: None,
                         member_of: Some(vec![json_schema::ActionEntityUID::new(
                             None,
@@ -1564,6 +1574,7 @@ mod test {
                 (
                     action_grandparent_name.into(),
                     json_schema::ActionType {
+                        external: false,
                         applies_to: None,
                         member_of: Some(vec![]),
                         attributes: None,

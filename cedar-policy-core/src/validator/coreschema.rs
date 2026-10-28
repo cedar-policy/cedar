@@ -116,6 +116,10 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
         }
     }
 
+    fn is_external(&self) -> bool {
+        self.validator_type.is_external()
+    }
+
     fn entity_type(&self) -> ast::EntityType {
         self.core_type.clone()
     }
@@ -167,6 +171,27 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
     }
 }
 
+impl ValidatorSchema {
+    /// Look up the action a request names; external actions are filtered out.
+    pub(crate) fn get_defined_action_id(
+        &self,
+        action: &EntityUID,
+    ) -> std::result::Result<&ValidatorActionId, RequestValidationError> {
+        let action_id = self.get_action_id(action).ok_or_else(|| {
+            request_validation_errors::UndeclaredActionError {
+                action: Arc::new(action.clone()),
+            }
+        })?;
+        if action_id.is_external() {
+            return Err(request_validation_errors::ExternalActionError {
+                action: Arc::new(action.clone()),
+            }
+            .into());
+        }
+        Ok(action_id)
+    }
+}
+
 impl ast::RequestSchema for ValidatorSchema {
     type Error = RequestValidationError;
     fn validate_request(
@@ -203,6 +228,13 @@ impl ast::RequestSchema for ValidatorSchema {
             }
         })?;
 
+        // Reject request validation for external action
+        let expected_context_ty = validator_action_id.context_type().ok_or_else(|| {
+            request_validation_errors::ExternalActionError {
+                action: Arc::new(action.clone()),
+            }
+        })?;
+
         // Validate entity UIDs in the context
         validate_euids_in_partial_value(&CoreSchema::new(self), &context.clone().into()).map_err(
             |e| match e {
@@ -218,8 +250,7 @@ impl ast::RequestSchema for ValidatorSchema {
             },
         )?;
 
-        // Typecheck the context against the expected context type
-        let expected_context_ty = validator_action_id.context_type();
+        // Typecheck the context against the expected context type.
         if !expected_context_ty
             .typecheck_partial_value(&context.clone().into(), extensions)
             .map_err(RequestValidationError::TypeOfContext)?
@@ -282,11 +313,10 @@ impl ast::RequestSchema for ValidatorSchema {
 
         // Validate action and check type compatibility if all components are present
         if let Some(action) = action {
-            let validator_action_id = self.get_action_id(action).ok_or_else(|| {
-                request_validation_errors::UndeclaredActionError {
-                    action: Arc::new(action.clone()),
-                }
-            })?;
+            // Rejects an external action (RFC 116) as well as an undeclared
+            // one. No request is valid for an external action, whatever its
+            // shape.
+            let validator_action_id = self.get_defined_action_id(action)?;
 
             // Check principal type compatibility if both principal and action are provided
             if let Some(principal) = principal {
@@ -382,6 +412,11 @@ pub enum RequestValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredAction(#[from] request_validation_errors::UndeclaredActionError),
+    /// Request action is declared `external` in the schema, rather than
+    /// defined
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExternalAction(#[from] request_validation_errors::ExternalActionError),
     /// Request principal is of a type not declared in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -438,6 +473,31 @@ pub mod request_validation_errors {
 
     impl UndeclaredActionError {
         /// The action which was not declared in the schema
+        pub fn action(&self) -> &ast::EntityUID {
+            &self.action
+        }
+    }
+
+    /// Request action is declared `external` (RFC 116).
+    #[derive(Debug, Error)]
+    #[error("request's action `{action}` is declared `external` in the schema")]
+    pub struct ExternalActionError {
+        /// Action which was declared rather than defined
+        pub(crate) action: Arc<ast::EntityUID>,
+    }
+
+    impl Diagnostic for ExternalActionError {
+        fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+            Some(Box::new(
+                "an `external` action does not declare what it applies to, so no request can be valid for it",
+            ))
+        }
+
+        impl_diagnostic_from_method_on_field!(action, loc);
+    }
+
+    impl ExternalActionError {
+        /// The action which was declared rather than defined
         pub fn action(&self) -> &ast::EntityUID {
             &self.action
         }
@@ -671,6 +731,7 @@ pub fn context_schema_for_action(
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::ast::RequestSchema as _;
     use crate::test_utils::{expect_err, ExpectedErrorMessageBuilder};
     use ast::{Context, Value};
     use cool_asserts::assert_matches;
@@ -1224,6 +1285,219 @@ mod test {
                     .build(),
                 );
             }
+        );
+    }
+
+    /// `Photo` is declared `external`, so nothing is known about it, but it is
+    /// still a declared name that a defined action can apply to. `view` is
+    /// defined; `audit` is declared `external`.
+    #[track_caller]
+    fn schema_with_externals() -> ValidatorSchema {
+        let src = r#"
+            entity User;
+            external entity Photo;
+            external action audit;
+            action view appliesTo {
+                principal: [User],
+                resource: [Photo],
+                context: { admin: Bool }
+            };
+        "#;
+        ValidatorSchema::from_cedarschema_str(src, Extensions::none())
+            .expect("should be a valid schema")
+            .0
+    }
+
+    /// No request is valid for an external action. Its `appliesTo` sets are
+    /// empty, so it yields no request environment at all.
+    #[test]
+    fn external_action_rejected() {
+        let expected = ExpectedErrorMessageBuilder::error(
+            r#"request's action `Action::"audit"` is declared `external` in the schema"#,
+        )
+        .help("an `external` action does not declare what it applies to, so no request can be valid for it")
+        .build();
+
+        // Concrete request.
+        assert_matches!(
+            ast::Request::new(
+                (ast::EntityUID::with_eid_and_type("User", "alice").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Action", "audit").unwrap(), None),
+                (ast::EntityUID::with_eid_and_type("Photo", "vacation.jpg").unwrap(), None),
+                ast::Context::empty(),
+                Some(&schema_with_externals()),
+                Extensions::none(),
+            ),
+            Err(e) => expect_err("", &miette::Report::new(e), &expected)
+        );
+
+        // Principal and resource unknown. The applicability checks are
+        // skipped for this shape.
+        assert_matches!(
+            ast::Request::new_with_unknowns(
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::known(
+                    ast::EntityUID::with_eid_and_type("Action", "audit").unwrap(),
+                    None,
+                ),
+                ast::EntityUIDEntry::unknown(),
+                Some(ast::Context::empty()),
+                Some(&schema_with_externals()),
+                Extensions::none(),
+            ),
+            Err(e) => expect_err("", &miette::Report::new(e), &expected)
+        );
+
+        // Same, with no context at all, so `validate_context` never runs and
+        // only `validate_scope_variables` can reject.
+        assert_matches!(
+            ast::Request::new_with_unknowns(
+                ast::EntityUIDEntry::unknown(),
+                ast::EntityUIDEntry::known(
+                    ast::EntityUID::with_eid_and_type("Action", "audit").unwrap(),
+                    None,
+                ),
+                ast::EntityUIDEntry::unknown(),
+                None,
+                Some(&schema_with_externals()),
+                Extensions::none(),
+            ),
+            Err(e) => expect_err("", &miette::Report::new(e), &expected)
+        );
+
+        // `validate_context` rejects on its own, for a caller that reaches it
+        // directly rather than through `validate_request`.
+        assert_matches!(
+            schema_with_externals().validate_context(
+                &ast::Context::empty(),
+                &ast::EntityUID::with_eid_and_type("Action", "audit").unwrap(),
+                Extensions::none(),
+            ),
+            Err(e) => expect_err("", &miette::Report::new(e), &expected)
+        );
+    }
+
+    /// An entity whose type the schema only declares `external` cannot be
+    /// validated, so it is rejected. This is the one place where an external
+    /// entity type differs from an empty standard one.
+    #[test]
+    fn entity_of_external_type_rejected() {
+        let schema = schema_with_externals();
+        let core_schema = CoreSchema::new(&schema);
+        let photo = ast::EntityUID::with_eid_and_type("Photo", "vacation.jpg").unwrap();
+
+        // Rejected even with no attributes, tags, or parents.
+        assert_matches!(
+            crate::entities::Entities::from_entities(
+                [ast::Entity::with_uid(photo.clone())],
+                Some(&core_schema),
+                crate::entities::TCComputation::ComputeNow,
+                Extensions::none(),
+            ),
+            Err(e) => expect_err(
+                "",
+                &miette::Report::new(e),
+                &ExpectedErrorMessageBuilder::error("entity does not conform to the schema")
+                    .source(r#"entity `Photo::"vacation.jpg"` has type `Photo` which is declared `external` in the schema"#)
+                    .help("an `external` entity type does not describe its entities, so entities of that type cannot be validated")
+                    .build(),
+            )
+        );
+
+        // An entity of the defined type in the same schema is still accepted.
+        assert_matches!(
+            crate::entities::Entities::from_entities(
+                [ast::Entity::with_uid(
+                    ast::EntityUID::with_eid_and_type("User", "alice").unwrap()
+                )],
+                Some(&core_schema),
+                crate::entities::TCComputation::ComputeNow,
+                Extensions::none(),
+            ),
+            Ok(_)
+        );
+    }
+
+    /// An external *action*, unlike an external entity type, is validated
+    /// rather than rejected. The schema's view of it is an action with no
+    /// attributes and no tags.
+    #[test]
+    fn external_action_entity_validated() {
+        let schema = schema_with_externals();
+        let core_schema = CoreSchema::new(&schema);
+        let audit = ast::EntityUID::with_eid_and_type("Action", "audit").unwrap();
+
+        // The schema materializes it, so it is in the store without being
+        // given as input.
+        let entities = crate::entities::Entities::from_entities(
+            [],
+            Some(&core_schema),
+            crate::entities::TCComputation::ComputeNow,
+            Extensions::none(),
+        )
+        .expect("should validate");
+        assert_matches!(
+            entities.entity(&audit),
+            crate::entities::Dereference::Data(_)
+        );
+
+        // Supplying it explicitly is accepted, because it matches that view.
+        assert_matches!(
+            crate::entities::Entities::from_entities(
+                [ast::Entity::with_uid(audit.clone())],
+                Some(&core_schema),
+                crate::entities::TCComputation::ComputeNow,
+                Extensions::none(),
+            ),
+            Ok(_)
+        );
+
+        // Attributes on it do not, as for any action entity.
+        assert_matches!(
+            crate::entities::Entities::from_entities(
+                [ast::Entity::new_with_attr_partial_value(
+                    audit.clone(),
+                    [("foo".into(), ast::PartialValue::from(1))],
+                    std::collections::HashSet::new(),
+                    std::collections::HashSet::new(),
+                    [],
+                )],
+                Some(&core_schema),
+                crate::entities::TCComputation::ComputeNow,
+                Extensions::none(),
+            ),
+            Err(_)
+        );
+    }
+
+    /// An external entity type is a declared name, so a defined action may
+    /// apply to it and a request may name it. Only entity validation rejects
+    /// entities of such a type.
+    #[test]
+    fn external_entity_type_is_a_valid_request_principal_or_resource() {
+        assert_matches!(
+            ast::Request::new(
+                (
+                    ast::EntityUID::with_eid_and_type("User", "alice").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Action", "view").unwrap(),
+                    None
+                ),
+                (
+                    ast::EntityUID::with_eid_and_type("Photo", "vacation.jpg").unwrap(),
+                    None
+                ),
+                ast::Context::from_pairs(
+                    [("admin".into(), Value::from(true).into())],
+                    Extensions::none(),
+                )
+                .unwrap(),
+                Some(&schema_with_externals()),
+                Extensions::none(),
+            ),
+            Ok(_)
         );
     }
 }

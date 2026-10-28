@@ -41,7 +41,7 @@ use crate::validator::entity_manifest::analysis::{
 use crate::validator::{
     typecheck::{PolicyCheck, Typechecker},
     types::Type,
-    ValidationMode, ValidatorSchema,
+    IncompleteSchemaError, ValidationMode, ValidatorSchema,
 };
 use crate::validator::{ValidationResult, Validator};
 
@@ -191,9 +191,8 @@ impl Diagnostic for PartialRequestError {}
 #[derive(Debug, Error)]
 pub enum EntityManifestError {
     /// A validation error was encountered
-    // TODO (#1158) impl Error for ValidationResult (it already is implemented for api::ValidationResult)
     #[error("a validation error occurred")]
-    Validation(ValidationResult),
+    Validation(#[source] ValidationResult),
     /// A entities error was encountered
     #[error(transparent)]
     Entities(#[from] EntitiesError),
@@ -207,6 +206,9 @@ pub enum EntityManifestError {
     /// Unsupported feature
     #[error(transparent)]
     UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
+    /// The schema still declares some names `external` (RFC 116)
+    #[error(transparent)]
+    IncompleteSchema(#[from] IncompleteSchemaError),
 }
 
 /// Error when entity manifest analysis cannot handle a Cedar feature
@@ -266,6 +268,9 @@ pub enum EntityManifestFromJsonError {
     /// A mismatched entity manifest error
     #[error(transparent)]
     MismatchedEntityManifest(#[from] MismatchedEntityManifestError),
+    /// The schema still declares some names `external` (RFC 116)
+    #[error(transparent)]
+    IncompleteSchema(#[from] IncompleteSchemaError),
 }
 
 impl EntityManifest {
@@ -281,6 +286,7 @@ impl EntityManifest {
         json: &str,
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
+        schema.check_complete()?;
         match serde_json::from_str::<EntityManifest>(json) {
             Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
@@ -293,6 +299,7 @@ impl EntityManifest {
         value: serde_json::Value,
         schema: &ValidatorSchema,
     ) -> Result<Self, EntityManifestFromJsonError> {
+        schema.check_complete()?;
         match serde_json::from_value::<EntityManifest>(value) {
             Ok(manifest) => manifest.to_typed(schema).map_err(|e| e.into()),
             Err(e) => Err(e.into()),
@@ -447,6 +454,9 @@ pub fn compute_entity_manifest(
     validator: &Validator,
     policies: &PolicySet,
 ) -> Result<EntityManifest, EntityManifestError> {
+    // Not left to the validation below: this must not depend on how policy
+    // validation reports an incomplete schema, or on there being a policy.
+    validator.schema().check_complete()?;
     // first, run strict validation to ensure there are no errors
     let validation_res = validator.validate(policies, ValidationMode::Strict);
     if !validation_res.validation_passed() {
@@ -495,15 +505,16 @@ pub fn compute_entity_manifest(
         }
     }
 
-    #[expect(
-        clippy::unwrap_used,
-        reason = "entity manifest cannot be out of date, since it was computed from the schema given"
-    )]
     Ok(EntityManifest {
         per_action: manifest,
     }
     .to_typed(validator.schema())
-    .unwrap())
+    // The `entity-manifest` feature is deprecated, so we report this
+    // mismatch with the existing `UnsupportedCedarFeature` variant rather
+    // than adding a new `EntityManifestError` variant.
+    .map_err(|e| UnsupportedCedarFeatureError {
+        feature: e.to_string().into(),
+    })?)
 }
 
 /// A static analysis on type-annotated cedar expressions.
@@ -513,18 +524,10 @@ fn entity_manifest_from_expr(
     expr: &Expr<Option<Type>>,
 ) -> Result<EntityManifestAnalysisResult, EntityManifestError> {
     match expr.expr_kind() {
-        ExprKind::Slot(slot_id) => {
-            if slot_id.is_principal() {
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Principal,
-                )))
-            } else {
-                assert!(slot_id.is_resource());
-                Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
-                    Var::Resource,
-                )))
-            }
+        ExprKind::Slot(_) => Err(UnsupportedCedarFeatureError {
+            feature: "policy templates".into(),
         }
+        .into()),
         ExprKind::Var(var) => Ok(EntityManifestAnalysisResult::from_root(EntityRoot::Var(
             *var,
         ))),
@@ -676,16 +679,15 @@ fn entity_manifest_from_expr(
             })
         }
         ExprKind::GetAttr { expr, attr } => {
-            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr))
+            Ok(entity_manifest_from_expr(expr)?.get_or_has_attr(attr)?)
         }
         ExprKind::HasAttr { expr, attr } => Ok(entity_manifest_from_expr(expr)?
-            .get_or_has_attr(attr)
+            .get_or_has_attr(attr)?
             .empty_paths()),
         ExprKind::ExtHasAttr { expr, attrs } => {
-            // For extended has, we need to traverse the attribute chain
             let mut result = entity_manifest_from_expr(expr)?;
             for attr in attrs.iter() {
-                result = result.get_or_has_attr(attr);
+                result = result.get_or_has_attr(attr)?;
             }
             Ok(result.empty_paths())
         }
@@ -747,6 +749,60 @@ resource: [Document]
         )
         .unwrap()
         .0
+    }
+
+    /// Neither way of producing a manifest accepts a schema that still declares
+    /// some names `external` (RFC 116). `compute_entity_manifest` refuses with
+    /// no policies at all, so it does not rest on policy validation's verdict.
+    #[test]
+    fn incomplete_schema_rejected() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            "
+external entity User;
+entity Document = { owner: User };
+action Read appliesTo {
+  principal: [Document],
+  resource: [Document]
+};
+    ",
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        cool_asserts::assert_matches!(
+            compute_entity_manifest(&Validator::new(schema.clone()), &PolicySet::new()),
+            Err(EntityManifestError::IncompleteSchema(_))
+        );
+        cool_asserts::assert_matches!(
+            EntityManifest::from_json_str(r#"{ "perAction": [] }"#, &schema),
+            Err(EntityManifestFromJsonError::IncompleteSchema(_))
+        );
+        cool_asserts::assert_matches!(
+            EntityManifest::from_json_value(serde_json::json!({ "perAction": [] }), &schema),
+            Err(EntityManifestFromJsonError::IncompleteSchema(_))
+        );
+    }
+
+    /// A policy that fails strict validation is reported with the validation
+    /// result chained as the error source (#1158).
+    #[test]
+    fn validation_error_is_source() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource) when { principal.nope == "x" };"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let err = compute_entity_manifest(&Validator::new(schema()), &pset).unwrap_err();
+        cool_asserts::assert_matches!(&err, EntityManifestError::Validation(_));
+        assert_eq!(err.to_string(), "a validation error occurred");
+        let source = std::error::Error::source(&err).expect("validation result is the source");
+        assert_eq!(
+            source.to_string(),
+            "for policy `policy0`, attribute `nope` on entity type `User` not found"
+        );
     }
 
     #[test]
@@ -1730,5 +1786,52 @@ when {
         )
         .unwrap();
         assert_eq!(entity_manifest, expected);
+    }
+
+    /// Extended `has` with a short-circuited prefix: dereferencing a set
+    /// literal in the dead suffix errors instead of panicking. Nested in `==`
+    /// to survive the type checker's `&&` folding.
+    #[test]
+    fn test_entity_manifest_extended_has_short_circuit_set_literal() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource)
+when {
+    false == ({"s": [1, 2, 3]} has absent.s.foo)
+};"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let validator = Validator::new(schema());
+        let err = compute_entity_manifest(&validator, &pset).unwrap_err();
+        assert!(matches!(
+            err,
+            EntityManifestError::UnsupportedCedarFeature(_)
+        ));
+    }
+
+    /// Same short-circuit, different shape: the dead suffix extends a path past
+    /// a primitive attribute (`name.b`), which errors instead of panicking.
+    #[test]
+    fn test_entity_manifest_extended_has_short_circuit_primitive() {
+        let mut pset = PolicySet::new();
+        let policy = parse_policy(
+            None,
+            r#"permit(principal, action, resource)
+when {
+    false == ({"a": principal.name} has absent.a.b)
+};"#,
+        )
+        .expect("should succeed");
+        pset.add(policy.into()).expect("should succeed");
+
+        let validator = Validator::new(schema());
+        let err = compute_entity_manifest(&validator, &pset).unwrap_err();
+        assert!(matches!(
+            err,
+            EntityManifestError::UnsupportedCedarFeature(_)
+        ));
     }
 }

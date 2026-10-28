@@ -30,6 +30,7 @@ use std::{collections::HashSet, sync::Arc};
 /// contained semantically invalid data (e.g. missing required fields, invalid
 /// identifiers, unsupported features).
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum ProtobufConversionError {
     /// A required protobuf field was absent
     #[error("missing required field `{0}`")]
@@ -493,7 +494,7 @@ impl From<&ast::Expr> for models::Expr {
             }
             ast::ExprKind::ExtHasAttr { expr, attrs } => {
                 models::expr::ExprKind::ExtHasAttr(Box::new(models::expr::ExtHasAttr {
-                    attrs: attrs.iter().map(|a| a.to_string()).collect(),
+                    attrs: attrs.iter().map(ToString::to_string).collect(),
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
                 }))
             }

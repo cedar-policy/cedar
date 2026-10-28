@@ -14,6 +14,11 @@
  * limitations under the License.
  */
 
+#![expect(
+    clippy::unused_async_trait_impl,
+    reason = "Increased verbosity of not worth possible speed in LSP"
+)]
+
 use std::str::FromStr;
 use std::sync::Arc;
 

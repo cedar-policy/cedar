@@ -52,6 +52,7 @@ pub use symcc::{CompiledSchema, Env, ResetMode, SmtLibScript, SymEnv};
 impl SymEnv {
     /// Constructs a new [`SymEnv`] from the given [`Schema`] and [`RequestEnv`].
     pub fn new(schema: &Schema, req_env: &RequestEnv) -> Result<Self> {
+        schema.as_ref().check_complete()?;
         let env = Environment::from_request_env(req_env, schema.as_ref())
             .ok_or_else(|| Error::ActionNotInSchema(req_env.action().to_string()))?;
         Ok(Self::of_env(&env)?)

@@ -86,7 +86,7 @@ pub(crate) mod version {
         LazyLock::new(|| env!("CARGO_PKG_VERSION").parse().unwrap());
     // Cedar language version
     // The patch version field may be unnecessary
-    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 5, 0));
+    static LANG_VERSION: LazyLock<Version> = LazyLock::new(|| Version::new(4, 6, 0));
 
     /// Get the Cedar SDK Semantic Versioning version
     pub fn get_sdk_version() -> Version {
@@ -1589,6 +1589,8 @@ impl Validator {
     /// that policy passed the validator. If the function `validation_passed`
     /// returns true, then there were no validation errors found, so all
     /// policies in the policy set have passed the validator.
+    /// Validation using schemas that contain `external` always fail; see
+    /// [`Schema::is_complete`].
     pub fn validate(&self, pset: &PolicySet, mode: ValidationMode) -> ValidationResult {
         ValidationResult::from(self.0.validate(&pset.ast, mode.into()))
     }
@@ -1600,6 +1602,8 @@ impl Validator {
     /// appear in the output iterator, then that policy passed the validator. If the function
     /// `validation_passed` returns true, then there were no validation errors found, so
     /// all policies in the policy set have passed the validator.
+    /// Validation using schemas that contain `external` always fail; see
+    /// [`Schema::is_complete`].
     pub fn validate_with_level(
         &self,
         pset: &PolicySet,
@@ -2069,7 +2073,7 @@ impl Schema {
     }
 
     /// Extract from the schema an [`Entities`] containing the action entities
-    /// declared in the schema.
+    /// defined in the schema. External actions are excluded.
     pub fn action_entities(&self) -> Result<Entities, EntitiesError> {
         Ok(Entities(self.0.action_entities()?))
     }
@@ -2133,7 +2137,8 @@ impl Schema {
     ///
     /// ## Errors
     ///
-    /// Returns [`None`] if `action` is not found in the schema
+    /// Returns [`None`] if `action` is not found in the schema. An external
+    /// action is found, so this returns `Some` with an empty iterator.
     pub fn principals_for_action(
         &self,
         action: &EntityUid,
@@ -2147,7 +2152,8 @@ impl Schema {
     ///
     /// ## Errors
     ///
-    /// Returns [`None`] if `action` is not found in the schema
+    /// Returns [`None`] if `action` is not found in the schema. External
+    /// actions return `Some` with an empty iterator.
     pub fn resources_for_action(
         &self,
         action: &EntityUid,
@@ -2159,6 +2165,9 @@ impl Schema {
 
     /// Returns an iterator over all the [`RequestEnv`]s that are valid
     /// according to this schema.
+    ///
+    /// An external action contributes none, since what it applies to is
+    /// unknown.
     pub fn request_envs(&self) -> impl Iterator<Item = RequestEnv> + '_ {
         self.0
             .unlinked_request_envs(cedar_policy_core::validator::ValidationMode::Strict)
@@ -2184,14 +2193,24 @@ impl Schema {
         self.0.action_groups().map(RefCast::ref_cast)
     }
 
-    /// Returns an iterator over all entity types defined in this schema
+    /// Returns an iterator over all entity types declared in this schema,
+    /// including both external and non-external (defined) types.
+    ///
+    /// See [`Self::external_entity_types`] and [`Self::defined_entity_types`]
+    /// for the two subsets, and [`Self::is_complete`] to check whether this
+    /// schema has any `external` declarations at all.
     pub fn entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
         self.0
             .entity_types()
             .map(|ety| RefCast::ref_cast(ety.name()))
     }
 
-    /// Returns an iterator over all actions defined in this schema
+    /// Returns an iterator over all actions declared in this schema,
+    /// including both external and non-external (defined) actions.
+    ///
+    /// See [`Self::external_actions`] and [`Self::defined_actions`] for the
+    /// two subsets, and [`Self::is_complete`] to check whether this schema has
+    /// any `external` declarations at all.
     pub fn actions(&self) -> impl Iterator<Item = &EntityUid> {
         self.0.actions().map(RefCast::ref_cast)
     }
@@ -2207,6 +2226,116 @@ impl Schema {
         self.0
             .actions_for_principal_and_resource(&principal_type.0, &resource_type.0)
             .map(RefCast::ref_cast)
+    }
+
+    /// Returns an iterator over the external entity types: the
+    /// subset of [`Self::entity_types`] that are declared `external`.
+    ///
+    /// See [`Self::defined_entity_types`] for the complementary subset, and
+    /// [`Self::is_complete`] to check whether any external types exist.
+    pub fn external_entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .filter(|ety| ety.is_external())
+            .map(|ety| RefCast::ref_cast(ety.name()))
+    }
+
+    /// Returns an iterator over the non-external (defined) entity types: the
+    /// subset of [`Self::entity_types`] that are not declared `external`.
+    ///
+    /// See [`Self::external_entity_types`] for the complementary subset.
+    pub fn defined_entity_types(&self) -> impl Iterator<Item = &EntityTypeName> {
+        self.0
+            .entity_types()
+            .filter(|ety| !ety.is_external())
+            .map(|ety| RefCast::ref_cast(ety.name()))
+    }
+
+    /// Returns an iterator over the external actions: the subset of
+    /// [`Self::actions`] that are declared `external`.
+    ///
+    /// See [`Self::defined_actions`] for the complementary subset, and
+    /// [`Self::is_complete`] to check whether any external actions exist.
+    pub fn external_actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0
+            .action_ids()
+            .filter(|action| action.is_external())
+            .map(|action| RefCast::ref_cast(action.name()))
+    }
+
+    /// Returns an iterator over the non-external (defined) actions: the subset
+    /// of [`Self::actions`] that are not declared `external`.
+    ///
+    /// See [`Self::external_actions`] for the complementary subset.
+    pub fn defined_actions(&self) -> impl Iterator<Item = &EntityUid> {
+        self.0
+            .action_ids()
+            .filter(|action| !action.is_external())
+            .map(|action| RefCast::ref_cast(action.name()))
+    }
+
+    /// Returns true if all of the entity types and actions are not external.
+    ///
+    /// Only a complete schema may be used for policy validation (see
+    /// [`Validator::validate`]). See [`Self::external_entity_types`] and
+    /// [`Self::external_actions`] to enumerate the external declarations that
+    /// make a schema incomplete, and [`Self::schema_link_complete`] to link
+    /// schemas and require a complete result.
+    pub fn is_complete(&self) -> bool {
+        self.0.is_complete()
+    }
+
+    /// Link `schemas` by combining external declarations.
+    /// The result may contain external entity types and actions, i.e. it may
+    /// be incomplete (see [`Self::is_complete`]). Use
+    /// [`Self::schema_link_complete`] to require a complete result.
+    ///
+    /// Linking is agnostic to the ordering of the input.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`LinkError`], which is `non_exhaustive`, in these cases.
+    ///
+    /// - [`LinkError::ActionEntityTypeDeclared`]: an entity type has the same
+    ///   name as the entity type of an action.
+    /// - [`LinkError::DuplicateEntityType`]: two schemas define the same
+    ///   entity type.
+    /// - [`LinkError::DuplicateAction`]: two schemas define the same action.
+    /// - [`LinkError::ExternalIsEnum`]: an external entity type resolves to an
+    ///   enumerated entity type.
+    /// - [`LinkError::DefinedEntityAncestorsChanged`]: linking would give a
+    ///   defined entity type an ancestor its definition omits.
+    /// - [`LinkError::ExternalActionParentsMismatch`]: two declarations of one
+    ///   action give it different parents.
+    /// - [`LinkError::ShadowsBuiltinType`]: linking would introduce an entity
+    ///   type whose name shadows a primitive or extension type.
+    /// - [`LinkError::Schema`]: the linked schema is not well formed, and
+    ///   reports what writing the merged declarations as one schema would.
+    pub fn schema_link(schemas: impl IntoIterator<Item = Self>) -> Result<Self, LinkError> {
+        Ok(Self(
+            cedar_policy_core::validator::Linker::new(
+                schemas.into_iter().map(|s| s.0),
+                Extensions::all_available(),
+            )
+            .link()?,
+        ))
+    }
+
+    /// Link `schemas` (see [`Self::schema_link`]) and require the result to be
+    /// complete, i.e. to contain no `external` declarations (see
+    /// [`Self::is_complete`]).
+    ///
+    /// # Errors
+    ///
+    /// Returns any error of [`Self::schema_link`], and additionally
+    /// [`LinkError::IncompleteSchema`] when the linked schema still declares
+    /// an entity type or an action `external`.
+    pub fn schema_link_complete(
+        schemas: impl IntoIterator<Item = Self>,
+    ) -> Result<Self, LinkError> {
+        let linked = Self::schema_link(schemas)?;
+        linked.0.check_complete()?;
+        Ok(linked)
     }
 }
 
@@ -2344,12 +2473,16 @@ mod test_schema_str_to_json_with_resolved_types {
         }
     }
 }
+
 /// Validation succeeds if there are no fatal errors. There may still be
 /// non-fatal warnings present when validation passes.
-#[derive(Debug, Clone)]
+//
+// `Display`, `Error` and `Diagnostic` are implemented by the inner
+// `ValidationResult` and forwarded here.
+#[derive(Clone, Diagnostic)]
+#[diagnostic(transparent)]
 pub struct ValidationResult {
-    validation_errors: Vec<ValidationError>,
-    validation_warnings: Vec<ValidationWarning>,
+    inner: cedar_policy_core::validator::ValidationResult<ValidationError, ValidationWarning>,
 }
 
 impl ValidationResult {
@@ -2357,34 +2490,23 @@ impl ValidationResult {
     /// non-fatal warnings. Use [`ValidationResult::validation_passed_without_warnings`]
     /// to check that there are also no warnings.
     pub fn validation_passed(&self) -> bool {
-        self.validation_errors.is_empty()
+        self.inner.validation_passed()
     }
 
     /// True when validation passes (i.e., there are no errors) and there are
     /// additionally no non-fatal warnings.
     pub fn validation_passed_without_warnings(&self) -> bool {
-        self.validation_errors.is_empty() && self.validation_warnings.is_empty()
+        self.inner.validation_passed() && self.inner.validation_warnings().next().is_none()
     }
 
     /// Get an iterator over the errors found by the validator.
     pub fn validation_errors(&self) -> impl Iterator<Item = &ValidationError> {
-        self.validation_errors.iter()
+        self.inner.validation_errors()
     }
 
     /// Get an iterator over the warnings found by the validator.
     pub fn validation_warnings(&self) -> impl Iterator<Item = &ValidationWarning> {
-        self.validation_warnings.iter()
-    }
-
-    fn first_error_or_warning(&self) -> Option<&dyn Diagnostic> {
-        self.validation_errors
-            .first()
-            .map(|e| e as &dyn Diagnostic)
-            .or_else(|| {
-                self.validation_warnings
-                    .first()
-                    .map(|w| w as &dyn Diagnostic)
-            })
+        self.inner.validation_warnings()
     }
 
     pub(crate) fn into_errors_and_warnings(
@@ -2393,10 +2515,7 @@ impl ValidationResult {
         impl Iterator<Item = ValidationError>,
         impl Iterator<Item = ValidationWarning>,
     ) {
-        (
-            self.validation_errors.into_iter(),
-            self.validation_warnings.into_iter(),
-        )
+        self.inner.into_errors_and_warnings()
     }
 }
 
@@ -2405,25 +2524,29 @@ impl From<cedar_policy_core::validator::ValidationResult> for ValidationResult {
     fn from(r: cedar_policy_core::validator::ValidationResult) -> Self {
         let (errors, warnings) = r.into_errors_and_warnings();
         Self {
-            validation_errors: errors.map(ValidationError::from).collect(),
-            validation_warnings: warnings.map(ValidationWarning::from).collect(),
+            inner: cedar_policy_core::validator::ValidationResult::new(
+                errors.map(ValidationError::from),
+                warnings.map(ValidationWarning::from),
+            ),
         }
+    }
+}
+
+impl std::fmt::Debug for ValidationResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.inner, f)
     }
 }
 
 impl std::fmt::Display for ValidationResult {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.first_error_or_warning() {
-            Some(diagnostic) => write!(f, "{diagnostic}"),
-            None => write!(f, "no errors or warnings"),
-        }
+        std::fmt::Display::fmt(&self.inner, f)
     }
 }
 
 impl std::error::Error for ValidationResult {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        self.first_error_or_warning()
-            .and_then(std::error::Error::source)
+        self.inner.source()
     }
 
     fn description(&self) -> &str {
@@ -2431,8 +2554,7 @@ impl std::error::Error for ValidationResult {
             deprecated,
             reason = "description() is deprecated but we still want to forward it"
         )]
-        self.first_error_or_warning()
-            .map_or("no errors or warnings", std::error::Error::description)
+        self.inner.description()
     }
 
     fn cause(&self) -> Option<&dyn std::error::Error> {
@@ -2440,60 +2562,7 @@ impl std::error::Error for ValidationResult {
             deprecated,
             reason = "cause() is deprecated but we still want to forward it"
         )]
-        self.first_error_or_warning()
-            .and_then(std::error::Error::cause)
-    }
-}
-
-// Except for `.related()`, and `.severity` everything is forwarded to the first
-// error, or to the first warning if there are no errors. This is done for the
-// same reason as policy parse errors.
-impl Diagnostic for ValidationResult {
-    fn related(&self) -> Option<Box<dyn Iterator<Item = &dyn Diagnostic> + '_>> {
-        let mut related = self
-            .validation_errors
-            .iter()
-            .map(|err| err as &dyn Diagnostic)
-            .chain(
-                self.validation_warnings
-                    .iter()
-                    .map(|warn| warn as &dyn Diagnostic),
-            );
-        related.next().map(move |first| match first.related() {
-            Some(first_related) => Box::new(first_related.chain(related)),
-            None => Box::new(related) as Box<dyn Iterator<Item = _>>,
-        })
-    }
-
-    fn severity(&self) -> Option<miette::Severity> {
-        self.first_error_or_warning()
-            .map_or(Some(miette::Severity::Advice), Diagnostic::severity)
-    }
-
-    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::labels)
-    }
-
-    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
-        self.first_error_or_warning()
-            .and_then(Diagnostic::source_code)
-    }
-
-    fn code(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::code)
-    }
-
-    fn url(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::url)
-    }
-
-    fn help(&self) -> Option<Box<dyn std::fmt::Display + '_>> {
-        self.first_error_or_warning().and_then(Diagnostic::help)
-    }
-
-    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
-        self.first_error_or_warning()
-            .and_then(Diagnostic::diagnostic_source)
+        self.inner.cause()
     }
 }
 
@@ -3498,6 +3567,9 @@ impl From<cedar_policy_core::validator::types::RequestEnv<'_>> for RequestEnv {
 ///
 /// This function is called by [`Template::get_valid_request_envs`] and
 /// [`Policy::get_valid_request_envs`]
+///
+/// When there is external entity types or actions, this function returns an empty iterator.
+/// [`Schema::is_complete`] should be called on the schema to ensure nontrivial behavior.
 fn get_valid_request_envs(ast: &ast::Template, s: &Schema) -> impl Iterator<Item = RequestEnv> {
     let tc = Typechecker::new(
         &s.0,

@@ -81,6 +81,7 @@ static SCHEMA_TOKEN_CONFIG: LazyLock<ExpectedTokenConfig> = LazyLock::new(|| Exp
         ("CONTEXT", "`context`"),
         ("STRINGLIT", "string literal"),
         ("ENTITY", "`entity`"),
+        ("EXTERNAL", "`external`"),
         ("NAMESPACE", "`namespace`"),
         ("TYPE", "`type`"),
         ("SET", "`Set`"),
@@ -92,6 +93,7 @@ static SCHEMA_TOKEN_CONFIG: LazyLock<ExpectedTokenConfig> = LazyLock::new(|| Exp
     special_identifier_tokens: HashSet::from([
         "NAMESPACE",
         "ENTITY",
+        "EXTERNAL",
         "IN",
         "TYPE",
         "APPLIESTO",

@@ -17,7 +17,7 @@
 //! Structures defining the JSON syntax for Cedar schemas
 
 use crate::{
-    ast::{Eid, EntityUID, InternalName, Name, UnreservedId},
+    ast::{Eid, EntityUID, Id, InternalName, Name, UnreservedId},
     entities::CedarValueJson,
     est::Annotations,
     extensions::Extensions,
@@ -40,7 +40,6 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     fmt::Display,
     marker::PhantomData,
-    str::FromStr,
 };
 use thiserror::Error;
 
@@ -584,9 +583,8 @@ impl NamespaceDefinition<InternalName> {
     }
 }
 
-/// The kind of entity type. There are currently two kinds: The standard entity
-/// type specified by [`StandardEntityType`] and the enumerated entity type
-/// proposed by RFC 53
+/// The kind of entity type:  the standard entity type specified by [`StandardEntityType`]
+/// and the enumerated entity type proposed by RFC 53.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -618,6 +616,16 @@ pub struct EntityType<N> {
     /// The referred type
     #[serde(flatten)]
     pub kind: EntityTypeKind<N>,
+    /// Is this entity type only declared here, to be defined in another
+    /// schema fragment (RFC 116)?
+    ///
+    /// When true, `kind` is `Standard` carrying only `member_of_types`; the
+    /// shape and tags are unknown rather than empty. Consumers that lower an
+    /// [`EntityType`] must consult this field, since `kind` alone cannot tell a
+    /// declaration from a definition with no attributes.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
     /// Annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
@@ -679,23 +687,64 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
             #[serde(default)]
             #[serde(rename = "enum")]
             choices: RealOption<NonEmpty<Eid>>,
+            // RFC 116. Absent means `false`. An explicit `null` is rejected,
+            // because `RealOption` defers to `bool::deserialize`.
+            #[serde(default)]
+            external: RealOption<bool>,
             #[serde(default)]
             annotations: Annotations,
         }
 
         let value: Everything<N> = Everything::deserialize(deserializer)?;
-        // We favor the "enum" key here. That is, when we observe this key, we
-        // assume the entity type is an enumerated one and hence reports fields
-        // of standard entity types as invalid.
-        if let Some(choices) = value.choices.into() {
+        let member_of_types = Option::<Vec<N>>::from(value.member_of_types);
+        let shape = Option::<AttributesOrContext<N>>::from(value.shape);
+        let tags = Option::<Type<N>>::from(value.tags);
+        let choices = Option::<NonEmpty<Eid>>::from(value.choices);
+        // An explicit `"external": false` is accepted and means the same as
+        // omitting the key.
+        let external = Option::<bool>::from(value.external).unwrap_or(false);
+
+        // `external` is checked before `enum` so that `external` together with
+        // `enum` is reported as a conflict.
+        if external {
             let mut unexpected_fields: Vec<&str> = vec![];
-            if Option::<Vec<N>>::from(value.member_of_types).is_some() {
-                unexpected_fields.push("memberOfTypes");
-            }
-            if Option::<AttributesOrContext<N>>::from(value.shape).is_some() {
+            if shape.is_some() {
                 unexpected_fields.push("shape");
             }
-            if Option::<Type<N>>::from(value.tags).is_some() {
+            if tags.is_some() {
+                unexpected_fields.push("tags");
+            }
+            if choices.is_some() {
+                unexpected_fields.push("enum");
+            }
+            if !unexpected_fields.is_empty() {
+                return Err(serde::de::Error::custom(format!(
+                    "unexpected field on an external entity type: {}",
+                    unexpected_fields.into_iter().join(", ")
+                )));
+            }
+            Ok(EntityType {
+                kind: EntityTypeKind::Standard(StandardEntityType {
+                    member_of_types: member_of_types.unwrap_or_default(),
+                    shape: AttributesOrContext::default(),
+                    tags: None,
+                }),
+                external: true,
+                annotations: value.annotations,
+                loc: None,
+            })
+        } else if let Some(choices) = choices {
+            // We favor the "enum" key here. That is, when we observe this key, we
+            // assume the entity type is an enumerated one and hence reports fields
+            // of standard entity types as invalid.
+            let mut unexpected_fields: Vec<&str> = vec![];
+            if member_of_types.is_some() {
+                unexpected_fields.push("memberOfTypes");
+            }
+            if shape.is_some() {
+                unexpected_fields.push("shape");
+            }
+            if tags.is_some() {
                 unexpected_fields.push("tags");
             }
             if !unexpected_fields.is_empty() {
@@ -706,16 +755,18 @@ impl<'de, N: Deserialize<'de> + From<RawName>> Deserialize<'de> for EntityType<N
             }
             Ok(EntityType {
                 kind: EntityTypeKind::Enum { choices },
+                external: false,
                 annotations: value.annotations,
                 loc: None,
             })
         } else {
             Ok(EntityType {
                 kind: EntityTypeKind::Standard(StandardEntityType {
-                    member_of_types: Option::from(value.member_of_types).unwrap_or_default(),
-                    shape: Option::from(value.shape).unwrap_or_default(),
-                    tags: Option::from(value.tags),
+                    member_of_types: member_of_types.unwrap_or_default(),
+                    shape: shape.unwrap_or_default(),
+                    tags,
                 }),
+                external: false,
                 annotations: value.annotations,
                 loc: None,
             })
@@ -751,6 +802,7 @@ impl<N> From<StandardEntityType<N>> for EntityType<N> {
     fn from(value: StandardEntityType<N>) -> Self {
         Self {
             kind: EntityTypeKind::Standard(value),
+            external: false,
             annotations: Annotations::new(),
             loc: None,
         }
@@ -765,12 +817,14 @@ impl EntityType<RawName> {
     ) -> EntityType<ConditionalName> {
         let Self {
             kind,
+            external,
             annotations,
             loc,
         } = self;
         match kind {
             EntityTypeKind::Enum { choices } => EntityType {
                 kind: EntityTypeKind::Enum { choices },
+                external,
                 annotations,
                 loc,
             },
@@ -786,6 +840,7 @@ impl EntityType<RawName> {
                         .tags
                         .map(|ty| ty.conditionally_qualify_type_references(ns)),
                 }),
+                external,
                 annotations,
                 loc,
             },
@@ -806,12 +861,14 @@ impl EntityType<ConditionalName> {
     ) -> std::result::Result<EntityType<InternalName>, TypeNotDefinedError> {
         let Self {
             kind,
+            external,
             annotations,
             loc,
         } = self;
         Ok(match kind {
             EntityTypeKind::Enum { choices } => EntityType {
                 kind: EntityTypeKind::Enum { choices },
+                external,
                 annotations,
                 loc,
             },
@@ -828,6 +885,7 @@ impl EntityType<ConditionalName> {
                         .map(|ty| ty.fully_qualify_type_references(all_defs))
                         .transpose()?,
                 }),
+                external,
                 annotations,
                 loc,
             },
@@ -918,8 +976,8 @@ impl AttributesOrContext<ConditionalName> {
 }
 
 /// An [`ActionType`] describes a specific action entity.
-/// It also describes what principals/resources/contexts are valid for the
-/// action.
+/// A defined action also describes what principals/resources/contexts are
+/// valid for the action; an external action declares only its parents.
 ///
 /// The parameter `N` is the type of entity type names and common type names in
 /// this [`ActionType`], including recursively.
@@ -927,7 +985,7 @@ impl AttributesOrContext<ConditionalName> {
 #[derive(Educe, Debug, Clone, Serialize, Deserialize)]
 #[educe(PartialEq, Eq)]
 #[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "UncheckedActionType<N>")]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub struct ActionType<N> {
@@ -937,6 +995,8 @@ pub struct ActionType<N> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attributes: Option<HashMap<SmolStr, CedarValueJson>>,
     /// Describes what principals/resources/contexts are valid for this action.
+    ///
+    /// Always `None` when `external` is true.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub applies_to: Option<ApplySpec<N>>,
@@ -944,6 +1004,10 @@ pub struct ActionType<N> {
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub member_of: Option<Vec<ActionEntityUID<N>>>,
+    /// Flag for whether this action is external.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub external: bool,
     /// Annotations
     #[serde(default)]
     #[serde(skip_serializing_if = "Annotations::is_empty")]
@@ -964,6 +1028,73 @@ pub struct ActionType<N> {
     pub(crate) defn_loc: Option<Loc>,
 }
 
+/// The wire shape of an [`ActionType`], before the RFC 116 cross-field check.
+///
+/// `ActionType` reaches its `Deserialize` through `#[serde(try_from)]` on this
+/// type. The `rename` keeps `ActionType` in serde's error text.
+#[derive(Deserialize)]
+#[serde(bound(deserialize = "N: Deserialize<'de> + From<RawName>"))]
+#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
+#[serde(rename = "ActionType")]
+struct UncheckedActionType<N> {
+    #[serde(default)]
+    attributes: Option<HashMap<SmolStr, CedarValueJson>>,
+    #[serde(default)]
+    applies_to: Option<ApplySpec<N>>,
+    #[serde(default)]
+    member_of: Option<Vec<ActionEntityUID<N>>>,
+    // RFC 116. Absent means `false`; an explicit `null` is rejected.
+    #[serde(default)]
+    external: Option<bool>,
+    #[serde(default)]
+    annotations: Annotations,
+}
+
+impl<N> TryFrom<UncheckedActionType<N>> for ActionType<N> {
+    type Error = String;
+
+    fn try_from(raw: UncheckedActionType<N>) -> std::result::Result<Self, Self::Error> {
+        let UncheckedActionType {
+            attributes,
+            applies_to,
+            member_of,
+            external,
+            annotations,
+        } = raw;
+
+        // An explicit `"external": false` is accepted and means the same as
+        // omitting the key.
+        let external = external.unwrap_or(false);
+        if external {
+            let mut unexpected_fields: Vec<&str> = vec![];
+            if attributes.is_some() {
+                unexpected_fields.push("attributes");
+            }
+            if applies_to.is_some() {
+                unexpected_fields.push("appliesTo");
+            }
+            if !unexpected_fields.is_empty() {
+                return Err(format!(
+                    "unexpected field on an external action: {}",
+                    unexpected_fields.into_iter().join(", ")
+                ));
+            }
+        }
+
+        Ok(ActionType {
+            attributes,
+            applies_to,
+            member_of,
+            external,
+            annotations,
+            loc: None,
+            #[cfg(feature = "extended-schema")]
+            defn_loc: None,
+        })
+    }
+}
+
 impl ActionType<RawName> {
     /// (Conditionally) prefix unqualified entity and common type references with the namespace they are in
     pub fn conditionally_qualify_type_references(
@@ -980,6 +1111,7 @@ impl ActionType<RawName> {
                     .map(|aeuid| aeuid.conditionally_qualify_type_references(ns))
                     .collect()
             }),
+            external: self.external,
             annotations: self.annotations,
             loc: self.loc,
             #[cfg(feature = "extended-schema")]
@@ -1013,6 +1145,7 @@ impl ActionType<ConditionalName> {
                         .collect::<std::result::Result<_, ActionNotDefinedError>>()
                 })
                 .transpose()?,
+            external: self.external,
             annotations: self.annotations,
             loc: self.loc,
             #[cfg(feature = "extended-schema")]
@@ -1185,10 +1318,9 @@ impl ActionEntityUID<RawName> {
         ActionEntityUID {
             id: self.id,
             ty: {
-                #[expect(clippy::expect_used, reason = "this is a valid raw name")]
                 let raw_name = self
                     .ty
-                    .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
+                    .unwrap_or_else(|| RawName::new(Id::new_unchecked_const("Action"), None));
                 Some(raw_name.conditionally_qualify_with(ns, ReferenceType::Entity))
             },
             #[cfg(feature = "extended-schema")]
@@ -1203,10 +1335,9 @@ impl ActionEntityUID<RawName> {
         ActionEntityUID {
             id: self.id,
             ty: {
-                #[expect(clippy::expect_used, reason = "this is a valid raw name")]
                 let raw_name = self
                     .ty
-                    .unwrap_or_else(|| RawName::from_str("Action").expect("valid raw name"));
+                    .unwrap_or_else(|| RawName::new(Id::new_unchecked_const("Action"), None));
                 Some(raw_name.qualify_with(ns))
             },
             #[cfg(feature = "extended-schema")]
@@ -1648,6 +1779,7 @@ impl EntityType<InternalName> {
                 }
                 EntityTypeKind::Enum { choices } => EntityTypeKind::Enum { choices },
             },
+            external: self.external,
             annotations: self.annotations,
             loc: self.loc,
         })
@@ -1660,15 +1792,11 @@ impl ActionType<InternalName> {
         self,
         all_defs: &AllDefs,
     ) -> std::result::Result<ActionType<InternalName>, TypeNotDefinedError> {
-        let new_apply_spec = self
+        let applies_to = self
             .applies_to
-            .clone()
             .map(|apply_spec| apply_spec.resolve_apply_spec_entity_or_common(all_defs))
             .transpose()?;
-        Ok(ActionType::<InternalName> {
-            applies_to: new_apply_spec,
-            ..self
-        })
+        Ok(ActionType::<InternalName> { applies_to, ..self })
     }
 }
 
@@ -2604,6 +2732,7 @@ mod test {
             context: AttributesOrContext::default(),
         };
         assert_eq!(at.applies_to, Some(spec));
+        assert!(!at.external);
         assert_eq!(
             at.member_of,
             Some(vec![ActionEntityUID {
@@ -2622,6 +2751,7 @@ mod test {
         "#;
         let at: ActionType<RawName> = serde_json::from_str(src).expect("Parse Error");
         assert_eq!(at.applies_to, None);
+        assert!(!at.external);
         assert!(at.member_of.is_none());
     }
 
@@ -3564,6 +3694,7 @@ mod test_json_roundtrip {
                 [(
                     "a".parse().unwrap(),
                     EntityType {
+                        external: false,
                         kind: EntityTypeKind::Standard(StandardEntityType {
                             member_of_types: vec!["a".parse().unwrap()],
                             shape: AttributesOrContext(Type::Type {
@@ -3582,6 +3713,7 @@ mod test_json_roundtrip {
                 [(
                     "action".into(),
                     ActionType {
+                        external: false,
                         attributes: None,
                         applies_to: Some(ApplySpec {
                             resource_types: vec!["a".parse().unwrap()],
@@ -3615,6 +3747,7 @@ mod test_json_roundtrip {
                     [(
                         "a".parse().unwrap(),
                         EntityType {
+                            external: false,
                             kind: EntityTypeKind::Standard(StandardEntityType {
                                 member_of_types: vec!["a".parse().unwrap()],
                                 shape: AttributesOrContext(Type::Type {
@@ -3640,6 +3773,7 @@ mod test_json_roundtrip {
                     [(
                         "action".into(),
                         ActionType {
+                            external: false,
                             attributes: None,
                             applies_to: Some(ApplySpec {
                                 resource_types: vec!["foo::a".parse().unwrap()],
@@ -4017,7 +4151,7 @@ mod annotations {
     }
 
     const ENTITY_TYPE_EXPECTED_ATTRIBUTES: &str =
-        "`memberOfTypes`, `shape`, `tags`, `enum`, `annotations`";
+        "`memberOfTypes`, `shape`, `tags`, `enum`, `external`, `annotations`";
     const NAMESPACE_EXPECTED_ATTRIBUTES: &str =
         "`commonTypes`, `entityTypes`, `actions`, `annotations`";
     const ATTRIBUTE_TYPE_EXPECTED_ATTRIBUTES: &str =
@@ -4330,5 +4464,369 @@ mod enumerated_entity_types {
         assert_matches!(schema, Err(errs) => {
             assert_eq!(errs.to_string(), "unexpected field: memberOfTypes");
         });
+    }
+}
+
+/// Tests involving external declarations (RFC 116)
+#[cfg(test)]
+#[expect(clippy::indexing_slicing, reason = "tests")]
+mod external_declarations {
+    use cool_asserts::assert_matches;
+
+    use crate::validator::{
+        json_schema::{ActionEntityUID, EntityType, EntityTypeKind, Fragment},
+        RawName,
+    };
+
+    #[test]
+    fn external_entity_types() {
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "C": {
+                        "external": true,
+                    },
+                    "B": {
+                        "external": true,
+                        "memberOfTypes": ["C"],
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(frag) => {
+            assert_matches!(&frag.0[&None].entity_types[&"C".parse().unwrap()], EntityType {
+                kind: EntityTypeKind::Standard(et),
+                external: true,
+                ..
+            } => {
+                assert_eq!(et.member_of_types.len(), 0);
+                assert!(et.shape.is_empty_record());
+                assert_matches!(&et.tags, None);
+            });
+            assert_matches!(&frag.0[&None].entity_types[&"B".parse().unwrap()], EntityType {
+                kind: EntityTypeKind::Standard(et),
+                external: true,
+                ..
+            } => {
+                assert_eq!(et.member_of_types, vec!["C".parse().unwrap()]);
+            });
+        });
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "B": {
+                        "external": true,
+                        "shape": {
+                            "type": "Record",
+                            "attributes": {},
+                        },
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(_));
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "B": {
+                        "external": true,
+                        "tags": {
+                            "type": "String",
+                        },
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(_));
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {
+                    "B": {
+                        "external": true,
+                        "enum": ["foo"],
+                    },
+                },
+                "actions": {},
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(_));
+    }
+
+    #[test]
+    fn external_actions() {
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {},
+                "actions": {
+                    "WriteActions": {
+                        "external": true,
+                    },
+                    "DeleteActions": {
+                        "external": true,
+                        "memberOf": [{"id": "WriteActions"}],
+                    },
+                },
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Ok(frag) => {
+            let at = &frag.0[&None].actions["WriteActions"];
+            assert!(at.external);
+            assert!(at.member_of.is_none());
+            let at = &frag.0[&None].actions["DeleteActions"];
+            assert!(at.external);
+            assert_eq!(
+                at.member_of,
+                Some(vec![ActionEntityUID {
+                    ty: None,
+                    id: "WriteActions".into(),
+                    #[cfg(feature = "extended-schema")]
+                    loc: None
+                }])
+            );
+        });
+        let src = serde_json::json!({
+            "": {
+                "entityTypes": {},
+                "actions": {
+                    "DeleteActions": {
+                        "external": true,
+                        "appliesTo": {
+                            "resourceTypes": ["Album"],
+                            "principalTypes": ["User"]
+                        },
+                    },
+                },
+            }
+        });
+        let schema: Result<Fragment<RawName>, _> = serde_json::from_value(src);
+        assert_matches!(schema, Err(_));
+    }
+
+    /// JSON round trips for external declarations.
+    ///
+    /// `NamespaceDefinition` serializes `entityTypes` and `actions` unconditionally
+    /// and skips `commonTypes`/`annotations` when empty, so an input carrying
+    /// exactly those two keys round trips to an identical `serde_json::Value`.
+    #[cfg(test)]
+    mod roundtrips {
+        use crate::validator::{json_schema::Fragment, RawName};
+
+        /// Assert that `src` survives JSON -> `Fragment` -> JSON unchanged.
+        ///
+        /// The fragment comparison checks that no information is lost; the
+        /// value comparison pins the wire format.
+        #[track_caller]
+        fn assert_roundtrips(src: &serde_json::Value) {
+            let frag: Fragment<RawName> = serde_json::from_value(src.clone())
+                .unwrap_or_else(|e| panic!("failed to deserialize: {e}\n{src:#}"));
+            let back = serde_json::to_value(&frag)
+                .unwrap_or_else(|e| panic!("failed to serialize: {e}\n{src:#}"));
+            let reparsed: Fragment<RawName> = serde_json::from_value(back.clone())
+                .unwrap_or_else(|e| panic!("failed to re-deserialize: {e}\n{back:#}"));
+            assert_eq!(frag, reparsed, "fragment changed across a round trip");
+            assert_eq!(&back, src, "JSON changed across a round trip");
+        }
+
+        #[test]
+        fn external_entity_types() {
+            assert_roundtrips(&serde_json::json!({
+                "": {
+                    "entityTypes": {
+                        "B": { "external": true, "memberOfTypes": ["C"] },
+                        "C": { "external": true },
+                    },
+                    "actions": {},
+                }
+            }));
+        }
+
+        #[test]
+        fn external_actions() {
+            assert_roundtrips(&serde_json::json!({
+                "": {
+                    "entityTypes": {},
+                    "actions": {
+                        "Delete": { "external": true, "memberOf": [{ "id": "Write" }] },
+                        "Write": { "external": true },
+                    },
+                }
+            }));
+        }
+
+        #[test]
+        fn external_declarations_with_annotations_and_namespaces() {
+            assert_roundtrips(&serde_json::json!({
+                "N": {
+                    "entityTypes": {
+                        "B": { "external": true, "annotations": { "doc": "declared here" } },
+                    },
+                    "actions": {
+                        "Write": { "external": true, "annotations": { "doc": "declared here" } },
+                    },
+                }
+            }));
+        }
+
+        /// Definitions are unaffected: in particular nothing emits
+        /// `"external": false`.
+        ///
+        /// The input omits an empty record `shape` and an empty `context`,
+        /// which `skip_serializing_if = "AttributesOrContext::is_empty_record"`
+        /// drops on output.
+        #[test]
+        fn definitions_are_unchanged() {
+            assert_roundtrips(&serde_json::json!({
+                "": {
+                    "entityTypes": {
+                        "Color": { "enum": ["red", "blue"] },
+                        "Group": {},
+                        "User": {
+                            "memberOfTypes": ["Group"],
+                            "shape": {
+                                "type": "Record",
+                                "attributes": { "name": { "type": "String" } },
+                            },
+                            "tags": { "type": "String" },
+                        },
+                    },
+                    "actions": {
+                        "read": {
+                            "appliesTo": {
+                                "principalTypes": ["User"],
+                                "resourceTypes": ["Group"],
+                            },
+                        },
+                    },
+                }
+            }));
+        }
+
+        /// An explicit `"external": false` means the same as omitting the key, and
+        /// is not echoed back on output.
+        #[test]
+        fn external_false_is_accepted_and_not_emitted() {
+            let src = serde_json::json!({
+                "": {
+                    "entityTypes": { "User": { "external": false } },
+                    "actions": { "read": { "external": false } },
+                }
+            });
+            let frag: Fragment<RawName> = serde_json::from_value(src).unwrap();
+            let back = serde_json::to_value(&frag).unwrap();
+            assert_eq!(
+                back,
+                serde_json::json!({
+                    "": {
+                        "entityTypes": { "User": {} },
+                        "actions": { "read": {} },
+                    }
+                })
+            );
+        }
+    }
+}
+
+/// The TypeScript declarations that `tsify` generates from these types are
+/// the compatibility surface for `cedar-wasm` consumers. Run with
+/// `cargo test -p cedar-policy-core --features wasm`.
+#[cfg(all(test, feature = "wasm"))]
+mod typescript_declarations {
+    use crate::validator::{
+        json_schema::{ActionType, EntityTypeKind, NamespaceDefinition},
+        RawName,
+    };
+    use tsify::Tsify;
+
+    /// `Tsify::DECL` prefixes the declaration with the type's Rust doc comment,
+    /// which mentions "external" in prose without the declaration carrying the
+    /// field. Strip only that leading block; field doc comments inside the body
+    /// must be kept, or the body itself gets truncated.
+    fn decl_body(decl: &str) -> &str {
+        let trimmed = decl.trim_start();
+        match trimmed.strip_prefix("/**") {
+            Some(rest) => match rest.find("*/") {
+                Some(end) => &rest[end + "*/".len()..],
+                None => decl,
+            },
+            None => decl,
+        }
+    }
+
+    #[track_caller]
+    fn assert_decl_contains(what: &str, decl: &str, needle: &str) {
+        assert!(
+            decl_body(decl).contains(needle),
+            "the generated TypeScript for {what} does not declare `{needle}`:\n{decl}"
+        );
+    }
+
+    /// `external` is a plain optional boolean on the action entry, so `tsify`
+    /// derives it with no attribute help.
+    #[test]
+    fn action_type_declares_external() {
+        assert_decl_contains(
+            "ActionType",
+            <ActionType<RawName> as Tsify>::DECL,
+            "external",
+        );
+    }
+
+    /// `ActionType` does not flatten a kind enum, so its declaration is a
+    /// plain interface. It must not `extend` anything, because a TypeScript
+    /// interface cannot extend a union.
+    #[test]
+    fn action_type_does_not_extend_a_union() {
+        let decl = <ActionType<RawName> as Tsify>::DECL;
+        let body = decl_body(decl);
+        assert!(
+            !body.contains("extends"),
+            "the generated TypeScript for ActionType extends another type:\n{decl}"
+        );
+        assert!(
+            !body.contains("null") && !body.contains("undefined"),
+            "the generated TypeScript for ActionType has a nullish part:\n{decl}"
+        );
+    }
+
+    /// Definitions keep their existing declarations.
+    #[test]
+    fn action_type_still_declares_member_of() {
+        assert_decl_contains(
+            "ActionType",
+            <ActionType<RawName> as Tsify>::DECL,
+            "memberOf",
+        );
+    }
+
+    /// `external` is on `EntityType`, not on `EntityTypeKind`.
+    #[test]
+    fn entity_type_kind_does_not_declare_external() {
+        let decl = <EntityTypeKind<RawName> as Tsify>::DECL;
+        assert!(
+            !decl_body(decl).contains("external"),
+            "the generated TypeScript for EntityTypeKind declares `external`:\n{decl}"
+        );
+    }
+
+    /// `EntityType<N>` does not derive `Tsify`, because it flattens
+    /// `EntityTypeKind<N>`, which is a union, and a TypeScript interface
+    /// cannot extend a union. `NamespaceDefinition` therefore refers to an
+    /// `EntityType` that the generated declaration never defines, and the
+    /// entity-side `external` field is absent from TypeScript.
+    #[test]
+    fn namespace_definition_refers_to_entity_type() {
+        assert_decl_contains(
+            "NamespaceDefinition",
+            <NamespaceDefinition<RawName> as Tsify>::DECL,
+            "EntityType",
+        );
     }
 }

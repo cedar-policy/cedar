@@ -436,7 +436,10 @@ pub struct CompiledSchema {
 
 impl CompiledSchema {
     /// Builds the symbolic entities for `schema` once, up front.
+    ///
+    /// The schema must be complete: see `ValidatorSchema::check_complete`.
     pub fn new(schema: &Schema) -> crate::err::Result<Self> {
+        schema.as_ref().check_complete()?;
         Ok(Self {
             schema: schema.clone(),
             entities: Arc::new(SymEntities::of_schema(schema.as_ref())?),
@@ -566,10 +569,12 @@ impl ActionSchemaEntries {
 
 fn context_attributes(action: &ValidatorActionId) -> Result<&Attributes, CompileError> {
     match action.context_type() {
-        Type::Record {
+        Some(Type::Record {
             attrs,
             open_attributes: OpenTag::ClosedAttributes,
-        } => Ok(attrs),
+        }) => Ok(attrs),
+        // `None` is an action declared `external` (RFC 116): its context type is
+        // unknown, so there is nothing to compile symbolically.
         _ => Err(CompileError::NonRecordContext),
     }
 }
@@ -616,7 +621,10 @@ impl<'a> Environment<'a> {
 
     /// Returns the type of the context.
     pub fn context_type(&self) -> Type {
-        Type::record_with_attributes(self.req_ty.context.clone(), OpenTag::ClosedAttributes)
+        Type::Record {
+            attrs: self.req_ty.context.clone(),
+            open_attributes: OpenTag::ClosedAttributes,
+        }
     }
 }
 

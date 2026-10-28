@@ -75,15 +75,19 @@ pub(crate) fn residual_policies(
 /// Both `request` and `entities` should be valid and hence be constructed
 /// using their safe constructors.
 /// Policies must be static.
+/// The schema must be complete: see [`ValidatorSchema::check_complete`].
 pub fn is_authorized<'a>(
     ps: &PolicySet,
     request: &'a PartialRequest,
     entities: &'a PartialEntities,
     schema: &'a ValidatorSchema,
 ) -> std::result::Result<Response<'a>, TpeError> {
+    // Typechecking a policy needs every name defined (RFC 116).
+    schema.check_complete()?;
     let evaluator = Evaluator {
         request,
         entities,
+        schema,
         extensions: Extensions::all_available(),
     };
     let residuals = residual_policies(request, ps, schema, &evaluator)?;
@@ -344,6 +348,41 @@ action Delete appliesTo {
                 },
                 ..
             }
+        );
+    }
+
+    /// TPE refuses a schema that still declares some names `external`
+    /// (RFC 116), even with no policy to typecheck, although the request and
+    /// entities validate against that schema.
+    #[test]
+    fn incomplete_schema_rejected() {
+        let schema = ValidatorSchema::from_cedarschema_str(
+            r#"
+            external entity Ext;
+            entity User;
+            entity Document;
+            action View appliesTo { principal: [User], resource: [Document] };
+            "#,
+            Extensions::all_available(),
+        )
+        .unwrap()
+        .0;
+        let request = PartialRequest::new(
+            r#"User::"Alice""#.parse::<EntityUID>().unwrap().into(),
+            r#"Action::"View""#.parse().unwrap(),
+            PartialEntityUID {
+                ty: "Document".parse().unwrap(),
+                eid: None,
+            },
+            Some(Arc::new(BTreeMap::new())),
+            &schema,
+        )
+        .unwrap();
+        let entities =
+            PartialEntities::from_entities(std::iter::empty::<PartialEntity>(), &schema).unwrap();
+        assert_matches!(
+            is_authorized(&PolicySet::new(), &request, &entities, &schema),
+            Err(crate::tpe::err::TpeError::IncompleteSchema(_))
         );
     }
 }

@@ -27,7 +27,7 @@ pub use request_env::*;
 use itertools::Itertools;
 use smol_str::SmolStr;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fmt::Display,
     sync::Arc,
 };
@@ -330,8 +330,9 @@ impl Type {
                 // record even though neither is subtype of the other.
                 let open_attributes = if open0.is_open()
                     || open1.is_open()
-                    || (attrs.keys().collect::<BTreeSet<_>>()
-                        != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
+                    || (!mode.is_strict() // In strict mode we know the key sets must be equal if a LUB exists, so we skip this check.
+                        && attrs.keys().collect::<BTreeSet<_>>()
+                            != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
                 {
                     OpenTag::OpenAttributes
                 } else {
@@ -373,7 +374,7 @@ impl Type {
                     // common, are disjoint types.
                     // Entity types least-upper-bounds that have entity types in
                     // common, are not disjoint types.
-                    lub1.is_disjoint(&lub2)
+                    lub1.is_disjoint(lub2)
                 } else {
                     false // conservatively false, not promising disjointness; see notes on this function
                 }
@@ -419,11 +420,11 @@ impl Type {
     /// Get all statically known attributes of an entity or record type.
     /// Returns an empty vector if there are no declared attributes or the type
     /// is not an entity or record type.
-    pub fn all_attributes(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    pub fn all_attributes(&self, schema: &ValidatorSchema) -> Attributes {
         match self {
             Type::Entity(e) => e.all_known_attrs(schema),
-            Type::Record { attrs, .. } => attrs.attrs.keys().cloned().collect(),
-            _ => vec![],
+            Type::Record { attrs, .. } => attrs.clone(),
+            _ => Attributes::with_attributes(None),
         }
     }
 
@@ -462,6 +463,66 @@ impl Type {
             // `AnyEntity` is handled by the open-attribute match case.
             // No other types may have attributes.
             _ => false,
+        }
+    }
+
+    /// Get `self` as a specific entity type (or set of types in permissive
+    /// validation). Returns `None` for non-entity types and for `AnyEntity`.
+    pub(crate) fn as_entity_lub(&self) -> Option<&EntityLUB> {
+        match &self {
+            Type::Entity(entity_kind) => entity_kind.as_entity_lub(),
+            _ => None,
+        }
+    }
+
+    /// Get `self` as a specific entity type, or, if `self` is a set, then the
+    /// element type as an entity type.  Returns `None` if `self` is neither an
+    /// entity or set of entity, and for `AnyEntity`.
+    pub(crate) fn as_set_or_entity_lub(&self) -> Option<&EntityLUB> {
+        match self {
+            Type::Set {
+                element_type: Some(element_type),
+            } => element_type.as_entity_lub(),
+            _ => self.as_entity_lub(),
+        }
+    }
+
+    /// Are all entity types that a value of type `ty` could have declared as
+    /// entity types in `schema`? Returns `true` for non-entity types.
+    ///
+    /// This is `false` for action entity types, which are declared as actions
+    /// rather than as entity types, so `may_have_attr` and `may_have_tags`
+    /// report them as having no attributes and no tags.
+    #[cfg(feature = "tpe")]
+    pub(crate) fn has_declared_entity_types(schema: &ValidatorSchema, ty: &Type) -> bool {
+        match ty {
+            Type::Entity(EntityKind::Entity(entity_lub)) => entity_lub
+                .iter()
+                .all(|entity| schema.get_entity_type(entity).is_some()),
+            _ => true,
+        }
+    }
+
+    /// Could a value of type `ty` have any tags, according to `schema`?
+    ///
+    /// Returns `false` only when `ty` is an entity type and none of the entity
+    /// types it could be declare tags in the schema. Entity types missing from
+    /// the schema count as declaring no tags, so callers that don't want to
+    /// rely on that should also check [`Type::has_declared_entity_types`].
+    #[cfg(feature = "tpe")]
+    pub(crate) fn may_have_tags(schema: &ValidatorSchema, ty: &Type) -> bool {
+        match ty {
+            Type::Entity(EntityKind::Entity(entity_lub)) => {
+                entity_lub.lub_elements.iter().any(|entity| {
+                    schema
+                        .get_entity_type(entity)
+                        .is_some_and(|entity_type| entity_type.tag_type().is_some())
+                })
+            }
+            // Non-entity types cannot have tags, but `hasTag` is only
+            // well-typed on entities, so this case is not expected. The safe
+            // behavior is to assume they might have tags.
+            _ => true,
         }
     }
 
@@ -765,11 +826,11 @@ impl TryFrom<Type> for CoreSchemaType {
             } => Ok(CoreSchemaType::Record {
                 attrs: {
                     attrs
-                        .into_iter()
+                        .iter()
                         .map(|(k, v)| {
                             let schema_type = v.attr_type.as_ref().clone().try_into()?;
                             Ok((
-                                k,
+                                k.clone(),
                                 match v.is_required {
                                     true => CoreAttributeType::required(schema_type),
                                     false => CoreAttributeType::optional(schema_type),
@@ -995,8 +1056,7 @@ impl Attributes {
     // subtyping. This forbids width subtyping, so there may not be attributes
     // present in the subtype that do not exist in the super type.
     pub(crate) fn is_subtype_depth_only(&self, other: &Attributes, mode: ValidationMode) -> bool {
-        other.attrs.keys().collect::<HashSet<_>>() == self.attrs.keys().collect::<HashSet<_>>()
-            && self.is_subtype(other, mode)
+        other.attrs.len() == self.attrs.len() && self.is_subtype(other, mode)
     }
 
     pub(crate) fn least_upper_bound(
@@ -1026,7 +1086,7 @@ impl Attributes {
         attrs0: &Attributes,
         attrs1: &Attributes,
     ) -> Result<Attributes, LubHelp> {
-        if attrs0.keys().collect::<HashSet<_>>() != attrs1.keys().collect::<HashSet<_>>() {
+        if attrs0.attrs.len() != attrs1.attrs.len() {
             return Err(LubHelp::RecordWidth);
         }
         Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Strict)
@@ -1043,16 +1103,6 @@ impl Attributes {
             Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Permissive)
                 .flat_map(|r| r.map(|(k, v)| (k.clone(), v))),
         )
-    }
-}
-
-impl IntoIterator for Attributes {
-    type Item = (SmolStr, AttributeType);
-
-    type IntoIter = <BTreeMap<SmolStr, AttributeType> as IntoIterator>::IntoIter;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.attrs.as_ref().clone().into_iter()
     }
 }
 
@@ -1098,10 +1148,10 @@ pub enum EntityKind {
 }
 
 impl EntityKind {
-    pub(crate) fn as_entity_lub(&self) -> Option<EntityLUB> {
+    pub(crate) fn as_entity_lub(&self) -> Option<&EntityLUB> {
         match self {
             EntityKind::AnyEntity => None,
-            EntityKind::Entity(lub) => Some(lub.clone()),
+            EntityKind::Entity(lub) => Some(lub),
         }
     }
 
@@ -1146,24 +1196,18 @@ impl EntityKind {
         }
     }
 
-    /// Get all the attribute names _known to exist_ for this entity.
+    /// Get all the attributes _known to exist_ for this entity.
     ///
-    /// For `AnyEntity`, this will return an empty vec, as there are no
+    /// For `AnyEntity`, this will be empty, as there are no
     /// attribute names we _know_ must exist (even though `AnyEntity` types may
     /// clearly have attributes).
     /// For LUB types, this will return only the attribute names known to exist
     /// in the LUB.
-    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Vec<SmolStr> {
+    pub fn all_known_attrs(&self, schema: &ValidatorSchema) -> Attributes {
         // Wish the clone here could be avoided, but `get_attribute_types` returns an owned `Attributes`.
         match self {
-            EntityKind::AnyEntity => vec![],
-            EntityKind::Entity(lub) => lub
-                .get_attribute_types(schema)
-                .attrs
-                .as_ref()
-                .keys()
-                .cloned()
-                .collect(),
+            EntityKind::AnyEntity => Attributes::with_attributes(None),
+            EntityKind::Entity(lub) => lub.get_attribute_types(schema),
         }
     }
 

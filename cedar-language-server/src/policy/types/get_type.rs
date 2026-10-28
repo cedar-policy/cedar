@@ -113,12 +113,14 @@ impl<'a> TypeInferenceContext<'a> {
                     ))
                 }
             }
+            // `context_type` is `None` for an action declared `external`
+            // (RFC 116), which contributes no context attributes.
             CedarTypeKind::Context(ContextKind::AnyContext) => {
                 let attrs = schema
                     .action_ids()
                     .map(cedar_policy_core::validator::ValidatorActionId::context_type)
                     .filter_map(|ty| match ty {
-                        Type::Record { attrs, .. } => Some(attrs),
+                        Some(Type::Record { attrs, .. }) => Some(attrs),
                         _ => None,
                     })
                     .flat_map(cedar_policy_core::validator::types::Attributes::iter)
@@ -130,7 +132,9 @@ impl<'a> TypeInferenceContext<'a> {
                 .get_action_id(entity_uid)
                 .map(cedar_policy_core::validator::ValidatorActionId::context_type)
                 .and_then(|ty| match ty {
-                    Type::Record { attrs, .. } => Some(AttributeCollection::from_attributes(attrs)),
+                    Some(Type::Record { attrs, .. }) => {
+                        Some(AttributeCollection::from_attributes(attrs))
+                    }
                     _ => None,
                 }),
             CedarTypeKind::Context(ContextKind::ActionSet(set)) => {
@@ -139,7 +143,7 @@ impl<'a> TypeInferenceContext<'a> {
                     .filter_map(|action| schema.get_action_id(action))
                     .map(cedar_policy_core::validator::ValidatorActionId::context_type)
                     .filter_map(|ty| match ty {
-                        Type::Record { attrs, .. } => Some(attrs),
+                        Some(Type::Record { attrs, .. }) => Some(attrs),
                         _ => None,
                     })
                     .flat_map(cedar_policy_core::validator::types::Attributes::iter)

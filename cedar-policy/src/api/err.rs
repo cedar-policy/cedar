@@ -36,7 +36,7 @@ pub use cedar_policy_core::validator::entity_manifest::slicing::EntitySliceError
 use cedar_policy_core::validator::entity_manifest::{
     self, PartialExpressionError, PartialRequestError, UnsupportedCedarFeatureError,
 };
-pub use cedar_policy_core::validator::{schema_errors, SchemaError};
+pub use cedar_policy_core::validator::{schema_errors, LinkError, SchemaError};
 use cedar_policy_core::{ast, authorizer, est, pst};
 use miette::Diagnostic;
 use ref_cast::RefCast;
@@ -520,6 +520,10 @@ pub enum ValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     InvalidEnumEntity(#[from] validation_errors::InvalidEnumEntity),
+    /// The schema declares some external entity types or actions.
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompleteSchema(#[from] validation_errors::IncompleteSchema),
 }
 
 impl ValidationError {
@@ -544,6 +548,7 @@ impl ValidationError {
             Self::InternalInvariantViolation(e) => e.policy_id(),
             Self::EntityDerefLevelViolation(e) => e.policy_id(),
             Self::InvalidEnumEntity(e) => e.policy_id(),
+            Self::IncompleteSchema(e) => e.policy_id(),
         }
     }
 }
@@ -599,6 +604,9 @@ impl From<cedar_policy_core::validator::ValidationError> for ValidationError {
             }
             cedar_policy_core::validator::ValidationError::EntityDerefLevelViolation(e) => {
                 Self::EntityDerefLevelViolation(e.into())
+            }
+            cedar_policy_core::validator::ValidationError::IncompleteSchema(e) => {
+                Self::IncompleteSchema(e.into())
             }
         }
     }
@@ -1100,7 +1108,8 @@ pub enum ContextJsonError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     ContextCreation(#[from] ContextCreationError),
-    /// The supplied action doesn't exist in the supplied schema
+    /// The supplied action is not defined in the supplied schema: either it is
+    /// absent, or it is declared `external` (RFC 116)
     #[error(transparent)]
     #[diagnostic(transparent)]
     MissingAction(#[from] context_json_errors::MissingActionError),
@@ -1129,16 +1138,19 @@ pub mod context_json_errors {
     use miette::Diagnostic;
     use thiserror::Error;
 
-    /// The supplied action doesn't exist in the supplied schema
+    /// The supplied action is not defined in the supplied schema
+    ///
+    /// Either the schema does not mention the action at all, or it declares it
+    /// `external` (RFC 116) and so does not say what context it takes.
     #[derive(Debug, Diagnostic, Error)]
-    #[error("action `{action}` does not exist in the supplied schema")]
+    #[error("action `{action}` is not defined in the supplied schema")]
     pub struct MissingActionError {
-        /// UID of the action which doesn't exist
+        /// UID of the action which is not defined
         pub(super) action: EntityUid,
     }
 
     impl MissingActionError {
-        /// Get the [`EntityUid`] of the action which doesn't exist
+        /// Get the [`EntityUid`] of the action which is not defined
         pub fn action(&self) -> &EntityUid {
             &self.action
         }
@@ -1184,6 +1196,11 @@ pub enum RequestValidationError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UndeclaredAction(#[from] request_validation_errors::UndeclaredActionError),
+    /// Request action is declared `external` in the schema, rather than
+    /// defined
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    ExternalAction(#[from] request_validation_errors::ExternalActionError),
     /// Request principal is of a type not declared in the schema
     #[error(transparent)]
     #[diagnostic(transparent)]
@@ -1223,6 +1240,9 @@ impl From<cedar_policy_core::validator::RequestValidationError> for RequestValid
         match e {
             cedar_policy_core::validator::RequestValidationError::UndeclaredAction(e) => {
                 Self::UndeclaredAction(e.into())
+            }
+            cedar_policy_core::validator::RequestValidationError::ExternalAction(e) => {
+                Self::ExternalAction(e.into())
             }
             cedar_policy_core::validator::RequestValidationError::UndeclaredPrincipalType(e) => {
                 Self::UndeclaredPrincipalType(e.into())
@@ -1268,6 +1288,23 @@ pub mod request_validation_errors {
 
     impl UndeclaredActionError {
         /// The action which was not declared in the schema
+        pub fn action(&self) -> &EntityUid {
+            RefCast::ref_cast(self.0.action())
+        }
+    }
+
+    /// Request action is declared `external` in the schema, rather than
+    /// defined. A declaration says nothing about what the action applies to,
+    /// so no request can be valid for it.
+    #[derive(Debug, Diagnostic, Error)]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    pub struct ExternalActionError(
+        #[from] cedar_policy_core::validator::request_validation_errors::ExternalActionError,
+    );
+
+    impl ExternalActionError {
+        /// The action which was declared rather than defined
         pub fn action(&self) -> &EntityUid {
             RefCast::ref_cast(self.0.action())
         }
@@ -1409,6 +1446,10 @@ pub enum EntityManifestError {
     #[error(transparent)]
     #[diagnostic(transparent)]
     UnsupportedCedarFeature(#[from] UnsupportedCedarFeatureError),
+    /// The schema still declares some names `external`
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    IncompleteSchema(#[from] cedar_policy_core::validator::IncompleteSchemaError),
 }
 
 #[cfg(feature = "entity-manifest")]
@@ -1424,6 +1465,7 @@ impl From<entity_manifest::EntityManifestError> for EntityManifestError {
             entity_manifest::EntityManifestError::UnsupportedCedarFeature(e) => {
                 Self::UnsupportedCedarFeature(e)
             }
+            entity_manifest::EntityManifestError::IncompleteSchema(e) => Self::IncompleteSchema(e),
         }
     }
 }
