@@ -427,17 +427,14 @@ impl Drop for Expr {
 }
 
 #[yaspar_macros::stack_safe]
-fn drop_exprs(mut exprs: Vec<Node<Expr>>) -> Vec<Node<Expr>> {
-    let mut children = Vec::new();
-    while let Some(mut node) = exprs.pop() {
+fn drop_exprs(exprs: Vec<Node<Expr>>) {
+    for mut node in exprs {
+        let mut children = Vec::new();
         if let Some(expr) = node.node.as_mut() {
             take_child_exprs(expr, &mut children);
         }
-        // recursive call returns the buffer to be used for further children
-        let emptied = drop_exprs(std::mem::take(&mut children));
-        children = emptied;
+        drop_exprs(children);
     }
-    exprs
 }
 
 /// Move the subexpressions of `expr` into `out`. The CST types between two
