@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- `Debug` for `PolicySet` now prints only the sorted ids of its policies and templates, instead of its
+  internal representation, which included the text of every policy (#1254).
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

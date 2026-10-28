@@ -12819,3 +12819,72 @@ mod validation_result_display_tests {
         assert_same(src);
     }
 }
+
+/// `Debug` for the public `PolicySet` lists only policy and template ids (#1254).
+mod policy_set_debug_tests {
+    use crate::{EntityUid, Policy, PolicyId, PolicySet, SlotId, Template};
+    use std::collections::HashMap;
+
+    #[test]
+    fn empty() {
+        assert_eq!(
+            format!("{:?}", PolicySet::new()),
+            "PolicySet { policies: [], templates: [], .. }"
+        );
+    }
+
+    #[test]
+    fn ids_only_and_sorted() {
+        let mut pset = PolicySet::new();
+        pset.add(
+            Policy::parse(
+                Some(PolicyId::new("b")),
+                r#"permit(principal == User::"bob", action, resource);"#,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        pset.add_template(
+            Template::parse(
+                Some(PolicyId::new("t")),
+                "permit(principal == ?principal, action, resource);",
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        pset.link(
+            PolicyId::new("t"),
+            PolicyId::new("a"),
+            HashMap::from([(
+                SlotId::principal(),
+                r#"User::"alice""#.parse::<EntityUid>().unwrap(),
+            )]),
+        )
+        .unwrap();
+
+        let debug = format!("{pset:?}");
+        assert_eq!(
+            debug,
+            r#"PolicySet { policies: ["a", "b"], templates: ["t"], .. }"#
+        );
+        // Policy contents, including slot values, are not printed
+        for content in ["permit", "bob", "alice"] {
+            assert!(!debug.contains(content), "{content} in {debug}");
+        }
+    }
+
+    #[test]
+    fn pretty() {
+        let pset: PolicySet = "permit(principal, action, resource);".parse().unwrap();
+        assert_eq!(
+            format!("{pset:#?}"),
+            r#"PolicySet {
+    policies: [
+        "policy0",
+    ],
+    templates: [],
+    ..
+}"#
+        );
+    }
+}
