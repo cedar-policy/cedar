@@ -1,7 +1,7 @@
 header:
   schema-version: 2.2.0
-  last-updated: '2026-10-27'
-  last-reviewed: '2026-10-26'
+  last-updated: '2026-10-28'
+  last-reviewed: '2026-10-28'
   url: https://raw.githubusercontent.com/cedar-policy/cedar/main/security-insights.yml
 
 project:
@@ -199,7 +199,7 @@ repository:
       self:
         name: Cedar security self-assessment
         evidence: https://github.com/cedar-policy/cedar/blob/main/self-assessment.md
-        date: '2026-10-26'
+        date: '2026-10-28'
         comment: OSPS self-assessment of this repository, following the OpenSSF self-assessment template. It covers the actors, actions, goals and non-goals, attack surface, security functions, development practices, and security issue resolution.
       third-party:
         - name: 'Cedar, Rego, and OpenFGA Policy Languages: Comparative Language Security Assessment'

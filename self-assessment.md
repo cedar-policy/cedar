@@ -5,7 +5,7 @@
 
 This is the Cedar team's security self-assessment of the [cedar-policy/cedar](https://github.com/cedar-policy/cedar) repository.
 
-Last reviewed: 2026-10-26
+Last reviewed: 2026-10-28
 
 ## Self-assessment outline
 
@@ -238,7 +238,7 @@ See [security advisories](https://github.com/cedar-policy/cedar/security/advisor
 
 #### OpenSSF Best Practices
 
-Cedar's [OpenSSF Best Practices](https://www.bestpractices.dev/projects/11398) entry is 87% of the way to the passing badge, and was last updated on 2025-10-27.
+Cedar's [OpenSSF Best Practices](https://www.bestpractices.dev/projects/11398) entry is 87% of the way to the passing badge, and was last updated on 2026-10-27.
 
 #### Case studies
 
