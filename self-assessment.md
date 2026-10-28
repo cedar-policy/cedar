@@ -184,7 +184,7 @@ Cedar does not claim compliance with any security standard. The project publishe
 * **Checks against related repositories on every pull request.** Builds of the differential testing harness and Lean bindings from cedar-spec, the integration test corpus, and the examples ([build_downstream_deps.yml](.github/workflows/build_downstream_deps.yml)).
 * **Nightly.** The full build and test suite, a cargo-deny advisories check that opens an issue when it fails, and a cedar-java build ([nightly_build.yml](.github/workflows/nightly_build.yml), [cargo_audit.yml](.github/workflows/cargo_audit.yml), [nightly_build_downstream.yml](.github/workflows/nightly_build_downstream.yml)).
 * **Repository scanning.** CodeQL default setup, OpenSSF Scorecard, Dependabot alerts and security updates, and secret scanning with push protection.
-* **Verification.** Cedar follows [verification-guided development (VGD)](https://arxiv.org/abs/2407.01688), where a Lean model implementation precedes each language update. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
+* **Verification.** Cedar follows [verification-guided development (VGD)](https://arxiv.org/abs/2407.01688). Any language changes or significant new features are marked as experimental until the Lean model and proofs are updated, and the nightly fuzzing runs have ran successfully without any failures for at least 2 days. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
 * **Language changes.** Substantial changes to the language go through the [RFC process](https://github.com/cedar-policy/rfcs).
 
 #### Communication channels
@@ -195,7 +195,18 @@ Cedar does not claim compliance with any security standard. The project publishe
 
 #### Ecosystem
 
-Cedar is a CNCF Sandbox project. AWS uses it in Amazon Verified Permissions and AWS Verified Access ([Amazon Science](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing)), and in Policy in Amazon Bedrock AgentCore ([AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreatePolicy.html)). The cedar-policy organization also maintains Java bindings ([cedar-java](https://github.com/cedar-policy/cedar-java)) and an independent Go implementation ([cedar-go](https://github.com/cedar-policy/cedar-go)) that also runs the integration test corpus. [cedar-awesome](https://github.com/cedar-policy/cedar-awesome) lists community bindings and tools.
+Cedar is a CNCF Sandbox project.
+The cedar-policy organization also maintains Java bindings ([cedar-java](https://github.com/cedar-policy/cedar-java)) and an independent Go implementation ([cedar-go](https://github.com/cedar-policy/cedar-go)) that also runs the integration test corpus.
+[cedar-awesome](https://github.com/cedar-policy/cedar-awesome) lists community bindings and tools.
+
+Notable adopters:
+* **AWS:** Amazon Verified Permissions and AWS Verified Access ([Amazon Science](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing)), and Policy in Amazon Bedrock AgentCore ([AWS documentation](https://docs.aws.amazon.com/bedrock-agentcore-control/latest/APIReference/API_CreatePolicy.html)).
+* **Alibaba Cloud:** Agent Identity, which authorizes AI agents' calls to tools and MCP services ([Alibaba Cloud documentation](https://help.aliyun.com/en/agentidentity/policy-description)).
+* **MongoDB:** Atlas Resource Policies, which limit how developers can configure Atlas clusters ([MongoDB documentation](https://www.mongodb.com/docs/atlas/atlas-resource-policies/)).
+* **Delinea:** access policies in its privileged access management product ([Delinea blog](https://delinea.com/blog/cedar-policy-language)).
+* **Strands Agents:** an SDK handler that checks Cedar policies before each agent tool call ([Strands documentation](https://strandsagents.com/docs/user-guide/sdk/agents/interventions/cedar-authorization/)).
+* **TrueFoundry:** Cedar Guardrails in its AI Gateway, which check agents' MCP tool calls against Cedar policies ([TrueFoundry documentation](https://www.truefoundry.com/docs/ai-gateway/cedar-guardrails)).
+
 
 ### Security issue resolution
 
