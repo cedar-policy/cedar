@@ -14,6 +14,12 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Added
+
+- `*_with_depth_limit` parsing functions for `Schema` and `SchemaFragment` (Cedar and JSON formats), and
+  `Schema::from_schema_fragments_with_depth_limit`, to avoid stack overflows on deeply nested input. For `Schema`, the
+  limit also applies once common types are inlined, including common types declared in other fragments. (#2402)
+
 ### Fixed
 
 - Fixed `Entities::upsert_entities` keeping a stale ancestor when the same entity is given more than

@@ -30,7 +30,7 @@ use crate::{
 };
 use educe::Educe;
 use itertools::Itertools;
-use namespace_def::{ActionFragmentKind, EntityTypeFragment};
+use namespace_def::{ActionFragment, ActionFragmentKind, EntityTypeFragment};
 use nonempty::NonEmpty;
 #[cfg(feature = "extended-schema")]
 use smol_str::SmolStr;
@@ -42,6 +42,7 @@ use crate::validator::{
     cedar_schema::SchemaWarning,
     json_schema,
     partition_nonempty::PartitionNonEmpty,
+    schema_type_depth::type_depth,
     types::{EntityKind, RequestEnv, Type, TypeIterator, UnlinkedRequestEnv},
     ValidationMode,
 };
@@ -89,6 +90,23 @@ impl<N, A> ValidatorSchemaFragment<N, A> {
     /// `None` indicates the empty namespace.
     pub fn namespaces(&self) -> impl Iterator<Item = Option<&InternalName>> {
         self.0.iter().map(|d| d.namespace())
+    }
+}
+
+impl<N: Eq + std::hash::Hash, A> ValidatorSchemaFragment<N, A> {
+    /// Return an error if any type in this fragment, as written, is nested
+    /// deeper than `depth_limit`
+    pub fn check_type_depth(
+        &self,
+        depth_limit: usize,
+    ) -> std::result::Result<(), TypeTooDeepError> {
+        self.0.iter().try_for_each(|ns| {
+            let types = ns.common_types.defs.values().chain(schema_types(
+                ns.entity_types.defs.values(),
+                ns.actions.actions.values(),
+            ));
+            check_type_depths(&HashMap::new(), types, depth_limit)
+        })
     }
 }
 
@@ -637,6 +655,17 @@ impl ValidatorSchema {
         fragments: impl IntoIterator<Item = ValidatorSchemaFragment<ConditionalName, ConditionalName>>,
         extensions: &Extensions<'_>,
     ) -> Result<ValidatorSchema> {
+        Self::from_schema_fragments_with_depth_limit(fragments, extensions, None)
+    }
+
+    /// Like [`Self::from_schema_fragments`], but if `depth_limit` is `Some`,
+    /// rejects the schema if any type is nested deeper than the limit once
+    /// common types are inlined.
+    pub fn from_schema_fragments_with_depth_limit(
+        fragments: impl IntoIterator<Item = ValidatorSchemaFragment<ConditionalName, ConditionalName>>,
+        extensions: &Extensions<'_>,
+        depth_limit: Option<usize>,
+    ) -> Result<ValidatorSchema> {
         let mut fragments = fragments
             .into_iter()
             // All schemas implicitly include the following fragment as well,
@@ -760,7 +789,18 @@ impl ValidatorSchema {
         }
 
         let resolver = CommonTypeResolver::new(&common_types);
-        let common_types: HashMap<&InternalName, LocatedType> = resolver.resolve(extensions)?;
+        let sorted_common_types = resolver.topo_sort()?;
+        if let Some(depth_limit) = depth_limit {
+            // Inlining common types recurses on the depth of the result, so
+            // check it first
+            check_type_depths(
+                &resolver.common_type_depths(&sorted_common_types),
+                schema_types(entity_type_fragments.values(), action_fragments.values()),
+                depth_limit,
+            )?;
+        }
+        let common_types: HashMap<&InternalName, LocatedType> =
+            resolver.resolve(&sorted_common_types, extensions)?;
 
         // Invert the `parents` relation defined by entities and action so far
         // to get a `children` relation.
@@ -1762,6 +1802,49 @@ impl AllDefs {
     }
 }
 
+/// Entity type shapes and tags, and action contexts
+fn schema_types<'a, N: 'a, A: 'a>(
+    entity_types: impl IntoIterator<Item = &'a EntityTypeFragment<N>>,
+    actions: impl IntoIterator<Item = &'a ActionFragment<N, A>>,
+) -> impl Iterator<Item = &'a json_schema::Type<N>> {
+    let entity_type_types = entity_types
+        .into_iter()
+        .filter_map(|entity_type| match entity_type {
+            EntityTypeFragment::Standard {
+                attributes, tags, ..
+            } => Some(std::iter::once(&attributes.0).chain(tags)),
+            EntityTypeFragment::Enum(_) | EntityTypeFragment::External { .. } => None,
+        })
+        .flatten();
+    let action_types = actions.into_iter().filter_map(|action| match &action.kind {
+        ActionFragmentKind::Defined { context, .. } => Some(context),
+        ActionFragmentKind::External => None,
+    });
+    entity_type_types.chain(action_types)
+}
+
+/// Return an error if any of `types`, or any common type, is nested deeper than
+/// `depth_limit` once common types are inlined
+fn check_type_depths<'a, N: Eq + std::hash::Hash + 'a>(
+    common_type_depths: &HashMap<&N, usize>,
+    types: impl IntoIterator<Item = &'a json_schema::Type<N>>,
+    depth_limit: usize,
+) -> std::result::Result<(), TypeTooDeepError> {
+    let depth = types
+        .into_iter()
+        .map(|ty| type_depth(ty, common_type_depths))
+        .chain(common_type_depths.values().copied())
+        .max()
+        .unwrap_or(0);
+    if depth > depth_limit {
+        return Err(TypeTooDeepError {
+            depth,
+            limit: depth_limit,
+        });
+    }
+    Ok(())
+}
+
 /// A common type reference resolver.
 /// This resolver is designed to operate on fully-qualified references.
 /// It facilitates inlining the definitions of common types.
@@ -1819,10 +1902,10 @@ impl<'a> CommonTypeResolver<'a> {
     ///
     /// `topo_sort(A -> B -> C)` produces [C, B, A]
     ///
-    /// If there is a cycle, a type name involving in this cycle is the error
+    /// If there is a cycle, the error contains a type name involved in the cycle
     ///
     /// It implements a variant of Kahn's algorithm
-    fn topo_sort(&self) -> std::result::Result<Vec<&'a InternalName>, InternalName> {
+    fn topo_sort(&self) -> Result<Vec<&'a InternalName>> {
         // The in-degree map
         // Note that the keys of this map may be a superset of all common type
         // names
@@ -1893,7 +1976,7 @@ impl<'a> CommonTypeResolver<'a> {
         }
 
         if let Some(cycle) = set.into_iter().next() {
-            Err(cycle.clone())
+            Err(CycleInCommonTypeReferencesError { ty: cycle.clone() }.into())
         } else {
             // We need to reverse the result because, e.g.,
             // `res` is now [A,B,C] for A -> B -> C because no one depends on A
@@ -1902,16 +1985,29 @@ impl<'a> CommonTypeResolver<'a> {
         }
     }
 
+    /// The depth of each common type once common types are inlined, given the
+    /// names sorted by [`Self::topo_sort`]
+    fn common_type_depths(
+        &self,
+        sorted_names: &[&'a InternalName],
+    ) -> HashMap<&'a InternalName, usize> {
+        let mut depths = HashMap::new();
+        for &name in sorted_names {
+            if let Some(ty) = self.defs.get(name) {
+                depths.insert(name, type_depth(ty, &depths));
+            }
+        }
+        depths
+    }
+
     // Resolve common type references, returning a map from (fully-qualified)
-    // [`InternalName`] of a common type to its [`Type`] definition
+    // [`InternalName`] of a common type to its [`Type`] definition, given the
+    // names sorted by [`Self::topo_sort`]
     fn resolve(
         &self,
+        sorted_names: &[&'a InternalName],
         extensions: &Extensions<'_>,
     ) -> Result<HashMap<&'a InternalName, LocatedType>> {
-        let sorted_names = self.topo_sort().map_err(|n| {
-            SchemaError::CycleInCommonTypeReferences(CycleInCommonTypeReferencesError { ty: n })
-        })?;
-
         let mut tys: HashMap<&'a InternalName, LocatedType> = HashMap::new();
 
         for &name in sorted_names.iter() {
@@ -5601,7 +5697,7 @@ mod test_resolver {
         }
         let resolver = CommonTypeResolver::new(&defs);
         resolver
-            .resolve(Extensions::all_available())
+            .resolve(&resolver.topo_sort()?, Extensions::all_available())
             .map(|map| map.into_iter().map(|(k, v)| (k.clone(), v)).collect())
     }
 

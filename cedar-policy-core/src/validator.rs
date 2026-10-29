@@ -54,6 +54,7 @@ mod linking;
 pub use linking::*;
 mod deprecated_schema_compat;
 pub mod json_schema;
+pub(crate) mod schema_type_depth;
 mod str_checks;
 pub use str_checks::confusable_string_checks;
 pub mod cedar_schema;

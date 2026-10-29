@@ -12819,3 +12819,180 @@ mod validation_result_display_tests {
         assert_same(src);
     }
 }
+
+#[cfg(test)]
+mod test_schema_depth_limit {
+    use super::*;
+    use rstest::rstest;
+
+    fn too_deep<T>(r: Result<T, SchemaError>) -> bool {
+        match r {
+            Ok(_) => false,
+            Err(SchemaError::TypeTooDeep(_)) => true,
+            Err(e) => panic!("unexpected error: {e}"),
+        }
+    }
+
+    fn too_deep_cedar<T>(r: Result<T, CedarSchemaError>) -> bool {
+        match r {
+            Err(CedarSchemaError::Schema(e)) => too_deep(Err::<T, _>(e)),
+            r => too_deep(r.map_err(|e| panic!("unexpected error: {e}"))),
+        }
+    }
+
+    /// Check that the schema is accepted with a depth limit of `depth`, but not
+    /// `depth - 1`
+    #[track_caller]
+    fn assert_depth(depth: usize, too_deep: impl Fn(usize) -> bool) {
+        assert!(!too_deep(depth));
+        assert!(depth == 0 || too_deep(depth - 1));
+    }
+
+    #[rstest]
+    #[case::no_attributes("entity E;", 0)]
+    #[case::attribute("entity E = { a: Long };", 1)]
+    #[case::nested("entity E = { a: { b: Set<Long> } };", 3)]
+    #[case::common_type("type T = Set<Set<Long>>;", 2)]
+    #[case::common_type_attribute("type T = Set<Long>; entity E = { a: T };", 2)]
+    #[case::common_type_tags("type T = Set<Set<Long>>; entity E tags T;", 2)]
+    #[case::common_type_namespaces(
+        "namespace A { type T = Set<Long>; } namespace B { type T = Set<A::T>; entity E = { a: T }; }",
+        3
+    )]
+    #[case::common_type_context(
+        "type T = Set<Long>; entity E; action A appliesTo { principal: E, resource: E, context: { a: T } };",
+        2
+    )]
+    fn schema_depth(#[case] src: &str, #[case] depth: usize) {
+        assert_depth(depth, |limit| {
+            too_deep_cedar(Schema::from_cedarschema_str_with_depth_limit(src, limit))
+        });
+    }
+
+    #[test]
+    fn constructors() {
+        let src = "entity E = { a: Set<Long> };";
+        let json = SchemaFragment::from_cedarschema_str(src)
+            .unwrap()
+            .0
+            .to_json_value()
+            .unwrap();
+        let json_str = json.to_string();
+        assert_depth(2, |limit| {
+            too_deep_cedar(Schema::from_cedarschema_str_with_depth_limit(src, limit))
+        });
+        assert_depth(2, |limit| {
+            too_deep_cedar(Schema::from_cedarschema_file_with_depth_limit(
+                src.as_bytes(),
+                limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep_cedar(SchemaFragment::from_cedarschema_str_with_depth_limit(
+                src, limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep_cedar(SchemaFragment::from_cedarschema_file_with_depth_limit(
+                src.as_bytes(),
+                limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep(Schema::from_json_value_with_depth_limit(
+                json.clone(),
+                limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep(Schema::from_json_str_with_depth_limit(&json_str, limit))
+        });
+        assert_depth(2, |limit| {
+            too_deep(Schema::from_json_file_with_depth_limit(
+                json_str.as_bytes(),
+                limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep(SchemaFragment::from_json_value_with_depth_limit(
+                json.clone(),
+                limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep(SchemaFragment::from_json_str_with_depth_limit(
+                &json_str, limit,
+            ))
+        });
+        assert_depth(2, |limit| {
+            too_deep(SchemaFragment::from_json_file_with_depth_limit(
+                json_str.as_bytes(),
+                limit,
+            ))
+        });
+    }
+
+    /// Common types can make types deeper across fragments
+    #[test]
+    fn across_fragments() {
+        let fragments = || {
+            [
+                "type T0 = Set<Long>;",
+                "type T1 = Set<T0>; entity E = { a: T1 };",
+            ]
+            .map(|src| {
+                SchemaFragment::from_cedarschema_str_with_depth_limit(src, 2)
+                    .unwrap()
+                    .0
+            })
+        };
+        assert!(Schema::from_schema_fragments_with_depth_limit(fragments(), 3).is_ok());
+        let err = Schema::from_schema_fragments_with_depth_limit(fragments(), 2).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "schema type depth 3 exceeds the configured limit of 2"
+        );
+        let SchemaError::TypeTooDeep(err) = err else {
+            panic!("unexpected error: {err}");
+        };
+        assert_eq!((err.depth(), err.limit()), (3, 2));
+    }
+
+    /// An entity attribute with sets and records nested 10,000 deep
+    fn deeply_nested_schema() -> String {
+        let n = 10000;
+        format!(
+            "entity E = {{ a: {} Long {} }};",
+            "Set<{ a: Long, b: ".repeat(n),
+            " }>".repeat(n),
+        )
+    }
+
+    #[test]
+    fn deep_type_no_stack_overflow() {
+        assert!(too_deep_cedar(
+            Schema::from_cedarschema_str_with_depth_limit(&deeply_nested_schema(), 100)
+        ));
+    }
+
+    /// The parser can fail after building a deep type, so it's dropped before
+    /// the depth is checked
+    #[test]
+    fn deep_type_syntax_error_no_stack_overflow() {
+        let src = format!("{} !", deeply_nested_schema());
+        assert!(matches!(
+            Schema::from_cedarschema_str_with_depth_limit(&src, 100).map(drop),
+            Err(CedarSchemaError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn deep_common_type_chain_no_stack_overflow() {
+        let src: String = std::iter::once("type T0 = Long;".to_string())
+            .chain((1..10000).map(|i| format!("type T{i} = Set<T{}>;", i - 1)))
+            .collect();
+        assert!(too_deep_cedar(
+            Schema::from_cedarschema_str_with_depth_limit(&src, 100)
+        ));
+    }
+}
