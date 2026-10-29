@@ -12,7 +12,7 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: "23 4 * * 1" # Weekly, Mondays 04:23 UTC
+    - cron: "23 15 * * 1" # Weekly, Mondays 15:23 UTC
 
 permissions: {}
 

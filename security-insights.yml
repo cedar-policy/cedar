@@ -1,6 +1,6 @@
 header:
   schema-version: 2.2.0
-  last-updated: '2026-10-28'
+  last-updated: '2026-10-29'
   last-reviewed: '2026-10-28'
   url: https://raw.githubusercontent.com/cedar-policy/cedar/main/security-insights.yml
 
@@ -282,3 +282,17 @@ repository:
             name: Build Downstream Dependencies
             predicate-uri: https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt
             location: https://github.com/cedar-policy/cedar/actions/workflows/build_downstream_deps.yml
+      - name: OSPS Baseline Scanner
+        type: other
+        comment: Runs weekly and on demand from .github/workflows/osps-baseline-publish.yml, scanning this repository against the OSPS Baseline at Level 1. Each run publishes a signed result to grc.store.
+        rulesets:
+          - osps-baseline
+        integration:
+          adhoc: true
+          ci: false
+          release: false
+        results:
+          adhoc:
+            name: OSPS Baseline evaluation
+            predicate-uri: https://github.com/revanite-io/pvtr-publish-results
+            location: https://grc.store/targets/cedar/cedar
