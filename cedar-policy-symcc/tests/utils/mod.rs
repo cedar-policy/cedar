@@ -162,7 +162,8 @@ impl<'a> Environments<'a> {
             .unwrap()
         } else {
             // in the common case, where the symenv wasn't created custom, test the standard `CompiledPolicy::compile()` API
-            CompiledPolicy::compile(policy, &self.req_env, self.schema).unwrap()
+            let compiled_schema = cedar_policy_symcc::CompiledSchema::new(self.schema).unwrap();
+            CompiledPolicy::compile(policy, &self.req_env, &compiled_schema).unwrap()
         }
     }
 
@@ -178,7 +179,8 @@ impl<'a> Environments<'a> {
             .unwrap()
         } else {
             // in the common case, where the symenv wasn't created custom, test the standard `CompiledPolicySet::compile()` API
-            CompiledPolicySet::compile(pset, &self.req_env, self.schema).unwrap()
+            let compiled_schema = cedar_policy_symcc::CompiledSchema::new(self.schema).unwrap();
+            CompiledPolicySet::compile(pset, &self.req_env, &compiled_schema).unwrap()
         }
     }
 }
