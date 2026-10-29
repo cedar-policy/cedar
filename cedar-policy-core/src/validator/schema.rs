@@ -934,7 +934,7 @@ impl ValidatorSchema {
             entity_children.into_keys(),
             &action_ids,
             action_children.into_keys(),
-            common_types.into_values(),
+            common_types.values(),
         )?;
         Ok(ValidatorSchema::new_from_maps(
             entity_types,
@@ -950,13 +950,13 @@ impl ValidatorSchema {
     /// the set of declared entity type or action names.
     /// This function assumes that all entity types are fully qualified, which
     /// is indicated by the use of the [`EntityType`] and [`EntityUID`] types.
-    fn check_for_undeclared(
+    fn check_for_undeclared<'a>(
         all_defs: &AllDefs,
         entity_types: &HashMap<EntityType, ValidatorEntityType>,
         undeclared_parent_entities: impl IntoIterator<Item = EntityType>,
         action_ids: &HashMap<EntityUID, ValidatorActionId>,
         undeclared_parent_actions: impl IntoIterator<Item = EntityUID>,
-        common_types: impl IntoIterator<Item = LocatedType>,
+        common_types: impl IntoIterator<Item = &'a LocatedType>,
     ) -> Result<()> {
         // When we constructed `entity_types`, we removed entity types from  the
         // `entity_children` map as we encountered a declaration for that type.
@@ -970,29 +970,30 @@ impl ValidatorSchema {
         // `descendants` list were declared because the list is a result of
         // inverting the `memberOf` relationship which mapped declared entity
         // types to their parent entity types.
-        for entity_type in entity_types.values() {
-            for (_, attr_typ) in entity_type.attributes().iter() {
-                Self::check_undeclared_in_type(&attr_typ.attr_type, all_defs, &mut undeclared_e);
+        let tys = TypeIterator::new(
+            entity_types
+                .values()
+                .flat_map(|ety| ety.attributes().iter())
+                .map(|(_, attr_ty)| attr_ty.attr_type.as_ref())
+                .chain(common_types.into_iter().map(|common_type| &common_type.ty))
+                .chain(action_ids.values().filter_map(ValidatorActionId::context))
+                .collect(),
+        );
+        for ty in tys {
+            if let Type::Entity(EntityKind::Entity(lub)) = ty {
+                for name in lub.iter() {
+                    if !all_defs.is_defined_as_entity(name.as_ref().as_ref()) {
+                        undeclared_e.insert(name.clone());
+                    }
+                }
             }
-        }
-
-        // Check for undeclared entity types within common types.
-        for common_type in common_types {
-            Self::check_undeclared_in_type(&common_type.ty, all_defs, &mut undeclared_e);
         }
 
         // Undeclared actions in a `memberOf` list.
         let undeclared_a = undeclared_parent_actions.into_iter();
-        // For actions, we check entity references in the context attribute
-        // types and `appliesTo` lists. See the `entity_types` loop for why the
-        // `descendants` list is not checked.
+        // For actions, we also check entity references in the `appliesTo`
+        // lists.
         for action in action_ids.values() {
-            // An external action declares no context and no `appliesTo`, so it
-            // has no references to check.
-            if let Some(context) = action.context() {
-                Self::check_undeclared_in_type(context, all_defs, &mut undeclared_e);
-            }
-
             for p_entity in action.applies_to_principals() {
                 if !entity_types.contains_key(p_entity) {
                     undeclared_e.insert(p_entity.clone());
@@ -1015,37 +1016,6 @@ impl ValidatorSchema {
         }
 
         Ok(())
-    }
-
-    /// Check that all entity types appearing inside a type are in the set of
-    /// declared entity types, adding any undeclared entity types to the
-    /// `undeclared_types` set.
-    fn check_undeclared_in_type(
-        ty: &Type,
-        all_defs: &AllDefs,
-        undeclared_types: &mut BTreeSet<EntityType>,
-    ) {
-        match ty {
-            Type::Entity(EntityKind::Entity(lub)) => {
-                for name in lub.iter() {
-                    if !all_defs.is_defined_as_entity(name.as_ref().as_ref()) {
-                        undeclared_types.insert(name.clone());
-                    }
-                }
-            }
-
-            Type::Record { attrs, .. } => {
-                for (_, attr_ty) in attrs.iter() {
-                    Self::check_undeclared_in_type(&attr_ty.attr_type, all_defs, undeclared_types);
-                }
-            }
-
-            Type::Set {
-                element_type: Some(element_type),
-            } => Self::check_undeclared_in_type(element_type, all_defs, undeclared_types),
-
-            _ => (),
-        }
     }
 
     /// Lookup the [`ValidatorActionId`] object in the schema with the given name.
@@ -1266,7 +1236,7 @@ impl ValidatorSchema {
                 stack.push(context);
             }
         }
-        TypeIterator { stack }
+        TypeIterator::new(stack)
     }
 
     /// Construct an `Entity` object for each action defined in the schema.
@@ -2674,6 +2644,39 @@ pub(crate) mod test {
                 user_type,
                 [],
                 Attributes::with_attributes([("last_action".into(), attr_type)]),
+                OpenTag::ClosedAttributes,
+                None,
+                None,
+            )],
+            [],
+        );
+
+        assert_matches!(
+            schema.try_validate(),
+            Err(SchemaError::UndeclaredEntityTypes(_))
+        );
+    }
+
+    #[test]
+    fn try_validate_rejects_undeclared_entity_type_in_shared_record() {
+        let user = EntityType::from_normalized_str("User").unwrap();
+        let owner = EntityType::from_normalized_str("Owner").unwrap();
+
+        let shared = Arc::new(Type::record_with_required_attributes(
+            [(
+                "owner".into(),
+                Arc::new(Type::named_entity_reference(owner)),
+            )],
+            OpenTag::ClosedAttributes,
+        ));
+        let schema = ValidatorSchema::new(
+            [ValidatorEntityType::new_standard(
+                user,
+                [],
+                Attributes::with_required_attributes([
+                    ("a".into(), shared.clone()),
+                    ("b".into(), shared),
+                ]),
                 OpenTag::ClosedAttributes,
                 None,
                 None,
