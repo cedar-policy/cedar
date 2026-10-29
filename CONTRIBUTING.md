@@ -103,6 +103,15 @@ This project follows the [CNCF Code of Conduct](https://github.com/cncf/foundati
 
 If you think you have discovered a security issue related to Cedar, **please write to us** at [cedar-policy-security@lists.cncf.io ](mailto:cedar-policy-security@lists.cncf.io ); do **NOT** open a public issue. See [SECURITY](SECURITY.md).
 
+## Escalating to the CRA Steward
+
+Cedar maintainers escalate two kinds of event to the Linux Foundation, Cedar's CRA steward, at [steward@linuxfoundation.org](mailto:steward@linuxfoundation.org):
+
+* **Actively exploited vulnerabilities:** a vulnerability where the maintainers have reliable evidence that a malicious actor has exploited it.
+* **Severe incidents:** a security compromise of the project's own IT infrastructure.
+
+Ordinary vulnerabilities with no evidence of exploitation are not escalation events, and follow the process in [SECURITY](SECURITY.md). Remediation never waits on the escalation decision.
+
 ## Licensing
 
 See the [LICENSE](LICENSE) file for our project's licensing. We will ask you to confirm the licensing of your contribution.

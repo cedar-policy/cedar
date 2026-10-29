@@ -2,6 +2,8 @@
 
 ## Reporting a Vulnerability
 
+CRA stewardship: This project is supported under the Linux Foundation CRA stewardship framework, as described at https://www.linuxfoundation.org/security. Security vulnerabilities should be reported through the mechanisms described below, which we will coordinate with our CRA steward. For actively exploited vulnerabilities and severe incidents that may require CRA escalation, please use the project's emergency security reporting mechanisms as appropriate.
+
 If you think you have discovered a security issue related to Cedar, **please write to us** at [cedar-policy-security@lists.cncf.io ](mailto:cedar-policy-security@lists.cncf.io ); do **NOT** open a public issue. Along with your notification email, please provide any supporting material (proof-of-concept code, tool output, etc.) that would be useful in helping us understand the nature and severity of the security concern.
 
 We will send a non-automated acknowledgement email reply within 1 business day followed by an initial assessment of the issue within 5 business days. Subsequently, we will work in partnership with you to assess any impact of the issue and prepare a security advisory (including any patches with appropriate fix) as needed.
