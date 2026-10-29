@@ -326,6 +326,52 @@ impl Doc for Node<Option<Relation>> {
                     .append(pattern.to_doc(context)?.nest(context.config.indent_width))
                     .group(),
             ),
+            #[cfg(feature = "extended-like")]
+            Relation::LikeDelimited {
+                target,
+                pattern,
+                delimiter,
+            } => Some(
+                target
+                    .to_doc(context)?
+                    .append(RcDoc::line())
+                    .append(add_comment(
+                        RcDoc::text("like"),
+                        get_comment_after_end(
+                            target.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    ))
+                    .append(add_comment(
+                        RcDoc::text("("),
+                        get_comment_before_start(
+                            pattern.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    ))
+                    .append(pattern.to_doc(context)?.nest(context.config.indent_width))
+                    .append(add_comment(
+                        RcDoc::text(","),
+                        get_comment_after_end(
+                            pattern.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    ))
+                    .append(RcDoc::line())
+                    .append(delimiter.to_doc(context)?)
+                    .append(add_comment(
+                        RcDoc::text(")"),
+                        get_comment_after_end(
+                            delimiter.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    ))
+                    .group(),
+            ),
             Relation::IsIn {
                 target,
                 entity_type,

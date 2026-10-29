@@ -605,6 +605,51 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "extended-like")]
+    fn test_est_expr_like_delimited() {
+        let json = r#"{"likeDelimited": {"left": {"Var": "principal"}, "pattern": ["MultiWildcard", {"Literal": ".example.com"}], "delim": "."}}"#;
+        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
+        let pst_expr: Expr = est_expr.try_into().unwrap();
+        assert_matches!(pst_expr, Expr::LikeDelimited { delim, .. } if delim.as_char() == '.');
+        roundtrips(pst_expr);
+    }
+
+    #[test]
+    #[cfg(feature = "extended-like")]
+    fn test_est_expr_like_delimited_invalid_delim() {
+        let est_expr = est::Expr::ExprNoExt(est::ExprNoExt::LikeDelimited {
+            left: Arc::new(est::Expr::ExprNoExt(est::ExprNoExt::Var(
+                ast::Var::Principal,
+            ))),
+            pattern: vec![est::DelimPatternElem::Wildcard],
+            delim: "*".into(),
+        });
+        let res: Result<Expr, PstConstructionError> = est_expr.try_into();
+        assert_matches!(
+            res,
+            Err(PstConstructionError::InvalidLikeDelimiter(e)) if e.input() == "*"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "extended-like")]
+    fn test_est_expr_like_delimited_from_ast() {
+        use crate::ast;
+        let ast_expr = ast::Expr::like_delimited(
+            ast::Expr::val("x"),
+            ast::DelimPattern::from(vec![ast::DelimPatternElem::MultiWildcard]),
+            ast::LikeDelimiter::new('.').unwrap(),
+        );
+        let pst: Expr = ast_expr.try_into().unwrap();
+        let est: est::Expr = pst.try_into().unwrap();
+        let json = serde_json::to_value(&est).unwrap();
+        assert_eq!(
+            json,
+            serde_json::json!({"likeDelimited": {"left": {"Value": "x"}, "pattern": ["MultiWildcard"], "delim": "."}})
+        );
+    }
+
+    #[test]
     fn test_est_expr_is() {
         // Test simple is without in
         let json = r#"{"is": {

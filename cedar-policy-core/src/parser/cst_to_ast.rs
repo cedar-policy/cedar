@@ -35,6 +35,8 @@
 
 use super::err::{parse_errors, ParseError, ParseErrors, ToASTError, ToASTErrorKind};
 use super::node::Node;
+#[cfg(feature = "extended-like")]
+use super::unescape::to_pattern_delimited;
 use super::unescape::{to_pattern, to_unescaped_string};
 use super::util::{flatten_tuple_2, flatten_tuple_3, flatten_tuple_4};
 use super::{cst, Loc};
@@ -1236,6 +1238,29 @@ where
                 .into()),
         }
     }
+
+    #[cfg(feature = "extended-like")]
+    pub(crate) fn into_pattern_delimited(self) -> Result<Vec<ast::DelimPatternElem>> {
+        match &self {
+            Self::StrLit { lit, .. } => to_pattern_delimited(lit).map_err(|escape_errs| {
+                ParseErrors::new_from_nonempty(
+                    escape_errs.map(|e| self.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                )
+            }),
+            Self::Var { var, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(var.to_string()))
+                .into()),
+            Self::Name { name, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(name.to_string()))
+                .into()),
+            Self::Expr { expr, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(expr.to_string()))
+                .into()),
+            Self::BoolLit { val, .. } => Err(self
+                .to_ast_err(ToASTErrorKind::InvalidPattern(val.to_string()))
+                .into()),
+        }
+    }
     /// to string literal
     fn into_string_literal(self) -> Result<SmolStr> {
         match &self {
@@ -1432,6 +1457,37 @@ impl Node<Option<cst::Relation>> {
                     expr: Build::new()
                         .with_maybe_source_loc(self.loc.as_ref())
                         .like(target, pattern.into()),
+                    loc: self.loc.clone(),
+                })
+            }
+            #[cfg(feature = "extended-like")]
+            cst::Relation::LikeDelimited {
+                target,
+                pattern,
+                delimiter,
+            } => {
+                let delim_str = delimiter.as_valid_string()?;
+                let delim_unescaped = to_unescaped_string(delim_str).map_err(|escape_errs| {
+                    ParseErrors::new_from_nonempty(
+                        escape_errs
+                            .map(|e| delimiter.to_ast_err(ToASTErrorKind::Unescape(e)).into()),
+                    )
+                })?;
+                let delim =
+                    ast::LikeDelimiter::parse(&delim_unescaped).map_err(|e| {
+                        ParseErrors::from(delimiter.to_ast_err(
+                            ToASTErrorKind::InvalidLikeDelimiter(e.input().to_string()),
+                        ))
+                    })?;
+                let maybe_target = target.to_expr::<Build>();
+                let maybe_pattern = pattern
+                    .to_expr_or_special::<Build>()?
+                    .into_pattern_delimited();
+                let (target, pattern) = flatten_tuple_2(maybe_target, maybe_pattern)?;
+                Ok(ExprOrSpecial::Expr {
+                    expr: Build::new()
+                        .with_maybe_source_loc(self.loc.as_ref())
+                        .like_delimited(target, pattern.into(), delim),
                     loc: self.loc.clone(),
                 })
             }

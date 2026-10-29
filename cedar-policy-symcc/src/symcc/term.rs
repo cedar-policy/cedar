@@ -250,6 +250,12 @@ impl std::fmt::Display for Term {
                         Op::RecordGet(attr) => format_smolstr!("getattr[\"{attr}\"]"),
                         Op::StringLike(pat) =>
                             format_smolstr!("like[\"{pat}\"]", pat = pat.deref()),
+                        #[cfg(feature = "extended-like")]
+                        Op::StringLikeExtended(pat, delim) => format_smolstr!(
+                            "like[\"{pat}\", '{delim}']",
+                            pat = pat.deref(),
+                            delim = delim.as_char().escape_debug(),
+                        ),
                         _ => SmolStr::new(op.mk_name()),
                     }
                 )?;

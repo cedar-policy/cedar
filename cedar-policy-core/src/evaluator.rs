@@ -725,6 +725,22 @@ impl<'e> Evaluator<'e> {
                     PartialValue::Residual(r) => Ok(Expr::like(r, pattern.clone()).into()),
                 }
             }
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => {
+                let v = self.partial_interpret(expr, slots)?;
+                match v {
+                    PartialValue::Value(v) => Ok(pattern
+                        .wildcard_match_delimited(v.get_as_string()?, delim.as_char())
+                        .into()),
+                    PartialValue::Residual(r) => {
+                        Ok(Expr::like_delimited(r, pattern.clone(), *delim).into())
+                    }
+                }
+            }
             ExprKind::Is { expr, entity_type } => {
                 let v = self.partial_interpret(expr, slots)?;
                 match v {

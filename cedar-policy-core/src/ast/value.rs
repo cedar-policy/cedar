@@ -362,6 +362,8 @@ impl TryFrom<Expr> for ValueKind {
                 Err(NotValue::NotValue { loc })
             }
             ExprKind::Like { .. } => Err(NotValue::NotValue { loc }),
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::Is { .. } => Err(NotValue::NotValue { loc }),
             ExprKind::Set(members) => members
                 .iter()

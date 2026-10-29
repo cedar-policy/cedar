@@ -119,6 +119,8 @@ impl Residual {
                 }
                 ResidualKind::Is { expr, .. } => expr.can_error_assuming_well_formed(),
                 ResidualKind::Like { expr, .. } => expr.can_error_assuming_well_formed(),
+                #[cfg(feature = "extended-like")]
+                ResidualKind::LikeDelimited { expr, .. } => expr.can_error_assuming_well_formed(),
 
                 ResidualKind::BinaryApp { op, arg1, arg2 } => match op {
                     // Arithmetic operations could error due to integer overflow
@@ -248,6 +250,16 @@ impl Residual {
             ast::ExprKind::Like { expr, pattern } => ResidualKind::Like {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
                 pattern: pattern.clone(),
+            },
+            #[cfg(feature = "extended-like")]
+            ast::ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => ResidualKind::LikeDelimited {
+                expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
+                pattern: pattern.clone(),
+                delim: *delim,
             },
             ast::ExprKind::Is { expr, entity_type } => ResidualKind::Is {
                 expr: Arc::new(Self::try_from_typed_expr(expr.as_ref(), env)?),
@@ -384,6 +396,17 @@ pub enum ResidualKind {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
+    /// Delimiter-aware string matching, `like(pattern, delim)`.
+    #[cfg(feature = "extended-like")]
+    LikeDelimited {
+        /// Expression to test. Must evaluate to String type
+        expr: Arc<Residual>,
+        /// Pattern to match on. `*` matches any run of non-delimiter chars;
+        /// `**` matches any run of chars.
+        pattern: crate::ast::DelimPattern,
+        /// Single-character delimiter.
+        delim: crate::ast::LikeDelimiter,
+    },
     /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.
     Is {
@@ -441,6 +464,8 @@ impl ResidualKind {
             | ResidualKind::ExtHasAttr { expr, .. }
             | ResidualKind::Like { expr, .. }
             | ResidualKind::Is { expr, .. } => expr.all_literal_uids(),
+            #[cfg(feature = "extended-like")]
+            ResidualKind::LikeDelimited { expr, .. } => expr.all_literal_uids(),
             ResidualKind::Set(elements) => {
                 let mut uids = HashSet::new();
                 for element in elements.as_ref() {
@@ -549,6 +574,12 @@ impl From<Residual> for Expr {
                     ResidualKind::Like { expr, pattern } => {
                         builder.like(expr.as_ref().clone().into(), pattern)
                     }
+                    #[cfg(feature = "extended-like")]
+                    ResidualKind::LikeDelimited {
+                        expr,
+                        pattern,
+                        delim,
+                    } => builder.like_delimited(expr.as_ref().clone().into(), pattern, delim),
                     ResidualKind::Or { left, right } => {
                         builder.or(left.as_ref().clone().into(), right.as_ref().clone().into())
                     }

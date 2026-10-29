@@ -173,3 +173,86 @@ impl Ord for OrdPattern {
             .cmp(other.get_elems().iter().copied().map(OrdPatternElem::from))
     }
 }
+
+/// A wrapper for Cedar [`cedar_policy_core::ast::DelimPattern`]s, the
+/// patterns of delimiter-aware `like(pattern, delim)` expressions.
+#[cfg(feature = "extended-like")]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub struct OrdDelimPattern(cedar_policy_core::ast::DelimPattern);
+
+#[cfg(feature = "extended-like")]
+impl From<cedar_policy_core::ast::DelimPattern> for OrdDelimPattern {
+    fn from(p: cedar_policy_core::ast::DelimPattern) -> Self {
+        Self(p)
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl Deref for OrdDelimPattern {
+    type Target = cedar_policy_core::ast::DelimPattern;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(feature = "extended-like")]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+struct OrdDelimPatternElem(cedar_policy_core::ast::DelimPatternElem);
+
+#[cfg(feature = "extended-like")]
+impl From<cedar_policy_core::ast::DelimPatternElem> for OrdDelimPatternElem {
+    fn from(e: cedar_policy_core::ast::DelimPatternElem) -> Self {
+        Self(e)
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl PartialOrd for OrdDelimPatternElem {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl Ord for OrdDelimPatternElem {
+    fn cmp(&self, other: &Self) -> Ordering {
+        use cedar_policy_core::ast::DelimPatternElem;
+        // Order: Char < Wildcard < MultiWildcard
+        fn rank(e: DelimPatternElem) -> u8 {
+            match e {
+                DelimPatternElem::Char(_) => 0,
+                DelimPatternElem::Wildcard => 1,
+                DelimPatternElem::MultiWildcard => 2,
+            }
+        }
+        match (self.0, other.0) {
+            (DelimPatternElem::Char(c1), DelimPatternElem::Char(c2)) => c1.cmp(&c2),
+            (e1, e2) => rank(e1).cmp(&rank(e2)),
+        }
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl PartialOrd for OrdDelimPattern {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl Ord for OrdDelimPattern {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.get_elems()
+            .iter()
+            .copied()
+            .map(OrdDelimPatternElem::from)
+            .cmp(
+                other
+                    .get_elems()
+                    .iter()
+                    .copied()
+                    .map(OrdDelimPatternElem::from),
+            )
+    }
+}

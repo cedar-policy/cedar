@@ -211,6 +211,20 @@ impl fmt::Display for Relation {
             Relation::Like { target, pattern } => {
                 write!(f, "{} like {}", View(target), View(pattern))?;
             }
+            #[cfg(feature = "extended-like")]
+            Relation::LikeDelimited {
+                target,
+                pattern,
+                delimiter,
+            } => {
+                write!(
+                    f,
+                    "{} like({}, {})",
+                    View(target),
+                    View(pattern),
+                    View(delimiter)
+                )?;
+            }
             Relation::IsIn {
                 target,
                 entity_type,

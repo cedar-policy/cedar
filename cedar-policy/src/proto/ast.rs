@@ -383,6 +383,31 @@ impl TryFrom<models::Expr> for ast::Expr {
                 )
             }
 
+            #[cfg(feature = "extended-like")]
+            models::expr::ExprKind::LikeDelimited(msg) => {
+                let arg = *msg
+                    .expr
+                    .ok_or_else(|| ProtobufConversionError::missing("expr"))?;
+                let delim = ast::LikeDelimiter::parse(&msg.delim)
+                    .map_err(|e| ProtobufConversionError::InvalidValue(e.to_string()))?;
+                ast::Expr::like_delimited(
+                    ast::Expr::try_from(arg)?,
+                    msg.pattern
+                        .into_iter()
+                        .map(ast::DelimPatternElem::try_from)
+                        .collect::<Result<_, _>>()?,
+                    delim,
+                )
+            }
+
+            // Fail closed: never decode a delimited `like` as a plain `like`.
+            #[cfg(not(feature = "extended-like"))]
+            models::expr::ExprKind::LikeDelimited(_) => {
+                return Err(ProtobufConversionError::InvalidValue(
+                    "delimited `like` expressions require the `extended-like` feature".to_string(),
+                ));
+            }
+
             models::expr::ExprKind::Is(msg) => {
                 let arg = *msg
                     .expr
@@ -509,6 +534,19 @@ impl From<&ast::Expr> for models::Expr {
                     pattern: ppattern,
                 }))
             }
+            #[cfg(feature = "extended-like")]
+            ast::ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => models::expr::ExprKind::LikeDelimited(Box::new(models::expr::LikeDelimited {
+                expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
+                pattern: pattern
+                    .iter()
+                    .map(models::expr::like_delimited::PatternElem::from)
+                    .collect(),
+                delim: delim.to_string(),
+            })),
             ast::ExprKind::Is { expr, entity_type } => {
                 models::expr::ExprKind::Is(Box::new(models::expr::Is {
                     expr: Some(Box::new(models::Expr::from(expr.as_ref()))),
@@ -723,6 +761,55 @@ impl From<&ast::PatternElem> for models::expr::like::PatternElem {
                 )),
             },
         }
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl TryFrom<models::expr::like_delimited::PatternElem> for ast::DelimPatternElem {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::expr::like_delimited::PatternElem) -> Result<Self, Self::Error> {
+        use models::expr::like_delimited::pattern_elem::{Data, MultiWildcard};
+        match v
+            .data
+            .ok_or_else(|| ProtobufConversionError::missing("data"))?
+        {
+            Data::C(c) => Ok(ast::DelimPatternElem::Char(
+                c.chars().exactly_one().map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("{e} in pattern element"))
+                })?,
+            )),
+            Data::Wildcard(unit) => {
+                match models::expr::like::pattern_elem::Wildcard::try_from(unit).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid wildcard: {e}"))
+                })? {
+                    models::expr::like::pattern_elem::Wildcard::Unit => {
+                        Ok(ast::DelimPatternElem::Wildcard)
+                    }
+                }
+            }
+            Data::MultiWildcard(unit) => {
+                match MultiWildcard::try_from(unit).map_err(|e| {
+                    ProtobufConversionError::InvalidValue(format!("invalid multi-wildcard: {e}"))
+                })? {
+                    MultiWildcard::Unit => Ok(ast::DelimPatternElem::MultiWildcard),
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl From<&ast::DelimPatternElem> for models::expr::like_delimited::PatternElem {
+    fn from(v: &ast::DelimPatternElem) -> Self {
+        use models::expr::like_delimited::pattern_elem::{Data, MultiWildcard};
+        let data = match v {
+            ast::DelimPatternElem::Char(c) => Data::C(c.to_string()),
+            ast::DelimPatternElem::Wildcard => {
+                Data::Wildcard(models::expr::like::pattern_elem::Wildcard::Unit.into())
+            }
+            ast::DelimPatternElem::MultiWildcard => Data::MultiWildcard(MultiWildcard::Unit.into()),
+        };
+        Self { data: Some(data) }
     }
 }
 
@@ -1030,6 +1117,76 @@ mod test {
         assert_eq!(e, ast::Expr::try_from(models::Expr::from(&e)).unwrap());
         let e: ast::Expr = r#"- principal.foo"#.parse().unwrap();
         assert_eq!(e, ast::Expr::try_from(models::Expr::from(&e)).unwrap());
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn like_delimited_roundtrip() {
+        for src in [
+            r#"principal.foo like("*.example.com", ".")"#,
+            r#"principal.foo like("**.example.com", ".")"#,
+            r#"principal.foo like("/v1/***", "/")"#,
+            r#"principal.foo like("a\*b*", "\t")"#,
+            r#"principal.foo like("", "\u{2FFFF}")"#,
+        ] {
+            let e: ast::Expr = src.parse().unwrap();
+            assert_matches!(e.expr_kind(), ast::ExprKind::LikeDelimited { .. });
+            let proto = models::Expr::from(&e);
+            assert_matches!(
+                proto.expr_kind,
+                Some(models::expr::ExprKind::LikeDelimited(_))
+            );
+            assert_eq!(e, ast::Expr::try_from(proto.clone()).unwrap());
+            // Also roundtrip through the wire encoding.
+            let bytes = prost::Message::encode_to_vec(&proto);
+            let decoded: models::Expr = prost::Message::decode(bytes.as_slice()).unwrap();
+            assert_eq!(e, ast::Expr::try_from(decoded).unwrap());
+        }
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn like_delimited_invalid_delimiter() {
+        for bad in ["", "..", "*", "\u{30000}"] {
+            let msg = models::Expr {
+                expr_kind: Some(models::expr::ExprKind::LikeDelimited(Box::new(
+                    models::expr::LikeDelimited {
+                        expr: Some(Box::new(models::Expr::from(&ast::Expr::val("a")))),
+                        pattern: vec![],
+                        delim: bad.to_string(),
+                    },
+                ))),
+            };
+            assert_matches!(
+                ast::Expr::try_from(msg),
+                Err(ProtobufConversionError::InvalidValue(m)) if m.contains("delimiter")
+            );
+        }
+    }
+
+    /// Without `extended-like`, a `LikeDelimited` message must be rejected,
+    /// never silently decoded as a plain `like`.
+    #[cfg(not(feature = "extended-like"))]
+    #[test]
+    fn like_delimited_rejected_without_feature() {
+        use models::expr::like_delimited::pattern_elem::{Data, MultiWildcard};
+        let msg = models::Expr {
+            expr_kind: Some(models::expr::ExprKind::LikeDelimited(Box::new(
+                models::expr::LikeDelimited {
+                    expr: Some(Box::new(models::Expr::from(&ast::Expr::val("a.b")))),
+                    pattern: vec![models::expr::like_delimited::PatternElem {
+                        data: Some(Data::MultiWildcard(MultiWildcard::Unit.into())),
+                    }],
+                    delim: ".".to_string(),
+                },
+            ))),
+        };
+        let bytes = prost::Message::encode_to_vec(&msg);
+        let decoded: models::Expr = prost::Message::decode(bytes.as_slice()).unwrap();
+        assert_matches!(
+            ast::Expr::try_from(decoded),
+            Err(ProtobufConversionError::InvalidValue(m)) if m.contains("extended-like")
+        );
     }
 
     #[test]

@@ -84,6 +84,11 @@ pub enum FromJsonError {
     #[cfg(feature = "tolerant-ast")]
     #[error("AST error node")]
     ASTErrorNode,
+    /// Returned when the delimiter of a `likeDelimited` expression is invalid
+    #[cfg(feature = "extended-like")]
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    InvalidLikeDelimiter(#[from] crate::ast::InvalidLikeDelimiterError),
 }
 
 /// Errors arising while converting a policy set from its JSON representation (aka EST) into an AST

@@ -153,6 +153,80 @@ impl From<crate::ast::Pattern> for Vec<PatternElem> {
     }
 }
 
+/// Represent an element of a delimited pattern literal (`likeDelimited`)
+#[cfg(feature = "extended-like")]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub enum DelimPatternElem {
+    /// The wildcard asterisk; does not match the delimiter
+    Wildcard,
+    /// The double wildcard `**`; matches anything
+    MultiWildcard,
+    /// A string without any wildcards
+    Literal(SmolStr),
+}
+
+#[cfg(feature = "extended-like")]
+impl From<&[DelimPatternElem]> for crate::ast::DelimPattern {
+    fn from(value: &[DelimPatternElem]) -> Self {
+        let mut elems = Vec::new();
+        for elem in value {
+            match elem {
+                DelimPatternElem::Wildcard => {
+                    elems.push(crate::ast::DelimPatternElem::Wildcard);
+                }
+                DelimPatternElem::MultiWildcard => {
+                    elems.push(crate::ast::DelimPatternElem::MultiWildcard);
+                }
+                DelimPatternElem::Literal(s) => {
+                    elems.extend(s.chars().map(crate::ast::DelimPatternElem::Char));
+                }
+            }
+        }
+        Self::from(elems)
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl From<crate::ast::DelimPatternElem> for DelimPatternElem {
+    fn from(value: crate::ast::DelimPatternElem) -> Self {
+        match value {
+            crate::ast::DelimPatternElem::Wildcard => Self::Wildcard,
+            crate::ast::DelimPatternElem::MultiWildcard => Self::MultiWildcard,
+            crate::ast::DelimPatternElem::Char(c) => Self::Literal(c.to_smolstr()),
+        }
+    }
+}
+
+#[cfg(feature = "extended-like")]
+impl From<crate::ast::DelimPattern> for Vec<DelimPatternElem> {
+    fn from(value: crate::ast::DelimPattern) -> Self {
+        value.iter().map(|elem| (*elem).into()).collect()
+    }
+}
+
+/// Deserialize the `delim` field of `likeDelimited`, enforcing the delimiter
+/// restrictions (exactly one Unicode scalar value, not `*`, at most U+2FFFF).
+#[cfg(feature = "extended-like")]
+fn deserialize_like_delim<'de, D>(deserializer: D) -> Result<SmolStr, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = SmolStr::deserialize(deserializer)?;
+    match ast::LikeDelimiter::parse(&s) {
+        Ok(_) => Ok(s),
+        Err(e) => Err(serde::de::Error::custom(
+            FromJsonError::InvalidLikeDelimiter(e),
+        )),
+    }
+}
+
+/// Validate the `delim` field of `likeDelimited` during conversion.
+#[cfg(feature = "extended-like")]
+fn like_delim(delim: &SmolStr) -> Result<ast::LikeDelimiter, FromJsonError> {
+    Ok(ast::LikeDelimiter::parse(delim)?)
+}
+
 /// Represents the variants of the `has` operation, either a simple operation or
 /// the extended has operation
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -363,6 +437,19 @@ pub enum ExprNoExt {
         left: Arc<Expr>,
         /// Pattern
         pattern: Vec<PatternElem>,
+    },
+    /// Delimiter-aware `like(pattern, delim)`
+    #[cfg(feature = "extended-like")]
+    #[serde(rename = "likeDelimited")]
+    LikeDelimited {
+        /// Left-hand argument
+        left: Arc<Expr>,
+        /// Pattern
+        pattern: Vec<DelimPatternElem>,
+        /// Delimiter: exactly one Unicode scalar value, not `*`, at most U+2FFFF
+        #[serde(deserialize_with = "deserialize_like_delim")]
+        #[cfg_attr(feature = "wasm", tsify(type = "string"))]
+        delim: SmolStr,
     },
     /// `<entity> is <entity_type> in <entity_or_entity_set> `
     #[serde(rename = "is")]
@@ -714,6 +801,21 @@ impl ExprBuilder for Builder {
         })
     }
 
+    /// `left like(pattern, delim)`
+    #[cfg(feature = "extended-like")]
+    fn like_delimited(
+        self,
+        expr: Expr,
+        pattern: ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Expr {
+        Expr::ExprNoExt(ExprNoExt::LikeDelimited {
+            left: Arc::new(expr),
+            pattern: pattern.into(),
+            delim: delim.to_smolstr(),
+        })
+    }
+
     /// `left is entity_type`
     fn is_entity_type_arc(self, left: Arc<Expr>, entity_type: ast::EntityType) -> Expr {
         Expr::ExprNoExt(ExprNoExt::Is {
@@ -913,6 +1015,16 @@ impl Expr {
                     left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
                     pattern,
                 })),
+                #[cfg(feature = "extended-like")]
+                ExprNoExt::LikeDelimited {
+                    left,
+                    pattern,
+                    delim,
+                } => Ok(Expr::ExprNoExt(ExprNoExt::LikeDelimited {
+                    left: Arc::new(Arc::unwrap_or_clone(left).sub_entity_literals(mapping)?),
+                    pattern,
+                    delim,
+                })),
                 ExprNoExt::Is {
                     left,
                     entity_type,
@@ -1052,6 +1164,10 @@ impl Expr {
                         }
                     },
                     ExprNoExt::Like { left, .. } => {
+                        stack.push((left, child_depth));
+                    }
+                    #[cfg(feature = "extended-like")]
+                    ExprNoExt::LikeDelimited { left, .. } => {
                         stack.push((left, child_depth));
                     }
                     ExprNoExt::Is { left, in_expr, .. } => {
@@ -1214,6 +1330,19 @@ impl Expr {
                 Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
                 ast::Pattern::from(pattern.as_slice()),
             )),
+            #[cfg(feature = "extended-like")]
+            Expr::ExprNoExt(ExprNoExt::LikeDelimited {
+                left,
+                pattern,
+                delim,
+            }) => {
+                let delim = like_delim(&delim).map_err(B::BuildError::from)?;
+                Ok(builder.like_delimited(
+                    Arc::unwrap_or_clone(left).try_into_expr::<B>()?,
+                    ast::DelimPattern::from(pattern.as_slice()),
+                    delim,
+                ))
+            }
             Expr::ExprNoExt(ExprNoExt::Is {
                 left,
                 entity_type,
@@ -1384,6 +1513,19 @@ impl Expr {
                 Arc::unwrap_or_clone(left).try_into_ast(id)?,
                 crate::ast::Pattern::from(pattern.as_slice()),
             )),
+            #[cfg(feature = "extended-like")]
+            Expr::ExprNoExt(ExprNoExt::LikeDelimited {
+                left,
+                pattern,
+                delim,
+            }) => {
+                let delim = like_delim(&delim)?;
+                Ok(ast::Expr::like_delimited(
+                    Arc::unwrap_or_clone(left).try_into_ast(id)?,
+                    crate::ast::DelimPattern::from(pattern.as_slice()),
+                    delim,
+                ))
+            }
             Expr::ExprNoExt(ExprNoExt::Is {
                 left,
                 entity_type,
@@ -1820,6 +1962,20 @@ impl BoundedDisplay for ExprNoExt {
                     crate::ast::Pattern::from(pattern.as_slice())
                 )
             }
+            #[cfg(feature = "extended-like")]
+            ExprNoExt::LikeDelimited {
+                left,
+                pattern,
+                delim,
+            } => {
+                maybe_with_parens(f, left, n)?;
+                write!(
+                    f,
+                    " like(\"{}\", \"{}\")",
+                    crate::ast::DelimPattern::from(pattern.as_slice()),
+                    delim.escape_debug()
+                )
+            }
             ExprNoExt::Is {
                 left,
                 entity_type,
@@ -1998,6 +2154,13 @@ fn maybe_with_parens(
             write!(f, ")")?;
             Ok(())
         },
+        #[cfg(feature = "extended-like")]
+        Expr::ExprNoExt(ExprNoExt::LikeDelimited { .. }) => {
+            write!(f, "(")?;
+            BoundedDisplay::fmt(expr, f, n)?;
+            write!(f, ")")?;
+            Ok(())
+        }
         #[cfg(feature = "tolerant-ast")]
         Expr::ExprNoExt(ExprNoExt::Error { .. }) => {
             write!(f, "(")?;

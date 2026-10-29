@@ -2489,6 +2489,146 @@ mod test {
         assert_eq!(circular_roundtrip(est.clone()), est);
     }
 
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn like_delimited_roundtrip() {
+        let policy = r#"
+        permit(principal, action, resource)
+        when { context.host like("**.ex\*ample.*", ".") && context.p like "a**b" };
+    "#;
+        let cst = parser::text_to_cst::parse_policy(policy)
+            .unwrap()
+            .node
+            .unwrap();
+        let est: Policy = cst.try_into().unwrap();
+        let expected_json = json!(
+        {
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [
+              {
+                "kind": "when",
+                "body": {
+                  "&&": {
+                    "left": {
+                      "likeDelimited": {
+                        "left": { ".": { "left": { "Var": "context" }, "attr": "host" } },
+                        "pattern": [
+                          "MultiWildcard",
+                          { "Literal": "." },
+                          { "Literal": "e" },
+                          { "Literal": "x" },
+                          { "Literal": "*" },
+                          { "Literal": "a" },
+                          { "Literal": "m" },
+                          { "Literal": "p" },
+                          { "Literal": "l" },
+                          { "Literal": "e" },
+                          { "Literal": "." },
+                          "Wildcard"
+                        ],
+                        "delim": "."
+                      }
+                    },
+                    "right": {
+                      "like": {
+                        "left": { ".": { "left": { "Var": "context" }, "attr": "p" } },
+                        "pattern": [
+                          { "Literal": "a" },
+                          "Wildcard",
+                          "Wildcard",
+                          { "Literal": "b" }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+        });
+        assert_eq!(
+            serde_json::to_value(&est).unwrap(),
+            expected_json,
+            "\nExpected:\n{}\n\nActual:\n{}\n\n",
+            serde_json::to_string_pretty(&expected_json).unwrap(),
+            serde_json::to_string_pretty(&est).unwrap()
+        );
+        let old_est = est.clone();
+        let roundtripped = est_roundtrip(est);
+        assert_eq!(&old_est, &roundtripped);
+        let est = text_roundtrip(&old_est);
+        assert_eq!(&old_est, &est);
+        let est = ast_roundtrip(est);
+        assert_eq!(serde_json::to_value(&est).unwrap(), expected_json);
+        let est = circular_roundtrip(est);
+        assert_eq!(serde_json::to_value(&est).unwrap(), expected_json);
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn like_delimited_invalid_delimiter() {
+        for bad in ["", "..", "*", "\u{30000}"] {
+            let json = json!({
+                "likeDelimited": {
+                    "left": { "Value": "a" },
+                    "pattern": ["Wildcard"],
+                    "delim": bad,
+                }
+            });
+            let err = serde_json::from_value::<Expr>(json).unwrap_err();
+            assert!(
+                err.to_string().contains("delimiter"),
+                "unexpected error for {bad:?}: {err}"
+            );
+        }
+        // Programmatically-constructed ESTs are checked on conversion to AST.
+        let est = Expr::ExprNoExt(ExprNoExt::LikeDelimited {
+            left: std::sync::Arc::new(Expr::ExprNoExt(ExprNoExt::Value(
+                crate::entities::json::CedarValueJson::String("a".into()),
+            ))),
+            pattern: vec![DelimPatternElem::Wildcard],
+            delim: "*".into(),
+        });
+        assert_matches!(
+            est.try_into_ast(&ast::PolicyID::from_string("p")),
+            Err(FromJsonError::InvalidLikeDelimiter(d)) if d.input() == "*"
+        );
+    }
+
+    /// Without `extended-like`, a `likeDelimited` EST is an unknown operator
+    /// and must be rejected (never read as a plain `like`).
+    #[cfg(not(feature = "extended-like"))]
+    #[test]
+    fn like_delimited_rejected_without_feature() {
+        let json = json!({
+            "likeDelimited": {
+                "left": { "Value": "a.b" },
+                "pattern": ["MultiWildcard"],
+                "delim": ".",
+            }
+        });
+        assert_matches!(serde_json::from_value::<Expr>(json), Err(_));
+        let json = json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": [{
+                "kind": "when",
+                "body": {
+                    "likeDelimited": {
+                        "left": { "Value": "a.b" },
+                        "pattern": ["Wildcard"],
+                        "delim": ".",
+                    }
+                }
+            }]
+        });
+        assert_matches!(serde_json::from_value::<Policy>(json), Err(_));
+    }
+
     #[test]
     fn like_special_patterns() {
         let policy = r#"

@@ -242,6 +242,28 @@ impl Evaluator<'_> {
                     Residual::Error(_) => mk_error(),
                 }
             }
+            #[cfg(feature = "extended-like")]
+            ResidualKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => {
+                let expr = self.interpret(expr);
+                match &expr {
+                    Residual::Concrete { value, .. } => match value.get_as_string() {
+                        Ok(s) => {
+                            mk_concrete(pattern.wildcard_match_delimited(s, delim.as_char()).into())
+                        }
+                        Err(_) => mk_error(), // <error> like <pattern> => <error>
+                    },
+                    Residual::Partial { .. } => mk_residual(ResidualKind::LikeDelimited {
+                        expr: Arc::new(expr),
+                        pattern: pattern.clone(),
+                        delim: *delim,
+                    }),
+                    Residual::Error(_) => mk_error(),
+                }
+            }
             ResidualKind::BinaryApp { op, arg1, arg2 } => {
                 let arg1 = self.interpret(arg1);
                 let arg2 = self.interpret(arg2);
