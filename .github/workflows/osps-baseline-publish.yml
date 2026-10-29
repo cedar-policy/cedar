@@ -1,0 +1,77 @@
+# Scans this repository against the OSPS Baseline (Level 1) and publishes the
+# signed result to https://grc.store/targets/cedar/cedar.
+# Requires the CNCF-owned `cedar` namespace on grc.store, with this repository
+# bound as a trusted publisher for refs/heads/main.
+name: Publish OSPS Baseline results
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "Run the scan but publish nothing (bundles land in the pvtr-bundles artifact)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 4 * * 1" # Weekly, Mondays 04:23 UTC
+  # grc.store accepts one result per target and catalog every ten minutes, so
+  # this workflow has no push or pull_request trigger.
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read # Read the release tags
+    outputs:
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - name: Latest core release
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Highest non-prerelease vX.Y.Z tag. The cedar-policy-cli-v* release
+          # is the one GitHub marks "Latest", so it is filtered out here.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 \
+            --json tagName,isPrerelease --jq '.[] | select(.isPrerelease | not) | .tagName' \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
+          tag=${tag:-v0.0.0}
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+  results:
+    needs: version
+    permissions:
+      contents: read # The scanner reads this repository through the job token
+      id-token: write # Trusted publishing to grc.store and the Sigstore signing identity
+    # grc.store accepts results only from this workflow called by its v1 tag;
+    # a commit-SHA reference fails the hub's signer check.
+    uses: revanite-io/pvtr-publish-results/.github/workflows/publish.yml@v1 # zizmor: ignore[unpinned-uses]
+    with:
+      target: cedar/cedar@${{ needs.version.outputs.version }}
+      license: CC0-1.0
+      dry-run: ${{ inputs.dry-run == true }}
+    secrets:
+      # The scanner plugin reads its token only from these config vars. The job
+      # token is read-only and scoped to this repository; settings it cannot
+      # read, such as org MFA, report "Needs Review".
+      config: |
+        targets:
+          cedar:
+            plugin: openssf/github-repo
+            policy:
+              catalogs:
+                - osps-baseline
+              applicability:
+                - maturity-1
+            vars:
+              owner: cedar-policy
+              repo: cedar
+              token: ${{ secrets.GITHUB_TOKEN }}
