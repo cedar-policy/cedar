@@ -157,7 +157,9 @@ impl From<est::FromJsonError> for PstConstructionError {
                 slots: std::iter::once(e.slot.id.into()).collect(),
             }
             .into(),
-            est::FromJsonError::MissingOperator | est::FromJsonError::MultipleOperators { .. } => {
+            est::FromJsonError::MissingOperator
+            | est::FromJsonError::MultipleOperators { .. }
+            | est::FromJsonError::ExpressionTooDeep { .. } => {
                 error_body::InvalidExpressionError::new(err.to_string()).into()
             }
             #[cfg(feature = "tolerant-ast")]

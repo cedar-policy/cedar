@@ -12819,3 +12819,115 @@ mod validation_result_display_tests {
         assert_same(src);
     }
 }
+
+#[cfg(test)]
+mod test_depth_limit {
+    use super::*;
+    use cool_asserts::assert_matches;
+    use miette::Report;
+    use serde_json::json;
+
+    /// Checks the message of `e` or one of its sources
+    #[track_caller]
+    fn assert_too_deep(e: &dyn std::error::Error, depth: usize, limit: usize) {
+        let expected = format!("expression depth {depth} exceeds the configured limit of {limit}");
+        let mut e = Some(e);
+        while let Some(err) = e {
+            if err.to_string().contains(&expected) {
+                return;
+            }
+            e = err.source();
+        }
+        panic!("expected error containing `{expected}`");
+    }
+
+    #[test]
+    fn cedar_syntax() {
+        let policy = "permit(principal, action, resource) when { 1 + 2 };";
+        let template = "permit(principal == ?principal, action, resource) when { 1 + 2 };";
+        assert!(Policy::parse_with_depth_limit(None, policy, 4).is_ok());
+        assert_matches!(Policy::parse_with_depth_limit(None, policy, 3), Err(e) => assert_too_deep(&e, 4, 3));
+        assert!(Template::parse_with_depth_limit(None, template, 4).is_ok());
+        assert_matches!(Template::parse_with_depth_limit(None, template, 3), Err(e) => assert_too_deep(&e, 4, 3));
+        assert!(Expression::parse_with_depth_limit("1 + 2", 1).is_ok());
+        assert_matches!(Expression::parse_with_depth_limit("1 + 2", 0), Err(e) => assert_too_deep(&e, 1, 0));
+        assert!(RestrictedExpression::parse_with_depth_limit("[[1]]", 2).is_ok());
+        assert_matches!(RestrictedExpression::parse_with_depth_limit("[[1]]", 1), Err(e) => assert_too_deep(&e, 2, 1));
+
+        let src = format!("{policy} forbid(principal, action, resource);");
+        assert!(PolicySet::from_str_with_depth_limit(&src, 4).is_ok());
+        assert_matches!(PolicySet::from_str_with_depth_limit(&src, 3), Err(e) => {
+            expect_err(
+                src.as_str(),
+                &Report::new(e),
+                &ExpectedErrorMessageBuilder::error("expression depth 4 exceeds the configured limit of 3")
+                    .exactly_one_underline(policy)
+                    .build(),
+            );
+        });
+    }
+
+    #[test]
+    fn deep_cedar_syntax_no_stack_overflow() {
+        let n = 10000;
+        let parens = "(".repeat(n) + "1" + &")".repeat(n);
+        assert_matches!(Expression::parse_with_depth_limit(&parens, n - 1), Err(e) => assert_too_deep(&e, n, n - 1));
+        let sets = "[".repeat(n) + "1" + &"]".repeat(n);
+        assert_matches!(Expression::parse_with_depth_limit(&sets, n - 1), Err(e) => assert_too_deep(&e, n, n - 1));
+        let sum = vec!["1"; n + 1].join(" + ");
+        assert_matches!(Expression::parse_with_depth_limit(&sum, n - 1), Err(e) => assert_too_deep(&e, n, n - 1));
+    }
+
+    /// The parser drops the CST on a syntax error, before any depth check
+    #[test]
+    fn deep_cedar_syntax_with_syntax_error_no_stack_overflow() {
+        let n = 10000;
+        let deep = "[".repeat(n) + "1" + &"]".repeat(n);
+        assert!(Expression::parse_with_depth_limit(&format!("{deep} +"), 10).is_err());
+        assert!(Expression::parse_with_depth_limit(&format!("{deep})"), 10).is_err());
+        let policies = format!("permit(principal, action, resource) when {{ {deep} }}; garbage;");
+        assert!(PolicySet::from_str_with_depth_limit(&policies, 10).is_err());
+    }
+
+    fn policy_json(conditions: &[serde_json::Value]) -> serde_json::Value {
+        json!({
+            "effect": "permit",
+            "principal": { "op": "All" },
+            "action": { "op": "All" },
+            "resource": { "op": "All" },
+            "conditions": conditions,
+        })
+    }
+
+    #[test]
+    fn json() {
+        let policy = policy_json(&[
+            json!({ "kind": "when", "body": { "+": { "left": { "Value": 1 }, "right": { "Value": 2 } } } }),
+        ]);
+        assert!(Policy::from_json_with_depth_limit(None, policy.clone(), 4).is_ok());
+        assert_matches!(Policy::from_json_with_depth_limit(None, policy.clone(), 3), Err(e) => assert_too_deep(&e, 4, 3));
+
+        let mut template = policy.clone();
+        template["principal"] = json!({ "op": "==", "slot": "?principal" });
+        assert!(Template::from_json_with_depth_limit(None, template.clone(), 4).is_ok());
+        assert_matches!(Template::from_json_with_depth_limit(None, template, 3), Err(e) => assert_too_deep(&e, 4, 3));
+
+        let pset =
+            json!({ "staticPolicies": { "p": policy }, "templates": {}, "templateLinks": [] });
+        let text = pset.to_string();
+        assert!(PolicySet::from_json_value_with_depth_limit(pset.clone(), 4).is_ok());
+        assert_matches!(PolicySet::from_json_value_with_depth_limit(pset, 3), Err(e) => assert_too_deep(&e, 4, 3));
+        assert!(PolicySet::from_json_str_with_depth_limit(&text, 4).is_ok());
+        assert_matches!(PolicySet::from_json_str_with_depth_limit(&text, 3), Err(e) => assert_too_deep(&e, 4, 3));
+        assert!(PolicySet::from_json_file_with_depth_limit(text.as_bytes(), 4).is_ok());
+        assert_matches!(PolicySet::from_json_file_with_depth_limit(text.as_bytes(), 3), Err(e) => assert_too_deep(&e, 4, 3));
+    }
+
+    /// Many shallow conditions combine into a deep expression
+    #[test]
+    fn many_json_conditions_no_stack_overflow() {
+        let condition = json!({ "kind": "when", "body": { "Value": true } });
+        let policy = policy_json(&vec![condition; 100_000]);
+        assert_matches!(Policy::from_json_with_depth_limit(None, policy, 1000), Err(e) => assert_too_deep(&e, 100_002, 1000));
+    }
+}

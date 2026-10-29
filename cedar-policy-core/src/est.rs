@@ -251,7 +251,17 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Policy, FromJsonError> {
-        let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
+        self.try_into_ast_policy_with_depth_limit(id, None)
+    }
+
+    /// Like [`Self::try_into_ast_policy`], with an optional limit on expression depth.
+    pub fn try_into_ast_policy_with_depth_limit(
+        self,
+        id: Option<ast::PolicyID>,
+        depth_limit: Option<usize>,
+    ) -> Result<ast::Policy, FromJsonError> {
+        let template: ast::Template =
+            self.try_into_ast_policy_or_template_with_depth_limit(id, depth_limit)?;
         ast::StaticPolicy::try_from(template)
             .map(Into::into)
             .map_err(Into::into)
@@ -266,7 +276,17 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
-        let template: ast::Template = self.try_into_ast_policy_or_template(id)?;
+        self.try_into_ast_template_with_depth_limit(id, None)
+    }
+
+    /// Like [`Self::try_into_ast_template`], with an optional limit on expression depth.
+    pub fn try_into_ast_template_with_depth_limit(
+        self,
+        id: Option<ast::PolicyID>,
+        depth_limit: Option<usize>,
+    ) -> Result<ast::Template, FromJsonError> {
+        let template: ast::Template =
+            self.try_into_ast_policy_or_template_with_depth_limit(id, depth_limit)?;
         if template.slots().count() == 0 {
             Err(FromJsonError::PolicyToTemplate(
                 parse_errors::ExpectedTemplate::new(),
@@ -285,6 +305,16 @@ impl Policy {
         self,
         id: Option<ast::PolicyID>,
     ) -> Result<ast::Template, FromJsonError> {
+        self.try_into_ast_policy_or_template_with_depth_limit(id, None)
+    }
+
+    /// Like [`Self::try_into_ast_policy_or_template`], with an optional limit on
+    /// expression depth.
+    pub fn try_into_ast_policy_or_template_with_depth_limit(
+        self,
+        id: Option<ast::PolicyID>,
+        depth_limit: Option<usize>,
+    ) -> Result<ast::Template, FromJsonError> {
         let id = id.unwrap_or_else(|| ast::PolicyID::from_string("JSON policy"));
         // a right fold of conditions
         // e.g., [c1, c2, c3,] --> c1 && (c2 && c3)
@@ -295,6 +325,30 @@ impl Policy {
             .rev()
             .collect::<Result<Vec<_>, _>>()?
             .into_iter();
+        let principal: ast::PrincipalConstraint = self.principal.try_into()?;
+        let action: ast::ActionConstraint = self.action.try_into()?;
+        let resource: ast::ResourceConstraint = self.resource.try_into()?;
+        // Many shallow conditions can combine into a deep expression, so check
+        // before combining them.
+        if let Some(limit) = depth_limit {
+            let cond_depths: Vec<_> = conds_rev_iter
+                .as_slice()
+                .iter()
+                .rev()
+                .map(ast::Expr::depth)
+                .collect();
+            let depths = [
+                principal.as_expr().depth(),
+                action.as_expr().depth(),
+                resource.as_expr().depth(),
+                ast::conjunction_depth(&cond_depths).unwrap_or(0),
+            ];
+            if let Some(depth) = ast::conjunction_depth(&depths) {
+                if depth > limit {
+                    return Err(FromJsonError::ExpressionTooDeep { depth, limit });
+                }
+            }
+        }
         let conditions = if let Some(last_expr) = conds_rev_iter.next() {
             let builder = ast::ExprBuilder::with_data(());
             Some(conds_rev_iter.fold(last_expr, |acc, prev| builder.clone().and(prev, acc)))
@@ -315,9 +369,9 @@ impl Policy {
                 })
                 .collect(),
             self.effect,
-            self.principal.try_into()?,
-            self.action.try_into()?,
-            self.resource.try_into()?,
+            principal,
+            action,
+            resource,
             conditions,
         ))
     }
