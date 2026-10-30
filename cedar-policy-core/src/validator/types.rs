@@ -1349,20 +1349,34 @@ impl AttributeType {
 ///
 /// Note: the inclusion of duplicate types in this iterator is not entirely
 /// predictable. The iterator does not generally remove duplicates, but it does
-/// use `Arc` pointer equality to avoid visiting shared records multiple
-/// times. This applies to types parsed from a schema where they reference the
-/// same common type, but it could also apply any time two `Type`s
-/// happen to alias due to a clone elsewhere in the code.
+/// use pointer equality to avoid visiting shared records multiple times. This
+/// applies to types parsed from a schema where they reference the same common
+/// type, but it could also apply any time two `Type`s happen to alias due to a
+/// clone elsewhere in the code.
 pub(crate) struct TypeIterator<'a> {
     stack: Vec<&'a Type>,
-    /// The addresses of the attribute maps of the record types already
-    /// traversed. Records sharing a map (through its `Arc`) are the same.
-    ///
-    /// Deciding equality by address is sound because every record is obtained
-    /// from an element of `stack`, which has the lifetime `'a`, so we know the
-    /// pointer will continue to refer to the same record for the lifetime of
-    /// this iterator.
-    seen_records: HashSet<*const BTreeMap<SmolStr, AttributeType>>,
+    /// The attribute maps of the record types already traversed, compared with
+    /// pointer equality.
+    seen_records: HashSet<ByRef<'a, BTreeMap<SmolStr, AttributeType>>>,
+}
+
+/// A reference compared and hashed by address rather than by value. Holding
+/// the reference keeps the referent alive, so its address can't be reused by
+/// another value while this exists.
+struct ByRef<'a, T>(&'a T);
+
+impl<'a, T> Eq for ByRef<'a, T> {}
+
+impl<'a, T> PartialEq for ByRef<'a, T> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
+}
+
+impl<'a, T> std::hash::Hash for ByRef<'a, T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::ptr::hash(self.0, state);
+    }
 }
 
 impl<'a> TypeIterator<'a> {
@@ -1385,7 +1399,7 @@ impl<'a> Iterator for TypeIterator<'a> {
                     element_type: Some(el),
                 } => self.stack.push(el),
                 Type::Record { attrs, .. } => {
-                    if self.seen_records.insert(Arc::as_ptr(&attrs.attrs)) {
+                    if self.seen_records.insert(ByRef(Arc::as_ref(&attrs.attrs))) {
                         for (_, attr) in attrs.iter() {
                             self.stack.push(&attr.attr_type);
                         }
