@@ -22,6 +22,10 @@ Cedar Language Version: TBD
   once in one batch.
 - The policy formatter no longer puts a line break between a method name and its argument list when it splits
   a long attribute access chain (#2119).
+- `Policy::to_cedar()` and `PolicySet::to_cedar()` now return `None` for policies and templates (e.g., from
+  JSON) that cannot be represented in Cedar syntax, such as a method-style extension function call with no
+  receiver (`{"offset": []}`) or an extended `has` with a non-identifier attribute. Previously they returned
+  Cedar text that failed to parse (#2116).
 
 ## [4.14.0] - 2026-10-17
 

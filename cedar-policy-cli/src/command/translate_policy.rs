@@ -68,7 +68,9 @@ fn translate_policy_to_cedar(
     use miette::miette;
     let policy_set = read_json_policy_set(json_src)?;
     policy_set.to_cedar().ok_or_else(|| {
-        miette!("Unable to translate policy set containing template linked policies.")
+        miette!(
+            "unable to translate policy set containing template-linked policies or policies that cannot be represented in Cedar syntax"
+        )
     })
 }
 
