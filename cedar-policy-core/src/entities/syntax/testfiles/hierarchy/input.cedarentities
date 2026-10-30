@@ -1,0 +1,9 @@
+instance User::"alice" in UserGroup::"admins";
+instance User::"bob" in [UserGroup::"editors", UserGroup::"viewers"];
+instance User::"carol";
+instance UserGroup::"admins";
+instance UserGroup::"editors";
+instance UserGroup::"viewers";
+instance Photo::"sunset.jpg" in Album::"vacation";
+instance Album::"vacation" in Account::"alice";
+instance Account::"alice";
