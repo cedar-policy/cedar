@@ -306,43 +306,6 @@ when
     }
 
     #[test]
-    fn test_unquoted_attributes() {
-        // Attributes that are valid identifiers are written without quotes
-        // (#2118). Formatting the result again must not change it.
-        let config = Config {
-            line_width: 80,
-            indent_width: 2,
-        };
-        let cedar_source = r#"permit(principal, action, resource) when {
-            principal["name"] == "alice" && principal has "name" &&
-            principal["first name"] == "alice" && principal has "first name" &&
-            principal["if"] && principal has "if" &&
-            principal["\u{6e}ame"] == "alice" && principal has "\u{6e}ame"
-        };"#;
-        let formatted = policies_str_to_pretty(cedar_source, &config).unwrap();
-        assert_eq!(
-            formatted,
-            r#"permit (principal, action, resource)
-when
-{
-  principal.name == "alice" &&
-  principal has name &&
-  principal["first name"] == "alice" &&
-  principal has "first name" &&
-  principal["if"] &&
-  principal has "if" &&
-  principal["\u{6e}ame"] == "alice" &&
-  principal has "\u{6e}ame"
-};
-"#
-        );
-        assert_eq!(
-            policies_str_to_pretty(&formatted, &config).unwrap(),
-            formatted
-        );
-    }
-
-    #[test]
     fn test_format_files() {
         let config = Config {
             line_width: 80,

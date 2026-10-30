@@ -19,6 +19,21 @@ permit(principal, action, resource) when {
   principal has "\u{6e}ame"
 };
 
+// Quoted and unquoted attributes can be mixed in one access chain
+permit(principal, action, resource) when {
+  principal["has space"]["foo"] &&
+  principal["has space"].foo &&
+  principal["foo"]["has space"] &&
+  principal.foo["has space"]["bar"]
+};
+
+// The right-hand side of a chained `has` is always made of identifiers
+permit(principal, action, resource) when {
+  principal has foo.bar &&
+  principal["has space"] has foo.bar &&
+  principal["foo"] has bar.baz
+};
+
 // Index-style access with a comment on the brackets or the string is kept as is
 permit(principal, action, resource) when {
   principal
