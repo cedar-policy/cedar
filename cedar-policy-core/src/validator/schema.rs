@@ -1218,7 +1218,7 @@ impl ValidatorSchema {
     /// Returns an iterator over all leaf types reachable from entity attributes, tags, and
     /// action contexts. Leaf types are all types except `Set` and `Record`, which are
     /// traversed into automatically.
-    /// Note that a type is traversed multiple times if it is referenced multiple times; consumers
+    /// Note that a type may be traversed multiple times depending on how it is referened elsewhere; consumers
     /// should use [`Itertools::unique`] when they care about not visiting a type multiple times.
     fn leaf_types(&self) -> TypeIterator<'_> {
         let mut stack: Vec<&Type> = Vec::new();
