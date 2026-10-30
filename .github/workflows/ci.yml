@@ -62,3 +62,18 @@ jobs:
       - run: cargo install cargo-semver-checks --locked
       - run: cargo semver-checks check-release --package cedar-policy --baseline-root ../base
         working-directory: head
+
+  cargo_dist_plan:
+    name: Check CLI release plan
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install dist
+        shell: bash
+        run: |
+          version=$(sed -n 's/^cargo-dist-version = "\(.*\)"$/\1/p' Cargo.toml)
+          curl --proto '=https' --tlsv1.2 -LsSf "https://github.com/axodotdev/cargo-dist/releases/download/v${version}/cargo-dist-installer.sh" | sh
+      - name: Run dist plan
+        run: dist plan --output-format=json > /dev/null
