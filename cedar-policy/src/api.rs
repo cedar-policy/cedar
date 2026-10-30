@@ -513,24 +513,25 @@ impl Entities {
     ///
     /// The caller is responsible for ensuring that the entities already form a
     /// DAG and are transitively closed; that is, each entity's `parents` must
-    /// already contain all of its transitive ancestors. Nothing is verified, and
-    /// violating this yields an `Entities` whose `in` and ancestor queries are
-    /// incorrect. This is useful for performance if you already maintain the
-    /// transitive closure yourself; otherwise prefer
-    /// [`Entities::from_entities`], which computes it.
+    /// already contain all of its transitive ancestors. Transitivity and
+    /// acyclicity are not verified, and violating them yields an `Entities`
+    /// whose `in` and ancestor queries are incorrect. This is useful for
+    /// performance if you already maintain the transitive closure yourself;
+    /// otherwise prefer [`Entities::from_entities`], which computes it.
     ///
-    /// `schema` represents a source of `Action` entities, which will be added
-    /// to the entities provided.
-    /// (If any `Action` entities are present in the provided entities, and a
-    /// `schema` is also provided, each `Action` entity in the provided entities
-    /// must exactly match its definition in the schema or an error is
-    /// returned.)
+    /// The supplied ancestors are stored as direct parents, so later updates
+    /// such as [`Entities::upsert_entities`] will not remove them; the caller
+    /// remains responsible for the hierarchy after construction.
     ///
-    /// If a `schema` is present, this function will also ensure that the
-    /// produced entities fully conform to the `schema` -- for instance, it will
-    /// error if attributes have the wrong types (e.g., string instead of
-    /// integer), or if required attributes are missing or superfluous
-    /// attributes are provided.
+    /// If a `schema` is present, this function will also:
+    /// - add the `Action` entities defined in the `schema`. Any `Action`
+    ///   entities already in `entities` must exactly match their definition in
+    ///   the `schema`, or an error is returned.
+    /// - ensure that the produced entities fully conform to the `schema` -- for
+    ///   instance, it will error if attributes have the wrong types (e.g.,
+    ///   string instead of integer), or if required attributes are missing or
+    ///   superfluous attributes are provided.
+    ///
     /// ## Errors
     /// - [`EntitiesError::Duplicate`] if there are any duplicate entities in `entities`
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform

@@ -9672,9 +9672,9 @@ mod test_entities_api {
         assert_eq!(decision, Decision::Deny);
     }
 
-    /// Three-level hierarchy `alice -> admins -> acme`. `closed` lists `acme`
-    /// directly on `alice`, as a caller maintaining its own transitive closure
-    /// would; `direct` lists only immediate parents.
+    /// Three-level hierarchy `alice -> admins -> acme`. When `closed`, `alice`
+    /// also lists `acme` directly, as a caller maintaining its own transitive
+    /// closure would; otherwise each entity lists only its immediate parent.
     fn hierarchy(closed: bool) -> Vec<Entity> {
         let alice_parents = if closed {
             HashSet::from([admins(), acme()])
