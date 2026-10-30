@@ -28,7 +28,7 @@ targets = [
     "x86_64-pc-windows-msvc",
 ]
 include = ["NOTICE", "THIRD_PARTY_LICENSES.txt"]
-pr-run-mode = "plan"
+pr-run-mode = "skip"
 install-updater = false
 post-announce-jobs = ["./build_experimental", "./set_release_title"]
 
