@@ -37,6 +37,7 @@ pub mod op;
 mod result;
 mod smtlib_script;
 pub mod solver;
+#[cfg(feature = "local-solver")]
 pub mod solver_pool;
 mod symbolizer;
 mod tags;

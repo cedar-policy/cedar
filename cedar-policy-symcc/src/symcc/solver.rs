@@ -33,11 +33,16 @@
 
 use super::smtlib_script::SmtLibScript;
 use miette::Diagnostic;
+#[cfg(feature = "local-solver")]
 use std::ffi::OsStr;
 use std::future::Future;
+#[cfg(feature = "local-solver")]
 use std::process::Stdio;
 use thiserror::Error;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::AsyncWriteExt;
+#[cfg(feature = "local-solver")]
+use tokio::io::{AsyncBufReadExt, BufReader, BufWriter};
+#[cfg(feature = "local-solver")]
 use tokio::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command};
 
 /// Satisfiability decision from the SMT solver.
@@ -163,6 +168,7 @@ pub trait Solver {
     fn check_sat_with_model(&mut self) -> impl Future<Output = Result<DecisionWithModel>> + Send;
 }
 
+#[cfg(feature = "local-solver")]
 /// A solver instance that communicates with a local SMT solver process
 /// through stdin/stdout.
 ///
@@ -197,6 +203,7 @@ pub struct LocalSolver {
     solver_stderr: BufReader<ChildStderr>,
 }
 
+#[cfg(feature = "local-solver")]
 impl LocalSolver {
     /// Creates a new [`LocalSolver`] from a custom [`Command`].
     ///
@@ -240,6 +247,7 @@ impl LocalSolver {
     }
 }
 
+#[cfg(feature = "local-solver")]
 impl Solver for LocalSolver {
     fn smtlib_input(&mut self) -> &mut (dyn tokio::io::AsyncWrite + Unpin + Send) {
         &mut self.solver_stdin
@@ -303,6 +311,7 @@ impl Solver for LocalSolver {
     }
 }
 
+#[cfg(feature = "local-solver")]
 impl LocalSolver {
     async fn check_child_process_status(&mut self) -> Result<()> {
         if let Some(status) = self.child.try_wait()? {
