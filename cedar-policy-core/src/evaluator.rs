@@ -382,7 +382,7 @@ impl<'e> Evaluator<'e> {
     /// it doesn't consider whether we're processing a `Permit` policy or a
     /// `Forbid` policy.
     pub fn evaluate(&self, p: &Policy) -> Result<bool> {
-        self.interpret(&p.condition(), p.env())?.get_as_bool()
+        self.interpret(p.condition_ref(), p.env())?.get_as_bool()
     }
 
     /// Partially evaluate the given `Policy`, returning one of:
@@ -395,7 +395,7 @@ impl<'e> Evaluator<'e> {
     ///    it doesn't consider whether we're processing a `Permit` policy or a
     ///    `Forbid` policy.
     pub fn partial_evaluate(&self, p: &Policy) -> Result<Either<bool, Expr>> {
-        match self.partial_interpret(&p.condition(), p.env())? {
+        match self.partial_interpret(p.condition_ref(), p.env())? {
             PartialValue::Value(v) => v.get_as_bool().map(Either::Left),
             PartialValue::Residual(e) => Ok(Either::Right(e)),
         }
