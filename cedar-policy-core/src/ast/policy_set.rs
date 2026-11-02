@@ -18,6 +18,8 @@ use super::{
     EntityUID, LinkingError, Policy, PolicyID, SlotId, StaticPolicy, Template,
     TemplateValidationError,
 };
+pub(crate) use action_index::ActionIndex;
+use action_index::IndexedLinks;
 use itertools::Itertools;
 use linked_hash_map::{Entry, LinkedHashMap};
 use linked_hash_set::LinkedHashSet;
@@ -26,6 +28,8 @@ use miette::Diagnostic;
 use smol_str::format_smolstr;
 use std::{borrow::Borrow, collections::HashMap, sync::Arc};
 use thiserror::Error;
+
+mod action_index;
 
 /// Represents a set of `Policy`s
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -41,7 +45,7 @@ pub struct PolicySet {
     ///   (this is managed by `PolicySet::add`)
     ///   The static policy's PolicyID is the same in both `templates` and `links`
     /// A `Template` may have zero or many links
-    links: LinkedHashMap<PolicyID, Policy>,
+    links: IndexedLinks,
 
     /// Map from a template `PolicyID` to the set of `PolicyID`s in `links` that are linked to that template.
     /// There is a key `t` iff `templates` contains the key `t`. The value of `t` will be a (possibly empty)
@@ -116,7 +120,7 @@ impl PolicySet {
     pub fn new() -> Self {
         Self {
             templates: LinkedHashMap::new(),
-            links: LinkedHashMap::new(),
+            links: IndexedLinks::default(),
             template_to_links_map: LinkedHashMap::new(),
         }
     }
@@ -137,7 +141,7 @@ impl PolicySet {
     ) -> Self {
         Self {
             templates,
-            links,
+            links: links.into(),
             template_to_links_map,
         }
     }
@@ -178,7 +182,7 @@ impl PolicySet {
             }
         };
 
-        let link_ventry = match self.links.entry(policy.id().clone()) {
+        let link_ventry = match self.links.get_mut().entry(policy.id().clone()) {
             Entry::Vacant(ventry) => Some(ventry),
             Entry::Occupied(oentry) => {
                 return Err(PolicySetError::Occupied {
@@ -289,7 +293,7 @@ impl PolicySet {
             }
         }
         // Similarly for non-static links colliding with templates
-        for (pid, link) in &other.links {
+        for (pid, link) in other.links.iter() {
             if !link.is_static() && self.get_template(pid).is_some() && !renaming.contains_key(pid)
             {
                 let new_pid = self.get_fresh_id(other, &mut min_id);
@@ -315,7 +319,7 @@ impl PolicySet {
                 self.templates.insert(pid.clone(), other_template.clone());
             }
         }
-        for (pid, other_policy) in &other.links {
+        for (pid, other_policy) in other.links.iter() {
             // First update this policy's id. We need to do this for static and linked policies.
             let (new_pid, other_policy) = if let Some(new_pid) = renaming.get(pid) {
                 (new_pid.clone(), other_policy.new_id(new_pid.clone()))
@@ -335,7 +339,7 @@ impl PolicySet {
                 }
                 _ => other_policy,
             };
-            self.links.insert(new_pid, other_policy);
+            self.links.get_mut().insert(new_pid, other_policy);
         }
         for (tid, other_template_link_set) in &other.template_to_links_map {
             let tid = renaming.get(tid).unwrap_or(tid);
@@ -358,7 +362,7 @@ impl PolicySet {
     ) -> Result<Policy, PolicySetPolicyRemovalError> {
         // Invariant: if `policy_id` is a key in both `self.links` and `self.templates`,
         // then self.templates[policy_id] has exactly one link: self.links[policy_id]
-        let policy = match self.links.remove(policy_id) {
+        let policy = match self.links.get_mut().remove(policy_id) {
             Some(p) => p,
             None => {
                 return Err(PolicySetPolicyRemovalError::RemovePolicyNoLinkError(
@@ -375,7 +379,7 @@ impl PolicySet {
             None => {
                 //If we removed the link but failed to remove the template
                 //restore the link and return an error
-                self.links.insert(policy_id.clone(), policy);
+                self.links.get_mut().insert(policy_id.clone(), policy);
                 Err(PolicySetPolicyRemovalError::RemovePolicyNoTemplateError(
                     policy_id.clone(),
                 ))
@@ -389,7 +393,7 @@ impl PolicySet {
 
         match (
             self.templates.entry(t.id().clone()),
-            self.links.entry(t.id().clone()),
+            self.links.get_mut().entry(t.id().clone()),
         ) {
             (Entry::Vacant(templates_entry), Entry::Vacant(links_entry)) => {
                 self.template_to_links_map.insert(
@@ -504,7 +508,7 @@ impl PolicySet {
 
         // Both maps must not contain the `new_id`
         match (
-            self.links.entry(new_id.clone()),
+            self.links.get_mut().entry(new_id.clone()),
             self.templates.entry(new_id.clone()),
         ) {
             (Entry::Vacant(links_entry), Entry::Vacant(_)) => {
@@ -531,7 +535,7 @@ impl PolicySet {
         if self.templates.contains_key(policy_id) {
             return Err(PolicySetUnlinkError::NotLinkError(policy_id.clone()));
         }
-        match self.links.remove(policy_id) {
+        match self.links.get_mut().remove(policy_id) {
             Some(p) => {
                 #[expect(clippy::panic, reason = "every linked policy should have a template")]
                 match self.template_to_links_map.entry(p.template().id().clone()) {
@@ -546,6 +550,11 @@ impl PolicySet {
         }
     }
 
+    /// The index of this set's policies by action.
+    pub(crate) fn action_index(&self) -> &ActionIndex {
+        self.links.action_index()
+    }
+
     /// Iterate over all policies
     pub fn policies(&self) -> impl Iterator<Item = &Policy> {
         self.links.values()
@@ -553,7 +562,7 @@ impl PolicySet {
 
     /// Consume the `PolicySet`, producing an iterator of all the policies in it
     pub fn into_policies(self) -> impl Iterator<Item = Policy> {
-        self.links.into_iter().map(|(_, p)| p)
+        self.links.into_inner().into_iter().map(|(_, p)| p)
     }
 
     /// Iterate over everything stored as template, including static policies.
@@ -618,7 +627,7 @@ impl PolicySet {
     /// - consistency of `template_to_links_map` with `templates` and `links`,
     /// - that linked policy IDs don't collide with template IDs.
     pub fn try_validate(self) -> Result<Self, PolicySetValidationError> {
-        for (link_id, policy) in &self.links {
+        for (link_id, policy) in self.links.iter() {
             if !policy.is_static() {
                 // Check it's a real template
                 if policy.template().slots().count() == 0 {
@@ -686,7 +695,7 @@ mod test {
     use super::*;
     use crate::{
         ast::{
-            annotation::Annotations, ActionConstraint, Effect, PrincipalConstraint,
+            annotation::Annotations, ActionConstraint, Effect, Entity, PrincipalConstraint,
             ResourceConstraint,
         },
         parser,
@@ -1217,6 +1226,157 @@ mod test {
         );
         assert!(pset.get(&tid1).is_none());
         assert_eq!(pset.all_templates().count(), 4);
+    }
+
+    /// The IDs of the policies that the action index of `pset` yields for
+    /// `action`, when the action has the given ancestors.
+    fn candidate_ids(pset: &PolicySet, action: &str, ancestors: &[&str]) -> Vec<String> {
+        let action_uid = EntityUID::with_eid_and_type("Action", action).expect("valid type");
+        let entity = Entity::new_with_attr_partial_value(
+            action_uid.clone(),
+            [],
+            ancestors
+                .iter()
+                .map(|a| EntityUID::with_eid_and_type("Action", a).expect("valid type"))
+                .collect(),
+            std::collections::HashSet::new(),
+            [],
+        );
+        let with_entity: Vec<String> = pset
+            .action_index()
+            .candidates(&action_uid, Some(&entity))
+            .map(|p| p.id().to_string())
+            .collect();
+        if ancestors.is_empty() {
+            // an action with no entity in the store has no ancestors either
+            let without_entity: Vec<String> = pset
+                .action_index()
+                .candidates(&action_uid, None)
+                .map(|p| p.id().to_string())
+                .collect();
+            assert_eq!(with_entity, without_entity);
+        }
+        with_entity
+    }
+
+    #[test]
+    fn action_index_candidates() {
+        let mut pset = parser::parse_policyset(
+            r#"
+            permit(principal, action, resource);
+            permit(principal, action == Action::"view", resource);
+            permit(principal, action == Action::"edit", resource);
+            permit(principal, action in [Action::"view", Action::"edit"], resource);
+            permit(principal, action in [Action::"read", Action::"all"], resource);
+            permit(principal, action in Action::"read", resource);
+            permit(principal, action in [], resource);
+            forbid(principal == ?principal, action == Action::"view", resource);
+            forbid(principal, action, resource) when { resource.locked };
+        "#,
+        )
+        .expect("policies parse");
+        pset.link(
+            PolicyID::from_string("policy7"),
+            PolicyID::from_string("link"),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUID::with_eid_and_type("User", "alice").expect("valid type"),
+            )]),
+        )
+        .expect("linking succeeds");
+
+        // candidates are in the order of `policies()`: the static policies in
+        // source order, then the link
+        assert_eq!(
+            pset.policies().map(|p| p.id().to_string()).collect_vec(),
+            [
+                "policy0", "policy1", "policy2", "policy3", "policy4", "policy5", "policy6",
+                "policy8", "link"
+            ]
+        );
+        assert_eq!(
+            candidate_ids(&pset, "view", &[]),
+            ["policy0", "policy1", "policy3", "policy8", "link"]
+        );
+        assert_eq!(
+            candidate_ids(&pset, "edit", &[]),
+            ["policy0", "policy2", "policy3", "policy8"]
+        );
+        // `action in` also matches the ancestors of the action, and a policy
+        // that names two of them is listed once
+        assert_eq!(
+            candidate_ids(&pset, "view", &["read", "all"]),
+            ["policy0", "policy1", "policy3", "policy4", "policy5", "policy8", "link"]
+        );
+        // `action ==` does not match an ancestor of the action
+        assert_eq!(
+            candidate_ids(&pset, "other", &["view"]),
+            ["policy0", "policy3", "policy8"]
+        );
+        assert_eq!(candidate_ids(&pset, "other", &[]), ["policy0", "policy8"]);
+    }
+
+    #[test]
+    fn action_index_follows_changes() {
+        let id = |id: &str| PolicyID::from_string(id);
+        let forbid_view = |id: PolicyID| {
+            parser::parse_policy(
+                Some(id),
+                r#"forbid(principal, action == Action::"view", resource);"#,
+            )
+            .expect("policy parses")
+        };
+        let mut pset = PolicySet::new();
+        assert!(candidate_ids(&pset, "view", &[]).is_empty());
+
+        pset.add_static(forbid_view(id("a")))
+            .expect("fresh policy id");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["a"]);
+        let with_a = pset.clone();
+
+        pset.add(forbid_view(id("b")).into())
+            .expect("fresh policy id");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["a", "b"]);
+
+        pset.remove_static(&id("a")).expect("policy is in the set");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["b"]);
+
+        pset.add_template(
+            parser::parse_policy_or_template(
+                Some(id("t")),
+                r#"permit(principal == ?principal, action == Action::"view", resource);"#,
+            )
+            .expect("template parses"),
+        )
+        .expect("fresh template id");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["b"]);
+
+        pset.link(
+            id("t"),
+            id("l"),
+            HashMap::from([(
+                SlotId::principal(),
+                EntityUID::with_eid_and_type("User", "alice").expect("valid type"),
+            )]),
+        )
+        .expect("linking succeeds");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["b", "l"]);
+        let with_link = pset.clone();
+
+        pset.unlink(&id("l")).expect("link is in the set");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["b"]);
+
+        pset.remove_template(&id("t"))
+            .expect("template has no links");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["b"]);
+
+        pset.merge_policyset(&with_a, false)
+            .expect("no policy id in common");
+        assert_eq!(candidate_ids(&pset, "view", &[]), ["b", "a"]);
+
+        // a clone keeps answering for the policies it was cloned with
+        assert_eq!(candidate_ids(&with_a, "view", &[]), ["a"]);
+        assert_eq!(candidate_ids(&with_link, "view", &[]), ["b", "l"]);
     }
 
     #[test]
