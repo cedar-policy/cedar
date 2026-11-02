@@ -140,6 +140,22 @@ pub fn get_comment_in_range<'src>(
     )
 }
 
+/// Check whether any token in the given span has a comment, without consuming
+/// any comments.
+pub fn has_comment_in_range(
+    span: Option<miette::SourceSpan>,
+    tokens: &[WrappedToken<'_>],
+) -> Option<bool> {
+    let span = span?;
+    Some(
+        tokens
+            .iter()
+            .skip_while(|t| t.span.start < span.offset())
+            .take_while(|t| t.span.end <= span.offset() + span.len())
+            .any(|t| !t.comment.is_empty()),
+    )
+}
+
 /// Wrap an `RcDoc` with comments. If there is a leading comment, then this
 /// will introduce a newline bat the start of the `RcDoc`. If there is a
 /// trailing comment, then it will introduce a newline at the end.

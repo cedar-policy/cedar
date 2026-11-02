@@ -64,6 +64,10 @@ impl<'src> Comment<'src> {
         self.trailing_comment
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.leading_comment.is_empty() && self.trailing_comment.is_empty()
+    }
+
     fn format_leading_comment(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for comment_line in itertools::Itertools::intersperse(self.leading_comment.iter(), &"\n") {
             write!(f, "{comment_line}")?;

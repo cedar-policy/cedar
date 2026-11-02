@@ -17,6 +17,7 @@
 use super::utils::*;
 use super::Context;
 
+use cedar_policy_core::ast::is_normalized_ident;
 use cedar_policy_core::parser::{cst::*, Node};
 use pretty::RcDoc;
 
@@ -307,7 +308,7 @@ impl Doc for Node<Option<Relation>> {
                         RcDoc::nil(),
                     ))
                     .append(RcDoc::line())
-                    .append(field.to_doc(context)?.nest(context.config.indent_width))
+                    .append(has_field_to_doc(field, context)?.nest(context.config.indent_width))
                     .group(),
             ),
             Relation::Like { target, pattern } => Some(
@@ -750,6 +751,85 @@ impl Doc for Node<Option<Primary>> {
     }
 }
 
+/// If `e` consists of nothing but a string literal which is a valid
+/// identifier, return the literal along with its contents. The attribute named
+/// by such a literal can be written without quotes, e.g., `principal has name`
+/// instead of `principal has "name"`.
+fn add_as_ident_literal(e: &Node<Option<Add>>) -> Option<(&Node<Option<Literal>>, &str)> {
+    let Add { initial, extended } = e.as_inner()?;
+    if !extended.is_empty() {
+        return None;
+    }
+    let Mult { initial, extended } = initial.as_inner()?;
+    if !extended.is_empty() {
+        return None;
+    }
+    let Unary { op: None, item } = initial.as_inner()? else {
+        return None;
+    };
+    let Member { item, access } = item.as_inner()?;
+    if !access.is_empty() {
+        return None;
+    }
+    let Primary::Literal(lit) = item.as_inner()? else {
+        return None;
+    };
+    let Literal::Str(s) = lit.as_inner()? else {
+        return None;
+    };
+    // `Str::String` holds the literal exactly as written, so a string with
+    // escape sequences is never mistaken for an identifier.
+    let Str::String(s) = s.as_inner()? else {
+        return None;
+    };
+    is_normalized_ident(s).then_some((lit, s.as_str()))
+}
+
+/// Like [`add_as_ident_literal`], but for an arbitrary expression such as the
+/// index in `principal["name"]`, and returning only the identifier.
+fn expr_as_ident_literal(e: &Node<Option<Expr>>) -> Option<&str> {
+    let expr = match e.as_inner()? {
+        Expr::Expr(expr_impl) => expr_impl.expr.as_ref(),
+        #[cfg(feature = "tolerant-ast")]
+        Expr::ErrorExpr => return None,
+    };
+    let ExprData::Or(or) = expr else {
+        return None;
+    };
+    let Or { initial, extended } = or.as_inner()?;
+    if !extended.is_empty() {
+        return None;
+    }
+    let And { initial, extended } = initial.as_inner()?;
+    if !extended.is_empty() {
+        return None;
+    }
+    let Relation::Common { initial, extended } = initial.as_inner()? else {
+        return None;
+    };
+    if !extended.is_empty() {
+        return None;
+    }
+    add_as_ident_literal(initial).map(|(_, attr)| attr)
+}
+
+/// Convert the right-hand side of `has` to a doc, writing `has "name"` as
+/// `has name`. The identifier is a single token, just like the string literal
+/// it replaces, so it keeps any comment attached to the literal.
+fn has_field_to_doc<'src>(
+    field: &Node<Option<Add>>,
+    context: &mut Context<'_, 'src>,
+) -> Option<RcDoc<'src>> {
+    match add_as_ident_literal(field) {
+        Some((lit, attr)) => Some(add_comment(
+            RcDoc::as_string(attr),
+            get_comment_at_start(lit.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
+            RcDoc::nil(),
+        )),
+        None => field.to_doc(context),
+    }
+}
+
 impl Doc for Node<Option<MemAccess>> {
     fn to_doc<'src>(&self, context: &mut Context<'_, 'src>) -> Option<RcDoc<'src>> {
         let e = self.as_inner()?;
@@ -811,22 +891,37 @@ impl Doc for Node<Option<MemAccess>> {
                     RcDoc::nil(),
                 )),
             ),
-            MemAccess::Index(idx) => Some(
-                add_comment(
-                    RcDoc::text("["),
-                    get_comment_at_start(
+            MemAccess::Index(idx) => {
+                // Write `["name"]` as `.name`, unless there is a comment on
+                // one of the tokens that would be removed.
+                if let Some(attr) = expr_as_ident_literal(idx) {
+                    if !has_comment_in_range(
                         self.loc.as_ref().map(|loc| loc.span),
-                        &mut context.tokens,
-                    )?,
-                    RcDoc::nil(),
+                        &context.tokens,
+                    )? {
+                        return Some(RcDoc::text(".").append(RcDoc::as_string(attr)));
+                    }
+                }
+                Some(
+                    add_comment(
+                        RcDoc::text("["),
+                        get_comment_at_start(
+                            self.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    )
+                    .append(idx.to_doc(context))
+                    .append(add_comment(
+                        RcDoc::text("]"),
+                        get_comment_at_end(
+                            self.loc.as_ref().map(|loc| loc.span),
+                            &mut context.tokens,
+                        )?,
+                        RcDoc::nil(),
+                    )),
                 )
-                .append(idx.to_doc(context))
-                .append(add_comment(
-                    RcDoc::text("]"),
-                    get_comment_at_end(self.loc.as_ref().map(|loc| loc.span), &mut context.tokens)?,
-                    RcDoc::nil(),
-                )),
-            ),
+            }
         }
     }
 }
