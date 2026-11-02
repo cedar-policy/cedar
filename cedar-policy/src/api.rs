@@ -5247,11 +5247,7 @@ impl Request {
     ///
     /// Note that you can create the `EntityUid`s using `.parse()` on any
     /// string (via the `FromStr` implementation for `EntityUid`).
-    /// The principal, action, and resource fields are optional to support
-    /// the case where these fields do not contribute to authorization
-    /// decisions (e.g., because they are not used in your policies).
-    /// If any of the fields are `None`, we will automatically generate
-    /// a unique entity UID that is not equal to any UID in the store.
+    ///
     ///
     /// If `schema` is present, this constructor will validate that the
     /// `Request` complies with the given `schema`.
