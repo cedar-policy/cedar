@@ -19,7 +19,9 @@ Cedar Language Version: TBD
 - The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
   becomes `principal.name` and `principal has "name"` becomes `principal has name` (#2118).
 
-## [4.14.1] - Coming soon
+## [4.14.1] - 2026-11-02
+
+Cedar Language Version: 4.6
 
 ### Fixed
 
