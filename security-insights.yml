@@ -7,6 +7,9 @@ header:
 project:
   name: Cedar
   homepage: https://www.cedarpolicy.com/
+  steward:
+    uri: https://www.linuxfoundation.org/security
+    comment: Cedar is a Cloud Native Computing Foundation (CNCF) Sandbox project. The Linux Foundation is its steward under the EU Cyber Resilience Act, as SECURITY.md describes.
   administrators:
     - name: John Kastner
       affiliation: Amazon
