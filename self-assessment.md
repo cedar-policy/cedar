@@ -5,7 +5,7 @@
 
 This is the Cedar team's security self-assessment of the [cedar-policy/cedar](https://github.com/cedar-policy/cedar) repository.
 
-Last reviewed: 2026-10-28
+Last reviewed: 2026-11-03
 
 ## Self-assessment outline
 
@@ -67,12 +67,12 @@ Cedar's policy structure enables access requests to be decided quickly.
 To help policy writers avoid mistakes, Cedar offers and encourges the use of _schema_ to type check policies. 
 Cedar's design has been finely balanced to allow for a sound and complete logical encoding, which enables precise policy analysis, e.g., to ensure that when refactoring a set of policies, the authorized permissions do not change.
 Cedar is implemented in Rust and modeled in the Lean programming language, where important formal properties of its design are proven to hold.
-Details about the Cedar language can be found in the [OOPSLA paper](https://doi.org/10.1145/3649835).
+Details about the Cedar language can be found in the [OOPSLA paper](https://arxiv.org/abs/2403.04651).
 
 Cedar was built with verification-guided development (VGD).
 A formal model in Lean defines Cedar's semantics, and Lean proofs establish properties of that model.
 The Rust implementation in this repository is then tested against the model with differential random testing (DRT).
-The approach is described in the Amazon Science post [How we built Cedar with automated reasoning and differential testing](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing) and the paper [How We Built Cedar: A Verification-Guided Approach](https://dl.acm.org/doi/10.1145/3663529.3663854).
+The approach is described in the Amazon Science post [How we built Cedar with automated reasoning and differential testing](https://www.amazon.science/blog/how-we-built-cedar-with-automated-reasoning-and-differential-testing) and the paper [How We Built Cedar: A Verification-Guided Approach](https://arxiv.org/abs/2407.01688).
 
 Security is shared between Cedar and the applications that use it, as the [Cedar security documentation](https://docs.cedarpolicy.com/other/security.html#security-shared-responsibility) describes. Cedar is responsible for evaluating policies correctly. The application is responsible for writing policies that express its intent and for giving Cedar accurate data.
 
@@ -113,7 +113,7 @@ This repository contains these crates:
 
 #### Goals
 
-* **Correctness of Cedar's core functionalities.** Authorization, validation, symbolic analysis with SymCC, and type-aware partial evaluation behave as Cedar's Lean model specifies. This holds for any input, including policies, schemas, entities, and requests written by an attacker. The [Cedar paper](https://dl.acm.org/doi/10.1145/3649835) lists some notable properties proved about the model: a satisfied `forbid` policy always denies the request, a request with no satisfied `permit` policy is denied, and validated policies evaluate without type errors.
+* **Correctness of Cedar's core functionalities.** Authorization, validation, symbolic analysis with SymCC, and type-aware partial evaluation behave as Cedar's Lean model specifies. This holds for any input, including policies, schemas, entities, and requests written by an attacker. The [Cedar paper](https://arxiv.org/abs/2403.04651) lists some notable properties proved about the model: a satisfied `forbid` policy always denies the request, a request with no satisfied `permit` policy is denied, and validated policies evaluate without type errors.
 A complete account of Cedar's formal semantics and proven properties can be found in the [cedar-spec GitHub repository](https://github.com/cedar-policy/cedar-spec).
 
 * **Faithfulness of policy to user intention.** Cedar syntax is designed for human readability and Cedar semantics is proven to have universally desirable properties. In addition, Cedar provides tools like schema and symbolic compiler for users automate policy analysis for better assurance.
@@ -124,7 +124,7 @@ A complete account of Cedar's formal semantics and proven properties can be foun
 * **Input size limits.** Cedar places no limit on the size of policies, schemas, or requests. Services that accept arbitrary input must bound its size to protect against memory exhaustion, as the [security documentation](https://docs.cedarpolicy.com/other/security.html#security-input-validation) says.
 * **Storage and distribution of policies.** Where policies and entity data are stored, and who may change them, is up to the application.
 * **Isolation from the host process.** Cedar is a library. It does not protect against other code running in the same process.
-* **Stack overflow protection on Wasm and Android.** On platforms that the `stacker` crate does not support, Cedar assumes there is enough stack, so very deeply nested input can crash the process.
+* **Stack overflow protection for all input.** Evaluation and validation check the remaining stack, but only on platforms that the `stacker` crate supports, which excludes Wasm. Parsing policies and schemas in Cedar syntax has no stack check on any platform. On these paths, very deeply nested input can crash the process.
 * **Other implementations.** [cedar-go](https://github.com/cedar-policy/cedar-go) and [cedar-java](https://github.com/cedar-policy/cedar-java) are separate repositories and are not assessed here.
 * **Side channels.** Side channels such as timing and power usage are not part of the Cedar model.
 
@@ -144,9 +144,9 @@ This document provides readers with an initial understanding of Cedar to assist 
 | System integrity and confidentiality | A crafted policy, schema, entity, or request tries to make Cedar read files, the network, or the clock | Data tampering/leak from the host | Cedar runs in memory. |
 | Memory safety | Input that triggers undefined behavior | Arbitrary code execution in the host | `unsafe` Rust code is forbidden in every crate. Dependencies are checked by cargo-audit and cargo-deny. |
 | Memory exhaustion | Input crafted to make parsing, validation, or evaluation use excessive memory or CPU | Denial of service against the host application | Evaluation of bounded input terminates. As it is still possible to exhaust memory, applications need to bound input size. |
-| Stack overflow | Deeply nested expressions | A possible crash on Wasm and Android | The evaluator's stack check, and documentation of the platform limitation |
+| Stack overflow | Deeply nested policies, schemas, or entity data |  The host process crashes | Evaluation and validation return a `RecursionLimit` error where `stacker` is supported. JSON input stops at serde_json's nesting limit of 128. Parsing policies and schemas in Cedar syntax has no stack check on any platform, long entity parent chains overflow while entities load ([#2660](https://github.com/cedar-policy/cedar/issues/2660)), and evaluation and validation have no check on Wasm. |
 | Panic | Malformed input reaches code that panics | The host process crashes | Clippy denies panicking constructs. Thorough fuzzing. |
-| Supply chain attack | A malicious or vulnerable crate enters the build | Any of the above | [Cargo.lock](Cargo.lock), cargo-audit on every pull request, cargo-deny, and Dependabot alerts and updates |
+| Supply chain attack | A malicious or vulnerable crate enters the build | Any of the above | [Cargo.lock](Cargo.lock), cargo-audit on every pull request, cargo-deny, and Dependabot alerts and updates. |
 | Compromised release | A tampered package, or a stolen publishing credential | Users install malicious code | crates.io trusted publishing. Publishing jobs run in a `release` environment that needs approval from the core team. npm packages carry build provenance. Gap: CLI binaries on GitHub releases are not signed. |
 | CI workflow abuse | Content from an untrusted pull request reaches a workflow with write permissions | Repository or release tampering | `comment_pr.yml` runs code from the default branch and treats the pull request's coverage artifact as data. |
 
@@ -170,7 +170,7 @@ Cedar provides features that encourage good authorization practices. The [securi
 **Security relevant.** These are choices made by whoever deploys Cedar. They do not change whether Cedar computes decisions correctly, but they limit what untrusted input can do to the host.
 
 * **Input size limits.** Cedar does not bound the size of its input. A service that accepts policies, schemas, entities, or requests from untrusted parties must set limits to protect against memory exhaustion.
-* **Platform and stack size.** Where the `stacker` crate is supported, deeply nested input produces a `RecursionLimit` error, and callers can allow deeper input with `stacker::grow`. Wasm and Android have no such check, so deployments there should also bound nesting depth.
+* **Nesting depth and stack size.** Evaluation and validation check the remaining stack. Where the `stacker` crate is supported, deeply nested input there produces a `RecursionLimit` error, and callers can allow deeper input with `stacker::grow`. Wasm has no such check. JSON policies, entities, and schemas fail with a parse error beyond serde_json's nesting limit of 128. Parsing policies and schemas in Cedar syntax has no check on any platform. Long entity parent chains can also overflow the stack while entities load ([#2660](https://github.com/cedar-policy/cedar/issues/2660)). Services that accept Cedar-syntax policies or schemas, or entity data, from untrusted parties should bound their nesting depth and parent-chain length.
 * **Cargo features.** The defaults enable only the `ipaddr`, `decimal`, and `datetime` extensions. Experimental features, such as TPE, entity manifests, and protobuf support, are off by default, and enabling one adds code that untrusted input can reach.
 * **Solver.** SymCC runs whichever cvc5 binary the CLI's `--cvc5-path` option, the `CVC5` environment variable, or `PATH` names, so deployments should point it at a trusted cvc5 binary.
 
@@ -193,7 +193,7 @@ Cedar does not claim compliance with any security standard. The project publishe
   * The pull request's branch name and head commit reach the shell only through quoted environment variables.
   * GitHub CLI extracts the artifact into its own directory, and has rejected paths outside it since version 2.63.1 ([CVE-2024-54132](https://github.com/advisories/GHSA-2m9h-r57g-45pj)). GitHub-hosted Ubuntu runners ship a later version.
   * The token cannot push code, and the repository setting that lets Actions approve pull requests is off.
-* **Verification.** Cedar follows [verification-guided development (VGD)](https://dl.acm.org/doi/10.1145/3663529.3663854). Any language changes or significant new features are marked as experimental until the Lean model and proofs are updated, and the nightly fuzzing runs have ran successfully without any failures for at least 2 days. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
+* **Verification.** Cedar follows [verification-guided development (VGD)](https://arxiv.org/abs/2407.01688). Any language changes or significant new features are marked as experimental until the Lean model and proofs are updated, and the nightly fuzzing runs have ran successfully without any failures for at least 2 days. The Lean model and proofs live in [cedar-spec](https://github.com/cedar-policy/cedar-spec). Its [cedar-drt](https://github.com/cedar-policy/cedar-spec/tree/main/cedar-drt) folder holds the differential and property-based fuzz targets. Long fuzzing runs happen on maintainer infrastructure outside GitHub. Their minimized corpus is published in [cedar-integration-tests](https://github.com/cedar-policy/cedar-integration-tests) and refreshed with each minor release.
 * **Language changes.** Substantial changes to the language go through the [RFC process](https://github.com/cedar-policy/rfcs).
 
 #### Dependency management
@@ -248,7 +248,7 @@ See [security advisories](https://github.com/cedar-policy/cedar/security/advisor
 
 #### OpenSSF Best Practices
 
-Cedar's [OpenSSF Best Practices](https://www.bestpractices.dev/projects/11398) entry is 87% of the way to the passing badge, and was last updated on 2026-10-27.
+Cedar's [OpenSSF Best Practices](https://www.bestpractices.dev/projects/11398) entry is 87% of the way to the passing badge. The entry itself was last edited on 2026-10-27.
 
 #### Case studies
 
@@ -256,7 +256,7 @@ Practical use cases can be found in [cedar-examples](https://github.com/cedar-po
 
 #### Related projects
 
-Open Policy Agent's Rego and OpenFGA are the projects users most often compare with Cedar. The [Trail of Bits report](https://github.com/trailofbits/publications/blob/master/reports/Policy_Language_Security_Comparison_and_TM.pdf) compares the three by threat group, and the [OOPSLA 2024 paper](https://dl.acm.org/doi/10.1145/3649835) compares readability and performance.
+Open Policy Agent's Rego and OpenFGA are the projects users most often compare with Cedar. The [Trail of Bits report](https://github.com/trailofbits/publications/blob/master/reports/Policy_Language_Security_Comparison_and_TM.pdf) compares the three by threat group, and the [OOPSLA 2024 paper](https://arxiv.org/abs/2403.04651) compares readability and performance.
 
 #### Third-party security reviews
 

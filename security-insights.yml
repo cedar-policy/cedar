@@ -1,12 +1,15 @@
 header:
   schema-version: 2.2.0
-  last-updated: '2026-10-29'
+  last-updated: '2026-11-03'
   last-reviewed: '2026-10-28'
   url: https://raw.githubusercontent.com/cedar-policy/cedar/main/security-insights.yml
 
 project:
   name: Cedar
   homepage: https://www.cedarpolicy.com/
+  steward:
+    uri: https://www.linuxfoundation.org/security
+    comment: Cedar is a Cloud Native Computing Foundation (CNCF) Sandbox project. The Linux Foundation is its steward under the EU Cyber Resilience Act, as SECURITY.md describes.
   administrators:
     - name: John Kastner
       affiliation: Amazon
@@ -80,7 +83,7 @@ project:
     detailed-guide: https://docs.cedarpolicy.com/
     quickstart-guide: https://github.com/cedar-policy/cedar#quick-start
     code-of-conduct: https://github.com/cedar-policy/cedar/blob/main/CODE_OF_CONDUCT.md
-    design: https://dl.acm.org/doi/10.1145/3649835 
+    design: https://arxiv.org/abs/2403.04651
 
 repository:
   url: https://github.com/cedar-policy/cedar
@@ -162,7 +165,7 @@ repository:
       self:
         name: Cedar security self-assessment
         evidence: https://github.com/cedar-policy/cedar/blob/main/self-assessment.md
-        date: '2026-10-28'
+        date: '2026-11-03'
         comment: OSPS self-assessment of this repository, following the OpenSSF self-assessment template. It covers the actors, actions, goals and non-goals, attack surface, security functions, development practices, and security issue resolution.
       third-party:
         - name: 'Cedar, Rego, and OpenFGA Policy Languages: Comparative Language Security Assessment'
@@ -284,7 +287,7 @@ repository:
             location: https://github.com/cedar-policy/cedar/actions/workflows/build_downstream_deps.yml
       - name: OSPS Baseline Scanner
         type: other
-        comment: Runs weekly and on demand from .github/workflows/osps-baseline-publish.yml, scanning this repository against the OSPS Baseline at Level 1. Each run publishes a signed result to grc.store.
+        comment: Runs weekly and on demand from .github/workflows/osps-baseline-publish.yml, scanning this repository against the OSPS Baseline at Level 1. Each run publishes a signed result to https://grc.store/targets/cedar/cedar.
         rulesets:
           - osps-baseline
         integration:
@@ -295,4 +298,4 @@ repository:
           adhoc:
             name: OSPS Baseline evaluation
             predicate-uri: https://github.com/revanite-io/pvtr-publish-results
-            location: https://grc.store/targets/cedar/cedar
+            location: https://github.com/cedar-policy/cedar/actions/workflows/osps-baseline-publish.yml
