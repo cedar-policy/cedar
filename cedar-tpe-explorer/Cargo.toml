@@ -1,0 +1,63 @@
+[package]
+name = "cedar-tpe-explorer"
+edition.workspace = true
+rust-version.workspace = true
+version = "0.1.0"
+license.workspace = true
+publish = false
+description = "Explore Cedar type-aware partial evaluation: residuals, needed facts, and solver-backed suggestions (TUI and WASM front ends)"
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[[bin]]
+name = "cedar-tpe-tui"
+required-features = ["tui"]
+
+[features]
+default = ["tui"]
+# SymCC with a local `cvc5` process.
+local-solver = ["cedar-policy-symcc/local-solver"]
+# The terminal UI (`cargo run -p cedar-tpe-explorer`).
+tui = ["local-solver", "dep:ratatui", "dep:clap", "tokio/rt"]
+# WASM bindings for the web front end (build with `scripts/build-wasm.sh`).
+wasm = ["dep:wasm-bindgen", "dep:wasm-bindgen-futures", "dep:js-sys"]
+
+[dependencies]
+cedar-policy = { version = "=4.14.0", path = "../cedar-policy", features = ["tpe"] }
+cedar-policy-core = { version = "=4.14.0", path = "../cedar-policy-core", features = ["tpe"] }
+cedar-policy-symcc = { path = "../cedar-policy-symcc", default-features = false }
+smol_str = { version = "0.3", features = ["serde"] }
+serde_json = "1.0"
+thiserror = "2.0"
+miette = "7.6.0"
+send_wrapper = { version = "0.6", features = ["futures"] }
+tokio = { version = "1.52", default-features = false, features = ["io-util"] }
+ratatui = { version = "0.30", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+# Must match the wasm-bindgen CLI used to generate the JS glue.
+wasm-bindgen = { version = "=0.2.129", optional = true }
+wasm-bindgen-futures = { version = "0.4", optional = true }
+js-sys = { version = "0.3", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1.52", features = ["rt", "macros"] }
+
+[[test]]
+name = "every_slot"
+required-features = ["local-solver"]
+
+[[test]]
+name = "batch"
+required-features = ["local-solver"]
+
+[[test]]
+name = "suggest"
+required-features = ["local-solver"]
+
+[[test]]
+name = "regressions"
+required-features = ["local-solver"]
+
+[lints]
+workspace = true

@@ -8,6 +8,7 @@ members = [
 	"cedar-testing",
 	"cedar-wasm",
 	"cedar-language-server",
+	"cedar-tpe-explorer",
 ]
 
 resolver = "2"
@@ -46,6 +47,14 @@ overflow-checks = true
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# Size-optimized WASM build for the TPE explorer web front end.
+[profile.wasm]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
 
 [profile.bench]
 overflow-checks = true

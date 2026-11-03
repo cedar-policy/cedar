@@ -1,0 +1,27 @@
+namespace PhotoApp {
+  entity UserGroup;
+  entity Album;
+
+  entity User in [UserGroup] {
+    meta: {
+      dept: String,
+      tier?: Long,
+    },
+    name: String,
+    nickname?: String,
+  } tags String;
+
+  entity Photo in [Album] {
+    owner_dept: String,
+    private: Bool,
+  };
+
+  action view appliesTo {
+    principal: User,
+    resource: Photo,
+    context: {
+      authn_method: String,
+      ip?: String,
+    },
+  };
+}

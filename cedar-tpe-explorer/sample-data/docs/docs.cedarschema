@@ -1,0 +1,26 @@
+namespace Docs {
+  entity Team;
+  entity User in [Team] {
+    level: Long,
+    profile?: {
+      country: String,
+      verified?: Bool,
+    },
+  } tags String;
+
+  entity Folder in [Folder];
+  entity Document in [Folder] {
+    owner: User,
+    labels: Set<String>,
+    title: String,
+  };
+
+  action read, edit appliesTo {
+    principal: User,
+    resource: Document,
+    context: {
+      ip: ipaddr,
+      mfa?: Bool,
+    },
+  };
+}
