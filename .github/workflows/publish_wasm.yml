@@ -69,7 +69,7 @@ jobs:
             - name: Set up Node.js
               uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  node-version: "latest"
+                  node-version: "26" # Node 26 LTS, bundles npm 11
                   registry-url: "https://registry.npmjs.org"
             # Compute the name of the release branch associated with the specified tag.
             - name: Compute release branch.
@@ -139,7 +139,7 @@ jobs:
             - name: Set up Node.js
               uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
               with:
-                  node-version: "latest"
+                  node-version: "26" # Node 26 LTS, bundles npm 11
                   registry-url: "https://registry.npmjs.org"
             - name: Install typescript
               run: npm install --global typescript
@@ -153,6 +153,15 @@ jobs:
               run: test "v$(jq --raw-output .version ./cedar-wasm/pkg/package.json)" = "$TAG_NAME"
               env:
                   TAG_NAME: ${{ inputs.tag }}
+            - name: Check package contents
+              run: |
+                  set -o pipefail
+                  missing=$(npm pack --dry-run --json | jq -r --slurpfile pkg package.json '$pkg[0].files - [.[].files[].path] | .[]')
+                  if [ -n "$missing" ]; then
+                      echo "Files missing from package:" $missing
+                      exit 1
+                  fi
+              working-directory: ./cedar-wasm/pkg/
             - name: Publish to NPM
               # Note: npm will implicitly apply the "latest" tag if the `--tag` option is not specified.
               # If the version to be released is less than the previously published "latest" version and 
