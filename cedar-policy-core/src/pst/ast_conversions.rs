@@ -505,7 +505,6 @@ impl Expr {
             Expr::ResidualError => builder
                 .call_extension_fn(crate::tpe::residual::ERROR_NAME.clone(), std::iter::empty())
                 .unwrap_infallible(),
-            #[cfg(feature = "variadic-is-in-range")]
             Expr::VariadicOp { op, left, rights } => {
                 #[expect(
                     clippy::unwrap_used,
@@ -1043,7 +1042,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "variadic-is-in-range")]
     #[test]
     fn test_variadic_is_in_range_3_args_roundtrip() {
         let expr =
@@ -1051,7 +1049,6 @@ mod tests {
         assert_expr_roundtrip(expr);
     }
 
-    #[cfg(feature = "variadic-is-in-range")]
     #[test]
     fn test_variadic_is_in_range_4_args_roundtrip() {
         let expr = parse_expr(
@@ -1064,7 +1061,6 @@ mod tests {
         assert_expr_roundtrip(expr);
     }
 
-    #[cfg(feature = "variadic-is-in-range")]
     #[test]
     fn test_variadic_is_in_range_3_args_produces_variadic_op() {
         let expr =
@@ -1076,7 +1072,6 @@ mod tests {
         });
     }
 
-    #[cfg(feature = "variadic-is-in-range")]
     #[test]
     fn test_variadic_is_in_range_2_args_stays_binary() {
         let expr = parse_expr(r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"))"#);
@@ -1085,18 +1080,6 @@ mod tests {
             assert_eq!(*op, BinaryOp::IsInRange);
         });
         assert_expr_roundtrip(expr);
-    }
-
-    #[cfg(not(feature = "variadic-is-in-range"))]
-    #[test]
-    fn test_is_in_range_3_args_fails_without_feature() {
-        let expr =
-            parse_expr(r#"ip("10.0.0.1").isInRange(ip("192.168.0.0/16"), ip("10.0.0.0/8"))"#);
-        let result: Result<Expr, _> = expr.try_into();
-        assert!(
-            result.is_err(),
-            "should fail with 3 args when feature disabled"
-        );
     }
 
     /// Test that extension methods that normalize to operators convert correctly

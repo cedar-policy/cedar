@@ -696,7 +696,6 @@ fn test_extension() {
 }
 
 #[test]
-#[cfg(feature = "variadic-is-in-range")]
 fn test_extension_variadic() {
     with_simple_schema_and_request(|s, q| {
         assert_types_must_match(

@@ -64,10 +64,8 @@ experimental = [
     "entity-manifest",
     "partial-validate",
     "partial-eval",
-    "variadic-is-in-range",
 ]
 tpe = []
-variadic-is-in-range = []
 
 # Unstable tooling features
 unstable-tooling = ["tolerant-ast", "extended-schema"]

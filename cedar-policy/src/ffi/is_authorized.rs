@@ -1192,7 +1192,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(feature = "variadic-is-in-range")]
     fn test_authorized_on_simple_slice_with_context_variadic() {
         let call = json!({
             "principal": {

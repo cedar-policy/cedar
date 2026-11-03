@@ -1480,7 +1480,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "variadic-is-in-range")]
     #[test]
     fn test_est_to_pst_variadic_is_in_range() {
         use crate::pst::VariadicOp;
@@ -1494,17 +1493,5 @@ mod tests {
             assert_eq!(rights.len(), 2);
         });
         roundtrips(pst_expr);
-    }
-
-    #[cfg(not(feature = "variadic-is-in-range"))]
-    #[test]
-    fn test_est_to_pst_variadic_is_in_range_fails_without_feature() {
-        let json = r#"{"isInRange": [{"ip": [{"Value": "10.0.0.1"}]}, {"ip": [{"Value": "192.168.0.0/16"}]}, {"ip": [{"Value": "10.0.0.0/8"}]}]}"#;
-        let est_expr: est::Expr = serde_json::from_str(json).unwrap();
-        let result: Result<Expr, _> = est_expr.try_into();
-        assert!(
-            result.is_err(),
-            "should fail with 3 args when feature disabled"
-        );
     }
 }

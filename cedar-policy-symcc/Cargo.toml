@@ -33,8 +33,7 @@ cool_asserts = "2.0"
 insta = "1.47"
 
 [features]
-experimental = ["variadic-is-in-range"]
-variadic-is-in-range = []
+experimental = []
 
 [lints]
 workspace = true

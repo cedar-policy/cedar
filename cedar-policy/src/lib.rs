@@ -49,7 +49,6 @@
 //! own risk.
 //!
 //! - `experimental` — Enables all experimental features listed below.
-//! - `variadic-is-in-range` — Variadic overload for the `isInRange` function.
 //! - `tpe` — Type-aware partial evaluation / batched authorization.
 //! - `partial-eval` — Partial evaluation of Cedar policies. You should prefer `tpe` above.
 //! - `partial-validate` — Partial validation of Cedar policies.
