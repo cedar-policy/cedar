@@ -1,0 +1,21 @@
+namespace HealthCareApp {
+    instance User::"Victor" in Role::"admin" {
+        displayName: "Victor"
+    };
+
+    instance User::"DrSeuz" in Role::"doctor" {
+        displayName: "Dr. Seuz"
+    };
+
+    instance Role::"admin";
+    instance Role::"doctor";
+
+    instance Appointment::"appointment003" in Patient::"Victor" {
+        provider: User::"DrSeuz",
+        patient: User::"Victor"
+    };
+
+    instance Patient::"Victor" {
+        associatedUser: User::"Victor"
+    };
+}

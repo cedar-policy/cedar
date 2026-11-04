@@ -19,7 +19,7 @@ use clap::Args;
 use miette::WrapErr;
 use std::str::FromStr;
 
-use crate::{load_entities, CedarExitCode, OptionalSchemaArgs, RequestArgs};
+use crate::{CedarExitCode, OptionalEntitiesArgs, OptionalSchemaArgs, RequestArgs};
 
 #[derive(Args, Debug)]
 pub struct EvaluateArgs {
@@ -32,10 +32,10 @@ pub struct EvaluateArgs {
     /// parsing of entity hierarchy, if present
     #[command(flatten)]
     pub schema: OptionalSchemaArgs,
-    /// File containing JSON representation of the Cedar entity hierarchy.
+    /// Entities args (incorporated by reference).
     /// This is optional; if not present, we'll just use an empty hierarchy.
-    #[arg(long = "entities", value_name = "FILE")]
-    pub entities_file: Option<String>,
+    #[command(flatten)]
+    pub entities: OptionalEntitiesArgs,
     /// Expression to evaluate
     #[arg(value_name = "EXPRESSION")]
     pub expression: String,
@@ -65,15 +65,13 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
-    let entities = match &args.entities_file {
-        None => Entities::empty(),
-        Some(file) => match load_entities(file, schema.as_ref()) {
-            Ok(entities) => entities,
-            Err(e) => {
-                println!("{e:?}");
-                return (CedarExitCode::Failure, EvalResult::Bool(false));
-            }
-        },
+    let entities = match args.entities.get_entities(schema.as_ref()) {
+        Ok(Some(entities)) => entities,
+        Ok(None) => Entities::empty(),
+        Err(e) => {
+            println!("{e:?}");
+            return (CedarExitCode::Failure, EvalResult::Bool(false));
+        }
     };
     match eval_expression(&request, &entities, &expr).wrap_err("failed to evaluate the expression")
     {

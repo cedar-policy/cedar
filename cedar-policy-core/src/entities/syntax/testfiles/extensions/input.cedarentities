@@ -1,0 +1,30 @@
+instance Host::"webserver1" = {
+    "addr": ip("192.168.1.100"),
+    "subnet": ip("10.0.0.0/8"),
+    "backup_addrs": [ip("192.168.1.101"), ip("192.168.1.102")]
+};
+
+instance Product::"widget" = {
+    "price": decimal("19.99"),
+    "discount": decimal("0.15"),
+    "weight": decimal("2.5")
+};
+
+instance Event::"deployment" = {
+    "scheduled_at": datetime("2026-03-15T10:30:00Z"),
+    "timeout": duration("30m"),
+    "window": {
+        "start": datetime("2026-03-15T10:00:00Z"),
+        "end": datetime("2026-03-15T11:00:00Z"),
+        "max_duration": duration("2h")
+    }
+};
+
+instance Server::"prod1" = {
+    "config": {
+        "listen_addr": ip("0.0.0.0"),
+        "allowed_ranges": [ip("10.0.0.0/8"), ip("172.16.0.0/12")],
+        "heartbeat_interval": duration("5s"),
+        "max_uptime": duration("30d")
+    }
+};
