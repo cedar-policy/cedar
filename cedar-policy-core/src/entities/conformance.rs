@@ -534,6 +534,7 @@ pub enum TypecheckError {
 #[cfg(test)]
 mod test_typecheck {
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     use cool_asserts::assert_matches;
     use miette::Report;
@@ -743,7 +744,7 @@ mod test_typecheck {
                 attrs: BTreeMap::from([(
                     "a".to_smolstr(),
                     AttributeType {
-                        attr_type: SchemaType::Long,
+                        attr_type: Arc::new(SchemaType::Long),
                         required: true,
                     },
                 )]),
@@ -758,7 +759,7 @@ mod test_typecheck {
                 attrs: BTreeMap::from([(
                     "a".to_smolstr(),
                     AttributeType {
-                        attr_type: SchemaType::Long,
+                        attr_type: Arc::new(SchemaType::Long),
                         required: false,
                     },
                 )]),
@@ -788,7 +789,7 @@ mod test_typecheck {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"{a: false}".parse().unwrap()).unwrap(),
-                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: Arc::new(SchemaType::Long), required: true })]), open_attrs: false },
                 Extensions::all_available(),
             ),
             Err(e@TypecheckError::TypeMismatch(_)) => {
@@ -802,7 +803,7 @@ mod test_typecheck {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"{a: {}}".parse().unwrap()).unwrap(),
-                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: false })]), open_attrs: false },
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: Arc::new(SchemaType::Long), required: false })]), open_attrs: false },
                 Extensions::all_available(),
             ),
             Err(e@TypecheckError::TypeMismatch(_)) => {
@@ -816,7 +817,7 @@ mod test_typecheck {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"{}".parse().unwrap()).unwrap(),
-                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: Arc::new(SchemaType::Long), required: true })]), open_attrs: false },
                 Extensions::all_available(),
             ),
             Err(e@TypecheckError::TypeMismatch(_)) => {
@@ -830,7 +831,7 @@ mod test_typecheck {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"{a: 1, b: 1}".parse().unwrap()).unwrap(),
-                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: true })]), open_attrs: false },
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: Arc::new(SchemaType::Long), required: true })]), open_attrs: false },
                 Extensions::all_available(),
             ),
             Err(e@TypecheckError::TypeMismatch(_)) => {
@@ -844,7 +845,7 @@ mod test_typecheck {
         assert_matches!(
             typecheck_restricted_expr_against_schematype(
                 BorrowedRestrictedExpr::new(&"{b: 1}".parse().unwrap()).unwrap(),
-                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: SchemaType::Long, required: false })]), open_attrs: false },
+                &SchemaType::Record { attrs: BTreeMap::from([("a".to_smolstr(), AttributeType { attr_type: Arc::new(SchemaType::Long), required: false })]), open_attrs: false },
                 Extensions::all_available(),
             ),
             Err(e@TypecheckError::TypeMismatch(_)) => {
