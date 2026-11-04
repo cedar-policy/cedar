@@ -21,9 +21,17 @@ import "core.proto";
 
 // the protobuf Schema message describes a schema, which may be incomplete:
 // see the `external` field on EntityDecl and ActionDecl.
+//
+// `type_ref = i` stands for `type_defs[i]`, and `type_defs[i]` may only refer
+// to `type_defs[j]` for `j < i`. The schema a message denotes is its expansion,
+// obtained by replacing every `type_ref` with what it refers to. Writers use
+// `type_defs` for types used more than once, whose expansion can be
+// exponentially larger. The Rust reader also rejects expansions deeper than
+// prost's recursion limit, which bounds messages without `type_ref`s.
 message Schema {
     repeated EntityDecl entity_decls = 1;
     repeated ActionDecl action_decls = 2;
+    repeated Type type_defs = 3;
 }
 
 // the protobuf EntityDecl message contains all of the schema's
@@ -65,6 +73,8 @@ message Type {
         Record record = 4;
         // Extension type
         cedar_policy_core.Name ext = 5;
+        // `Schema.type_defs[type_ref]`
+        uint32 type_ref = 6;
     }
 
     enum Prim {

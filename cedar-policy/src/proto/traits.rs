@@ -540,81 +540,85 @@ impl EncodeCheck for models::Request {
 
 impl EncodeCheck for models::Schema {
     fn check_for_encode_from_depth(&self, init: usize) -> Result<(), EncodeError> {
-        for entity_decl in &self.entity_decls {
-            // + 1 for entering entity decls
-            for attr_type in entity_decl.attributes.values() {
-                // Map: +1 for entering the list, +1 for entering the map entry
-                check_type_depth(attr_type, init + 3)?;
-            }
-            if let Some(ref tag_type) = entity_decl.tags {
-                // Map: +1 for entering the list, +1 for entering the map entry
-                check_type_depth_inner(tag_type, init + 3)?;
-            }
+        if schema_expansion_within_depth(self, init, MAX_ENCODE_DEPTH) {
+            Ok(())
+        } else {
+            Err(EncodeError::MaxDepthExceeded)
         }
-        for action_decl in &self.action_decls {
-            // + 1 for entering action decls list
-            for attr_type in action_decl.context.values() {
-                // Map: +1 for entering the list, +1 for entering the map entry
-                check_type_depth(attr_type, init + 3)?;
-            }
-        }
-        Ok(())
     }
 }
 
-/// Validate that an [`AttributeType`](models::AttributeType) doesn't exceed
-/// the prost recursion budget.
-///
-/// Prost recursion cost from an `AttributeType`:
-/// +1 (`AttributeType` message) + cost of inner `Type`
-fn check_type_depth(attr_type: &models::AttributeType, init: usize) -> Result<(), EncodeError> {
-    if let Some(ref ty) = attr_type.attr_type {
-        // AttributeType itself costs 1 prost level, then the Type inside costs 1 more
-        check_type_depth_inner(ty, init + 2)?;
-    }
-    Ok(())
+/// Is every type of `schema`, with its `type_ref`s expanded, at most `limit`
+/// prost levels deep when `schema` is at depth `init`? Without `type_defs` this
+/// is the depth check from before `type_defs` existed, with the same offsets.
+pub(crate) fn schema_expansion_within_depth(
+    schema: &models::Schema,
+    init: usize,
+    limit: usize,
+) -> bool {
+    let heights = type_def_heights(&schema.type_defs);
+    let within =
+        |ty: &models::Type, start: usize| start.saturating_add(type_height(ty, &heights)) <= limit;
+    schema.entity_decls.iter().all(|entity_decl| {
+        entity_decl
+            .attributes
+            .values()
+            .filter_map(|attr_type| attr_type.attr_type.as_ref())
+            .all(|ty| within(ty, init + 5))
+            && entity_decl
+                .tags
+                .as_ref()
+                .is_none_or(|ty| within(ty, init + 3))
+    }) && schema.action_decls.iter().all(|action_decl| {
+        action_decl
+            .context
+            .values()
+            .filter_map(|attr_type| attr_type.attr_type.as_ref())
+            .all(|ty| within(ty, init + 5))
+    })
 }
 
-/// Iteratively check `Type` nesting depth in prost recursion terms.
-///
-/// Prost recursion costs per `Type` variant:
-/// - `SetElem(Box<Type>)`: the child `Type` is directly nested → +1 per level
-/// - `Record`: +1 (`Record` message) + 1 (`AttributeType` message) + 1 (child `Type`) = +3
-/// - Primitive/Entity/Extension: terminal, no recursion
-fn check_type_depth_inner(root: &models::Type, starting_depth: usize) -> Result<(), EncodeError> {
-    // Stack of (Type, prost_depth)
-    let mut stack: Vec<(&models::Type, usize)> = vec![(root, starting_depth)];
+/// A reference that is not to an earlier entry counts as height 0; the decoder
+/// rejects it.
+fn type_def_heights(type_defs: &[models::Type]) -> Vec<usize> {
+    let mut heights = Vec::with_capacity(type_defs.len());
+    for def in type_defs {
+        let height = type_height(def, &heights);
+        heights.push(height);
+    }
+    heights
+}
 
+/// Prost levels below `root` in its expansion: +1 for a set element, +4 for an
+/// attribute of a record, +1 for a name, and the height of the entry for a
+/// `type_ref`. Iterative, so that a deep type can't overflow the stack.
+fn type_height(root: &models::Type, def_heights: &[usize]) -> usize {
+    use models::r#type::Data;
+    let mut height = 0;
+    let mut stack: Vec<(&models::Type, usize)> = vec![(root, 0)];
     while let Some((ty, depth)) = stack.pop() {
-        if depth > MAX_ENCODE_DEPTH {
-            return Err(EncodeError::MaxDepthExceeded);
-        }
-
-        if let Some(ref data) = ty.data {
-            use models::r#type::Data;
-            match data {
-                Data::Prim(_) => {}
-                Data::Entity(_) | Data::Ext(_) => {
-                    // Entity/Ext adds 1: (Name(..))
-                    let name_depth = depth + 1;
-                    if name_depth > MAX_ENCODE_DEPTH {
-                        return Err(EncodeError::MaxDepthExceeded);
-                    }
-                }
-                Data::SetElem(inner_type) => {
-                    // set_elem is directly a Type field: +1 prost level
-                    stack.push((inner_type, depth + 1));
-                }
-                Data::Record(record) => {
-                    // Record message (+1) -> map entry (+1) -> AttributeType (+1) -> Type (+1) = +4
-                    for attr_type in record.attrs.values() {
-                        if let Some(ref inner_ty) = attr_type.attr_type {
-                            stack.push((inner_ty, depth + 4));
-                        }
-                    }
-                }
+        let below = match &ty.data {
+            None | Some(Data::Prim(_)) => 0,
+            Some(Data::Entity(_) | Data::Ext(_)) => 1,
+            Some(Data::TypeRef(index)) => usize::try_from(*index)
+                .ok()
+                .and_then(|index| def_heights.get(index))
+                .copied()
+                .unwrap_or(0),
+            Some(Data::SetElem(inner_type)) => {
+                stack.push((inner_type, depth + 1));
+                0
             }
-        }
+            Some(Data::Record(record)) => {
+                for attr_type in record.attrs.values() {
+                    if let Some(ref inner_ty) = attr_type.attr_type {
+                        stack.push((inner_ty, depth + 4));
+                    }
+                }
+                0
+            }
+        };
+        height = height.max(depth.saturating_add(below));
     }
-    Ok(())
+    height
 }

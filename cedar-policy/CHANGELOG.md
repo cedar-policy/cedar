@@ -29,6 +29,12 @@ Cedar Language Version: 4.7
   avoiding re-parsing ids (#2659).
 - The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
   becomes `principal.name` and `principal has "name"` becomes `principal has name` (#2118).
+  - In the protobuf experimental feature, a protobuf `Schema` message has a new field `type_defs`, and `Type`
+  a new variant `type_ref` that represents a reference to a type definition: a shared record type is encoded
+  once as a type_def and referred to. This reduces the size of the encoding. A type converted on its own, outside
+  a `Schema` message, has no `type_defs` and is still encoded as its expansion.
+  This change is backawards compatible: previous encodings still decode.
+  (protobufs experimental feature)
 
 ### Added
 
