@@ -358,6 +358,7 @@ pub fn schema(entity_decls: impl IntoIterator<Item = models::EntityDecl>) -> mod
     models::Schema {
         entity_decls: entity_decls.into_iter().collect(),
         action_decls: vec![],
+        type_defs: vec![],
     }
 }
 
@@ -369,6 +370,7 @@ pub fn schema_full(
     models::Schema {
         entity_decls: entity_decls.into_iter().collect(),
         action_decls: action_decls.into_iter().collect(),
+        type_defs: vec![],
     }
 }
 
