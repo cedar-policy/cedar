@@ -33,8 +33,9 @@ cool_asserts = "2.0"
 insta = "1.47"
 
 [features]
-experimental = ["variadic-is-in-range"]
+experimental = ["variadic-is-in-range", "extended-like"]
 variadic-is-in-range = []
+extended-like = ["cedar-policy-core/extended-like", "cedar-policy/extended-like"]
 
 [lints]
 workspace = true

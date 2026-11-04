@@ -173,6 +173,7 @@ message Expr {
         Set set = 14;
         Record record = 15;
         ExtHasAttr extHasAttr = 16;
+        LikeDelimited likeDelimited = 17;
     }
 
     message Literal {
@@ -272,6 +273,24 @@ message Expr {
             // Zero-arity constructors represented as enums with only one member
             enum Wildcard {
                 // the one option for the enum
+                unit = 0;
+            }
+        }
+    }
+
+    message LikeDelimited {
+        Expr expr = 1;
+        repeated PatternElem pattern = 2;
+        // Exactly one Unicode scalar value, UTF-8.
+        string delim = 3;
+
+        message PatternElem {
+            oneof data {
+                Like.PatternElem.Wildcard wildcard = 1;
+                string c = 2;
+                MultiWildcard multi_wildcard = 3;
+            }
+            enum MultiWildcard {
                 unit = 0;
             }
         }

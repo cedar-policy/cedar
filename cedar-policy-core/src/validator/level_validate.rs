@@ -377,6 +377,10 @@ impl LevelChecker<'_> {
             ExprKind::Like { expr, .. } => {
                 self.check_expr_level(expr, env);
             }
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited { expr, .. } => {
+                self.check_expr_level(expr, env);
+            }
             ExprKind::Is { expr, .. } => {
                 self.check_expr_level(expr, env);
             }

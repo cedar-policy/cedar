@@ -588,6 +588,22 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
     }
 }
 
+#[cfg(feature = "extended-like")]
+pub fn string_like_extended(
+    t: Term,
+    p: OrdDelimPattern,
+    delim: cedar_policy_core::ast::LikeDelimiter,
+) -> Term {
+    match t {
+        Term::Prim(TermPrim::String(s)) => p.wildcard_match_delimited(&s, delim.as_char()).into(),
+        _ => Term::App {
+            op: Op::StringLikeExtended(p, delim),
+            args: Arc::new(vec![t]),
+            ret_ty: TermType::Bool,
+        },
+    }
+}
+
 // // ---------- Extension ADT operators with a trusted mapping to SMT ----------
 
 pub fn ext_decimal_val(t: Term) -> Term {

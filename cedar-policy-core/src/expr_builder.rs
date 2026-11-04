@@ -245,6 +245,15 @@ pub trait ExprBuilder: Clone {
     /// Create a 'like' expression.
     fn like(self, expr: Self::Expr, pattern: Pattern) -> Self::Expr;
 
+    /// Create a delimited 'like' expression.
+    #[cfg(feature = "extended-like")]
+    fn like_delimited(
+        self,
+        expr: Self::Expr,
+        pattern: crate::ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Self::Expr;
+
     /// Create an 'is' expression.
     fn is_entity_type(self, expr: Self::Expr, entity_type: EntityType) -> Self::Expr {
         self.is_entity_type_arc(Arc::new(expr), entity_type)

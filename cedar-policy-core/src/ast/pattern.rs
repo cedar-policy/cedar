@@ -165,6 +165,387 @@ impl Pattern {
     }
 }
 
+#[cfg(feature = "extended-like")]
+mod delim_pattern {
+    use std::sync::Arc;
+
+    /// Represent an element in a delimited pattern literal (the pattern
+    /// argument of `like(pattern, delim)`)
+    #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
+    pub enum DelimPatternElem {
+        /// A character literal
+        Char(char),
+        /// The wildcard `*`. Matches any run of non-delimiter characters.
+        Wildcard,
+        /// The double wildcard `**`. Matches any run of characters.
+        MultiWildcard,
+    }
+
+    /// Represent a delimited pattern literal (the pattern argument of
+    /// `like(pattern, delim)`). The delimiter itself is not stored here.
+    #[derive(Debug, Clone, Hash, Eq, PartialEq, PartialOrd, Ord)]
+    pub struct DelimPattern {
+        /// A vector of pattern elements
+        elems: Arc<Vec<DelimPatternElem>>,
+    }
+
+    impl DelimPattern {
+        /// Explicitly create a pattern literal out of a shared vector of pattern elements
+        fn new(elems: Arc<Vec<DelimPatternElem>>) -> Self {
+            Self { elems }
+        }
+
+        /// Getter to the wrapped vector
+        pub fn get_elems(&self) -> &[DelimPatternElem] {
+            &self.elems
+        }
+
+        /// Iterate over pattern elements
+        pub fn iter(&self) -> impl Iterator<Item = &DelimPatternElem> {
+            self.elems.iter()
+        }
+
+        /// Length of elems vector
+        pub fn len(&self) -> usize {
+            self.elems.len()
+        }
+
+        /// Is this an empty pattern
+        pub fn is_empty(&self) -> bool {
+            self.elems.is_empty()
+        }
+
+        /// Find if the argument text matches the pattern under a delimiter.
+        /// `*` matches any run of non-delimiter characters, `**` matches any
+        /// run of characters.
+        ///
+        /// This is more expensive than [`super::Pattern::wildcard_match`], which is a
+        /// greedy scan using constant extra memory. Here every (text index,
+        /// pattern index) pair is memoised, so time and memory are
+        /// O(text length * pattern length), and the recursion can go
+        /// text length + pattern length deep.
+        // TODO: replace with a non-recursive matcher closer to `wildcard_match`.
+        pub fn wildcard_match_delimited(&self, text: &str, delim: char) -> bool {
+            let pattern = self.get_elems();
+            let text: Vec<char> = text.chars().collect();
+            let mut cache: std::collections::HashMap<(usize, usize), bool> =
+                std::collections::HashMap::new();
+            wildcard_match_delimited_idx(&text, pattern, 0, 0, delim, &mut cache)
+        }
+    }
+
+    /// Largest code point allowed as a `like` delimiter. Delimiters above
+    /// SMT-LIB's max code point can't be encoded by the symbolic compiler.
+    pub const MAX_LIKE_DELIMITER: char = '\u{2FFFF}';
+
+    /// A delimiter for `like(pattern, delim)`: one Unicode scalar value, not
+    /// `*`, at most U+2FFFF ([`MAX_LIKE_DELIMITER`]).
+    ///
+    /// The only way to create a `LikeDelimiter` is through
+    /// [`LikeDelimiter::new()`] or [`LikeDelimiter::parse()`], both of which
+    /// enforce these restrictions.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+    pub struct LikeDelimiter(char);
+
+    impl LikeDelimiter {
+        /// Create a new `LikeDelimiter`, checking that `c` is not `*` and is
+        /// at most U+2FFFF.
+        pub fn new(c: char) -> Result<Self, InvalidLikeDelimiterError> {
+            if c == '*' {
+                Err(InvalidLikeDelimiterError::new(
+                    c.to_string(),
+                    InvalidLikeDelimiterReason::Wildcard,
+                ))
+            } else if c > MAX_LIKE_DELIMITER {
+                Err(InvalidLikeDelimiterError::new(
+                    c.to_string(),
+                    InvalidLikeDelimiterReason::TooLarge,
+                ))
+            } else {
+                Ok(Self(c))
+            }
+        }
+
+        /// Parse the (already unescaped) delimiter string of a
+        /// `like(pattern, delim)` expression. `s` must be exactly one
+        /// Unicode scalar value satisfying the restrictions of
+        /// [`LikeDelimiter::new()`].
+        pub fn parse(s: &str) -> Result<Self, InvalidLikeDelimiterError> {
+            let mut chars = s.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) => Self::new(c),
+                _ => Err(InvalidLikeDelimiterError::new(
+                    s,
+                    InvalidLikeDelimiterReason::NotSingleChar,
+                )),
+            }
+        }
+
+        /// Get the delimiter character
+        pub fn as_char(self) -> char {
+            self.0
+        }
+    }
+
+    impl std::fmt::Display for LikeDelimiter {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.0)
+        }
+    }
+
+    impl From<LikeDelimiter> for char {
+        fn from(d: LikeDelimiter) -> Self {
+            d.0
+        }
+    }
+
+    #[cfg(feature = "arbitrary")]
+    impl<'a> arbitrary::Arbitrary<'a> for LikeDelimiter {
+        fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+            let c: char = u.arbitrary()?;
+            // Map invalid delimiters deterministically to valid ones.
+            let c = if c == '*' {
+                '.'
+            } else if c > MAX_LIKE_DELIMITER {
+                // Fold the out-of-range code point into U+0..=U+2FFFF,
+                // falling back to `.` if the result is a surrogate or `*`.
+                char::from_u32((c as u32) % (MAX_LIKE_DELIMITER as u32 + 1))
+                    .filter(|c| *c != '*')
+                    .unwrap_or('.')
+            } else {
+                c
+            };
+            Ok(Self(c))
+        }
+
+        fn size_hint(depth: usize) -> (usize, Option<usize>) {
+            <char as arbitrary::Arbitrary<'a>>::size_hint(depth)
+        }
+    }
+
+    /// Why a delimiter was rejected by [`LikeDelimiter`]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum InvalidLikeDelimiterReason {
+        /// The input was empty or had more than one Unicode scalar value
+        NotSingleChar,
+        /// The input was `*`
+        Wildcard,
+        /// The input was greater than U+2FFFF
+        TooLarge,
+    }
+
+    impl std::fmt::Display for InvalidLikeDelimiterReason {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::NotSingleChar => write!(f, "it must be exactly one Unicode scalar value"),
+                Self::Wildcard => write!(f, "it must not be `*`"),
+                Self::TooLarge => write!(f, "it must be no greater than U+2FFFF"),
+            }
+        }
+    }
+
+    /// Error returned when constructing an invalid [`LikeDelimiter`]
+    #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error, miette::Diagnostic)]
+    #[error("invalid delimiter `{}` for a `like` expression: {reason}", input.escape_debug())]
+    #[diagnostic(help(
+        "the delimiter must be exactly one Unicode scalar value, other than `*`, no greater than U+2FFFF"
+    ))]
+    pub struct InvalidLikeDelimiterError {
+        input: String,
+        reason: InvalidLikeDelimiterReason,
+    }
+
+    impl InvalidLikeDelimiterError {
+        fn new(input: impl Into<String>, reason: InvalidLikeDelimiterReason) -> Self {
+            Self {
+                input: input.into(),
+                reason,
+            }
+        }
+
+        /// The rejected input
+        pub fn input(&self) -> &str {
+            &self.input
+        }
+
+        /// Why the input was rejected
+        pub fn reason(&self) -> InvalidLikeDelimiterReason {
+            self.reason
+        }
+    }
+
+    impl From<Arc<Vec<DelimPatternElem>>> for DelimPattern {
+        fn from(value: Arc<Vec<DelimPatternElem>>) -> Self {
+            Self::new(value)
+        }
+    }
+
+    impl From<Vec<DelimPatternElem>> for DelimPattern {
+        fn from(value: Vec<DelimPatternElem>) -> Self {
+            Self::new(Arc::new(value))
+        }
+    }
+
+    impl FromIterator<DelimPatternElem> for DelimPattern {
+        fn from_iter<T: IntoIterator<Item = DelimPatternElem>>(iter: T) -> Self {
+            Self::new(Arc::new(iter.into_iter().collect()))
+        }
+    }
+
+    /// Note that two adjacent `Wildcard`s are printed as a single `*`, since
+    /// printing them as `**` would re-parse as `MultiWildcard` (which matches
+    /// the delimiter). A run of `Wildcard`s matches exactly what a single
+    /// `Wildcard` matches, so this preserves semantics.
+    impl std::fmt::Display for DelimPattern {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            let mut prev_wildcard = false;
+            for pc in self.elems.as_ref() {
+                match pc {
+                    DelimPatternElem::Char('*') => write!(f, r#"\*"#)?,
+                    DelimPatternElem::Char(c) => write!(f, "{}", c.escape_debug())?,
+                    DelimPatternElem::Wildcard if prev_wildcard => {}
+                    DelimPatternElem::Wildcard => write!(f, r#"*"#)?,
+                    DelimPatternElem::MultiWildcard => write!(f, r#"**"#)?,
+                }
+                prev_wildcard = matches!(pc, DelimPatternElem::Wildcard);
+            }
+            Ok(())
+        }
+    }
+
+    /// Memoised DP for delimiter-aware wildcard matching.
+    fn wildcard_match_delimited_idx(
+        text: &[char],
+        pattern: &[DelimPatternElem],
+        i: usize,
+        j: usize,
+        delim: char,
+        cache: &mut std::collections::HashMap<(usize, usize), bool>,
+    ) -> bool {
+        if let Some(&b) = cache.get(&(i, j)) {
+            return b;
+        }
+        let result = if j == pattern.len() {
+            i == text.len()
+        } else if i == text.len() {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "j < pattern.len() by the else branch above"
+            )]
+            match pattern[j] {
+                DelimPatternElem::MultiWildcard | DelimPatternElem::Wildcard => {
+                    wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
+                }
+                DelimPatternElem::Char(_) => false,
+            }
+        } else {
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "i < text.len() and j < pattern.len()"
+            )]
+            match pattern[j] {
+                DelimPatternElem::MultiWildcard => {
+                    wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
+                        || wildcard_match_delimited_idx(text, pattern, i + 1, j, delim, cache)
+                }
+                DelimPatternElem::Wildcard => {
+                    let c = text[i];
+                    wildcard_match_delimited_idx(text, pattern, i, j + 1, delim, cache)
+                        || (c != delim
+                            && wildcard_match_delimited_idx(text, pattern, i + 1, j, delim, cache))
+                }
+                DelimPatternElem::Char(k) => {
+                    text[i] == k
+                        && wildcard_match_delimited_idx(text, pattern, i + 1, j + 1, delim, cache)
+                }
+            }
+        };
+        cache.insert((i, j), result);
+        result
+    }
+
+    #[cfg(test)]
+    mod test {
+        use super::*;
+
+        fn pat(s: &str) -> DelimPattern {
+            // `!` stands for `**`, `*` for `*`; everything else is a literal.
+            s.chars()
+                .map(|c| match c {
+                    '!' => DelimPatternElem::MultiWildcard,
+                    '*' => DelimPatternElem::Wildcard,
+                    c => DelimPatternElem::Char(c),
+                })
+                .collect()
+        }
+
+        #[test]
+        fn delimited_match_basic() {
+            assert!(pat("*.example.com").wildcard_match_delimited("a.example.com", '.'));
+            assert!(!pat("*.example.com").wildcard_match_delimited("a.b.example.com", '.'));
+            assert!(pat("!.example.com").wildcard_match_delimited("a.b.example.com", '.'));
+            assert!(pat("*").wildcard_match_delimited("", '.'));
+            assert!(pat("!").wildcard_match_delimited("", '.'));
+            assert!(!pat("*").wildcard_match_delimited(".", '.'));
+            assert!(pat("!").wildcard_match_delimited(".", '.'));
+            assert!(pat("").wildcard_match_delimited("", '.'));
+            assert!(!pat("").wildcard_match_delimited("a", '.'));
+        }
+
+        #[test]
+        fn like_delimiter_validation() {
+            for c in ['.', '/', '\\', '\u{0}', '\u{2FFFF}'] {
+                assert_eq!(LikeDelimiter::new(c).map(LikeDelimiter::as_char), Ok(c));
+                assert_eq!(LikeDelimiter::parse(&c.to_string()).map(char::from), Ok(c));
+            }
+            assert_eq!(
+                LikeDelimiter::new('*').map_err(|e| e.reason()),
+                Err(InvalidLikeDelimiterReason::Wildcard)
+            );
+            assert_eq!(
+                LikeDelimiter::new('\u{30000}').map_err(|e| e.reason()),
+                Err(InvalidLikeDelimiterReason::TooLarge)
+            );
+            for s in ["", "ab", ".."] {
+                let err = LikeDelimiter::parse(s).unwrap_err();
+                assert_eq!(err.reason(), InvalidLikeDelimiterReason::NotSingleChar);
+                assert_eq!(err.input(), s);
+            }
+            assert!(LikeDelimiter::parse("*").is_err());
+            assert!(LikeDelimiter::parse("\u{30000}").is_err());
+            assert_eq!(LikeDelimiter::new('/').unwrap().to_string(), "/");
+        }
+
+        #[test]
+        fn delimited_display() {
+            let p = DelimPattern::from(vec![
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::Char('*'),
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Char('.'),
+            ]);
+            assert_eq!(p.to_string(), r"**\**.");
+            // Adjacent single wildcards must not print as `**`.
+            let p = DelimPattern::from(vec![
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Char('a'),
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::MultiWildcard,
+            ]);
+            assert_eq!(p.to_string(), "*a***");
+            assert!(!p.wildcard_match_delimited("x.a", '.'));
+        }
+    }
+}
+#[cfg(feature = "extended-like")]
+pub use delim_pattern::{
+    DelimPattern, DelimPatternElem, InvalidLikeDelimiterError, InvalidLikeDelimiterReason,
+    LikeDelimiter, MAX_LIKE_DELIMITER,
+};
+
 #[cfg(test)]
 mod test {
     use super::*;

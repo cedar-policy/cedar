@@ -250,6 +250,19 @@ fn elements_into_ast_pattern(elems: impl IntoIterator<Item = PatternElem>) -> as
     ast::Pattern::from_iter(elems)
 }
 
+#[cfg(feature = "extended-like")]
+fn elements_into_ast_delim_pattern(
+    elems: impl IntoIterator<Item = super::DelimPatternElem>,
+) -> ast::DelimPattern {
+    use super::DelimPatternElem;
+    let elems = elems.into_iter().map(|elem| match elem {
+        DelimPatternElem::Char(c) => ast::DelimPatternElem::Char(c),
+        DelimPatternElem::Wildcard => ast::DelimPatternElem::Wildcard,
+        DelimPatternElem::MultiWildcard => ast::DelimPatternElem::MultiWildcard,
+    });
+    ast::DelimPattern::from_iter(elems)
+}
+
 #[doc(hidden)]
 impl From<Expr> for ast::Expr {
     fn from(expr: Expr) -> Self {
@@ -483,6 +496,16 @@ impl Expr {
                 Arc::unwrap_or_clone(expr).into_expr::<B>(),
                 elements_into_ast_pattern(pattern),
             ),
+            #[cfg(feature = "extended-like")]
+            Expr::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => builder.like_delimited(
+                Arc::unwrap_or_clone(expr).into_expr::<B>(),
+                elements_into_ast_delim_pattern(pattern),
+                delim.into(),
+            ),
             Expr::Record(elems) =>
             {
                 #[expect(
@@ -639,6 +662,22 @@ impl From<ast::Pattern> for Vec<PatternElem> {
             .map(|elem| match elem {
                 ast::PatternElem::Char(c) => PatternElem::Char(*c),
                 ast::PatternElem::Wildcard => PatternElem::Wildcard,
+            })
+            .collect()
+    }
+}
+
+#[cfg(feature = "extended-like")]
+#[doc(hidden)]
+impl From<ast::DelimPattern> for Vec<super::DelimPatternElem> {
+    fn from(pattern: ast::DelimPattern) -> Self {
+        use super::DelimPatternElem;
+        pattern
+            .iter()
+            .map(|elem| match elem {
+                ast::DelimPatternElem::Char(c) => DelimPatternElem::Char(*c),
+                ast::DelimPatternElem::Wildcard => DelimPatternElem::Wildcard,
+                ast::DelimPatternElem::MultiWildcard => DelimPatternElem::MultiWildcard,
             })
             .collect()
     }
@@ -1004,6 +1043,24 @@ mod tests {
             r#""test" like "*""#,
             r#""test" like "*est""#,
             r#""test" like "test*""#,
+        ];
+
+        for expr_str in cases {
+            let expr = parse_expr(expr_str);
+            assert_expr_roundtrip(expr);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "extended-like")]
+    fn test_like_delimited_roundtrip() {
+        let cases = [
+            r#""api.example.com" like("*.example.com", ".")"#,
+            r#""deep.api.example.com" like("**.example.com", ".")"#,
+            r#""/v1/chat" like("/v1/**", "/")"#,
+            r#""/repos/o/pulls/1/reviews" like("/repos/*/pulls/*/reviews", "/")"#,
+            r#""a\tb" like("a\tb", "\t")"#,
+            r#""C:\\foo" like("C:*", "\\")"#,
         ];
 
         for expr_str in cases {

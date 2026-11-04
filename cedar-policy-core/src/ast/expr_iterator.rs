@@ -77,6 +77,14 @@ impl<'a, T> Iterator for ExprIterator<'a, T> {
             } => {
                 self.expression_stack.push(expr);
             }
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited {
+                expr,
+                pattern: _,
+                delim: _,
+            } => {
+                self.expression_stack.push(expr);
+            }
             ExprKind::ExtensionFunctionApp { args: exprs, .. } | ExprKind::Set(exprs) => {
                 self.expression_stack.extend(exprs.as_ref());
             }

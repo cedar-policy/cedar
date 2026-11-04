@@ -2719,3 +2719,188 @@ mod bool_tags {
         assert_does_not_always_deny(&mut compiler, &pset, &envs).await;
     }
 }
+
+/// SMT-solver tests for delimited `like(pattern, delim)`. The per-query
+/// timeout guards against the cvc5#12815 regression under `re.comp`.
+#[cfg(feature = "extended-like")]
+mod delimited_like_smt {
+    use std::time::Instant;
+
+    use cedar_policy::{Schema, Validator};
+    use cedar_policy_symcc::{solver::LocalSolver, CedarSymCompiler};
+
+    use crate::utils::{
+        self, assert_does_not_imply, assert_equivalent, assert_implies, assert_not_equivalent,
+        Environments,
+    };
+
+    fn string_context_schema() -> Schema {
+        utils::schema_from_cedarstr(
+            r#"
+            entity Identity;
+            entity Thing;
+            action view appliesTo {
+                principal: [Identity],
+                resource: [Thing],
+                context: {
+                    host: String,
+                    path: String
+                }
+            };
+        "#,
+        )
+    }
+
+    const PER_QUERY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+    async fn time_check<F, Fut>(label: &str, f: F)
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = ()>,
+    {
+        let start = Instant::now();
+        f().await;
+        let elapsed = start.elapsed();
+        eprintln!("[delimited_like_smt] {label}: {elapsed:?}");
+        assert!(
+            elapsed < PER_QUERY_TIMEOUT,
+            "SMT query `{label}` took {elapsed:?} (over the {PER_QUERY_TIMEOUT:?} limit)"
+        );
+    }
+
+    /// `*.example.com` under `.` implies `**.example.com` under `.`.
+    #[tokio::test]
+    async fn star_implies_double_star_hostname() {
+        let schema = string_context_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
+
+        let strict = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like("*.example.com", ".") };"#,
+            &validator,
+        );
+        let permissive = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like("**.example.com", ".") };"#,
+            &validator,
+        );
+
+        time_check("strict => permissive", || async {
+            assert_implies(&mut compiler, &strict, &permissive, &envs).await;
+        })
+        .await;
+        time_check("permissive =/=> strict", || async {
+            assert_does_not_imply(&mut compiler, &permissive, &strict, &envs).await;
+        })
+        .await;
+    }
+
+    /// Delimited `*.example.com` is strictly stronger than undelimited.
+    #[tokio::test]
+    async fn delimited_stronger_than_undelimited() {
+        let schema = string_context_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
+
+        let delim = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like("*.example.com", ".") };"#,
+            &validator,
+        );
+        let undelim = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like "*.example.com" };"#,
+            &validator,
+        );
+
+        time_check("delim => undelim", || async {
+            assert_implies(&mut compiler, &delim, &undelim, &envs).await;
+        })
+        .await;
+        time_check("undelim =/=> delim", || async {
+            assert_does_not_imply(&mut compiler, &undelim, &delim, &envs).await;
+        })
+        .await;
+    }
+
+    /// Delimited `**` is equivalent to undelimited `*`.
+    #[tokio::test]
+    async fn double_star_equivalent_to_undelimited_star() {
+        let schema = string_context_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
+
+        let delim = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like("**", ".") };"#,
+            &validator,
+        );
+        let undelim = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like "*" };"#,
+            &validator,
+        );
+
+        time_check("`**` with delim `.` == undelimited `*`", || async {
+            assert_equivalent(&mut compiler, &delim, &undelim, &envs).await;
+        })
+        .await;
+    }
+
+    /// The same pattern under different delimiters is not equivalent.
+    #[tokio::test]
+    async fn different_delimiters_not_equivalent() {
+        let schema = string_context_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
+
+        let dot_delim = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like("*", ".") };"#,
+            &validator,
+        );
+        let slash_delim = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.host like("*", "/") };"#,
+            &validator,
+        );
+
+        time_check("dot-`*` != slash-`*`", || async {
+            assert_not_equivalent(&mut compiler, &dot_delim, &slash_delim, &envs).await;
+        })
+        .await;
+    }
+
+    /// Path pattern with multiple non-delimiter wildcards.
+    #[tokio::test]
+    async fn multi_wildcard_path_pattern() {
+        let schema = string_context_schema();
+        let validator = Validator::new(schema);
+        let mut compiler = CedarSymCompiler::new(LocalSolver::cvc5().unwrap()).unwrap();
+        let envs = Environments::new(validator.schema(), "Identity", "Action::\"view\"", "Thing");
+
+        let broad = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when { context.path like("/repos/*/pulls/*/reviews", "/") };"#,
+            &validator,
+        );
+        let narrow = utils::pset_from_text(
+            r#"permit(principal, action, resource)
+            when {
+                context.path like("/repos/*/pulls/*/reviews", "/") &&
+                context.path like("/repos/cedar-policy/**", "/")
+            };"#,
+            &validator,
+        );
+
+        time_check("narrow => broad", || async {
+            assert_implies(&mut compiler, &narrow, &broad, &envs).await;
+        })
+        .await;
+    }
+}

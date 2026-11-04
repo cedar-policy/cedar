@@ -374,6 +374,21 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprWithErrsBuilder<T> {
         })
     }
 
+    /// Create a delimiter-aware `like(pattern, delim)` expression.
+    #[cfg(feature = "extended-like")]
+    fn like_delimited(
+        self,
+        expr: Expr<T>,
+        pattern: crate::ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Expr<T> {
+        self.with_expr_kind(ExprKind::LikeDelimited {
+            expr: Arc::new(expr),
+            pattern,
+            delim,
+        })
+    }
+
     /// Create an 'is' expression.
     fn is_entity_type_arc(self, expr: Arc<Expr<T>>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is { expr, entity_type })

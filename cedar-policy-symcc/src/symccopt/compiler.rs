@@ -22,6 +22,8 @@ use std::{
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
 pub use crate::symcc::compiler::Result;
+#[cfg(feature = "extended-like")]
+use crate::term_factory::string_like_extended;
 use crate::{
     err::{CompileError, ExtError},
     ext::Ext,
@@ -247,6 +249,21 @@ fn compile_app1(op1: UnaryOp, arg: CompileResult) -> Result<CompileResult> {
 fn compile_like(arg: CompileResult, pat: OrdPattern) -> Result<CompileResult> {
     match arg.term.type_of() {
         TermType::String => Ok(arg.map_term(|term| some_of(string_like(term, pat)))),
+        _ => Err(CompileError::TypeError),
+    }
+}
+
+/// Delimiter-aware `like(pattern, delim)`.
+#[cfg(feature = "extended-like")]
+fn compile_like_extended(
+    arg: CompileResult,
+    pat: OrdDelimPattern,
+    delim: cedar_policy_core::ast::LikeDelimiter,
+) -> Result<CompileResult> {
+    match arg.term.type_of() {
+        TermType::String => {
+            Ok(arg.map_term(|term| some_of(string_like_extended(term, pat, delim))))
+        }
         _ => Err(CompileError::TypeError),
     }
 }
@@ -1074,6 +1091,18 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res1 = compile(expr, env)?;
             let res1_term = res1.term.clone();
             let res = compile_like(res1.map_term(option_get), pattern.clone().into())?;
+            Ok(res.map_term(|term| if_some(res1_term, term)))
+        }
+        #[cfg(feature = "extended-like")]
+        ExprKind::LikeDelimited {
+            expr,
+            pattern,
+            delim,
+        } => {
+            let res1 = compile(expr, env)?;
+            let res1_term = res1.term.clone();
+            let res =
+                compile_like_extended(res1.map_term(option_get), pattern.clone().into(), *delim)?;
             Ok(res.map_term(|term| if_some(res1_term, term)))
         }
         ExprKind::Is { expr, entity_type } => {

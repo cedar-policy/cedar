@@ -153,6 +153,18 @@ pub enum ExprKind<T = ()> {
         /// Be careful the backslash in `\*` must not be another escape sequence. For instance, `\\*` matches a backslash plus an arbitrary string.
         pattern: Pattern,
     },
+    /// Delimiter-aware regex-like string matching, `like(pattern, delimiter)`.
+    /// `*` in the pattern does not match the delimiter; `**` does.
+    #[cfg(feature = "extended-like")]
+    LikeDelimited {
+        /// Expression to test. Must evaluate to String type
+        expr: Arc<Expr<T>>,
+        /// Pattern to match on. `*` matches any run of non-delimiter chars;
+        /// `**` (as `DelimPatternElem::MultiWildcard`) matches any run of chars.
+        pattern: crate::ast::DelimPattern,
+        /// Single-character delimiter.
+        delim: crate::ast::LikeDelimiter,
+    },
     /// Entity type test. Does the first argument have the entity type
     /// specified by the second argument.
     Is {
@@ -196,6 +208,8 @@ impl<T> ExprKind<T> {
             ExprKind::HasAttr { .. } => 11,
             ExprKind::ExtHasAttr { .. } => 12,
             ExprKind::Like { .. } => 13,
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited { .. } => 21,
             ExprKind::Set(_) => 14,
             ExprKind::Record(_) => 15,
             ExprKind::Is { .. } => 16,
@@ -433,6 +447,8 @@ impl<T> Expr<T> {
             ExprKind::HasAttr { .. } => Some(Type::Bool),
             ExprKind::ExtHasAttr { .. } => Some(Type::Bool),
             ExprKind::Like { .. } => Some(Type::Bool),
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited { .. } => Some(Type::Bool),
             ExprKind::Is { .. } => Some(Type::Bool),
             ExprKind::Set(_) => Some(Type::Set),
             ExprKind::Record(_) => Some(Type::Record),
@@ -502,6 +518,16 @@ impl<T> Expr<T> {
             ExprKind::Like { expr, pattern } => {
                 Ok(builder.like(Arc::unwrap_or_clone(expr).try_into_expr::<B>()?, pattern))
             }
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => Ok(builder.like_delimited(
+                Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
+                pattern,
+                delim,
+            )),
             ExprKind::Is { expr, entity_type } => Ok(builder.is_entity_type(
                 Arc::unwrap_or_clone(expr).try_into_expr::<B>()?,
                 entity_type,
@@ -767,6 +793,16 @@ impl Expr {
         ExprBuilder::new().like(expr, pattern)
     }
 
+    /// Create a delimited 'like' expression.
+    #[cfg(feature = "extended-like")]
+    pub fn like_delimited(
+        expr: Expr,
+        pattern: crate::ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Self {
+        ExprBuilder::new().like_delimited(expr, pattern, delim)
+    }
+
     /// Create an `is` expression.
     pub fn is_entity_type(expr: Expr, entity_type: EntityType) -> Self {
         ExprBuilder::new().is_entity_type(expr, entity_type)
@@ -878,6 +914,16 @@ impl Expr {
             ExprKind::Like { expr, pattern } => Ok(Expr::like(
                 expr.substitute_general::<T>(definitions)?,
                 pattern.clone(),
+            )),
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => Ok(Expr::like_delimited(
+                expr.substitute_general::<T>(definitions)?,
+                pattern.clone(),
+                *delim,
             )),
             ExprKind::Set(members) => {
                 let members = members
@@ -1410,6 +1456,21 @@ impl<T: Default + Clone> expr_builder::ExprBuilder for ExprBuilder<T> {
         })
     }
 
+    /// Create a delimited 'like' expression.
+    #[cfg(feature = "extended-like")]
+    fn like_delimited(
+        self,
+        expr: Expr<T>,
+        pattern: crate::ast::DelimPattern,
+        delim: crate::ast::LikeDelimiter,
+    ) -> Expr<T> {
+        self.with_expr_kind(ExprKind::LikeDelimited {
+            expr: Arc::new(expr),
+            pattern,
+            delim,
+        })
+    }
+
     /// Create an 'is' expression.
     fn is_entity_type_arc(self, expr: Arc<Expr<T>>, entity_type: EntityType) -> Expr<T> {
         self.with_expr_kind(ExprKind::Is { expr, entity_type })
@@ -1664,6 +1725,19 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern == pattern1 && expr.eq_shape(expr1),
+            #[cfg(feature = "extended-like")]
+            (
+                LikeDelimited {
+                    expr,
+                    pattern,
+                    delim,
+                },
+                LikeDelimited {
+                    expr: expr1,
+                    pattern: pattern1,
+                    delim: delim1,
+                },
+            ) => delim == delim1 && pattern == pattern1 && expr.eq_shape(expr1),
             (Set(elems), Set(elems1)) => {
                 elems.len() == elems1.len()
                     && elems
@@ -1750,6 +1824,16 @@ impl<T> Expr<T> {
             ExprKind::Like { expr, pattern } => {
                 expr.hash_shape(state);
                 pattern.hash(state);
+            }
+            #[cfg(feature = "extended-like")]
+            ExprKind::LikeDelimited {
+                expr,
+                pattern,
+                delim,
+            } => {
+                expr.hash_shape(state);
+                pattern.hash(state);
+                delim.hash(state);
             }
             ExprKind::Set(elems) => {
                 state.write_usize(elems.len());
@@ -1888,6 +1972,22 @@ impl<T> Expr<T> {
                     pattern: pattern1,
                 },
             ) => pattern.cmp(pattern1).then_with(|| expr.cmp_shape(expr1)),
+            #[cfg(feature = "extended-like")]
+            (
+                LikeDelimited {
+                    expr,
+                    pattern,
+                    delim,
+                },
+                LikeDelimited {
+                    expr: expr1,
+                    pattern: pattern1,
+                    delim: delim1,
+                },
+            ) => delim
+                .cmp(delim1)
+                .then_with(|| pattern.cmp(pattern1))
+                .then_with(|| expr.cmp_shape(expr1)),
             (Set(elems), Set(elems1)) => elems.len().cmp(&elems1.len()).then_with(|| {
                 for (e, e1) in elems.iter().zip(elems1.iter()) {
                     match e.cmp_shape(e1) {

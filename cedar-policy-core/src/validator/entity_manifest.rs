@@ -647,6 +647,15 @@ fn entity_manifest_from_expr(
             // drop paths since boolean returned
             Ok(entity_manifest_from_expr(expr)?.empty_paths())
         }
+        #[cfg(feature = "extended-like")]
+        ExprKind::LikeDelimited {
+            expr,
+            pattern: _,
+            delim: _,
+        } => {
+            // drop paths since boolean returned
+            Ok(entity_manifest_from_expr(expr)?.empty_paths())
+        }
         ExprKind::Set(contents) => {
             let mut res = EntityManifestAnalysisResult::default();
 

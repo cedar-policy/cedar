@@ -429,6 +429,18 @@ impl EncodeCheck for models::Expr {
                             }
                         }
                     }
+                    ExprKind::LikeDelimited(like) => {
+                        if let Some(ref e) = like.expr {
+                            stack.push((e, child_depth));
+                        }
+                        // PatternElem adds 2 (LikeDelimited(Vec<PatternElem>(..))
+                        if !like.pattern.is_empty() {
+                            let pattern_depth = depth + 2;
+                            if pattern_depth > MAX_ENCODE_DEPTH {
+                                return Err(EncodeError::MaxDepthExceeded);
+                            }
+                        }
+                    }
                     ExprKind::Is(is) => {
                         if let Some(ref e) = is.expr {
                             stack.push((e, child_depth));

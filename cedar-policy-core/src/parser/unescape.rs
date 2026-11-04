@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+#[cfg(feature = "extended-like")]
+use crate::ast::DelimPatternElem;
 use crate::ast::PatternElem;
 use itertools::Itertools;
 use miette::Diagnostic;
@@ -76,6 +78,45 @@ pub(crate) fn to_pattern(s: &str) -> Result<Vec<PatternElem>, NonEmpty<UnescapeE
     } else {
         Ok(unescaped_str)
     }
+}
+
+/// Parse a pattern for the delimited `like(pattern, delim)` form.
+/// Same as [`to_pattern`], but pairs adjacent `*`s into `MultiWildcard`
+/// left-to-right; a trailing unpaired `*` stays `Wildcard`. So `***` is
+/// `[MultiWildcard, Wildcard]`, never `[Wildcard, MultiWildcard]`; both match
+/// the same strings as `**`.
+#[cfg(feature = "extended-like")]
+pub(crate) fn to_pattern_delimited(
+    s: &str,
+) -> Result<Vec<DelimPatternElem>, NonEmpty<UnescapeError>> {
+    let raw = to_pattern(s)?;
+    let mut out: Vec<DelimPatternElem> = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        #[expect(clippy::indexing_slicing, reason = "i < raw.len() by loop condition")]
+        let elem = raw[i];
+        match elem {
+            PatternElem::Wildcard => {
+                let mut count = 1;
+                #[expect(clippy::indexing_slicing, reason = "index checked in the guard")]
+                while i + count < raw.len() && matches!(raw[i + count], PatternElem::Wildcard) {
+                    count += 1;
+                }
+                for _ in 0..(count / 2) {
+                    out.push(DelimPatternElem::MultiWildcard);
+                }
+                if count % 2 == 1 {
+                    out.push(DelimPatternElem::Wildcard);
+                }
+                i += count;
+            }
+            PatternElem::Char(c) => {
+                out.push(DelimPatternElem::Char(c));
+                i += 1;
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Errors generated when processing escapes
@@ -273,5 +314,523 @@ skipped";
         assert_eq!(errs.len(), 2);
         assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
         assert_matches!(&errs[1], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::Unescape(_)));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_parses() {
+        assert!(
+            matches!(
+                text_to_cst::parse_expr(r#""api.example.com" like("*.example.com", ".")"#)
+                    .expect("failed parsing")
+                    .to_expr::<ast::ExprBuilder<()>>()
+                    .expect("failed conversion")
+                    .expr_kind(),
+                ast::ExprKind::LikeDelimited {
+                    expr: _,
+                    pattern: _,
+                    ..
+                }
+            ),
+            "like(pattern, delim) should parse and lower to ExprKind::LikeDelimited"
+        );
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_slash_delimiter() {
+        assert!(matches!(
+            text_to_cst::parse_expr(r#""/v1/chat" like("/v1/*", "/")"#)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion")
+                .expr_kind(),
+            ast::ExprKind::LikeDelimited {
+                expr: _,
+                pattern: _,
+                ..
+            }
+        ));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_escaped_delimiter() {
+        assert!(matches!(
+            text_to_cst::parse_expr(r#""a\tb" like("a\tb", "\t")"#)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion")
+                .expr_kind(),
+            ast::ExprKind::LikeDelimited {
+                expr: _,
+                pattern: _,
+                ..
+            }
+        ));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_double_star_pattern() {
+        assert!(matches!(
+            text_to_cst::parse_expr(r#""deep.api.example.com" like("**.example.com", ".")"#)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion")
+                .expr_kind(),
+            ast::ExprKind::LikeDelimited {
+                expr: _,
+                pattern: _,
+                ..
+            }
+        ));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_star_runs_left_assoc() {
+        use super::to_pattern_delimited;
+        use crate::ast::{DelimPattern, DelimPatternElem};
+
+        let p = to_pattern_delimited("**").unwrap();
+        assert_eq!(p, vec![DelimPatternElem::MultiWildcard]);
+        assert_eq!(DelimPattern::from(p).to_string(), "**");
+
+        let p = to_pattern_delimited("***").unwrap();
+        assert_eq!(
+            p,
+            vec![DelimPatternElem::MultiWildcard, DelimPatternElem::Wildcard]
+        );
+        assert_eq!(DelimPattern::from(p).to_string(), "***");
+
+        let p = to_pattern_delimited("****").unwrap();
+        assert_eq!(
+            p,
+            vec![
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::MultiWildcard
+            ]
+        );
+        assert_eq!(DelimPattern::from(p).to_string(), "****");
+
+        let p = to_pattern_delimited("*****").unwrap();
+        assert_eq!(
+            p,
+            vec![
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::Wildcard
+            ]
+        );
+        assert_eq!(DelimPattern::from(p).to_string(), "*****");
+
+        let p = to_pattern_delimited(r"*\**").unwrap();
+        assert_eq!(
+            p,
+            vec![
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Char('*'),
+                DelimPatternElem::Wildcard
+            ]
+        );
+        assert_eq!(DelimPattern::from(p).to_string(), r"*\**");
+
+        let p = to_pattern_delimited("a***b").unwrap();
+        assert_eq!(
+            p,
+            vec![
+                DelimPatternElem::Char('a'),
+                DelimPatternElem::MultiWildcard,
+                DelimPatternElem::Wildcard,
+                DelimPatternElem::Char('b')
+            ]
+        );
+        assert_eq!(DelimPattern::from(p).to_string(), "a***b");
+    }
+
+    /// All three parses of `a***b` under delimited matching admit the same strings.
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_star_run_equivalence() {
+        use crate::ast::{DelimPattern, DelimPatternElem};
+
+        // A = a ** b, B = a * ** b, C = a ** * b. Parser produces B.
+        let a_pat = DelimPattern::from(vec![
+            DelimPatternElem::Char('a'),
+            DelimPatternElem::MultiWildcard,
+            DelimPatternElem::Char('b'),
+        ]);
+        let b_pat = DelimPattern::from(vec![
+            DelimPatternElem::Char('a'),
+            DelimPatternElem::Wildcard,
+            DelimPatternElem::MultiWildcard,
+            DelimPatternElem::Char('b'),
+        ]);
+        let c_pat = DelimPattern::from(vec![
+            DelimPatternElem::Char('a'),
+            DelimPatternElem::MultiWildcard,
+            DelimPatternElem::Wildcard,
+            DelimPatternElem::Char('b'),
+        ]);
+
+        let inputs = [
+            "ab", "axb", "a.b", "a.x.b", "a..b", "ax.y.zb", "a....b", "aab", "abb", "axbb", "a",
+            "b", "ab.", ".ab",
+        ];
+        for s in inputs {
+            let a = a_pat.wildcard_match_delimited(s, '.');
+            let b = b_pat.wildcard_match_delimited(s, '.');
+            let c = c_pat.wildcard_match_delimited(s, '.');
+            assert_eq!(a, b, "A vs B disagree on {s:?}: a={a}, b={b}");
+            assert_eq!(a, c, "A vs C disagree on {s:?}: a={a}, c={c}");
+        }
+    }
+
+    /// `**` is allowed in any position, not just at the end.
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_interleaved_wildcards() {
+        use crate::ast::{DelimPattern, DelimPatternElem};
+
+        // `s` = Wildcard, `S` = MultiWildcard, any other char = literal.
+        fn mkpat(mnemonic: &str) -> DelimPattern {
+            DelimPattern::from(
+                mnemonic
+                    .chars()
+                    .map(|c| match c {
+                        's' => DelimPatternElem::Wildcard,
+                        'S' => DelimPatternElem::MultiWildcard,
+                        c => DelimPatternElem::Char(c),
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        }
+
+        let cases: &[(&str, char, &str, bool)] = &[
+            ("SXS", '.', "aXbXc", true),
+            ("SXS", '.', "aYb", false),
+            ("SXS", '.', "aX.b.c", true),
+            ("SfooSbarS", '/', "/a/foo/b/c/bar/d", true),
+            ("SfooSbarS", '/', "/a/foo", false),
+            ("SfooSbarS", '/', "foobar", true),
+            ("sfooSbars", '/', "xfoo/a/b/baryz", true),
+            ("sfooSbars", '/', "x/foo/a/bar/y", false),
+            ("sfooSbars", '/', "foo/bar/x", false),
+            ("SXsYS", '.', "aXYb", true),
+            ("SXsYS", '.', "a.X.Y.b", false),
+            ("SXsYS", '.', "aXZYb", true),
+            ("SxsyszS", '.', "xyz", true),
+            ("SxsyszS", '.', "AxByCzD", true),
+            ("SxsyszS", '.', "A.xByCzD", true),
+            ("SxsyszS", '.', "x.y.z", false),
+            ("fooSbar", '/', "foo/a/b/bar", true),
+            ("fooSbar", '/', "foo/bar", true),
+            ("fooSbar", '/', "foobar", true),
+            ("fooSbar", '/', "foo/a/b", false),
+            ("Sfoo", '/', "/a/foo", true),
+            ("Sfoo", '/', "a/b/foo", true),
+            ("Sfoo", '/', "foo/a", false),
+            ("SaSbSc", '/', "x/a/y/b/z/c", true),
+            ("SaSbSc", '/', "abc", true),
+            ("SaSbSc", '/', "x/a/b/c", true),
+            ("SaSbSc", '/', "a/b", false),
+            ("Sfoos", '.', "a.b.foox", true),
+            ("Sfoos", '.', "a.b.foo.x", false),
+            ("sfooS", '.', "xfoo.a.b", true),
+            ("sfooS", '.', "x.foo.a", false),
+            ("SfooS", '/', "/a/foo/b/foo/c", true),
+            ("SfooS", '/', "/a/b/c", false),
+        ];
+
+        for (pat_mn, delim, text, expected) in cases {
+            let p = mkpat(pat_mn);
+            let got = p.wildcard_match_delimited(text, *delim);
+            assert_eq!(
+                got, *expected,
+                "pattern `{pat_mn}` delim `{delim}` on `{text}`: expected {expected}, got {got}"
+            );
+        }
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_empty_delimiter_error() {
+        let errs = text_to_cst::parse_expr(r#""a" like("*", "")"#)
+            .expect("failed parsing")
+            .to_expr::<ast::ExprBuilder<()>>()
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_multi_char_delimiter_error() {
+        let errs = text_to_cst::parse_expr(r#""a" like("*", "..")"#)
+            .expect("failed parsing")
+            .to_expr::<ast::ExprBuilder<()>>()
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_star_delimiter_error() {
+        let errs = text_to_cst::parse_expr(r#""a" like("*", "*")"#)
+            .expect("failed parsing")
+            .to_expr::<ast::ExprBuilder<()>>()
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_out_of_range_delimiter_error() {
+        let errs = text_to_cst::parse_expr(r#""a" like("*", "\u{30000}")"#)
+            .expect("failed parsing")
+            .to_expr::<ast::ExprBuilder<()>>()
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_matches!(&errs[0], ParseError::ToAST(e) => assert_matches!(e.kind(), ToASTErrorKind::InvalidLikeDelimiter(_)));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_boundary_delimiter_ok() {
+        assert!(matches!(
+            text_to_cst::parse_expr(r#""a" like("*", "\u{2FFFF}")"#)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion")
+                .expr_kind(),
+            ast::ExprKind::LikeDelimited { .. }
+        ));
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_non_string_delimiter_error() {
+        let bad_forms = [
+            r#""a" like("*", true)"#,
+            r#""a" like("*", 1)"#,
+            r#""a" like("*", principal)"#,
+            r#""a" like("*", context.d)"#,
+        ];
+        for src in bad_forms {
+            let res = text_to_cst::parse_expr(src);
+            match res {
+                Err(_) => {}
+                Ok(cst) => {
+                    let ast_res = cst.to_expr::<ast::ExprBuilder<()>>();
+                    assert!(
+                        ast_res.is_err(),
+                        "expected parse or lowering error for `{src}`, got ok"
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_non_string_pattern_error() {
+        let bad_forms = [
+            r#""a" like(principal, ".")"#,
+            r#""a" like(context.p, ".")"#,
+            r#""a" like(true, ".")"#,
+            r#""a" like(1, ".")"#,
+        ];
+        for src in bad_forms {
+            let res = text_to_cst::parse_expr(src);
+            match res {
+                Err(_) => {}
+                Ok(cst) => {
+                    let ast_res = cst.to_expr::<ast::ExprBuilder<()>>();
+                    assert!(
+                        ast_res.is_err(),
+                        "expected parse or lowering error for `{src}`, got ok"
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_evaluator_hostname() {
+        use crate::ast::{Expr, Value};
+        use crate::entities::Entities;
+        use crate::evaluator::Evaluator;
+        use crate::extensions::Extensions;
+
+        fn eval_bool(src: &str) -> bool {
+            let expr: Expr = text_to_cst::parse_expr(src)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion");
+            let ext = Extensions::all_available();
+            let entities = Entities::new();
+            let request = crate::ast::Request::new_unchecked(
+                crate::ast::EntityUIDEntry::unknown(),
+                crate::ast::EntityUIDEntry::unknown(),
+                crate::ast::EntityUIDEntry::unknown(),
+                None,
+            );
+            let eval = Evaluator::new(request, &entities, ext);
+            match eval.interpret(&expr, &std::collections::HashMap::new()) {
+                Ok(Value {
+                    value: crate::ast::ValueKind::Lit(crate::ast::Literal::Bool(b)),
+                    ..
+                }) => b,
+                Ok(v) => panic!("expected Bool, got {v:?}"),
+                Err(e) => panic!("evaluation error: {e:?}"),
+            }
+        }
+
+        assert!(
+            eval_bool(r#""api.example.com" like("*.example.com", ".")"#),
+            "one subdomain should match"
+        );
+        assert!(
+            !eval_bool(r#""example.com" like("*.example.com", ".")"#),
+            "bare host should not match (literal `.` needs a char)"
+        );
+        assert!(
+            !eval_bool(r#""deep.api.example.com" like("*.example.com", ".")"#),
+            "multi-level should not match `*`"
+        );
+        assert!(
+            eval_bool(r#""deep.api.example.com" like("**.example.com", ".")"#),
+            "multi-level should match `**`"
+        );
+        assert!(
+            !eval_bool(r#""example.com" like("**.example.com", ".")"#),
+            "`**` still needs a leading segment"
+        );
+        assert!(
+            eval_bool(r#""tenant-api.example.com" like("*-api.example.com", ".")"#),
+            "wildcard inside label"
+        );
+        assert!(
+            !eval_bool(r#""deep.api.example.com" like("*", ".")"#),
+            "`*` alone cannot cross delimiter"
+        );
+        assert!(
+            eval_bool(r#""deep.api.example.com" like("**", ".")"#),
+            "`**` alone matches everything"
+        );
+        assert!(
+            eval_bool(r#""api.x.y.com" like("api.**.com", ".")"#),
+            "middle `**` matches multi-segment"
+        );
+        assert!(
+            !eval_bool(r#""api.com" like("api.**.com", ".")"#),
+            "middle `**` requires at least one segment"
+        );
+    }
+
+    #[cfg(feature = "extended-like")]
+    #[test]
+    fn test_like_delimited_evaluator_paths() {
+        use crate::ast::{Expr, Value};
+        use crate::entities::Entities;
+        use crate::evaluator::Evaluator;
+        use crate::extensions::Extensions;
+
+        fn eval_bool(src: &str) -> bool {
+            let expr: Expr = text_to_cst::parse_expr(src)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion");
+            let ext = Extensions::all_available();
+            let entities = Entities::new();
+            let request = crate::ast::Request::new_unchecked(
+                crate::ast::EntityUIDEntry::unknown(),
+                crate::ast::EntityUIDEntry::unknown(),
+                crate::ast::EntityUIDEntry::unknown(),
+                None,
+            );
+            let eval = Evaluator::new(request, &entities, ext);
+            match eval.interpret(&expr, &std::collections::HashMap::new()) {
+                Ok(Value {
+                    value: crate::ast::ValueKind::Lit(crate::ast::Literal::Bool(b)),
+                    ..
+                }) => b,
+                Ok(v) => panic!("expected Bool, got {v:?}"),
+                Err(e) => panic!("evaluation error: {e:?}"),
+            }
+        }
+
+        assert!(eval_bool(
+            r#""/repos/o/pulls/1/reviews" like("/repos/*/pulls/*/reviews", "/")"#
+        ));
+        assert!(!eval_bool(
+            r#""/repos/o/sub/pulls/1/reviews" like("/repos/*/pulls/*/reviews", "/")"#
+        ));
+        assert!(eval_bool(r#""a/b/error.log" like("**/error.log", "/")"#));
+        assert!(eval_bool(r#""/v1/chat" like("/v1/**", "/")"#));
+        assert!(!eval_bool(r#""/v1" like("/v1/**", "/")"#));
+        assert!(eval_bool(r#""/api//admin" like("/api/*/admin", "/")"#));
+    }
+
+    #[test]
+    fn test_like_undelimited_still_works() {
+        assert!(matches!(
+            text_to_cst::parse_expr(r#""x.y" like "*""#)
+                .expect("failed parsing")
+                .to_expr::<ast::ExprBuilder<()>>()
+                .expect("failed conversion")
+                .expr_kind(),
+            ast::ExprKind::Like {
+                expr: _,
+                pattern: _,
+                ..
+            }
+        ));
+    }
+
+    /// The undelimited parser never produces `**` semantics: `**` is just two
+    /// plain wildcards, which together match anything (including `/`).
+    #[test]
+    fn test_like_undelimited_double_star_is_two_wildcards() {
+        use crate::ast::{Expr, PatternElem, Value};
+        use crate::entities::Entities;
+        use crate::evaluator::Evaluator;
+        use crate::extensions::Extensions;
+
+        let expr: Expr = text_to_cst::parse_expr(r#""a/b" like "a**b""#)
+            .expect("failed parsing")
+            .to_expr::<ast::ExprBuilder<()>>()
+            .expect("failed conversion");
+        match expr.expr_kind() {
+            ast::ExprKind::Like { pattern, .. } => {
+                assert_eq!(
+                    pattern.get_elems(),
+                    &[
+                        PatternElem::Char('a'),
+                        PatternElem::Wildcard,
+                        PatternElem::Wildcard,
+                        PatternElem::Char('b'),
+                    ]
+                );
+            }
+            k => panic!("expected ExprKind::Like, got {k:?}"),
+        }
+        let request = crate::ast::Request::new_unchecked(
+            crate::ast::EntityUIDEntry::unknown(),
+            crate::ast::EntityUIDEntry::unknown(),
+            crate::ast::EntityUIDEntry::unknown(),
+            None,
+        );
+        let entities = Entities::new();
+        let eval = Evaluator::new(request, &entities, Extensions::all_available());
+        assert_eq!(
+            eval.interpret(&expr, &std::collections::HashMap::new())
+                .expect("evaluation should succeed"),
+            Value::from(true)
+        );
     }
 }

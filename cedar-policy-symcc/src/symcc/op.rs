@@ -108,7 +108,9 @@ pub enum Op {
     SetSubset,
 
     StringLike(OrdPattern), // Core ADT operator with trusted mapping to SMT
-    Uuf(Arc<Uuf>),          // SMTLib core theory of equality with uninterpreted functions (`UF`)
+    #[cfg(feature = "extended-like")]
+    StringLikeExtended(OrdDelimPattern, cedar_policy_core::ast::LikeDelimiter), // Core ADT operator with trusted mapping to SMT
+    Uuf(Arc<Uuf>), // SMTLib core theory of equality with uninterpreted functions (`UF`)
     ZeroExtend(u32), // allowed to be 0. This is from the `BV` theory, like the variants that begin with `Bv`
 }
 
@@ -170,6 +172,8 @@ impl Op {
             Op::OptionGet => "option.get",
             Op::RecordGet(_) => "record.get",
             Op::StringLike(_) => "string.like",
+            #[cfg(feature = "extended-like")]
+            Op::StringLikeExtended(_, _) => "string.likeExtended",
             Op::Ext(_) => "ext",
         }
     }

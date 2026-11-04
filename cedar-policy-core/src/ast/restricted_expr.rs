@@ -527,6 +527,14 @@ fn is_restricted(expr: &Expr) -> Result<(), RestrictedExpressionError> {
             expr: expr.clone(),
         }
         .into()),
+        #[cfg(feature = "extended-like")]
+        ExprKind::LikeDelimited { .. } => {
+            Err(restricted_expr_errors::InvalidRestrictedExpressionError {
+                feature: "'like'".into(),
+                expr: expr.clone(),
+            }
+            .into())
+        }
         ExprKind::Is { .. } => Err(restricted_expr_errors::InvalidRestrictedExpressionError {
             feature: "'is'".into(),
             expr: expr.clone(),

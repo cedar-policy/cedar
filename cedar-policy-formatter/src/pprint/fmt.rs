@@ -328,6 +328,14 @@ when
             { snapshot_path => "../../tests/snapshots/" },
             {
                 glob!("../../tests", "*.cedar", |path| {
+                    // `like_delimited.cedar` depends on the `extended-like`
+                    // feature; skip when it is not enabled.
+                    #[cfg(not(feature = "extended-like"))]
+                    if path.file_name().and_then(|s| s.to_str())
+                        == Some("like_delimited.cedar")
+                    {
+                        return;
+                    }
                     let cedar_source = fs::read_to_string(path).unwrap();
                     let formatted = policies_str_to_pretty(&cedar_source, &config).unwrap();
                     assert_snapshot!(formatted);
