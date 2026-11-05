@@ -45,7 +45,12 @@ use thiserror::Error;
 
 use crate::validator::{
     cedar_schema::{
-        self, fmt::ToCedarSchemaSyntaxError, parser::parse_cedar_schema_fragment, SchemaWarning,
+        self,
+        depth::schema_type_depth,
+        fmt::ToCedarSchemaSyntaxError,
+        parser::{parse_schema, CedarSchemaParseErrors},
+        to_json_schema::cedar_schema_to_json_schema,
+        SchemaWarning,
     },
     err::{schema_errors::*, Result},
     AllDefs, CedarSchemaError, CedarSchemaParseError, ConditionalName, RawName, ReferenceType,
@@ -181,8 +186,28 @@ impl Fragment<RawName> {
         extensions: &Extensions<'a>,
     ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
     {
-        parse_cedar_schema_fragment(src, extensions)
-            .map_err(|e| CedarSchemaParseError::new(e, src).into())
+        Self::from_cedarschema_str_with_depth_limit(src, extensions, None)
+    }
+
+    /// Like [`Self::from_cedarschema_str`], but if `depth_limit` is `Some`,
+    /// rejects the schema if any type, as written, is nested deeper than the
+    /// limit
+    pub fn from_cedarschema_str_with_depth_limit<'a>(
+        src: &str,
+        extensions: &Extensions<'a>,
+        depth_limit: Option<usize>,
+    ) -> std::result::Result<(Self, impl Iterator<Item = SchemaWarning> + 'a), CedarSchemaError>
+    {
+        let parse_error = |e: CedarSchemaParseErrors| CedarSchemaParseError::new(e, src);
+        let ast = parse_schema(src).map_err(|e| parse_error(e.into()))?;
+        // Converting the schema recurses on its depth, so check it first
+        if let Some(limit) = depth_limit {
+            let depth = schema_type_depth(&ast);
+            if depth > limit {
+                return Err(SchemaError::from(TypeTooDeepError { depth, limit }).into());
+            }
+        }
+        Ok(cedar_schema_to_json_schema(ast, extensions).map_err(|e| parse_error(e.into()))?)
     }
 
     /// Parse the schema (in the Cedar schema syntax) from a reader
@@ -3096,7 +3121,11 @@ mod test {
     fn test_to_internal_name_fragment_with_resolved_types() {
         fn to_json_resolved(src: &str) -> serde_json::Value {
             let (json_schema_fragment, _warnings) =
-                parse_cedar_schema_fragment(src, &Extensions::all_available()).unwrap();
+                cedar_schema::parser::parse_cedar_schema_fragment(
+                    src,
+                    &Extensions::all_available(),
+                )
+                .unwrap();
 
             serde_json::to_value(
                 json_schema_fragment
