@@ -21,7 +21,6 @@ use crate::parser::{err, Loc};
 
 use super::cst;
 use super::node::Node;
-use yaspar_macros::stack_safe;
 
 /// Check depth of all condition expressions in a policies CST node.
 pub(crate) fn check_policies_depth(
@@ -124,33 +123,58 @@ fn conds_effective_depth(policy: &cst::PolicyImpl) -> Option<usize> {
     conjunction_depth(&cond_depths)
 }
 
-/// Same as `node.node.as_ref()`, which fails type inference inside `#[stack_safe]`
-fn inner<T>(node: &Node<Option<T>>) -> Option<&T> {
-    node.node.as_ref()
-}
-
 /// Upper bound on the depth of both the CST and the AST it converts to, which
 /// may be deeper (e.g., `a || b || c` becomes `(a || b) || c`).
-#[stack_safe]
-mod effective_depth {
-    use super::{cst, inner, Node};
+pub(crate) fn expr_depth(expr_node: &Node<Option<cst::Expr>>) -> usize {
+    let mut walk = DepthWalk::default();
+    walk.stack.push((expr_node, 0));
+    walk.finish()
+}
 
-    pub(crate) fn expr_depth(expr_node: &Node<Option<cst::Expr>>) -> usize {
+/// Like [`expr_depth`], but for an `Add` node.
+pub(crate) fn add_depth(add_node: &Node<Option<cst::Add>>) -> usize {
+    let mut walk = DepthWalk::default();
+    walk.add(add_node, 0);
+    walk.finish()
+}
+
+/// Finds the maximum depth of any node in a CST. `Expr` nodes are visited from
+/// an explicit stack. The CST types between two `Expr` nodes aren't recursive,
+/// so the other methods recurse only to a bounded depth.
+#[derive(Default)]
+struct DepthWalk<'a> {
+    max: usize,
+    stack: Vec<(&'a Node<Option<cst::Expr>>, usize)>,
+}
+
+impl<'a> DepthWalk<'a> {
+    fn finish(mut self) -> usize {
+        while let Some((expr, depth)) = self.stack.pop() {
+            self.expr(expr, depth);
+        }
+        self.max
+    }
+
+    fn visit(&mut self, depth: usize) {
+        self.max = self.max.max(depth);
+    }
+
+    fn expr(&mut self, expr_node: &'a Node<Option<cst::Expr>>, depth: usize) {
+        self.visit(depth);
         let Some(expr) = expr_node.node.as_ref() else {
-            return 0;
+            return;
         };
-        let expr_impl = match expr {
-            cst::Expr::Expr(e) => e,
+        let data = match expr {
+            cst::Expr::Expr(cst::ExprImpl { expr }) => expr,
             #[cfg(feature = "tolerant-ast")]
-            cst::Expr::ErrorExpr => return 0,
+            cst::Expr::ErrorExpr => return,
         };
-        match &*expr_impl.expr {
-            cst::ExprData::Or(or) => or_depth(or),
+        match data.as_ref() {
+            cst::ExprData::Or(or) => self.or(or, depth),
             cst::ExprData::If(cond, then_expr, else_expr) => {
-                let cond_depth = expr_depth(cond);
-                let then_depth = expr_depth(then_expr);
-                let else_depth = expr_depth(else_expr);
-                1 + cond_depth.max(then_depth).max(else_depth)
+                self.stack.push((cond, depth + 1));
+                self.stack.push((then_expr, depth + 1));
+                self.stack.push((else_expr, depth + 1));
             }
         }
     }
@@ -160,35 +184,34 @@ mod effective_depth {
     // operand is nested under every operator, and each extended operand is
     // nested under one fewer operator than the operand before it.
 
-    fn or_depth(or_node: &Node<Option<cst::Or>>) -> usize {
-        let Some(or) = or_node.node.as_ref() else {
-            return 0;
+    fn or(&mut self, or_node: &'a Node<Option<cst::Or>>, depth: usize) {
+        self.visit(depth);
+        let Some(cst::Or { initial, extended }) = or_node.node.as_ref() else {
+            return;
         };
-        let len = or.extended.len();
-        let mut depth = len + and_depth(&or.initial);
-        for (i, ext) in or.extended.iter().enumerate() {
-            let ext_depth = and_depth(ext);
-            depth = depth.max(len - i + ext_depth);
+        let len = extended.len();
+        self.and(initial, depth + len);
+        for (i, ext) in extended.iter().enumerate() {
+            self.and(ext, depth + len - i);
         }
-        depth
     }
 
-    fn and_depth(and_node: &Node<Option<cst::And>>) -> usize {
-        let Some(and) = and_node.node.as_ref() else {
-            return 0;
+    fn and(&mut self, and_node: &'a Node<Option<cst::And>>, depth: usize) {
+        self.visit(depth);
+        let Some(cst::And { initial, extended }) = and_node.node.as_ref() else {
+            return;
         };
-        let len = and.extended.len();
-        let mut depth = len + relation_depth(&and.initial);
-        for (i, ext) in and.extended.iter().enumerate() {
-            let ext_depth = relation_depth(ext);
-            depth = depth.max(len - i + ext_depth);
+        let len = extended.len();
+        self.relation(initial, depth + len);
+        for (i, ext) in extended.iter().enumerate() {
+            self.relation(ext, depth + len - i);
         }
-        depth
     }
 
-    fn relation_depth(rel_node: &Node<Option<cst::Relation>>) -> usize {
+    fn relation(&mut self, rel_node: &'a Node<Option<cst::Relation>>, depth: usize) {
+        self.visit(depth);
         let Some(rel) = rel_node.node.as_ref() else {
-            return 0;
+            return;
         };
         match rel {
             cst::Relation::Common { initial, extended } => {
@@ -201,143 +224,120 @@ mod effective_depth {
                     )
                 });
                 let len = extended.len() + usize::from(negated);
-                let mut depth = len + add_depth(initial);
-                for (i, ext) in extended.iter().map(|(_, ext)| ext).enumerate() {
-                    let ext_depth = add_depth(ext);
-                    depth = depth.max(len - i + ext_depth);
+                self.add(initial, depth + len);
+                for (i, (_, ext)) in extended.iter().enumerate() {
+                    self.add(ext, depth + len - i);
                 }
-                depth
             }
             cst::Relation::Has { target, field } => {
                 // `e has a.b.c` becomes a single `has` node. The depth of
                 // `a.b.c` bounds the length of its attribute path.
-                let target_depth = add_depth(target);
-                let field_depth = add_depth(field);
-                1 + target_depth.max(field_depth)
+                self.add(target, depth + 1);
+                self.add(field, depth + 1);
             }
             cst::Relation::Like { target, pattern } => {
-                let target_depth = add_depth(target);
-                let pattern_depth = add_depth(pattern);
-                1 + target_depth.max(pattern_depth)
+                self.add(target, depth + 1);
+                self.add(pattern, depth + 1);
             }
             cst::Relation::IsIn {
                 target,
                 entity_type,
                 in_entity,
-            } => {
-                let target_depth = add_depth(target);
-                let entity_type_depth = add_depth(entity_type);
-                match in_entity {
-                    // `e is T in e2` expands to `e is T && e in e2`
-                    Some(in_entity) => {
-                        let in_entity_depth = add_depth(in_entity);
-                        2 + target_depth.max(entity_type_depth).max(in_entity_depth)
-                    }
-                    None => 1 + target_depth.max(entity_type_depth),
+            } => match in_entity {
+                // `e is T in e2` expands to `e is T && e in e2`
+                Some(in_entity) => {
+                    self.add(target, depth + 2);
+                    self.add(entity_type, depth + 2);
+                    self.add(in_entity, depth + 2);
                 }
-            }
+                None => {
+                    self.add(target, depth + 1);
+                    self.add(entity_type, depth + 1);
+                }
+            },
         }
     }
 
-    pub(crate) fn add_depth(add_node: &Node<Option<cst::Add>>) -> usize {
-        let Some(add) = add_node.node.as_ref() else {
-            return 0;
+    fn add(&mut self, add_node: &'a Node<Option<cst::Add>>, depth: usize) {
+        self.visit(depth);
+        let Some(cst::Add { initial, extended }) = add_node.node.as_ref() else {
+            return;
         };
-        let len = add.extended.len();
-        let mut depth = len + mult_depth(&add.initial);
-        for (i, ext) in add.extended.iter().map(|(_, ext)| ext).enumerate() {
-            let ext_depth = mult_depth(ext);
-            depth = depth.max(len - i + ext_depth);
+        let len = extended.len();
+        self.mult(initial, depth + len);
+        for (i, (_, ext)) in extended.iter().enumerate() {
+            self.mult(ext, depth + len - i);
         }
-        depth
     }
 
-    fn mult_depth(mult_node: &Node<Option<cst::Mult>>) -> usize {
-        let Some(mult) = mult_node.node.as_ref() else {
-            return 0;
+    fn mult(&mut self, mult_node: &'a Node<Option<cst::Mult>>, depth: usize) {
+        self.visit(depth);
+        let Some(cst::Mult { initial, extended }) = mult_node.node.as_ref() else {
+            return;
         };
-        let len = mult.extended.len();
-        let mut depth = len + unary_depth(&mult.initial);
-        for (i, ext) in mult.extended.iter().map(|(_, ext)| ext).enumerate() {
-            let ext_depth = unary_depth(ext);
-            depth = depth.max(len - i + ext_depth);
+        let len = extended.len();
+        self.unary(initial, depth + len);
+        for (i, (_, ext)) in extended.iter().enumerate() {
+            self.unary(ext, depth + len - i);
         }
-        depth
     }
 
-    fn unary_depth(unary_node: &Node<Option<cst::Unary>>) -> usize {
-        let Some(unary) = unary_node.node.as_ref() else {
-            return 0;
+    fn unary(&mut self, unary_node: &'a Node<Option<cst::Unary>>, depth: usize) {
+        self.visit(depth);
+        let Some(cst::Unary { op, item }) = unary_node.node.as_ref() else {
+            return;
         };
-        let neg_depth = match unary.op {
+        let neg_depth = match *op {
             Some(cst::NegOp::Bang(n)) | Some(cst::NegOp::Dash(n)) => n as usize,
             Some(cst::NegOp::OverBang) | Some(cst::NegOp::OverDash) => 0,
             None => 0,
         };
-        neg_depth + member_depth(&unary.item)
+        self.member(item, depth + neg_depth);
     }
 
-    fn member_depth(mem_node: &Node<Option<cst::Member>>) -> usize {
-        let Some(mem) = mem_node.node.as_ref() else {
-            return 0;
+    fn member(&mut self, mem_node: &'a Node<Option<cst::Member>>, depth: usize) {
+        self.visit(depth);
+        let Some(cst::Member { item, access }) = mem_node.node.as_ref() else {
+            return;
         };
         // Member accesses are left associative, so `e.a.b` becomes `(e.a).b`.
         // The item is nested under every access, and the arguments of each
         // access are nested under one fewer access than the access before it.
-        let len = mem.access.len();
-        let mut depth = len + primary_depth(&mem.item);
-        for (i, acc_node) in mem.access.iter().enumerate() {
-            let Some(acc) = inner(acc_node) else {
-                continue;
-            };
-            match acc {
-                cst::MemAccess::Field(_) => {}
-                cst::MemAccess::Call(args) => {
-                    for arg in args {
-                        let arg_depth = expr_depth(arg);
-                        depth = depth.max(len - i + arg_depth);
-                    }
+        let len = access.len();
+        self.primary(item, depth + len);
+        for (i, acc_node) in access.iter().enumerate() {
+            match acc_node.node.as_ref() {
+                Some(cst::MemAccess::Field(_)) | None => {}
+                Some(cst::MemAccess::Call(args)) => {
+                    self.stack
+                        .extend(args.iter().map(|arg| (arg, depth + len - i)));
                 }
-                cst::MemAccess::Index(idx) => {
-                    let idx_depth = expr_depth(idx);
-                    depth = depth.max(len - i + idx_depth);
-                }
+                Some(cst::MemAccess::Index(idx)) => self.stack.push((idx, depth + len - i)),
             }
         }
-        depth
     }
 
-    fn primary_depth(prim_node: &Node<Option<cst::Primary>>) -> usize {
+    fn primary(&mut self, prim_node: &'a Node<Option<cst::Primary>>, depth: usize) {
+        self.visit(depth);
         let Some(prim) = prim_node.node.as_ref() else {
-            return 0;
+            return;
         };
         match prim {
             cst::Primary::Literal(_)
             | cst::Primary::Ref(_)
             | cst::Primary::Name(_)
-            | cst::Primary::Slot(_) => 0,
+            | cst::Primary::Slot(_) => {}
             // Parentheses don't add depth to the AST, but they do add depth to
             // the CST, which we recurse on when converting to an AST.
-            cst::Primary::Expr(inner) => 1 + expr_depth(inner),
-            cst::Primary::EList(elts) => {
-                let mut depth = 0;
-                for elt in elts {
-                    let elt_depth = expr_depth(elt);
-                    depth = depth.max(1 + elt_depth);
-                }
-                depth
-            }
+            cst::Primary::Expr(inner) => self.stack.push((inner, depth + 1)),
+            cst::Primary::EList(elts) => self.stack.extend(elts.iter().map(|e| (e, depth + 1))),
             cst::Primary::RInits(inits) => {
-                let mut depth = 0;
                 for init in inits {
-                    let Some(rec_init) = init.node.as_ref() else {
-                        continue;
-                    };
-                    let key_depth = expr_depth(&rec_init.0);
-                    let value_depth = expr_depth(&rec_init.1);
-                    depth = depth.max(1 + key_depth.max(value_depth));
+                    if let Some(cst::RecInit(key, value)) = init.node.as_ref() {
+                        self.stack.push((key, depth + 1));
+                        self.stack.push((value, depth + 1));
+                    }
                 }
-                depth
             }
         }
     }

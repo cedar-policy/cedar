@@ -21,49 +21,51 @@
 //! but multiple `when` clauses which we encode as a flat JSON array are
 //! deserialized as `&&` expressions which could exceed available stack space.
 
-use yaspar_macros::stack_safe;
-
 use super::{Expr, ExprKind};
 
 impl<T> Expr<T> {
     /// The number of edges on the longest path to a leaf
-    ///
-    /// This doesn't necessarily need to be `stack_safe` because it runs after
-    /// `serde_json` imposes its depth limit.
-    #[stack_safe]
     pub fn depth(&self) -> usize {
-        let mut d = 0;
-        for child in Self::children(self) {
-            d = d.max(1 + child.depth());
+        let mut max = 0;
+        let mut stack = vec![(self, 0)];
+        while let Some((expr, depth)) = stack.pop() {
+            max = max.max(depth);
+            expr.push_children(depth + 1, &mut stack);
         }
-        d
+        max
     }
 
-    /// The immediate subexpressions of `expr`
-    fn children(&self) -> Vec<&Expr<T>> {
+    /// Push the immediate subexpressions of `self` onto `stack` with `depth`
+    fn push_children<'a>(&'a self, depth: usize, stack: &mut Vec<(&'a Self, usize)>) {
         match self.expr_kind() {
-            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => {
-                vec![]
-            }
+            ExprKind::Lit(_) | ExprKind::Var(_) | ExprKind::Slot(_) | ExprKind::Unknown(_) => {}
             ExprKind::If {
                 test_expr,
                 then_expr,
                 else_expr,
-            } => vec![&test_expr, &then_expr, &else_expr],
-            ExprKind::And { left, right } | ExprKind::Or { left, right } => vec![&left, &right],
-            ExprKind::UnaryApp { arg, .. } => vec![&arg],
-            ExprKind::BinaryApp { arg1, arg2, .. } => vec![&arg1, &arg2],
+            } => stack.extend([
+                (test_expr.as_ref(), depth),
+                (then_expr.as_ref(), depth),
+                (else_expr.as_ref(), depth),
+            ]),
+            ExprKind::And { left, right } | ExprKind::Or { left, right } => {
+                stack.extend([(left.as_ref(), depth), (right.as_ref(), depth)])
+            }
+            ExprKind::UnaryApp { arg, .. } => stack.push((arg, depth)),
+            ExprKind::BinaryApp { arg1, arg2, .. } => {
+                stack.extend([(arg1.as_ref(), depth), (arg2.as_ref(), depth)])
+            }
             ExprKind::GetAttr { expr, .. }
             | ExprKind::HasAttr { expr, .. }
             | ExprKind::ExtHasAttr { expr, .. }
             | ExprKind::Like { expr, .. }
-            | ExprKind::Is { expr, .. } => vec![&expr],
+            | ExprKind::Is { expr, .. } => stack.push((expr, depth)),
             ExprKind::ExtensionFunctionApp { args, .. } | ExprKind::Set(args) => {
-                args.iter().collect()
+                stack.extend(args.iter().map(|arg| (arg, depth)))
             }
-            ExprKind::Record(fields) => fields.values().collect(),
+            ExprKind::Record(fields) => stack.extend(fields.values().map(|v| (v, depth))),
             #[cfg(feature = "tolerant-ast")]
-            ExprKind::Error { .. } => vec![],
+            ExprKind::Error { .. } => {}
         }
     }
 }

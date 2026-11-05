@@ -416,24 +416,13 @@ impl Slot {
 /// dropped.
 impl Drop for Expr {
     fn drop(&mut self) {
-        let mut children = Vec::new();
-        take_child_exprs(self, &mut children);
-        // Skipping `drop_exprs` us a useful optimization due to overhead in
-        // setting up the state machine for `stack_safe`.
-        if !children.is_empty() {
-            drop_exprs(children);
+        let mut stack = Vec::new();
+        take_child_exprs(self, &mut stack);
+        while let Some(mut node) = stack.pop() {
+            if let Some(expr) = node.node.as_mut() {
+                take_child_exprs(expr, &mut stack);
+            }
         }
-    }
-}
-
-#[yaspar_macros::stack_safe]
-fn drop_exprs(exprs: Vec<Node<Expr>>) {
-    for mut node in exprs {
-        let mut children = Vec::new();
-        if let Some(expr) = node.node.as_mut() {
-            take_child_exprs(expr, &mut children);
-        }
-        drop_exprs(children);
     }
 }
 
@@ -445,16 +434,19 @@ fn take_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
         #[cfg(feature = "tolerant-ast")]
         Expr::ErrorExpr => return,
     };
-    match expr.expr.as_mut() {
+    let ExprImpl { expr } = expr;
+    match expr.as_mut() {
         ExprData::If(cond, then_expr, else_expr) => {
             out.push(std::mem::replace(cond, Node::new(None)));
             out.push(std::mem::replace(then_expr, Node::new(None)));
             out.push(std::mem::replace(else_expr, Node::new(None)));
         }
         ExprData::Or(or) => {
-            let Some(or) = or.node.as_mut() else { return };
-            take_from_and(&mut or.initial, out);
-            for ext in &mut or.extended {
+            let Some(Or { initial, extended }) = or.node.as_mut() else {
+                return;
+            };
+            take_from_and(initial, out);
+            for ext in extended {
                 take_from_and(ext, out);
             }
         }
@@ -462,9 +454,11 @@ fn take_child_exprs(expr: &mut Expr, out: &mut Vec<Node<Expr>>) {
 }
 
 fn take_from_and(and: &mut Node<And>, out: &mut Vec<Node<Expr>>) {
-    let Some(and) = and.node.as_mut() else { return };
-    take_from_relation(&mut and.initial, out);
-    for ext in &mut and.extended {
+    let Some(And { initial, extended }) = and.node.as_mut() else {
+        return;
+    };
+    take_from_relation(initial, out);
+    for ext in extended {
         take_from_relation(ext, out);
     }
 }
@@ -501,38 +495,40 @@ fn take_from_relation(rel: &mut Node<Relation>, out: &mut Vec<Node<Expr>>) {
 }
 
 fn take_from_add(add: &mut Node<Add>, out: &mut Vec<Node<Expr>>) {
-    let Some(add) = add.node.as_mut() else { return };
-    take_from_mult(&mut add.initial, out);
-    for (_, ext) in &mut add.extended {
+    let Some(Add { initial, extended }) = add.node.as_mut() else {
+        return;
+    };
+    take_from_mult(initial, out);
+    for (_, ext) in extended {
         take_from_mult(ext, out);
     }
 }
 
 fn take_from_mult(mult: &mut Node<Mult>, out: &mut Vec<Node<Expr>>) {
-    let Some(mult) = mult.node.as_mut() else {
+    let Some(Mult { initial, extended }) = mult.node.as_mut() else {
         return;
     };
-    take_from_unary(&mut mult.initial, out);
-    for (_, ext) in &mut mult.extended {
+    take_from_unary(initial, out);
+    for (_, ext) in extended {
         take_from_unary(ext, out);
     }
 }
 
 fn take_from_unary(unary: &mut Node<Unary>, out: &mut Vec<Node<Expr>>) {
-    let Some(unary) = unary.node.as_mut() else {
+    let Some(Unary { op: _, item }) = unary.node.as_mut() else {
         return;
     };
-    let Some(member) = unary.item.node.as_mut() else {
+    let Some(Member { item, access }) = item.node.as_mut() else {
         return;
     };
-    for access in &mut member.access {
+    for access in access {
         match access.node.as_mut() {
             Some(MemAccess::Call(args)) => out.append(args),
             Some(MemAccess::Index(index)) => out.push(std::mem::replace(index, Node::new(None))),
             Some(MemAccess::Field(_)) | None => {}
         }
     }
-    match member.item.node.as_mut() {
+    match item.node.as_mut() {
         Some(Primary::Expr(e)) => out.push(std::mem::replace(e, Node::new(None))),
         Some(Primary::EList(elts)) => out.append(elts),
         Some(Primary::RInits(inits)) => {
