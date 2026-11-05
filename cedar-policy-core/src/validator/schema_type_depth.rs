@@ -19,38 +19,41 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-use yaspar_macros::stack_safe;
-
 use super::json_schema::{Type, TypeVariant};
 
 /// The depth of `ty` once common types are inlined, given the depth of each
 /// common type, computed without inlining
-#[stack_safe]
 pub(crate) fn type_depth<N: Eq + Hash>(
     ty: &Type<N>,
     common_type_depths: &HashMap<&N, usize>,
 ) -> usize {
-    match ty {
-        Type::Type { ty: variant, .. } => match variant {
-            TypeVariant::String
-            | TypeVariant::Long
-            | TypeVariant::Boolean
-            | TypeVariant::Entity { .. }
-            | TypeVariant::Extension { .. } => 0,
-            TypeVariant::Set { element } => 1 + type_depth(element, common_type_depths),
-            TypeVariant::Record(record) => {
-                let mut depth = 0;
-                for attr in record.attributes.values() {
-                    depth = depth.max(1 + type_depth(&attr.ty, common_type_depths));
+    let mut max = 0;
+    let mut stack = vec![(ty, 0)];
+    while let Some((ty, depth)) = stack.pop() {
+        let leaf_depth = match ty {
+            Type::Type { ty: variant, .. } => match variant {
+                TypeVariant::String
+                | TypeVariant::Long
+                | TypeVariant::Boolean
+                | TypeVariant::Entity { .. }
+                | TypeVariant::Extension { .. } => 0,
+                TypeVariant::Set { element } => {
+                    stack.push((element.as_ref(), depth + 1));
+                    0
                 }
-                depth
-            }
-            TypeVariant::EntityOrCommon { type_name } => {
+                TypeVariant::Record(record) => {
+                    stack.extend(record.attributes.values().map(|attr| (&attr.ty, depth + 1)));
+                    0
+                }
+                TypeVariant::EntityOrCommon { type_name } => {
+                    common_type_depths.get(type_name).copied().unwrap_or(0)
+                }
+            },
+            Type::CommonTypeRef { type_name, .. } => {
                 common_type_depths.get(type_name).copied().unwrap_or(0)
             }
-        },
-        Type::CommonTypeRef { type_name, .. } => {
-            common_type_depths.get(type_name).copied().unwrap_or(0)
-        }
+        };
+        max = max.max(depth + leaf_depth);
     }
+    max
 }

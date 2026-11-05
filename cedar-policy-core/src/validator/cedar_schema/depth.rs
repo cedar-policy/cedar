@@ -17,7 +17,6 @@
 //! Stack-safe depth computation for the Cedar schema syntax AST
 
 use itertools::Either;
-use yaspar_macros::stack_safe;
 
 use super::ast::{ActionDecl, Annotated, AppDecl, AttrDecl, Declaration, EntityDecl, Schema, Type};
 use crate::parser::Node;
@@ -57,17 +56,18 @@ fn record_depth(attrs: &[Node<Annotated<AttrDecl>>]) -> usize {
         .unwrap_or(0)
 }
 
-#[stack_safe]
 fn type_depth(ty: &Node<Type>) -> usize {
-    match &ty.node {
-        Type::Ident(_) => 0,
-        Type::Set(inner) => 1 + type_depth(inner),
-        Type::Record(attrs) => {
-            let mut depth = 0;
-            for attr in attrs {
-                depth = depth.max(1 + type_depth(&attr.node.data.ty));
+    let mut max = 0;
+    let mut stack = vec![(ty, 0)];
+    while let Some((ty, depth)) = stack.pop() {
+        max = max.max(depth);
+        match &ty.node {
+            Type::Ident(_) => {}
+            Type::Set(inner) => stack.push((inner.as_ref(), depth + 1)),
+            Type::Record(attrs) => {
+                stack.extend(attrs.iter().map(|attr| (&attr.node.data.ty, depth + 1)));
             }
-            depth
         }
     }
+    max
 }
