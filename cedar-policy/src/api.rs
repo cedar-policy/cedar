@@ -1849,6 +1849,44 @@ impl SchemaFragment {
         ))
     }
 
+    /// Like [`Self::from_cedarschema_str`], but rejects the fragment if any
+    /// type, as written, is nested deeper than `depth_limit`.
+    ///
+    /// To build a  [`Schema::from_schema_fragments_with_depth_limit`] to also limit the
+    /// depth once common types are inlined.
+    pub fn from_cedarschema_str_with_depth_limit(
+        src: &str,
+        depth_limit: usize,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (lossless, warnings) = json_schema::Fragment::from_cedarschema_str_with_depth_limit(
+            src,
+            Extensions::all_available(),
+            Some(depth_limit),
+        )?;
+        Ok((
+            Self {
+                value: lossless.clone().try_into()?,
+                lossless,
+            },
+            warnings,
+        ))
+    }
+
+    /// Like [`Self::from_cedarschema_file`], but rejects the fragment if any
+    /// type, as written, is nested deeper than `depth_limit`.
+    ///
+    /// Use [`Schema::from_schema_fragments_with_depth_limit`] to also limit the
+    /// depth once common types are inlined.
+    pub fn from_cedarschema_file_with_depth_limit(
+        mut r: impl std::io::Read,
+        depth_limit: usize,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let mut src = String::new();
+        r.read_to_string(&mut src)
+            .map_err(cedar_policy_core::validator::CedarSchemaError::from)?;
+        Self::from_cedarschema_str_with_depth_limit(&src, depth_limit)
+    }
+
     /// Create a [`SchemaFragment`] directly from a JSON file (which should
     /// contain an object of the shape required for the JSON schema format).
     pub fn from_json_file(file: impl std::io::Read) -> Result<Self, SchemaError> {
@@ -1857,6 +1895,45 @@ impl SchemaFragment {
             value: lossless.clone().try_into()?,
             lossless,
         })
+    }
+
+    /// Like [`Self::from_json_str`], but rejects the fragment if any type, as
+    /// written, is nested deeper than `depth_limit`. Use
+    /// [`Schema::from_schema_fragments_with_depth_limit`] to also limit the
+    /// depth once common types are inlined.
+    pub fn from_json_str_with_depth_limit(
+        src: &str,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Self::from_json_str(src)?.check_type_depth(depth_limit)
+    }
+
+    /// Like [`Self::from_json_value`], but rejects the fragment if any type,
+    /// as written, is nested deeper than `depth_limit`.
+    ///
+    /// `serde_json`'s nesting limit applies only when parsing JSON text, so
+    /// `json` should come from parsing text (e.g., with `serde_json::from_str`).
+    /// Deserializing a deeper `serde_json::Value` may overflow the stack before
+    /// `depth_limit` is checked.
+    pub fn from_json_value_with_depth_limit(
+        json: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Self::from_json_value(json)?.check_type_depth(depth_limit)
+    }
+
+    /// Like [`Self::from_json_file`], but rejects the fragment if any type, as
+    /// written, is nested deeper than `depth_limit`
+    pub fn from_json_file_with_depth_limit(
+        file: impl std::io::Read,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Self::from_json_file(file)?.check_type_depth(depth_limit)
+    }
+
+    fn check_type_depth(self, depth_limit: usize) -> Result<Self, SchemaError> {
+        self.value.check_type_depth(depth_limit)?;
+        Ok(self)
     }
 
     /// Serialize this [`SchemaFragment`] as a JSON value
@@ -1954,6 +2031,39 @@ impl Schema {
         ))
     }
 
+    /// Like [`Self::from_schema_fragments`], but rejects the schema if any
+    /// type is nested deeper than `depth_limit` once common types are inlined.
+    ///
+    /// This avoids stack overflows when using schemas of unknown depth.
+    /// Fragments in the Cedar schema syntax should be parsed with
+    /// [`SchemaFragment::from_cedarschema_str_with_depth_limit`], since parsing
+    /// recurses on their depth.
+    pub fn from_schema_fragments_with_depth_limit(
+        fragments: impl IntoIterator<Item = SchemaFragment>,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_core::validator::ValidatorSchema::from_schema_fragments_with_depth_limit(
+                fragments.into_iter().map(|f| f.value),
+                Extensions::all_available(),
+                Some(depth_limit),
+            )?,
+        ))
+    }
+
+    fn from_fragment_with_depth_limit(
+        fragment: json_schema::Fragment<cedar_policy_core::validator::RawName>,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Ok(Self(
+            cedar_policy_core::validator::ValidatorSchema::from_schema_fragments_with_depth_limit(
+                [fragment.try_into()?],
+                Extensions::all_available(),
+                Some(depth_limit),
+            )?,
+        ))
+    }
+
     /// Create a [`Schema`] from a JSON value (which should be an object of the
     /// shape required for the JSON schema format).
     pub fn from_json_value(json: serde_json::Value) -> Result<Self, SchemaError> {
@@ -1987,6 +2097,48 @@ impl Schema {
         ))
     }
 
+    /// Like [`Self::from_json_value`], but rejects the schema if any type is
+    /// nested deeper than `depth_limit` once common types are inlined.
+    pub fn from_json_value_with_depth_limit(
+        json: serde_json::Value,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Self::from_fragment_with_depth_limit(
+            json_schema::Fragment::from_json_value(json)?,
+            depth_limit,
+        )
+    }
+
+    /// Like [`Self::from_json_str`], but rejects the schema if any type is
+    /// nested deeper than `depth_limit` once common types are inlined.
+    ///
+    /// `serde_json` limits the nesting of the JSON text, but common types can
+    /// combine shallow definitions into a deep type, which `depth_limit` bounds.
+    pub fn from_json_str_with_depth_limit(
+        json: &str,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Self::from_fragment_with_depth_limit(
+            json_schema::Fragment::from_json_str(json)?,
+            depth_limit,
+        )
+    }
+
+    /// Like [`Self::from_json_file`], but rejects the schema if any type is
+    /// nested deeper than `depth_limit` once common types are inlined.
+    ///
+    /// `serde_json` limits the nesting of the JSON text, but common types can
+    /// combine shallow definitions into a deep type, which `depth_limit` bounds.
+    pub fn from_json_file_with_depth_limit(
+        file: impl std::io::Read,
+        depth_limit: usize,
+    ) -> Result<Self, SchemaError> {
+        Self::from_fragment_with_depth_limit(
+            json_schema::Fragment::from_json_file(file)?,
+            depth_limit,
+        )
+    }
+
     /// Parse the schema from a reader, in the Cedar schema format.
     pub fn from_cedarschema_file(
         file: impl std::io::Read,
@@ -2009,6 +2161,35 @@ impl Schema {
                 Extensions::all_available(),
             )?;
         Ok((Self(schema), warnings))
+    }
+
+    /// Like [`Self::from_cedarschema_str`], but rejects the schema if any type
+    /// is nested deeper than `depth_limit` once common types are inlined.
+    pub fn from_cedarschema_str_with_depth_limit(
+        src: &str,
+        depth_limit: usize,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let (fragment, warnings) = json_schema::Fragment::from_cedarschema_str_with_depth_limit(
+            src,
+            Extensions::all_available(),
+            Some(depth_limit),
+        )?;
+        Ok((
+            Self::from_fragment_with_depth_limit(fragment, depth_limit)?,
+            warnings,
+        ))
+    }
+
+    /// Like [`Self::from_cedarschema_file`], but rejects the schema if any type
+    /// is nested deeper than `depth_limit` once common types are inlined.
+    pub fn from_cedarschema_file_with_depth_limit(
+        mut file: impl std::io::Read,
+        depth_limit: usize,
+    ) -> Result<(Self, impl Iterator<Item = SchemaWarning>), CedarSchemaError> {
+        let mut src = String::new();
+        file.read_to_string(&mut src)
+            .map_err(cedar_policy_core::validator::CedarSchemaError::from)?;
+        Self::from_cedarschema_str_with_depth_limit(&src, depth_limit)
     }
 
     /// Extract from the schema an [`Entities`] containing the action entities
