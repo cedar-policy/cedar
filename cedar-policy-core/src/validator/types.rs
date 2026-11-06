@@ -1038,6 +1038,8 @@ impl Attributes {
         self.attrs.get(attr)
     }
 
+    /// Identifies this attribute map by address, so only clones sharing the
+    /// same `Arc` have equal ids.
     #[doc(hidden)]
     pub fn id(&self) -> RecordId<'_> {
         RecordId(ByRef(self.attrs.as_ref()))
@@ -1351,8 +1353,6 @@ impl AttributeType {
 
 /// The address of a record's attribute map. It borrows the map, so the address
 /// can't be reused while the `RecordId` exists, which makes it a sound memo key.
-/// Records are the only nodes with more than one child, so they are the only
-/// nodes that need to be memoized.
 #[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RecordId<'a>(ByRef<'a, BTreeMap<SmolStr, AttributeType>>);
@@ -1363,7 +1363,9 @@ impl std::fmt::Debug for RecordId<'_> {
     }
 }
 
-/// The shared records of a schema.
+/// The record types reachable from two or more places in a schema, compared by
+/// address: equal records in different `Arc`s are not shared. Entity
+/// attributes and action contexts are not counted, only the records in them.
 #[doc(hidden)]
 #[derive(Debug, Default)]
 pub struct SharedRecords<'a> {
@@ -1406,6 +1408,8 @@ impl<'a> SharedRecords<'a> {
     }
 
     fn add_type(&mut self, ty: &'a Type) {
+        // Records are the only nodes with more than one child, so they are the
+        // only nodes that need to be memoized.
         match ty {
             Type::Record { attrs, .. } => self.add_record(attrs),
             Type::Set {
@@ -1437,6 +1441,7 @@ pub(crate) struct TypeIterator<'a> {
 /// another value while this exists.
 struct ByRef<'a, T>(&'a T);
 
+// Not derived: the derive would require `T: Clone`.
 impl<T> Clone for ByRef<'_, T> {
     fn clone(&self) -> Self {
         *self

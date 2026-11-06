@@ -64,6 +64,9 @@ pub enum EncodeError {
     Conversion(#[from] ProtobufConversionError),
 }
 
+/// Prost's decoder recursion limit, hardcoded in prost.
+pub(crate) const PROST_RECURSION_LIMIT: usize = 100;
+
 /// Maximum allowed protobuf recursion depth for encoding.
 ///
 /// Prost's decoder has a hardcoded recursion limit of 100, where each nested
@@ -75,7 +78,7 @@ pub enum EncodeError {
 ///
 /// We set this to 90 to leave a small margin (10 levels) for outer wrappers
 /// like `TemplateBody` or `Entity` that contain an `Expr` field.
-pub const MAX_ENCODE_DEPTH: usize = 90;
+pub const MAX_ENCODE_DEPTH: usize = PROST_RECURSION_LIMIT - 10;
 
 /// A trait for protobuf model types that require validation before encoding.
 ///
@@ -558,6 +561,8 @@ pub(crate) fn schema_expansion_within_depth(
     let heights = type_def_heights(&schema.type_defs);
     let within =
         |ty: &models::Type, start: usize| start.saturating_add(type_height(ty, &heights)) <= limit;
+    // One level more than prost counts: the old accounting counted the
+    // `entity_decls` and `action_decls` lists, and it is kept.
     schema.entity_decls.iter().all(|entity_decl| {
         entity_decl
             .attributes
@@ -586,8 +591,7 @@ fn type_def_heights(type_defs: &[models::Type]) -> Vec<usize> {
     heights
 }
 
-/// Computes the height of root given the height of the defined types,
-/// based on the prost recursion costs for each `Type` variant.
+/// The prost levels below `root`, where `type_ref i` is `def_heights[i]` levels.
 fn type_height(root: &models::Type, def_heights: &[usize]) -> usize {
     use models::r#type::Data;
     let mut height = 0;
@@ -597,6 +601,7 @@ fn type_height(root: &models::Type, def_heights: &[usize]) -> usize {
             None | Some(Data::Prim(_)) => 0,
             // Entity/Ext adds 1: (Name(..))
             Some(Data::Entity(_) | Data::Ext(_)) => 1,
+            // Bad indices are reported by the decoder.
             Some(Data::TypeRef(index)) => usize::try_from(*index)
                 .ok()
                 .and_then(|index| def_heights.get(index))

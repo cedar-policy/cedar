@@ -18,6 +18,7 @@
 
 use super::ast::ProtobufConversionError;
 use super::models;
+use super::traits::PROST_RECURSION_LIMIT;
 use cedar_policy_core::ast::{self, Eid};
 use cedar_policy_core::validator::{self, types};
 use nonempty::NonEmpty;
@@ -25,10 +26,11 @@ use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-// Shared records (see `types::SharedRecords`) are encoded once in `type_defs`
-// and referred to by `type_ref`. The decoder clones the decoded entry at each
-// `type_ref`, which keeps the sharing.
-
+/// Records shared in `v` (see [`types::SharedRecords`]) are encoded once in
+/// `type_defs` and referred to by `type_ref`.
+///
+/// # Panics
+/// If `v` has a type with no protobuf encoding, e.g. `Never` or an open record.
 impl From<&validator::ValidatorSchema> for models::Schema {
     fn from(v: &validator::ValidatorSchema) -> Self {
         let mut encoder = TypeEncoder::for_schema(v);
@@ -48,6 +50,8 @@ impl From<&validator::ValidatorSchema> for models::Schema {
     }
 }
 
+/// Fails if a `type_ref` does not refer to an earlier entry of `type_defs`, or
+/// if expanding the `type_ref`s exceeds prost's recursion limit.
 impl TryFrom<models::Schema> for validator::ValidatorSchema {
     type Error = ProtobufConversionError;
     fn try_from(v: models::Schema) -> Result<Self, Self::Error> {
@@ -103,9 +107,6 @@ impl TryFrom<models::Schema> for validator::ValidatorSchema {
     }
 }
 
-/// Prost's recursion limit.
-const PROST_RECURSION_LIMIT: usize = 100;
-
 struct TypeEncoder<'a> {
     shared: types::SharedRecords<'a>,
     def_index: HashMap<types::RecordId<'a>, u32>,
@@ -114,7 +115,7 @@ struct TypeEncoder<'a> {
 }
 
 impl<'a> TypeEncoder<'a> {
-    /// Writes every type as a tree.
+    /// An encoder that shares nothing, for types outside a `Schema`.
     fn inline() -> Self {
         Self {
             shared: types::SharedRecords::default(),
@@ -130,6 +131,8 @@ impl<'a> TypeEncoder<'a> {
         }
     }
 
+    /// # Panics
+    /// If `ty` has no protobuf encoding, e.g. `Never` or an open record.
     #[expect(clippy::expect_used, clippy::panic, reason = "experimental feature")]
     fn encode_type(&mut self, ty: &'a types::Type) -> models::Type {
         match ty {
@@ -474,9 +477,11 @@ impl TryFrom<models::ValidationMode> for validator::ValidationMode {
     }
 }
 
-// Outside a `Schema` there is no `type_defs`, so types are written as trees and
+// Outside a `Schema` there are no `type_defs`: types are encoded inline and
 // `type_ref`s are rejected.
 
+/// # Panics
+/// If `v` has a type with no protobuf encoding, e.g. an open record.
 impl From<&validator::ValidatorActionId> for models::ActionDecl {
     fn from(v: &validator::ValidatorActionId) -> Self {
         TypeEncoder::inline().encode_action_decl(v)
@@ -490,6 +495,8 @@ impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
     }
 }
 
+/// # Panics
+/// If `v` has a type with no protobuf encoding, e.g. an open record.
 impl From<&validator::ValidatorEntityType> for models::EntityDecl {
     fn from(v: &validator::ValidatorEntityType) -> Self {
         TypeEncoder::inline().encode_entity_decl(v)
@@ -510,6 +517,8 @@ impl TryFrom<models::Type> for types::Type {
     }
 }
 
+/// # Panics
+/// If `v` has no protobuf encoding, e.g. `Never` or an open record.
 impl From<&types::Type> for models::Type {
     fn from(v: &types::Type) -> Self {
         TypeEncoder::inline().encode_type(v)
@@ -523,6 +532,8 @@ impl TryFrom<models::AttributeType> for types::AttributeType {
     }
 }
 
+/// # Panics
+/// If `v` has no protobuf encoding, e.g. `Never` or an open record.
 impl From<&types::AttributeType> for models::AttributeType {
     fn from(v: &types::AttributeType) -> Self {
         Self {
