@@ -1,0 +1,450 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! Request environment pruning in `Typechecker::typecheck_policy` must not
+//! change its result. Each test typechecks a corpus of policies and templates
+//! with and without pruning and requires the same return value, errors and
+//! warnings.
+
+use std::collections::HashSet;
+
+use crate::ast::{Eid, EntityType, EntityUID, PolicyID};
+use crate::parser::parse_policy_or_template;
+#[cfg(feature = "partial-validate")]
+use crate::validator::{json_schema, RawName};
+use crate::validator::{
+    typecheck::{
+        action_scope_filterable, scope_admits_action, scope_admits_type, scope_entities_valid,
+        PolicyCheck, Scope, ScopeConstraints, Typechecker,
+    },
+    ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
+};
+
+use super::test_utils::SchemaProvider;
+
+const SCHEMA: &str = r#"
+entity Group;
+entity User in [Group] { name: String, level?: Long };
+entity Admin in [Group] { level: Long };
+entity Service;
+entity Folder in [Folder];
+entity Doc in [Folder] { owner: User, tags: Set<String> };
+entity Photo in [Folder] { owner: Admin };
+entity Color enum ["red", "green"];
+namespace Other { action archive; }
+action Admins;
+action read in [Admins] appliesTo {
+    principal: [User, Admin],
+    resource: [Doc, Photo],
+    context: { flag: Bool }
+};
+action write in [Admins] appliesTo {
+    principal: [User],
+    resource: [Doc],
+    context: {}
+};
+action deploy appliesTo {
+    principal: [Service],
+    resource: [Folder, Doc],
+    context: { region: String }
+};
+action paint appliesTo {
+    principal: [User, Service],
+    resource: [Color],
+    context: {}
+};
+"#;
+
+/// Principal scopes, including every slot constraint kind the grammar allows.
+const PRINCIPALS: &[&str] = &[
+    "principal",
+    r#"principal == User::"a""#,
+    r#"principal in Group::"g""#,
+    "principal is User",
+    r#"principal is Admin in Group::"g""#,
+    "principal is Service",
+    "principal is Nope",
+    r#"principal in Action::"Admins""#,
+    r#"principal in Folder::"f""#,
+    "principal == ?principal",
+    "principal in ?principal",
+    "principal is User in ?principal",
+    "principal is Service in ?principal",
+    r#"principal == Nope::"x""#,
+    r#"principal in Color::"red""#,
+];
+
+const ACTIONS: &[&str] = &[
+    "action",
+    "action in []",
+    r#"action in [Action::"read", Other::Action::"archive"]"#,
+    r#"action == Action::"read""#,
+    r#"action == Action::"deploy""#,
+    r#"action in [Action::"read", Action::"deploy"]"#,
+    r#"action in Action::"Admins""#,
+    r#"action == Action::"nope""#,
+    r#"action in [Action::"nope", Action::"paint"]"#,
+];
+
+const RESOURCES: &[&str] = &[
+    "resource",
+    r#"resource == Doc::"d""#,
+    r#"resource in Folder::"f""#,
+    "resource is Doc",
+    r#"resource is Photo in Folder::"f""#,
+    "resource is Color",
+    r#"resource == Color::"blue""#,
+    "resource == ?resource",
+    "resource in ?resource",
+    "resource is Doc in ?resource",
+    "resource is Color in ?resource",
+    r#"resource == Nope::"y""#,
+];
+
+/// Conditions that type differently, or fail, across environments.
+const BODIES: &[&str] = &[
+    "",
+    r#"when { principal.name == "x" }"#,
+    "when { resource.owner == principal }",
+    "when { context.flag }",
+    r#"when { context.region like "us-*" }"#,
+    r#"when { 1 + "a" }"#,
+    "when { false }",
+    "when { principal has level && principal.level > 1 }",
+    r#"when { resource.tags.contains("x") } unless { principal is Admin }"#,
+    r#"when { principal == Color::"blue" }"#,
+    "when { principal in resource }",
+];
+
+type Outcome = (bool, HashSet<ValidationError>, HashSet<ValidationWarning>);
+
+fn typecheck(schema: &ValidatorSchema, mode: ValidationMode, src: &str, prune: bool) -> Outcome {
+    let t = parse_policy_or_template(Some(PolicyID::from_string("p")), src)
+        .unwrap_or_else(|e| panic!("failed to parse {src}: {e:?}"));
+    let mut errors = HashSet::new();
+    let mut warnings = HashSet::new();
+    let ok = Typechecker::new(schema, mode).typecheck_policy_pruned(
+        &t,
+        &mut errors,
+        &mut warnings,
+        prune,
+    );
+    (ok, errors, warnings)
+}
+
+/// Every combination of scope and condition from the lists above.
+fn corpus() -> impl Iterator<Item = String> {
+    PRINCIPALS.iter().flat_map(|p| {
+        ACTIONS.iter().flat_map(move |a| {
+            RESOURCES.iter().flat_map(move |r| {
+                BODIES
+                    .iter()
+                    .map(move |b| format!("permit({p}, {a}, {r}) {b};"))
+            })
+        })
+    })
+}
+
+fn modes() -> Vec<ValidationMode> {
+    vec![
+        ValidationMode::Strict,
+        ValidationMode::Permissive,
+        #[cfg(feature = "partial-validate")]
+        ValidationMode::Partial,
+    ]
+}
+
+/// Asserts pruning is invisible for every corpus entry, and returns how many
+/// entries produced each kind of outcome so callers can check the corpus
+/// actually exercises them.
+#[track_caller]
+fn assert_pruning_exact(schema: &ValidatorSchema, mode: ValidationMode) -> OutcomeCounts {
+    let mut counts = OutcomeCounts::default();
+    for src in corpus() {
+        let unpruned = typecheck(schema, mode, &src, false);
+        let pruned = typecheck(schema, mode, &src, true);
+        assert_eq!(
+            unpruned, pruned,
+            "pruning changed the result in {mode:?} mode for: {src}"
+        );
+        let (ok, errors, warnings) = unpruned;
+        counts.passed += usize::from(ok);
+        counts.with_errors += usize::from(!errors.is_empty());
+        counts.impossible += usize::from(!warnings.is_empty());
+    }
+    counts
+}
+
+#[derive(Debug, Default)]
+struct OutcomeCounts {
+    passed: usize,
+    with_errors: usize,
+    impossible: usize,
+}
+
+impl OutcomeCounts {
+    #[track_caller]
+    fn assert_all_kinds(&self) {
+        assert!(self.passed > 0, "{self:?}");
+        assert!(self.with_errors > 0, "{self:?}");
+        assert!(self.impossible > 0, "{self:?}");
+    }
+}
+
+#[test]
+fn pruning_is_exact_in_every_mode() {
+    let schema = SCHEMA.schema();
+    for mode in modes() {
+        assert_pruning_exact(&schema, mode).assert_all_kinds();
+    }
+}
+
+/// Partial validation with entity types that allow undeclared attributes, and
+/// an action with no declared context.
+#[cfg(feature = "partial-validate")]
+#[test]
+fn pruning_is_exact_with_partial_schema() {
+    let fragment: json_schema::Fragment<RawName> = serde_json::from_value(serde_json::json!({
+        "": {
+            "entityTypes": {
+                "Group": {},
+                "User": {
+                    "memberOfTypes": ["Group"],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": { "name": { "type": "String" } },
+                        "additionalAttributes": true
+                    }
+                },
+                "Admin": { "memberOfTypes": ["Group"] },
+                "Service": {},
+                "Folder": { "memberOfTypes": ["Folder"] },
+                "Doc": {
+                    "memberOfTypes": ["Folder"],
+                    "shape": {
+                        "type": "Record",
+                        "attributes": {},
+                        "additionalAttributes": true
+                    }
+                },
+                "Photo": { "memberOfTypes": ["Folder"] }
+            },
+            "actions": {
+                "Admins": {},
+                "read": {
+                    "memberOf": [{ "id": "Admins" }],
+                    "appliesTo": {
+                        "principalTypes": ["User", "Admin"],
+                        "resourceTypes": ["Doc", "Photo"]
+                    }
+                },
+                "deploy": {
+                    "appliesTo": {
+                        "principalTypes": ["Service"],
+                        "resourceTypes": ["Folder", "Doc"]
+                    }
+                }
+            }
+        }
+    }))
+    .unwrap();
+    let schema = fragment.schema();
+    assert_pruning_exact(&schema, ValidationMode::Partial).assert_all_kinds();
+}
+
+/// Each syntactic scope filter both admits and rejects environments in the corpus.
+#[test]
+fn corpus_reaches_every_scope_outcome() {
+    let schema = SCHEMA.schema();
+    let mut seen = HashSet::new();
+    for (i, constraints) in [PRINCIPALS, ACTIONS, RESOURCES].into_iter().enumerate() {
+        for constraint in constraints {
+            let mut scope = ["principal", "action", "resource"].map(String::from);
+            if let Some(s) = scope.get_mut(i) {
+                *s = (*constraint).to_string();
+            }
+            let [p, a, r] = scope;
+            let t = parse_policy_or_template(None, &format!("permit({p}, {a}, {r});")).unwrap();
+            let scope = ScopeConstraints::new(&t).unwrap();
+            for e in schema.unlinked_envs_owned() {
+                let admitted = [
+                    scope.admits_principal(&schema, &e.principal),
+                    scope.admits(&schema, &e.action),
+                    scope.admits_resource(&schema, &e.resource),
+                ];
+                seen.insert((i, admitted[i]));
+            }
+        }
+    }
+    for i in 0..3 {
+        for admitted in [false, true] {
+            assert!(
+                seen.contains(&(i, admitted)),
+                "scope {i} never admitted={admitted}"
+            );
+        }
+    }
+}
+
+/// Every rejected environment must independently type as false without errors;
+/// equality of the aggregate error sets would hide errors duplicated elsewhere.
+#[test]
+fn rejected_environments_are_irrelevant_without_errors() {
+    let schema = SCHEMA.schema();
+    let mut rejected = 0;
+    for principal in PRINCIPALS {
+        for action in ACTIONS {
+            for resource in RESOURCES {
+                let src = format!("permit({principal}, {action}, {resource});");
+                let t = parse_policy_or_template(None, &src).unwrap();
+                if !scope_entities_valid(&schema, &t) {
+                    continue;
+                }
+                let scope = ScopeConstraints::new(&t).unwrap();
+                let condition = t.condition();
+                for mode in modes() {
+                    let checker = Typechecker::new(&schema, mode);
+                    for e in schema.unlinked_envs_owned() {
+                        let env = scope.link(e.as_request_env());
+                        if !scope.admits_all(&schema, &env) {
+                            rejected += 1;
+                            let result = checker.single_env_typechecking(&env, t.id(), &condition);
+                            assert!(
+                                matches!(&result, PolicyCheck::Irrelevant(errors, _) if errors.is_empty()),
+                                "rejected scope in {mode:?}: {src}; environment: {env:?}; result: {result:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(rejected > 0);
+}
+
+/// The checkEntities premise is a policy-level guard, not a failing scope
+/// outcome. An invalid scope must preserve the unpruned slot candidates too.
+#[test]
+fn unknown_scope_literals_disable_pruning() {
+    let schema = SCHEMA.schema();
+    for src in [
+        r#"permit(principal == Nope::"x", action, resource);"#,
+        r#"permit(principal in ?principal, action == Action::"nope", resource);"#,
+        r#"permit(principal, action, resource in Nope::"x");"#,
+        r#"permit(principal in ?principal, action, resource == Color::"blue");"#,
+    ] {
+        let t = parse_policy_or_template(None, src).unwrap();
+        assert!(!scope_entities_valid(&schema, &t));
+        for mode in modes() {
+            assert_eq!(
+                typecheck(&schema, mode, src, false),
+                typecheck(&schema, mode, src, true)
+            );
+        }
+    }
+    let t = parse_policy_or_template(
+        None,
+        r#"permit(principal in ?principal, action == Action::"read", resource is Doc);"#,
+    )
+    .unwrap();
+    assert!(scope_entities_valid(&schema, &t));
+}
+
+/// Lean actionScopeFilterable guards both admits and admitsResource, but not
+/// admitsPrincipal, for empty or mixed-type action lists.
+#[test]
+fn nonfilterable_actions_preserve_resource_environments() {
+    let schema = SCHEMA.schema();
+    for action in [
+        "action in []",
+        r#"action in [Action::"read", Other::Action::"archive"]"#,
+    ] {
+        let src = format!("permit(principal is Service, {action}, resource is Color);");
+        let t = parse_policy_or_template(None, &src).unwrap();
+        assert!(scope_entities_valid(&schema, &t));
+        assert!(!action_scope_filterable(t.action_constraint()));
+        let scope = ScopeConstraints::new(&t).unwrap();
+        for e in schema.unlinked_envs_owned() {
+            assert!(scope.admits(&schema, &e.action));
+            assert!(scope.admits_resource(&schema, &e.resource));
+            assert_eq!(
+                scope.admits_all(&schema, &scope.link(e.as_request_env())),
+                scope.admits_principal(&schema, &e.principal)
+            );
+        }
+        for mode in modes() {
+            assert_eq!(
+                typecheck(&schema, mode, &src, false),
+                typecheck(&schema, mode, &src, true)
+            );
+        }
+    }
+}
+
+/// Exercise all five Lean Scope cases, including the action-type cases that
+/// Rust's action-scope grammar does not expose.
+#[test]
+fn scope_filters_follow_schema_hierarchies() {
+    let schema = SCHEMA.schema();
+    let read = EntityUID::from_components(
+        EntityType::from_normalized_str("Action").unwrap(),
+        Eid::new("read"),
+        None,
+    );
+    let admins = EntityUID::from_components(
+        EntityType::from_normalized_str("Action").unwrap(),
+        Eid::new("Admins"),
+        None,
+    );
+    let archive = EntityUID::from_components(
+        EntityType::from_normalized_str("Other::Action").unwrap(),
+        Eid::new("archive"),
+        None,
+    );
+    for (scope, expected) in [
+        (Scope::Any, true),
+        (Scope::Eq(&read), true),
+        (Scope::Eq(&admins), false),
+        (Scope::Mem(&read), true),
+        (Scope::Mem(&admins), true),
+        (Scope::Mem(&archive), false),
+        (Scope::Is(read.entity_type()), true),
+        (Scope::Is(archive.entity_type()), false),
+        (Scope::IsMem(read.entity_type(), &admins), true),
+        (Scope::IsMem(archive.entity_type(), &admins), false),
+        (Scope::IsMem(read.entity_type(), &archive), false),
+    ] {
+        assert_eq!(scope_admits_action(&schema, &read, scope), expected);
+    }
+    let user = EntityType::from_normalized_str("User").unwrap();
+    let group = EntityType::from_normalized_str("Group").unwrap();
+    let service = EntityType::from_normalized_str("Service").unwrap();
+    for (scope, expected) in [
+        (Scope::Any, true),
+        (Scope::Eq(&user), true),
+        (Scope::Eq(&group), false),
+        (Scope::Mem(&user), true),
+        (Scope::Mem(&group), true),
+        (Scope::Mem(&service), false),
+        (Scope::Is(&user), true),
+        (Scope::Is(&group), false),
+        (Scope::IsMem(&user, &group), true),
+        (Scope::IsMem(&service, &group), false),
+        (Scope::IsMem(&user, &service), false),
+    ] {
+        assert_eq!(scope_admits_type(&schema, &user, scope), expected);
+    }
+}

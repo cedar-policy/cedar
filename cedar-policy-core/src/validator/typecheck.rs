@@ -26,14 +26,17 @@ use itertools::Itertools;
 pub(crate) use typecheck_answer::TypecheckAnswer;
 
 use std::sync::Arc;
-use std::{borrow::Cow, collections::HashSet};
+use std::{
+    borrow::Cow,
+    collections::{HashMap, HashSet},
+};
 
 use crate::ast::UnwrapInfallible;
 use crate::validator::types::BoolType;
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
-    schema::ValidatorSchema,
+    schema::{ValidatorEntityTypeKind, ValidatorSchema},
     types::{AttributeType, Capability, CapabilitySet, EntityKind, OpenTag, RequestEnv, Type},
     validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
     ValidationError, ValidationMode, ValidationWarning,
@@ -42,9 +45,11 @@ use crate::validator::{
 use crate::fuzzy_match::fuzzy_search;
 use crate::{
     ast::{
-        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+        ActionConstraint, BinaryOp, EntityReference, EntityType, EntityUID, Expr, ExprBuilder,
+        ExprKind, Literal, Name, PolicyID, PrincipalOrResourceConstraint, SlotId, Template,
+        UnaryOp, Var,
     },
+    entities::conformance::is_valid_enumerated_entity,
     expr_builder::ExprBuilder as _,
 };
 
@@ -95,6 +100,31 @@ impl<'a> Typechecker<'a> {
         type_errors: &mut HashSet<ValidationError>,
         warnings: &mut HashSet<ValidationWarning>,
     ) -> bool {
+        self.typecheck_policy_pruned(t, type_errors, warnings, true)
+    }
+
+    /// `typecheck_policy`, optionally without environment pruning. Pruning
+    /// never changes the result; the unpruned path exists so tests can check
+    /// that.
+    ///
+    /// Pruning skips two kinds of work that cannot affect the result:
+    ///
+    /// * Environments the scope constraints rule out (see
+    ///   [`Self::for_each_env_in_scope`]). In such an environment the whole
+    ///   condition has type `false` with no errors, so it would contribute
+    ///   nothing to `type_errors`, would not clear `all_succ`, and would not
+    ///   clear `all_false`.
+    /// * Redundant template links. A slot constrained by `==`, `in` or
+    ///   `is .. in` only occurs in its scope constraint, which has the same
+    ///   type and no errors for every candidate link (see
+    ///   [`Self::possible_slot_links`]), so one link is enough.
+    pub(crate) fn typecheck_policy_pruned(
+        &self,
+        t: &Template,
+        type_errors: &mut HashSet<ValidationError>,
+        warnings: &mut HashSet<ValidationWarning>,
+        prune: bool,
+    ) -> bool {
         // Streaming fold over borrowed env views from the schema's cached env
         // set (#2439): never hold all envs' typed conditions live at once. Each
         // `PolicyCheck` (and its typed condition) is dropped before the next env
@@ -103,18 +133,26 @@ impl<'a> Typechecker<'a> {
         let cond = t.condition();
         let mut all_false = true;
         let mut all_succ = true;
-        for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
-            for linked_e in self.link_request_env(unlinked_e, t) {
-                match self.single_env_typechecking(&linked_e, t.id(), &cond) {
-                    PolicyCheck::Success(_) => all_false = false,
-                    PolicyCheck::Irrelevant(err, _) => {
-                        all_succ = all_succ && err.is_empty();
-                        type_errors.extend(err);
-                    }
-                    PolicyCheck::Fail(err) => {
-                        type_errors.extend(err);
-                        all_false = false;
-                        all_succ = false;
+        let mut check =
+            |env: &RequestEnv<'_>| match self.single_env_typechecking(env, t.id(), &cond) {
+                PolicyCheck::Success(_) => all_false = false,
+                PolicyCheck::Irrelevant(err, _) => {
+                    all_succ = all_succ && err.is_empty();
+                    type_errors.extend(err);
+                }
+                PolicyCheck::Fail(err) => {
+                    type_errors.extend(err);
+                    all_false = false;
+                    all_succ = false;
+                }
+            };
+        let prune = prune && scope_entities_valid(self.schema, t);
+        match prune.then(|| ScopeConstraints::new(t)).flatten() {
+            Some(scope) => self.for_each_env_in_scope(&scope, &mut check),
+            None => {
+                for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
+                    for linked_e in self.link_request_env_pruned(unlinked_e, t, prune) {
+                        check(&linked_e);
                     }
                 }
             }
@@ -175,6 +213,59 @@ impl<'a> Typechecker<'a> {
             |_| None,
         );
 
+        Self::classify(ans, type_errors)
+    }
+
+    /// Apply Lean's `admitsAll` to each one-link environment, caching its
+    /// three predicates by action, principal type and resource type.
+    ///
+    /// Each predicate depends only on its own variable and the fixed scope.
+    /// A slot links to that variable's own type (see [`ScopeConstraints::new`]).
+    /// Grouping by action and principal lets a rejected group skip all its
+    /// resources without linking or typechecking any of them.
+    fn for_each_env_in_scope(
+        &self,
+        scope: &ScopeConstraints,
+        check: &mut impl FnMut(&RequestEnv<'_>),
+    ) {
+        let mut principals = HashMap::new();
+        let mut resources = HashMap::new();
+        let envs = self.schema.unlinked_envs_owned();
+        for action_group in envs.chunk_by(|a, b| a.action == b.action) {
+            let Some(first) = action_group.first() else {
+                continue;
+            };
+            if !scope.admits(self.schema, &first.action) {
+                continue;
+            }
+            for principal_group in action_group.chunk_by(|a, b| a.principal == b.principal) {
+                let Some(first) = principal_group.first() else {
+                    continue;
+                };
+                if !*principals
+                    .entry(&first.principal)
+                    .or_insert_with(|| scope.admits_principal(self.schema, &first.principal))
+                {
+                    continue;
+                }
+                for e in principal_group {
+                    if *resources
+                        .entry(&e.resource)
+                        .or_insert_with(|| scope.admits_resource(self.schema, &e.resource))
+                    {
+                        let env = scope.link(e.as_request_env());
+                        debug_assert!(scope.admits_all(self.schema, &env));
+                        check(&env);
+                    }
+                }
+            }
+        }
+        if self.mode.is_partial() {
+            check(&RequestEnv::UndeclaredAction);
+        }
+    }
+
+    fn classify(ans: TypecheckAnswer<'_>, type_errors: Vec<ValidationError>) -> PolicyCheck {
         let is_false = ans.contains_type(&Type::singleton_boolean(false));
         match (is_false, ans.typechecked(), ans.into_typed_expr()) {
             (false, true, None) => PolicyCheck::Fail(type_errors),
@@ -225,19 +316,23 @@ impl<'a> Typechecker<'a> {
             .flat_map(move |unlinked_e| {
                 let cond = Arc::clone(&cond);
                 let typecheck_fn = typecheck_fn.clone();
-                self.link_request_env(unlinked_e, t).map(move |linked_e| {
-                    let check = typecheck_fn(&linked_e, t.id(), &cond);
-                    (linked_e, check)
-                })
+                self.link_request_env_pruned(unlinked_e, t, false)
+                    .map(move |linked_e| {
+                        let check = typecheck_fn(&linked_e, t.id(), &cond);
+                        (linked_e, check)
+                    })
             })
     }
 
     /// Given a request environment and a template, return new environments
-    /// formed by linking template slots with possible entity types.
-    fn link_request_env<'b>(
+    /// formed by linking template slots with possible entity types. With
+    /// `prune`, a slot constrained by `==`, `in` or `is .. in` gets one link;
+    /// see [`Self::possible_slot_links`].
+    fn link_request_env_pruned<'b>(
         &'b self,
         env: RequestEnv<'b>,
         t: &'b Template,
+        prune: bool,
     ) -> Box<dyn Iterator<Item = RequestEnv<'b>> + 'b> {
         // Take `env` by value so the returned iterator is bound to `'b` (via
         // `self`/`t`), not a local borrow, letting callers stream it lazily.
@@ -257,6 +352,7 @@ impl<'a> Typechecker<'a> {
                 SlotId::principal(),
                 principal,
                 t.principal_constraint().as_inner(),
+                prune,
             )
             .flat_map(move |p_slot| {
                 let env = env.clone();
@@ -265,6 +361,7 @@ impl<'a> Typechecker<'a> {
                     SlotId::resource(),
                     resource,
                     t.resource_constraint().as_inner(),
+                    prune,
                 )
                 .map(move |r_slot| env.clone().link(p_slot.clone(), r_slot))
             }),
@@ -275,12 +372,20 @@ impl<'a> Typechecker<'a> {
     /// template based on the policy scope constraints. We use this function to
     /// avoid typechecking with slot bindings that will always be false based
     /// only on the scope constraints.
+    ///
+    /// With `prune`, a slot constrained by `==`, `in` or `is .. in` links only
+    /// to `var`'s own type. The slot occurs nowhere but its scope constraint,
+    /// and every link this function would otherwise return types that
+    /// constraint the same way (boolean, no errors), so the condition's type
+    /// and errors do not depend on which of them is chosen. `is` and
+    /// unconstrained slots keep every link.
     fn possible_slot_links(
         &self,
         t: &Template,
         slot_id: SlotId,
         var: &'a EntityType,
         constraint: &PrincipalOrResourceConstraint,
+        prune: bool,
     ) -> Box<dyn Iterator<Item = Option<EntityType>> + 'a> {
         if t.slots().any(|t_slot| t_slot.id == slot_id) {
             let all_entity_types = self.schema.entity_types();
@@ -294,6 +399,12 @@ impl<'a> Typechecker<'a> {
                 // the policy can only apply if the var is some descendant of
                 // the slot. We ignore the `is type` portion because this
                 // constrains the `var` and not the slot.
+                PrincipalOrResourceConstraint::IsIn(_, _)
+                | PrincipalOrResourceConstraint::In(_)
+                    if prune =>
+                {
+                    Box::new(std::iter::once(Some(var.clone())))
+                }
                 PrincipalOrResourceConstraint::IsIn(_, _)
                 | PrincipalOrResourceConstraint::In(_) => Box::new(
                     all_entity_types
@@ -315,6 +426,241 @@ impl<'a> Typechecker<'a> {
             // consider its links.
             Box::new(std::iter::once(None))
         }
+    }
+}
+
+/// The five cases of Lean's `Scope`. Type scopes need only a UID's type;
+/// action scopes retain the whole UID to distinguish individual actions.
+#[derive(Clone, Copy)]
+enum Scope<'a, T> {
+    Any,
+    Eq(T),
+    Mem(T),
+    Is(&'a EntityType),
+    IsMem(&'a EntityType, T),
+}
+
+impl<'a> Scope<'a, &'a EntityType> {
+    /// Instantiate a slot with its variable's own type, as in Lean's
+    /// `one_link_admitted_exact`, before applying the syntactic filter.
+    fn from_constraint(
+        constraint: &'a PrincipalOrResourceConstraint,
+        own_type: &'a EntityType,
+    ) -> Self {
+        let ty = |reference: &'a EntityReference| match reference {
+            EntityReference::EUID(uid) => uid.entity_type(),
+            EntityReference::Slot(_) => own_type,
+        };
+        match constraint {
+            PrincipalOrResourceConstraint::Any => Self::Any,
+            PrincipalOrResourceConstraint::Eq(uid) => Self::Eq(ty(uid)),
+            PrincipalOrResourceConstraint::In(uid) => Self::Mem(ty(uid)),
+            PrincipalOrResourceConstraint::Is(ety) => Self::Is(ety),
+            PrincipalOrResourceConstraint::IsIn(ety, uid) => Self::IsMem(ety, ty(uid)),
+        }
+    }
+}
+
+/// Lean `scopeAdmitsAction` in `Cedar/Thm/Validation/Pruning/EnvFilter.lean`.
+fn scope_admits_action(
+    schema: &ValidatorSchema,
+    action: &EntityUID,
+    scope: Scope<'_, &EntityUID>,
+) -> bool {
+    let descendant = |uid: &EntityUID| {
+        action == uid
+            || schema
+                .get_action_id(uid)
+                .is_some_and(|parent| parent.descendants().any(|child| child == action))
+    };
+    match scope {
+        Scope::Any => true,
+        Scope::Eq(uid) => action == uid,
+        Scope::Mem(uid) => descendant(uid),
+        Scope::Is(ety) => ety == action.entity_type(),
+        Scope::IsMem(ety, uid) => ety == action.entity_type() && descendant(uid),
+    }
+}
+
+/// Lean `actionScopeAdmits`. Rust represents both `action in uid` and
+/// `action in [uid]` as a list; their descendant checks are identical.
+fn action_scope_admits(
+    schema: &ValidatorSchema,
+    action: &EntityUID,
+    scope: &ActionConstraint,
+) -> bool {
+    match scope {
+        ActionConstraint::Any => scope_admits_action(schema, action, Scope::Any),
+        ActionConstraint::Eq(uid) => scope_admits_action(schema, action, Scope::Eq(uid)),
+        ActionConstraint::In(uids) => uids
+            .iter()
+            .any(|uid| scope_admits_action(schema, action, Scope::Mem(uid))),
+        // Error nodes have no Lean counterpart and the policy-level guard
+        // excludes them from pruning.
+        #[cfg(feature = "tolerant-ast")]
+        ActionConstraint::ErrorConstraint => true,
+    }
+}
+
+/// Lean `actionScopeFilterable`: an action list must be nonempty and have
+/// one entity type before either the action or resource filter applies.
+fn action_scope_filterable(scope: &ActionConstraint) -> bool {
+    match scope {
+        ActionConstraint::Any | ActionConstraint::Eq(_) => true,
+        ActionConstraint::In(uids) => uids.split_first().is_some_and(|(first, rest)| {
+            rest.iter()
+                .all(|uid| uid.entity_type() == first.entity_type())
+        }),
+        #[cfg(feature = "tolerant-ast")]
+        ActionConstraint::ErrorConstraint => false,
+    }
+}
+
+/// Lean `scopeAdmitsType`, using the schema counterpart of
+/// `TypeEnv.descendentOf` for entity and action-type hierarchies.
+fn scope_admits_type(
+    schema: &ValidatorSchema,
+    ety: &EntityType,
+    scope: Scope<'_, &EntityType>,
+) -> bool {
+    match scope {
+        Scope::Any => true,
+        Scope::Eq(uid_type) => ety == uid_type,
+        Scope::Mem(uid_type) => schema.descendent_of(ety, uid_type),
+        Scope::Is(scope_type) => scope_type == ety,
+        Scope::IsMem(scope_type, uid_type) => {
+            scope_type == ety && schema.descendent_of(ety, uid_type)
+        }
+    }
+}
+
+/// Check scope literals using Lean `validUID`, including enum EID membership,
+/// before filtering as in `checkEntities` in
+/// `typecheckPolicyWithFilteredEnvironments`. Invalid literals take the
+/// unpruned path, including its original slot links. The full
+/// `validate_entity_types_and_literals` pass remains unchanged.
+fn scope_entities_valid(schema: &ValidatorSchema, t: &Template) -> bool {
+    let valid_uid = |uid: &EntityUID| {
+        schema
+            .get_entity_type(uid.entity_type())
+            .is_some_and(|entity_type| match &entity_type.kind {
+                ValidatorEntityTypeKind::Standard(_) => true,
+                ValidatorEntityTypeKind::Enum(choices) => {
+                    is_valid_enumerated_entity(choices, uid).is_ok()
+                }
+            })
+            || schema.get_action_id(uid).is_some()
+    };
+    let valid_scope = |scope: &PrincipalOrResourceConstraint| match scope {
+        PrincipalOrResourceConstraint::Eq(EntityReference::EUID(uid))
+        | PrincipalOrResourceConstraint::In(EntityReference::EUID(uid))
+        | PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(uid)) => valid_uid(uid),
+        _ => true,
+    };
+    valid_scope(t.principal_constraint().as_inner())
+        && valid_scope(t.resource_constraint().as_inner())
+        && match t.action_constraint() {
+            ActionConstraint::Any => true,
+            ActionConstraint::Eq(uid) => valid_uid(uid),
+            ActionConstraint::In(uids) => uids.iter().all(|uid| valid_uid(uid)),
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => false,
+        }
+}
+
+/// A template's syntactic scopes and one-link slot instantiation.
+struct ScopeConstraints {
+    principal: PrincipalOrResourceConstraint,
+    action: ActionConstraint,
+    resource: PrincipalOrResourceConstraint,
+    principal_slot: bool,
+    resource_slot: bool,
+}
+
+impl ScopeConstraints {
+    /// `None` when a slot of `t` needs more than one link: one constrained by
+    /// `is` alone or not constrained at all (see
+    /// [`Typechecker::possible_slot_links`]). The policy grammar allows
+    /// neither, so in practice this is always `Some`.
+    fn new(t: &Template) -> Option<Self> {
+        let one_link = |slot_id: SlotId, constraint: &PrincipalOrResourceConstraint| {
+            let has_slot = t.slots().any(|slot| slot.id == slot_id);
+            let one = !has_slot
+                || matches!(
+                    constraint,
+                    PrincipalOrResourceConstraint::Eq(_)
+                        | PrincipalOrResourceConstraint::In(_)
+                        | PrincipalOrResourceConstraint::IsIn(_, _)
+                );
+            one.then_some(has_slot)
+        };
+        Some(Self {
+            principal_slot: one_link(SlotId::principal(), t.principal_constraint().as_inner())?,
+            resource_slot: one_link(SlotId::resource(), t.resource_constraint().as_inner())?,
+            principal: t.principal_constraint().as_inner().clone(),
+            action: t.action_constraint().clone(),
+            resource: t.resource_constraint().as_inner().clone(),
+        })
+    }
+
+    /// Lean `admits`: skip action filtering for non-filterable action lists.
+    fn admits(&self, schema: &ValidatorSchema, action: &EntityUID) -> bool {
+        !action_scope_filterable(&self.action) || action_scope_admits(schema, action, &self.action)
+    }
+
+    /// Lean `admitsPrincipal`, after the one-link slot instantiation.
+    fn admits_principal(&self, schema: &ValidatorSchema, principal: &EntityType) -> bool {
+        scope_admits_type(
+            schema,
+            principal,
+            Scope::from_constraint(&self.principal, principal),
+        )
+    }
+
+    /// Lean `admitsResource`: a non-filterable action scope prevents the
+    /// resource conjunct from ruling out an environment.
+    fn admits_resource(&self, schema: &ValidatorSchema, resource: &EntityType) -> bool {
+        !action_scope_filterable(&self.action)
+            || scope_admits_type(
+                schema,
+                resource,
+                Scope::from_constraint(&self.resource, resource),
+            )
+    }
+
+    /// Lean `admitsAll`. The grouped traversal caches these same three
+    /// predicates; this direct form also checks that traversal in debug builds.
+    fn admits_all(&self, schema: &ValidatorSchema, env: &RequestEnv<'_>) -> bool {
+        match env {
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                ..
+            } => {
+                self.admits(schema, action)
+                    && self.admits_principal(schema, principal)
+                    && self.admits_resource(schema, resource)
+            }
+            RequestEnv::UndeclaredAction => true,
+        }
+    }
+
+    /// Link each slot to its variable's own type, the one link
+    /// [`Typechecker::possible_slot_links`] gives it with pruning.
+    fn link<'b>(&self, env: RequestEnv<'b>) -> RequestEnv<'b> {
+        let (principal, resource) = match &env {
+            RequestEnv::DeclaredAction {
+                principal,
+                resource,
+                ..
+            } => (
+                self.principal_slot.then(|| (*principal).clone()),
+                self.resource_slot.then(|| (*resource).clone()),
+            ),
+            RequestEnv::UndeclaredAction => (None, None),
+        };
+        env.link(principal, resource)
     }
 }
 
