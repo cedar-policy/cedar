@@ -36,7 +36,7 @@ use crate::validator::types::BoolType;
 use crate::validator::{
     extension_schema::ExtensionFunctionType,
     extensions::ExtensionSchemas,
-    schema::ValidatorSchema,
+    schema::{ValidatorEntityTypeKind, ValidatorSchema},
     types::{AttributeType, Capability, CapabilitySet, EntityKind, OpenTag, RequestEnv, Type},
     validation_errors::{AttributeAccess, LubContext, UnexpectedTypeHelp},
     ValidationError, ValidationMode, ValidationWarning,
@@ -49,6 +49,7 @@ use crate::{
         ExprKind, Literal, Name, PolicyID, PrincipalOrResourceConstraint, SlotId, Template,
         UnaryOp, Var,
     },
+    entities::conformance::is_valid_enumerated_entity,
     expr_builder::ExprBuilder as _,
 };
 
@@ -533,14 +534,22 @@ fn scope_admits_type(
     }
 }
 
-/// Check declared types/actions in scope literals before filtering, following
-/// Lean `checkEntities` in `typecheckPolicyWithFilteredEnvironments`. Unknown
-/// types or actions take the unpruned path, including its original slot links.
-/// This is not the full `checkEntities` pass: enum EIDs, `is` types and body
-/// literals remain the job of `validate_entity_types_and_literals`.
+/// Check scope literals using Lean `validUID`, including enum EID membership,
+/// before filtering as in `checkEntities` in
+/// `typecheckPolicyWithFilteredEnvironments`. Invalid literals take the
+/// unpruned path, including its original slot links. The full
+/// `validate_entity_types_and_literals` pass remains unchanged.
 fn scope_entities_valid(schema: &ValidatorSchema, t: &Template) -> bool {
     let valid_uid = |uid: &EntityUID| {
-        schema.get_entity_type(uid.entity_type()).is_some() || schema.get_action_id(uid).is_some()
+        schema
+            .get_entity_type(uid.entity_type())
+            .is_some_and(|entity_type| match &entity_type.kind {
+                ValidatorEntityTypeKind::Standard(_) => true,
+                ValidatorEntityTypeKind::Enum(choices) => {
+                    is_valid_enumerated_entity(choices, uid).is_ok()
+                }
+            })
+            || schema.get_action_id(uid).is_some()
     };
     let valid_scope = |scope: &PrincipalOrResourceConstraint| match scope {
         PrincipalOrResourceConstraint::Eq(EntityReference::EUID(uid))

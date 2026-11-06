@@ -24,8 +24,8 @@ Cedar Language Version: TBD
   parses the string and renders the result back out to check that the input was normalized. The same
   optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
 - Policy validation is faster for schemas with many request environments. The validator now
-  skips request environments the policy scope rules out, and typechecks each scope constraint
-  once per entity type instead of once per environment (e.g., ~70x at 80,000 environments).
+  skips request environments the policy scope rules out by checking the scope against the
+  schema hierarchy, caching results per action and entity type.
   Validation results are unchanged.
 - Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
   were previously accepted, but slots were not included in the manifest.

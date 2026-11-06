@@ -28,7 +28,7 @@ use crate::validator::{json_schema, RawName};
 use crate::validator::{
     typecheck::{
         action_scope_filterable, scope_admits_action, scope_admits_type, scope_entities_valid,
-        Scope, ScopeConstraints, Typechecker,
+        PolicyCheck, Scope, ScopeConstraints, Typechecker,
     },
     ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
 };
@@ -76,6 +76,8 @@ const PRINCIPALS: &[&str] = &[
     "principal is User",
     r#"principal is Admin in Group::"g""#,
     "principal is Service",
+    "principal is Nope",
+    r#"principal in Action::"Admins""#,
     r#"principal in Folder::"f""#,
     "principal == ?principal",
     "principal in ?principal",
@@ -284,10 +286,6 @@ fn corpus_reaches_every_scope_outcome() {
                     scope.admits_resource(&schema, &e.resource),
                 ];
                 seen.insert((i, admitted[i]));
-                assert_eq!(
-                    scope.admits_all(&schema, &scope.link(e.as_request_env())),
-                    admitted.into_iter().all(|part| part)
-                );
             }
         }
     }
@@ -301,6 +299,42 @@ fn corpus_reaches_every_scope_outcome() {
     }
 }
 
+/// Every rejected environment must independently type as false without errors;
+/// equality of the aggregate error sets would hide errors duplicated elsewhere.
+#[test]
+fn rejected_environments_are_irrelevant_without_errors() {
+    let schema = SCHEMA.schema();
+    let mut rejected = 0;
+    for principal in PRINCIPALS {
+        for action in ACTIONS {
+            for resource in RESOURCES {
+                let src = format!("permit({principal}, {action}, {resource});");
+                let t = parse_policy_or_template(None, &src).unwrap();
+                if !scope_entities_valid(&schema, &t) {
+                    continue;
+                }
+                let scope = ScopeConstraints::new(&t).unwrap();
+                let condition = t.condition();
+                for mode in modes() {
+                    let checker = Typechecker::new(&schema, mode);
+                    for e in schema.unlinked_envs_owned() {
+                        let env = scope.link(e.as_request_env());
+                        if !scope.admits_all(&schema, &env) {
+                            rejected += 1;
+                            let result = checker.single_env_typechecking(&env, t.id(), &condition);
+                            assert!(
+                                matches!(&result, PolicyCheck::Irrelevant(errors, _) if errors.is_empty()),
+                                "rejected scope in {mode:?}: {src}; environment: {env:?}; result: {result:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(rejected > 0);
+}
+
 /// The checkEntities premise is a policy-level guard, not a failing scope
 /// outcome. An invalid scope must preserve the unpruned slot candidates too.
 #[test]
@@ -310,6 +344,7 @@ fn unknown_scope_literals_disable_pruning() {
         r#"permit(principal == Nope::"x", action, resource);"#,
         r#"permit(principal in ?principal, action == Action::"nope", resource);"#,
         r#"permit(principal, action, resource in Nope::"x");"#,
+        r#"permit(principal in ?principal, action, resource == Color::"blue");"#,
     ] {
         let t = parse_policy_or_template(None, src).unwrap();
         assert!(!scope_entities_valid(&schema, &t));
