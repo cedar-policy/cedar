@@ -327,10 +327,7 @@ impl ExtensionFunction {
                 // A variadic function takes two or more arguments, so `rest` must be
                 // non-empty. This keeps the evaluator in agreement with the validator,
                 // which requires `args.len() >= arg_types.len()`, i.e. at least 2.
-                #[cfg(feature = "variadic-is-in-range")]
                 &[first, rest @ ..] if !rest.is_empty() => func(first, rest),
-                #[cfg(not(feature = "variadic-is-in-range"))]
-                &[first, second] => func(first, std::slice::from_ref(second)),
                 _ => Err(evaluator::EvaluationError::wrong_num_arguments(
                     name.clone(),
                     2,
@@ -340,10 +337,7 @@ impl ExtensionFunction {
             }),
             Some(return_type),
             vec![arg_types.0, arg_types.1],
-            #[cfg(feature = "variadic-is-in-range")]
             true,
-            #[cfg(not(feature = "variadic-is-in-range"))]
-            false,
         )
     }
 

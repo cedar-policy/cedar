@@ -523,7 +523,6 @@ pub fn compile_call2(
     compile_call2_error(xty, xty, enc, t1, t2)
 }
 
-#[cfg(feature = "variadic-is-in-range")]
 // Use directly for encoding calls that can error with n arguments
 pub fn compile_call_n_error(
     xty: ExtType,
@@ -562,7 +561,6 @@ pub fn compile_call_n_error(
     }
 }
 
-#[cfg(feature = "variadic-is-in-range")]
 // Use directly for encoding calls that cannot error with n arguments
 pub fn compile_call_n(
     xty: ExtType,
@@ -639,26 +637,12 @@ pub fn compile_call(xfn: &cedar_policy_core::ast::Name, ts: Vec<Term>) -> Result
             compile_call1(ExtType::IpAddr, extfun::is_multicast, t1)
         }
         ("isInRange", n) => {
-            #[cfg(feature = "variadic-is-in-range")]
             if n < 2 {
                 Err(CompileError::TypeError)
             } else {
                 let mut ts = ts;
                 let t = ts.remove(0);
                 compile_call_n(ExtType::IpAddr, n - 1, extfun::is_in_range, t, ts)
-            }
-
-            #[cfg(not(feature = "variadic-is-in-range"))]
-            if n != 2 {
-                Err(CompileError::TypeError)
-            } else {
-                let (t1, t2) = extract_first2(ts);
-                compile_call2(
-                    ExtType::IpAddr,
-                    |t1, t2| extfun::is_in_range(t1, vec![t2]),
-                    t1,
-                    t2,
-                )
             }
         }
         ("datetime", 1) => {
@@ -1442,7 +1426,6 @@ mod datetime_tests {
     }
 
     #[test]
-    #[cfg(feature = "variadic-is-in-range")]
     fn test_ipaddr_simpl_comp_expr_variadic_is_in_range() {
         // Basic single range test (already working)
         test_valid_bool_simpl_expr(r#"ip("192.168.0.1").isInRange(ip("192.168.0.1/24"))"#, true);
@@ -1519,7 +1502,6 @@ mod datetime_tests {
     // `isInRange` needs a target plus at least one range. Fewer arguments than that
     // must not compile, matching the arity error the evaluator raises.
     #[test]
-    #[cfg(feature = "variadic-is-in-range")]
     fn test_ipaddr_variadic_is_in_range_requires_a_range() {
         let is_in_range =
             Name::parse_unqualified_name("isInRange").expect("should be a valid identifier");

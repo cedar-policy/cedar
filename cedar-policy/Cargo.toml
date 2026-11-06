@@ -60,7 +60,6 @@ experimental = [
     "extended-schema",
     "deprecated-schema-compat",
     "tpe",
-    "variadic-is-in-range",
 ]
 entity-manifest = ["cedar-policy-core/entity-manifest"]
 partial-eval = ["cedar-policy-core/partial-eval"]
@@ -78,7 +77,6 @@ extended-schema = ["cedar-policy-core/extended-schema"]
 # release.
 deprecated-schema-compat = []
 tpe = ["cedar-policy-core/tpe"]
-variadic-is-in-range = ["cedar-policy-core/variadic-is-in-range"]
 
 [dev-dependencies]
 miette = { version = "7.6.0", features = ["fancy"] }
