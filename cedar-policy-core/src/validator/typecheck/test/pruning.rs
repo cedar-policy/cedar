@@ -21,12 +21,15 @@
 
 use std::collections::HashSet;
 
-use crate::ast::PolicyID;
+use crate::ast::{Eid, EntityType, EntityUID, PolicyID};
 use crate::parser::parse_policy_or_template;
 #[cfg(feature = "partial-validate")]
 use crate::validator::{json_schema, RawName};
 use crate::validator::{
-    typecheck::{ScopeConstraints, ScopePart, Typechecker},
+    typecheck::{
+        action_scope_filterable, scope_admits_action, scope_admits_type, scope_entities_valid,
+        Scope, ScopeConstraints, Typechecker,
+    },
     ValidationError, ValidationMode, ValidationWarning, ValidatorSchema,
 };
 
@@ -41,6 +44,7 @@ entity Folder in [Folder];
 entity Doc in [Folder] { owner: User, tags: Set<String> };
 entity Photo in [Folder] { owner: Admin };
 entity Color enum ["red", "green"];
+namespace Other { action archive; }
 action Admins;
 action read in [Admins] appliesTo {
     principal: [User, Admin],
@@ -83,6 +87,8 @@ const PRINCIPALS: &[&str] = &[
 
 const ACTIONS: &[&str] = &[
     "action",
+    "action in []",
+    r#"action in [Action::"read", Other::Action::"archive"]"#,
     r#"action == Action::"read""#,
     r#"action == Action::"deploy""#,
     r#"action in [Action::"read", Action::"deploy"]"#,
@@ -257,13 +263,10 @@ fn pruning_is_exact_with_partial_schema() {
     assert_pruning_exact(&schema, ValidationMode::Partial).assert_all_kinds();
 }
 
-/// The corpus makes each scope constraint fail, type as `false` and type as
-/// something else in some environment, so every branch of
-/// `Typechecker::for_each_env_in_scope` runs.
+/// Each syntactic scope filter both admits and rejects environments in the corpus.
 #[test]
 fn corpus_reaches_every_scope_outcome() {
     let schema = SCHEMA.schema();
-    let typechecker = Typechecker::new(&schema, ValidationMode::Strict);
     let mut seen = HashSet::new();
     for (i, constraints) in [PRINCIPALS, ACTIONS, RESOURCES].into_iter().enumerate() {
         for constraint in constraints {
@@ -274,16 +277,139 @@ fn corpus_reaches_every_scope_outcome() {
             let [p, a, r] = scope;
             let t = parse_policy_or_template(None, &format!("permit({p}, {a}, {r});")).unwrap();
             let scope = ScopeConstraints::new(&t).unwrap();
-            let expr = [&scope.principal, &scope.action, &scope.resource][i];
             for e in schema.unlinked_envs_owned() {
-                let env = scope.link(e.as_request_env());
-                seen.insert((i, typechecker.scope_part(&env, t.id(), expr)));
+                let admitted = [
+                    scope.admits_principal(&schema, &e.principal),
+                    scope.admits(&schema, &e.action),
+                    scope.admits_resource(&schema, &e.resource),
+                ];
+                seen.insert((i, admitted[i]));
+                assert_eq!(
+                    scope.admits_all(&schema, &scope.link(e.as_request_env())),
+                    admitted.into_iter().all(|part| part)
+                );
             }
         }
     }
     for i in 0..3 {
-        for part in [ScopePart::Fails, ScopePart::False, ScopePart::Other] {
-            assert!(seen.contains(&(i, part)), "scope {i} never {part:?}");
+        for admitted in [false, true] {
+            assert!(
+                seen.contains(&(i, admitted)),
+                "scope {i} never admitted={admitted}"
+            );
         }
+    }
+}
+
+/// The checkEntities premise is a policy-level guard, not a failing scope
+/// outcome. An invalid scope must preserve the unpruned slot candidates too.
+#[test]
+fn unknown_scope_literals_disable_pruning() {
+    let schema = SCHEMA.schema();
+    for src in [
+        r#"permit(principal == Nope::"x", action, resource);"#,
+        r#"permit(principal in ?principal, action == Action::"nope", resource);"#,
+        r#"permit(principal, action, resource in Nope::"x");"#,
+    ] {
+        let t = parse_policy_or_template(None, src).unwrap();
+        assert!(!scope_entities_valid(&schema, &t));
+        for mode in modes() {
+            assert_eq!(
+                typecheck(&schema, mode, src, false),
+                typecheck(&schema, mode, src, true)
+            );
+        }
+    }
+    let t = parse_policy_or_template(
+        None,
+        r#"permit(principal in ?principal, action == Action::"read", resource is Doc);"#,
+    )
+    .unwrap();
+    assert!(scope_entities_valid(&schema, &t));
+}
+
+/// Lean actionScopeFilterable guards both admits and admitsResource, but not
+/// admitsPrincipal, for empty or mixed-type action lists.
+#[test]
+fn nonfilterable_actions_preserve_resource_environments() {
+    let schema = SCHEMA.schema();
+    for action in [
+        "action in []",
+        r#"action in [Action::"read", Other::Action::"archive"]"#,
+    ] {
+        let src = format!("permit(principal is Service, {action}, resource is Color);");
+        let t = parse_policy_or_template(None, &src).unwrap();
+        assert!(scope_entities_valid(&schema, &t));
+        assert!(!action_scope_filterable(t.action_constraint()));
+        let scope = ScopeConstraints::new(&t).unwrap();
+        for e in schema.unlinked_envs_owned() {
+            assert!(scope.admits(&schema, &e.action));
+            assert!(scope.admits_resource(&schema, &e.resource));
+            assert_eq!(
+                scope.admits_all(&schema, &scope.link(e.as_request_env())),
+                scope.admits_principal(&schema, &e.principal)
+            );
+        }
+        for mode in modes() {
+            assert_eq!(
+                typecheck(&schema, mode, &src, false),
+                typecheck(&schema, mode, &src, true)
+            );
+        }
+    }
+}
+
+/// Exercise all five Lean Scope cases, including the action-type cases that
+/// Rust's action-scope grammar does not expose.
+#[test]
+fn scope_filters_follow_schema_hierarchies() {
+    let schema = SCHEMA.schema();
+    let read = EntityUID::from_components(
+        EntityType::from_normalized_str("Action").unwrap(),
+        Eid::new("read"),
+        None,
+    );
+    let admins = EntityUID::from_components(
+        EntityType::from_normalized_str("Action").unwrap(),
+        Eid::new("Admins"),
+        None,
+    );
+    let archive = EntityUID::from_components(
+        EntityType::from_normalized_str("Other::Action").unwrap(),
+        Eid::new("archive"),
+        None,
+    );
+    for (scope, expected) in [
+        (Scope::Any, true),
+        (Scope::Eq(&read), true),
+        (Scope::Eq(&admins), false),
+        (Scope::Mem(&read), true),
+        (Scope::Mem(&admins), true),
+        (Scope::Mem(&archive), false),
+        (Scope::Is(read.entity_type()), true),
+        (Scope::Is(archive.entity_type()), false),
+        (Scope::IsMem(read.entity_type(), &admins), true),
+        (Scope::IsMem(archive.entity_type(), &admins), false),
+        (Scope::IsMem(read.entity_type(), &archive), false),
+    ] {
+        assert_eq!(scope_admits_action(&schema, &read, scope), expected);
+    }
+    let user = EntityType::from_normalized_str("User").unwrap();
+    let group = EntityType::from_normalized_str("Group").unwrap();
+    let service = EntityType::from_normalized_str("Service").unwrap();
+    for (scope, expected) in [
+        (Scope::Any, true),
+        (Scope::Eq(&user), true),
+        (Scope::Eq(&group), false),
+        (Scope::Mem(&user), true),
+        (Scope::Mem(&group), true),
+        (Scope::Mem(&service), false),
+        (Scope::Is(&user), true),
+        (Scope::Is(&group), false),
+        (Scope::IsMem(&user, &group), true),
+        (Scope::IsMem(&service, &group), false),
+        (Scope::IsMem(&user, &service), false),
+    ] {
+        assert_eq!(scope_admits_type(&schema, &user, scope), expected);
     }
 }

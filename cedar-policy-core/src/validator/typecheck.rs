@@ -45,8 +45,9 @@ use crate::validator::{
 use crate::fuzzy_match::fuzzy_search;
 use crate::{
     ast::{
-        BinaryOp, EntityType, EntityUID, Expr, ExprBuilder, ExprKind, Literal, Name, PolicyID,
-        PrincipalOrResourceConstraint, SlotId, Template, UnaryOp, Var,
+        ActionConstraint, BinaryOp, EntityReference, EntityType, EntityUID, Expr, ExprBuilder,
+        ExprKind, Literal, Name, PolicyID, PrincipalOrResourceConstraint, SlotId, Template,
+        UnaryOp, Var,
     },
     expr_builder::ExprBuilder as _,
 };
@@ -144,8 +145,9 @@ impl<'a> Typechecker<'a> {
                     all_succ = false;
                 }
             };
+        let prune = prune && scope_entities_valid(self.schema, t);
         match prune.then(|| ScopeConstraints::new(t)).flatten() {
-            Some(scope) => self.for_each_env_in_scope(t.id(), &scope, &mut check),
+            Some(scope) => self.for_each_env_in_scope(&scope, &mut check),
             None => {
                 for unlinked_e in self.schema.unlinked_request_envs(self.mode) {
                     for linked_e in self.link_request_env_pruned(unlinked_e, t, prune) {
@@ -213,31 +215,15 @@ impl<'a> Typechecker<'a> {
         Self::classify(ans, type_errors)
     }
 
-    /// Call `check` on every linked request environment that the template's
-    /// scope does not rule out.
+    /// Apply Lean's `admitsAll` to each one-link environment, caching its
+    /// three predicates by action, principal type and resource type.
     ///
-    /// A policy condition is `principal && (action && (resource && body))`,
-    /// where `principal`, `action` and `resource` are the scope constraints.
-    /// `&&` short-circuits: when its left operand has type `false` with no
-    /// errors, so does the `&&`, and its right operand is not typechecked.
-    /// When its left operand has any other boolean type with no errors and its
-    /// right operand has type `false` with no errors, the `&&` has type
-    /// `false` with no errors. So when, reading left to right, the first scope
-    /// constraint that is not [`ScopePart::Other`] is [`ScopePart::False`], the
-    /// whole condition has type `false` with no errors, whatever the body is,
-    /// and the environment is ruled out.
-    ///
-    /// Scope constraints set no capabilities, and each one's type depends
-    /// only on its own variable's type and, for a slot, the slot's link. With
-    /// one link per slot (see [`ScopeConstraints::new`]) the link is fixed by
-    /// the variable's type, so the principal constraint is typechecked once
-    /// per principal type, the action constraint once per action and the
-    /// resource constraint once per resource type. The schema's environments
-    /// are grouped by action and then principal, so a whole group is skipped
-    /// at once when its action or principal rules it out.
+    /// Each predicate depends only on its own variable and the fixed scope.
+    /// A slot links to that variable's own type (see [`ScopeConstraints::new`]).
+    /// Grouping by action and principal lets a rejected group skip all its
+    /// resources without linking or typechecking any of them.
     fn for_each_env_in_scope(
         &self,
-        policy_id: &PolicyID,
         scope: &ScopeConstraints,
         check: &mut impl FnMut(&RequestEnv<'_>),
     ) {
@@ -245,79 +231,36 @@ impl<'a> Typechecker<'a> {
         let mut resources = HashMap::new();
         let envs = self.schema.unlinked_envs_owned();
         for action_group in envs.chunk_by(|a, b| a.action == b.action) {
-            let mut action_part = None;
+            let Some(first) = action_group.first() else {
+                continue;
+            };
+            if !scope.admits(self.schema, &first.action) {
+                continue;
+            }
             for principal_group in action_group.chunk_by(|a, b| a.principal == b.principal) {
                 let Some(first) = principal_group.first() else {
                     continue;
                 };
-                let first_env = scope.link(first.as_request_env());
-                let principal = *principals
+                if !*principals
                     .entry(&first.principal)
-                    .or_insert_with(|| self.scope_part(&first_env, policy_id, &scope.principal));
-                let action = match principal {
-                    ScopePart::False => continue,
-                    ScopePart::Fails => ScopePart::Fails,
-                    ScopePart::Other => *action_part.get_or_insert_with(|| {
-                        self.scope_part(&first_env, policy_id, &scope.action)
-                    }),
-                };
-                match action {
-                    ScopePart::False => continue,
-                    ScopePart::Fails => {
-                        for e in principal_group {
-                            check(&scope.link(e.as_request_env()));
-                        }
-                    }
-                    ScopePart::Other => {
-                        for e in principal_group {
-                            let env = scope.link(e.as_request_env());
-                            let resource = *resources.entry(&e.resource).or_insert_with(|| {
-                                self.scope_part(&env, policy_id, &scope.resource)
-                            });
-                            if resource != ScopePart::False {
-                                check(&env);
-                            }
-                        }
+                    .or_insert_with(|| scope.admits_principal(self.schema, &first.principal))
+                {
+                    continue;
+                }
+                for e in principal_group {
+                    if *resources
+                        .entry(&e.resource)
+                        .or_insert_with(|| scope.admits_resource(self.schema, &e.resource))
+                    {
+                        let env = scope.link(e.as_request_env());
+                        debug_assert!(scope.admits_all(self.schema, &env));
+                        check(&env);
                     }
                 }
             }
         }
         if self.mode.is_partial() {
             check(&RequestEnv::UndeclaredAction);
-        }
-    }
-
-    /// Typecheck one scope constraint in `request_env`.
-    fn scope_part(
-        &self,
-        request_env: &RequestEnv<'_>,
-        policy_id: &PolicyID,
-        constraint: &Expr,
-    ) -> ScopePart {
-        let mut type_errors = Vec::new();
-        let single_env_typechecker = SingleEnvTypechecker {
-            schema: self.schema,
-            extensions: self.extensions,
-            mode: self.mode,
-            policy_id,
-            request_env,
-        };
-        let ans = single_env_typechecker.expect_type(
-            &CapabilitySet::new(),
-            constraint,
-            Type::primitive_boolean(),
-            &mut type_errors,
-            |_| None,
-        );
-        if !type_errors.is_empty() || !ans.typechecked() {
-            ScopePart::Fails
-        } else if matches!(
-            ans.into_typed_expr().as_ref().map(|e| e.data()),
-            Some(Some(Type::Bool(BoolType::False)))
-        ) {
-            ScopePart::False
-        } else {
-            ScopePart::Other
         }
     }
 
@@ -485,23 +428,142 @@ impl<'a> Typechecker<'a> {
     }
 }
 
-/// How one scope constraint typechecks in a request environment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum ScopePart {
-    /// Errors, or fails to typecheck.
-    Fails,
-    /// Type `false`, no errors.
-    False,
-    /// Any other boolean type, no errors.
-    Other,
+/// The five cases of Lean's `Scope`. Type scopes need only a UID's type;
+/// action scopes retain the whole UID to distinguish individual actions.
+#[derive(Clone, Copy)]
+enum Scope<'a, T> {
+    Any,
+    Eq(T),
+    Mem(T),
+    Is(&'a EntityType),
+    IsMem(&'a EntityType, T),
 }
 
-/// A template's scope constraints as expressions, for
-/// [`Typechecker::for_each_env_in_scope`].
+impl<'a> Scope<'a, &'a EntityType> {
+    /// Instantiate a slot with its variable's own type, as in Lean's
+    /// `one_link_admitted_exact`, before applying the syntactic filter.
+    fn from_constraint(
+        constraint: &'a PrincipalOrResourceConstraint,
+        own_type: &'a EntityType,
+    ) -> Self {
+        let ty = |reference: &'a EntityReference| match reference {
+            EntityReference::EUID(uid) => uid.entity_type(),
+            EntityReference::Slot(_) => own_type,
+        };
+        match constraint {
+            PrincipalOrResourceConstraint::Any => Self::Any,
+            PrincipalOrResourceConstraint::Eq(uid) => Self::Eq(ty(uid)),
+            PrincipalOrResourceConstraint::In(uid) => Self::Mem(ty(uid)),
+            PrincipalOrResourceConstraint::Is(ety) => Self::Is(ety),
+            PrincipalOrResourceConstraint::IsIn(ety, uid) => Self::IsMem(ety, ty(uid)),
+        }
+    }
+}
+
+/// Lean `scopeAdmitsAction` in `Cedar/Thm/Validation/Pruning/EnvFilter.lean`.
+fn scope_admits_action(
+    schema: &ValidatorSchema,
+    action: &EntityUID,
+    scope: Scope<'_, &EntityUID>,
+) -> bool {
+    let descendant = |uid: &EntityUID| {
+        action == uid
+            || schema
+                .get_action_id(uid)
+                .is_some_and(|parent| parent.descendants().any(|child| child == action))
+    };
+    match scope {
+        Scope::Any => true,
+        Scope::Eq(uid) => action == uid,
+        Scope::Mem(uid) => descendant(uid),
+        Scope::Is(ety) => ety == action.entity_type(),
+        Scope::IsMem(ety, uid) => ety == action.entity_type() && descendant(uid),
+    }
+}
+
+/// Lean `actionScopeAdmits`. Rust represents both `action in uid` and
+/// `action in [uid]` as a list; their descendant checks are identical.
+fn action_scope_admits(
+    schema: &ValidatorSchema,
+    action: &EntityUID,
+    scope: &ActionConstraint,
+) -> bool {
+    match scope {
+        ActionConstraint::Any => scope_admits_action(schema, action, Scope::Any),
+        ActionConstraint::Eq(uid) => scope_admits_action(schema, action, Scope::Eq(uid)),
+        ActionConstraint::In(uids) => uids
+            .iter()
+            .any(|uid| scope_admits_action(schema, action, Scope::Mem(uid))),
+        // Error nodes have no Lean counterpart and the policy-level guard
+        // excludes them from pruning.
+        #[cfg(feature = "tolerant-ast")]
+        ActionConstraint::ErrorConstraint => true,
+    }
+}
+
+/// Lean `actionScopeFilterable`: an action list must be nonempty and have
+/// one entity type before either the action or resource filter applies.
+fn action_scope_filterable(scope: &ActionConstraint) -> bool {
+    match scope {
+        ActionConstraint::Any | ActionConstraint::Eq(_) => true,
+        ActionConstraint::In(uids) => uids.split_first().is_some_and(|(first, rest)| {
+            rest.iter()
+                .all(|uid| uid.entity_type() == first.entity_type())
+        }),
+        #[cfg(feature = "tolerant-ast")]
+        ActionConstraint::ErrorConstraint => false,
+    }
+}
+
+/// Lean `scopeAdmitsType`, using the schema counterpart of
+/// `TypeEnv.descendentOf` for entity and action-type hierarchies.
+fn scope_admits_type(
+    schema: &ValidatorSchema,
+    ety: &EntityType,
+    scope: Scope<'_, &EntityType>,
+) -> bool {
+    match scope {
+        Scope::Any => true,
+        Scope::Eq(uid_type) => ety == uid_type,
+        Scope::Mem(uid_type) => schema.descendent_of(ety, uid_type),
+        Scope::Is(scope_type) => scope_type == ety,
+        Scope::IsMem(scope_type, uid_type) => {
+            scope_type == ety && schema.descendent_of(ety, uid_type)
+        }
+    }
+}
+
+/// Check declared types/actions in scope literals before filtering, following
+/// Lean `checkEntities` in `typecheckPolicyWithFilteredEnvironments`. Unknown
+/// types or actions take the unpruned path, including its original slot links.
+/// This is not the full `checkEntities` pass: enum EIDs, `is` types and body
+/// literals remain the job of `validate_entity_types_and_literals`.
+fn scope_entities_valid(schema: &ValidatorSchema, t: &Template) -> bool {
+    let valid_uid = |uid: &EntityUID| {
+        schema.get_entity_type(uid.entity_type()).is_some() || schema.get_action_id(uid).is_some()
+    };
+    let valid_scope = |scope: &PrincipalOrResourceConstraint| match scope {
+        PrincipalOrResourceConstraint::Eq(EntityReference::EUID(uid))
+        | PrincipalOrResourceConstraint::In(EntityReference::EUID(uid))
+        | PrincipalOrResourceConstraint::IsIn(_, EntityReference::EUID(uid)) => valid_uid(uid),
+        _ => true,
+    };
+    valid_scope(t.principal_constraint().as_inner())
+        && valid_scope(t.resource_constraint().as_inner())
+        && match t.action_constraint() {
+            ActionConstraint::Any => true,
+            ActionConstraint::Eq(uid) => valid_uid(uid),
+            ActionConstraint::In(uids) => uids.iter().all(|uid| valid_uid(uid)),
+            #[cfg(feature = "tolerant-ast")]
+            ActionConstraint::ErrorConstraint => false,
+        }
+}
+
+/// A template's syntactic scopes and one-link slot instantiation.
 struct ScopeConstraints {
-    principal: Expr,
-    action: Expr,
-    resource: Expr,
+    principal: PrincipalOrResourceConstraint,
+    action: ActionConstraint,
+    resource: PrincipalOrResourceConstraint,
     principal_slot: bool,
     resource_slot: bool,
 }
@@ -526,10 +588,53 @@ impl ScopeConstraints {
         Some(Self {
             principal_slot: one_link(SlotId::principal(), t.principal_constraint().as_inner())?,
             resource_slot: one_link(SlotId::resource(), t.resource_constraint().as_inner())?,
-            principal: t.principal_constraint().as_expr(),
-            action: t.action_constraint().as_expr(),
-            resource: t.resource_constraint().as_expr(),
+            principal: t.principal_constraint().as_inner().clone(),
+            action: t.action_constraint().clone(),
+            resource: t.resource_constraint().as_inner().clone(),
         })
+    }
+
+    /// Lean `admits`: skip action filtering for non-filterable action lists.
+    fn admits(&self, schema: &ValidatorSchema, action: &EntityUID) -> bool {
+        !action_scope_filterable(&self.action) || action_scope_admits(schema, action, &self.action)
+    }
+
+    /// Lean `admitsPrincipal`, after the one-link slot instantiation.
+    fn admits_principal(&self, schema: &ValidatorSchema, principal: &EntityType) -> bool {
+        scope_admits_type(
+            schema,
+            principal,
+            Scope::from_constraint(&self.principal, principal),
+        )
+    }
+
+    /// Lean `admitsResource`: a non-filterable action scope prevents the
+    /// resource conjunct from ruling out an environment.
+    fn admits_resource(&self, schema: &ValidatorSchema, resource: &EntityType) -> bool {
+        !action_scope_filterable(&self.action)
+            || scope_admits_type(
+                schema,
+                resource,
+                Scope::from_constraint(&self.resource, resource),
+            )
+    }
+
+    /// Lean `admitsAll`. The grouped traversal caches these same three
+    /// predicates; this direct form also checks that traversal in debug builds.
+    fn admits_all(&self, schema: &ValidatorSchema, env: &RequestEnv<'_>) -> bool {
+        match env {
+            RequestEnv::DeclaredAction {
+                principal,
+                action,
+                resource,
+                ..
+            } => {
+                self.admits(schema, action)
+                    && self.admits_principal(schema, principal)
+                    && self.admits_resource(schema, resource)
+            }
+            RequestEnv::UndeclaredAction => true,
+        }
     }
 
     /// Link each slot to its variable's own type, the one link
