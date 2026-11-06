@@ -28,8 +28,8 @@ import "core.proto";
 // refers to. The Rust reader also rejects expansions deeper than prost's
 // recursion limit, which bounds messages without `type_ref`s.
 //
-// This does not interfere with incomplete schemas, as type_ref only concerns
-// records.
+// This does not interfere with incomplete schemas, as `external` declarations
+// have no types. The Rust writer only puts records in `type_defs`.
 message Schema {
     repeated EntityDecl entity_decls = 1;
     repeated ActionDecl action_decls = 2;
