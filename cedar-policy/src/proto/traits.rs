@@ -549,8 +549,7 @@ impl EncodeCheck for models::Schema {
 }
 
 /// Is every type of `schema`, with its `type_ref`s expanded, at most `limit`
-/// prost levels deep when `schema` is at depth `init`? Without `type_defs` this
-/// is the depth check from before `type_defs` existed, with the same offsets.
+/// prost levels deep when `schema` is at depth `init`?
 pub(crate) fn schema_expansion_within_depth(
     schema: &models::Schema,
     init: usize,
@@ -578,8 +577,6 @@ pub(crate) fn schema_expansion_within_depth(
     })
 }
 
-/// A reference that is not to an earlier entry counts as height 0; the decoder
-/// rejects it.
 fn type_def_heights(type_defs: &[models::Type]) -> Vec<usize> {
     let mut heights = Vec::with_capacity(type_defs.len());
     for def in type_defs {
@@ -589,9 +586,8 @@ fn type_def_heights(type_defs: &[models::Type]) -> Vec<usize> {
     heights
 }
 
-/// Prost levels below `root` in its expansion: +1 for a set element, +4 for an
-/// attribute of a record, +1 for a name, and the height of the entry for a
-/// `type_ref`. Iterative, so that a deep type can't overflow the stack.
+/// Computes the height of root given the height of the defined types,
+/// based on the prost recursion costs for each `Type` variant.
 fn type_height(root: &models::Type, def_heights: &[usize]) -> usize {
     use models::r#type::Data;
     let mut height = 0;
@@ -599,6 +595,7 @@ fn type_height(root: &models::Type, def_heights: &[usize]) -> usize {
     while let Some((ty, depth)) = stack.pop() {
         let below = match &ty.data {
             None | Some(Data::Prim(_)) => 0,
+            // Entity/Ext adds 1: (Name(..))
             Some(Data::Entity(_) | Data::Ext(_)) => 1,
             Some(Data::TypeRef(index)) => usize::try_from(*index)
                 .ok()
@@ -606,10 +603,12 @@ fn type_height(root: &models::Type, def_heights: &[usize]) -> usize {
                 .copied()
                 .unwrap_or(0),
             Some(Data::SetElem(inner_type)) => {
+                // set_elem is directly a Type field: +1 prost level
                 stack.push((inner_type, depth + 1));
                 0
             }
             Some(Data::Record(record)) => {
+                // Record message (+1) -> map entry (+1) -> AttributeType (+1) -> Type (+1) = +4
                 for attr_type in record.attrs.values() {
                     if let Some(ref inner_ty) = attr_type.attr_type {
                         stack.push((inner_ty, depth + 4));
