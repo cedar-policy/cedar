@@ -22,12 +22,14 @@ import "core.proto";
 // the protobuf Schema message describes a schema, which may be incomplete:
 // see the `external` field on EntityDecl and ActionDecl.
 //
-// `type_ref = i` stands for `type_defs[i]`, and `type_defs[i]` may only refer
-// to `type_defs[j]` for `j < i`. The schema a message denotes is its expansion,
-// obtained by replacing every `type_ref` with what it refers to. Writers use
-// `type_defs` for types used more than once, whose expansion can be
-// exponentially larger. The Rust reader also rejects expansions deeper than
-// prost's recursion limit, which bounds messages without `type_ref`s.
+// `type_ref = i` refers to `type_defs[i]`, and the type in `type_defs[i]`
+// may only refer to `type_defs[j]` for `j < i`. The schema a message denotes
+// is the expansion obtained by replacing every `type_ref` with the type it
+// refers to. The Rust reader also rejects expansions deeper than prost's
+// recursion limit, which bounds messages without `type_ref`s.
+//
+// This does not interfere with incomplete schemas, as type_ref only concerns
+// records.
 message Schema {
     repeated EntityDecl entity_decls = 1;
     repeated ActionDecl action_decls = 2;

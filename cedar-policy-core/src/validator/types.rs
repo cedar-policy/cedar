@@ -1363,10 +1363,7 @@ impl std::fmt::Debug for RecordId<'_> {
     }
 }
 
-/// The records of a schema that a writer should write once and refer to
-/// elsewhere: those with two or more incoming edges. Entity attributes and
-/// action contexts are written in place in each declaration, so the edges out
-/// of them are counted once per declaration.
+/// The shared records of a schema.
 #[doc(hidden)]
 #[derive(Debug, Default)]
 pub struct SharedRecords<'a> {
