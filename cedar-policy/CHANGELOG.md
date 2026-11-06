@@ -23,6 +23,12 @@ Cedar Language Version: TBD
 - The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
   becomes `principal.name` and `principal has "name"` becomes `principal has name` (#2118).
 
+### Added
+
+- `*_with_depth_limit` parsing functions for `PolicySet`, `Policy`, and `Template` (Cedar and JSON formats), and for
+  `Expression` and `RestrictedExpression` (Cedar format), to avoid stack overflows on deeply nested input. See the crate
+  documentation for choosing a limit. (#2383)
+
 ## [4.14.1] - 2026-11-02
 
 Cedar Language Version: 4.6
