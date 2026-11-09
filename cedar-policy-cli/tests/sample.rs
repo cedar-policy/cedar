@@ -835,6 +835,42 @@ fn test_evaluate_samples(
     assert_eq!(expected, output.1, "{cmd:#?}",);
 }
 
+/// Leaving out `--entities` must give the same answer as an empty entities file:
+/// the store still gets the action entities from the schema.
+#[rstest]
+#[case(false)]
+#[case(true)]
+fn test_evaluate_action_hierarchy_from_schema(#[case] empty_entities_file: bool) {
+    let mut schema = tempfile::NamedTempFile::new().unwrap();
+    writeln!(
+        schema,
+        "entity User, File; action all; action view in [all] appliesTo {{ principal: User, resource: File }};"
+    )
+    .unwrap();
+    let mut entities = tempfile::NamedTempFile::new().unwrap();
+    writeln!(entities, "[]").unwrap();
+
+    let cmd = EvaluateArgs {
+        schema: OptionalSchemaArgs {
+            schema_file: Some(schema.path().into()),
+            schema_format: SchemaFormat::Cedar,
+        },
+        entities_file: empty_entities_file.then(|| entities.path().display().to_string()),
+        request: RequestArgs {
+            principal: Some("User::\"alice\"".into()),
+            action: Some("Action::\"view\"".into()),
+            resource: Some("File::\"f0\"".into()),
+            context_json_file: None,
+            request_json_file: None,
+            request_validation: true,
+        },
+        expression: "action in Action::\"all\"".into(),
+    };
+    let output = evaluate(&cmd);
+    assert_eq!(CedarExitCode::Success, output.0, "{cmd:#?}");
+    assert_eq!(EvalResult::Bool(true), output.1, "{cmd:#?}");
+}
+
 #[test]
 fn test_link_samples() {
     run_authorize_test(

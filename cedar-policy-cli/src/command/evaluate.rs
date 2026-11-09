@@ -33,7 +33,8 @@ pub struct EvaluateArgs {
     #[command(flatten)]
     pub schema: OptionalSchemaArgs,
     /// File containing JSON representation of the Cedar entity hierarchy.
-    /// This is optional; if not present, we'll just use an empty hierarchy.
+    /// This is optional; if not present, we'll just use the action entities
+    /// from the schema, or an empty hierarchy if there is no schema.
     #[arg(long = "entities", value_name = "FILE")]
     pub entities_file: Option<String>,
     /// Expression to evaluate
@@ -65,15 +66,19 @@ pub fn evaluate(args: &EvaluateArgs) -> (CedarExitCode, EvalResult) {
                 return (CedarExitCode::Failure, EvalResult::Bool(false));
             }
         };
-    let entities = match &args.entities_file {
-        None => Entities::empty(),
-        Some(file) => match load_entities(file, schema.as_ref()) {
-            Ok(entities) => entities,
-            Err(e) => {
-                println!("{e:?}");
-                return (CedarExitCode::Failure, EvalResult::Bool(false));
-            }
-        },
+    let entities = match (&args.entities_file, schema.as_ref()) {
+        (Some(file), schema) => load_entities(file, schema),
+        (None, Some(schema)) => schema
+            .action_entities()
+            .wrap_err("failed to get the action entities from the schema"),
+        (None, None) => Ok(Entities::empty()),
+    };
+    let entities = match entities {
+        Ok(entities) => entities,
+        Err(e) => {
+            println!("{e:?}");
+            return (CedarExitCode::Failure, EvalResult::Bool(false));
+        }
     };
     match eval_expression(&request, &entities, &expr).wrap_err("failed to evaluate the expression")
     {
