@@ -134,17 +134,8 @@ jobs:
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
                   ref: refs/tags/${{ inputs.tag }}
-            - name: Configure rust toolchain
-              run: rustup update stable && rustup default stable
-            - name: Set up Node.js
-              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-              with:
-                  node-version: "26" # Node 26 LTS, bundles npm 11
-                  registry-url: "https://registry.npmjs.org"
-            - name: Install typescript
-              run: npm install --global typescript
-            - name: Install wasm-pack
-              run: cargo install wasm-pack --locked
+            - name: Set up pinned wasm toolchain
+              uses: ./.github/actions/setup-wasm-toolchain
             - name: Build and test cedar-wasm
               working-directory: ./cedar-wasm
               run: TEST_TS=1 ./build-wasm.sh

@@ -172,9 +172,8 @@ jobs:
       - name: update llvm (macOSarm64)
         if: ${{ matrix.os  == 'macos-latest' }}
         run: brew install llvm && echo "/opt/homebrew/opt/llvm/bin" >> $GITHUB_PATH
-      - name: install typescript
-        run: npm install -g typescript
-      - name: install wasm-pack
-        run: cargo install wasm-pack
+      # Same pinned toolchain as the `publish-npm` job in publish_wasm.yml.
+      - name: set up pinned wasm toolchain
+        uses: ./.github/actions/setup-wasm-toolchain
       - name: build wasm and test build
         run: cd ./cedar-wasm && TEST_TS=1 ./build-wasm.sh
