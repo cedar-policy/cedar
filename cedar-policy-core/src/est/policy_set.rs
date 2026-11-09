@@ -122,15 +122,26 @@ impl TryFrom<PolicySet> for ast::PolicySet {
     type Error = PolicySetFromJsonError;
 
     fn try_from(value: PolicySet) -> Result<Self, Self::Error> {
+        value.try_into_ast_with_depth_limit(None)
+    }
+}
+
+impl PolicySet {
+    /// Like `ast::PolicySet::try_from`, with an optional limit on expression depth.
+    pub fn try_into_ast_with_depth_limit(
+        self,
+        depth_limit: Option<usize>,
+    ) -> Result<ast::PolicySet, PolicySetFromJsonError> {
         let mut ast_pset = ast::PolicySet::default();
 
-        for (id, policy) in value.static_policies {
-            let ast = policy.try_into_ast_policy(Some(id))?;
+        for (id, policy) in self.static_policies {
+            let ast = policy.try_into_ast_policy_with_depth_limit(Some(id), depth_limit)?;
             ast_pset.add(ast)?;
         }
 
-        for (id, policy) in value.templates {
-            let ast = policy.try_into_ast_policy_or_template(Some(id))?;
+        for (id, policy) in self.templates {
+            let ast =
+                policy.try_into_ast_policy_or_template_with_depth_limit(Some(id), depth_limit)?;
             ast_pset.add_template(ast)?;
         }
 
@@ -138,7 +149,7 @@ impl TryFrom<PolicySet> for ast::PolicySet {
             template_id,
             new_id,
             values,
-        } in value.template_links
+        } in self.template_links
         {
             ast_pset.link(template_id, new_id, values)?;
         }
