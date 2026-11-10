@@ -1040,7 +1040,6 @@ impl Attributes {
 
     /// Identifies this attribute map by address, so only clones sharing the
     /// same `Arc` have equal ids.
-    #[doc(hidden)]
     pub fn id(&self) -> RecordId<'_> {
         RecordId(ByRef(self.attrs.as_ref()))
     }
@@ -1353,7 +1352,6 @@ impl AttributeType {
 
 /// The address of a record's attribute map. It borrows the map, so the address
 /// can't be reused while the `RecordId` exists, which makes it a sound memo key.
-#[doc(hidden)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RecordId<'a>(ByRef<'a, BTreeMap<SmolStr, AttributeType>>);
 
@@ -1364,57 +1362,60 @@ impl std::fmt::Debug for RecordId<'_> {
 }
 
 /// The record types reachable from two or more places in a schema, compared by
-/// address: equal records in different `Arc`s are not shared. Entity
-/// attributes and action contexts are not counted, only the records in them.
-#[doc(hidden)]
+/// address.
+/// Structurally equal records in different `Arc`s are not shared.
+/// Entity attribute maps and action context are roots, so the entity/context
+/// "record" type is not counted, only records nested in them.
 #[derive(Debug, Default)]
 pub struct SharedRecords<'a> {
     in_degree: HashMap<RecordId<'a>, usize>,
-    visited: HashSet<RecordId<'a>>,
 }
 
 impl<'a> SharedRecords<'a> {
+    /// Count the references to each record type in `schema`.
     pub fn of_schema(schema: &'a ValidatorSchema) -> Self {
+        let mut vis = HashSet::<RecordId<'a>>::new();
         let mut shared = Self::default();
         for ety in schema.entity_types() {
-            shared.add_children(ety.attributes());
+            shared.add_children(&mut vis, ety.attributes());
             if let Some(tags) = ety.tag_type() {
-                shared.add_type(tags);
+                shared.add_type(&mut vis, tags);
             }
         }
         for action in schema.action_ids() {
             if let Some(Type::Record { attrs, .. }) = action.context() {
-                shared.add_children(attrs);
+                shared.add_children(&mut vis, attrs);
             }
         }
         shared
     }
 
+    /// Whether `attrs` is referenced from two or more places.
     pub fn is_shared(&self, attrs: &'a Attributes) -> bool {
-        self.in_degree.get(&attrs.id()).copied().unwrap_or(0) >= 2
+        self.in_degree.get(&attrs.id()).is_some_and(|x| *x >= 2)
     }
 
-    fn add_children(&mut self, attrs: &'a Attributes) {
+    fn add_children(&mut self, vis: &mut HashSet<RecordId<'a>>, attrs: &'a Attributes) {
         for (_, attr) in attrs.iter() {
-            self.add_type(&attr.attr_type);
+            self.add_type(vis, &attr.attr_type);
         }
     }
 
-    fn add_record(&mut self, attrs: &'a Attributes) {
+    fn add_record(&mut self, vis: &mut HashSet<RecordId<'a>>, attrs: &'a Attributes) {
         *self.in_degree.entry(attrs.id()).or_default() += 1;
-        if self.visited.insert(attrs.id()) {
-            self.add_children(attrs);
+        if vis.insert(attrs.id()) {
+            self.add_children(vis, attrs);
         }
     }
 
-    fn add_type(&mut self, ty: &'a Type) {
+    fn add_type(&mut self, vis: &mut HashSet<RecordId<'a>>, ty: &'a Type) {
         // Records are the only nodes with more than one child, so they are the
         // only nodes that need to be memoized.
         match ty {
-            Type::Record { attrs, .. } => self.add_record(attrs),
+            Type::Record { attrs, .. } => self.add_record(vis, attrs),
             Type::Set {
                 element_type: Some(element_type),
-            } => self.add_type(element_type),
+            } => self.add_type(vis, element_type),
             _ => {}
         }
     }
