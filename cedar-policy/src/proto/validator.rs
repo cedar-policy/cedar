@@ -20,7 +20,7 @@ use super::ast::ProtobufConversionError;
 use super::models;
 use super::traits::PROST_RECURSION_LIMIT;
 use cedar_policy_core::ast::{self, Eid};
-use cedar_policy_core::validator::{self, types};
+use cedar_policy_core::validator::{self, types, ValidatorActionId, ValidatorEntityType};
 use nonempty::NonEmpty;
 use smol_str::SmolStr;
 use std::collections::{HashMap, HashSet};
@@ -107,6 +107,33 @@ impl TryFrom<models::Schema> for validator::ValidatorSchema {
     }
 }
 
+impl From<&validator::ValidationMode> for models::ValidationMode {
+    fn from(v: &validator::ValidationMode) -> Self {
+        match v {
+            validator::ValidationMode::Strict => models::ValidationMode::Strict,
+            validator::ValidationMode::Permissive => models::ValidationMode::Permissive,
+            #[cfg(feature = "partial-validate")]
+            validator::ValidationMode::Partial => models::ValidationMode::Partial,
+        }
+    }
+}
+
+impl TryFrom<models::ValidationMode> for validator::ValidationMode {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::ValidationMode) -> Result<Self, Self::Error> {
+        match v {
+            models::ValidationMode::Strict => Ok(validator::ValidationMode::Strict),
+            models::ValidationMode::Permissive => Ok(validator::ValidationMode::Permissive),
+            #[cfg(feature = "partial-validate")]
+            models::ValidationMode::Partial => Ok(validator::ValidationMode::Partial),
+            #[cfg(not(feature = "partial-validate"))]
+            models::ValidationMode::Partial => Err(ProtobufConversionError::missing(
+                "partial-validate feature (required for partial validation mode)",
+            )),
+        }
+    }
+}
+
 struct TypeEncoder<'a> {
     shared: types::SharedRecords<'a>,
     def_index: HashMap<types::RecordId<'a>, u32>,
@@ -130,84 +157,20 @@ impl<'a> TypeEncoder<'a> {
             ..Self::inline()
         }
     }
+}
 
-    /// # Panics
-    /// If `ty` has no protobuf encoding, e.g. `Never` or an open record.
-    #[expect(clippy::expect_used, clippy::panic, reason = "experimental feature")]
-    fn encode_type(&mut self, ty: &'a types::Type) -> models::Type {
-        match ty {
-            types::Type::Never => panic!("can't encode Never type in protobuf; Never should never appear in a Schema"),
-            types::Type::Bool(types::BoolType::True | types::BoolType::False) => panic!("can't encode singleton boolean type in protobuf; singleton boolean types should never appear in a Schema"),
-            types::Type::Bool(types::BoolType::AnyBool) => models::Type {
-                data: Some(models::r#type::Data::Prim(models::r#type::Prim::Bool.into())),
-            },
-            types::Type::Long => models::Type {
-                data: Some(models::r#type::Data::Prim(models::r#type::Prim::Long.into())),
-            },
-            types::Type::String => models::Type {
-                data: Some(models::r#type::Data::Prim(models::r#type::Prim::String.into())),
-            },
-            types::Type::Set { element_type } => models::Type {
-                data: Some(models::r#type::Data::SetElem(Box::new(self.encode_type(
-                    element_type
-                        .as_ref()
-                        .expect("can't encode Set without element type in protobuf; Set-without-element-type should never appear in a Schema"),
-                )))),
-            },
-            types::Type::Entity(types::EntityKind::Entity(lub)) => models::Type {
-                data: Some(models::r#type::Data::Entity(models::Name::from(lub.get_single_entity().expect("can't encode non-singleton LUB in protobuf; non-singleton LUB types should never appear in a Schema").as_ref()))),
-            },
-            types::Type::Record { attrs, open_attributes } => {
-                assert_eq!(open_attributes, &types::OpenTag::ClosedAttributes, "can't encode open record in protobuf");
-                let id = attrs.id();
-                if !self.shared.is_shared(attrs) {
-                    return models::Type {
-                        data: Some(models::r#type::Data::Record(models::r#type::Record { attrs: self.encode_attrs(attrs) })),
-                    };
-                }
-                let index = if let Some(index) = self.def_index.get(&id) {
-                    *index
-                } else {
-                    let def = models::Type {
-                        data: Some(models::r#type::Data::Record(models::r#type::Record { attrs: self.encode_attrs(attrs) })),
-                    };
-                    let index = u32::try_from(self.type_defs.len())
-                        .expect("a schema has fewer than 2^32 record types");
-                    self.type_defs.push(def);
-                    self.def_index.insert(id, index);
-                    index
-                };
-                models::Type {
-                    data: Some(models::r#type::Data::TypeRef(index)),
-                }
-            }
-            types::Type::Entity(types::EntityKind::AnyEntity) => panic!("can't encode AnyEntity type in protobuf; AnyEntity should never appear in a Schema"),
-            types::Type::ExtensionType { name } => models::Type {
-                data: Some(models::r#type::Data::Ext(models::Name::from(name))),
-            },
-        }
-    }
+/// Resolves `type_ref`s against the entries of `type_defs` decoded so far.
+#[derive(Default)]
+struct TypeDecoder {
+    type_defs: Vec<types::Type>,
+}
 
-    fn encode_attrs(
-        &mut self,
-        attrs: &'a types::Attributes,
-    ) -> HashMap<String, models::AttributeType> {
-        attrs
-            .iter()
-            .map(|(k, v)| {
-                (
-                    k.to_string(),
-                    models::AttributeType {
-                        attr_type: Some(self.encode_type(&v.attr_type)),
-                        is_required: v.is_required,
-                    },
-                )
-            })
-            .collect()
-    }
+// Outside a `Schema` there are no `type_defs`: types are encoded inline and
+// `type_ref`s are rejected.
 
+impl<'a> TypeEncoder<'a> {
     #[expect(clippy::panic, reason = "ValidatorActionId invariant")]
-    fn encode_action_decl(&mut self, v: &'a validator::ValidatorActionId) -> models::ActionDecl {
+    fn encode_action_decl(&mut self, v: &'a ValidatorActionId) -> models::ActionDecl {
         if v.is_external() {
             return models::ActionDecl {
                 name: Some(models::EntityUid::from(v.name())),
@@ -237,8 +200,71 @@ impl<'a> TypeEncoder<'a> {
             external: false,
         }
     }
+}
 
-    fn encode_entity_decl(&mut self, v: &'a validator::ValidatorEntityType) -> models::EntityDecl {
+/// # Panics
+/// If `v` has a type with no protobuf encoding, e.g. an open record.
+impl From<&validator::ValidatorActionId> for models::ActionDecl {
+    fn from(v: &validator::ValidatorActionId) -> Self {
+        TypeEncoder::inline().encode_action_decl(v)
+    }
+}
+
+impl TypeDecoder {
+    fn decode_action_decl(
+        &self,
+        v: models::ActionDecl,
+    ) -> Result<ValidatorActionId, ProtobufConversionError> {
+        let name = ast::EntityUID::try_from(
+            v.name
+                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
+        )?;
+        let descendants = v
+            .descendants
+            .into_iter()
+            .map(ast::EntityUID::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        if v.external {
+            if !v.principal_types.is_empty()
+                || !v.resource_types.is_empty()
+                || !v.context.is_empty()
+            {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "action `{name}` is declared `external`, so it should have no \
+                     `principal_types`, `resource_types`, or `context`"
+                )));
+            }
+            return Ok(ValidatorActionId::new_external(name, descendants, None));
+        }
+        Ok(ValidatorActionId::new_defined(
+            name,
+            v.principal_types
+                .into_iter()
+                .map(ast::EntityType::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            v.resource_types
+                .into_iter()
+                .map(ast::EntityType::try_from)
+                .collect::<Result<Vec<_>, _>>()?,
+            descendants,
+            types::Type::Record {
+                attrs: self.decode_attrs(v.context)?,
+                open_attributes: types::OpenTag::default(),
+            },
+            None,
+        ))
+    }
+}
+
+impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
+        TypeDecoder::default().decode_action_decl(v)
+    }
+}
+
+impl<'a> TypeEncoder<'a> {
+    fn encode_entity_decl(&mut self, v: &'a ValidatorEntityType) -> models::EntityDecl {
         let name = Some(models::Name::from(v.name()));
         let descendants = v.descendants.iter().map(models::Name::from).collect();
         let (attributes, tags, enum_choices, external) = match &v.kind {
@@ -267,10 +293,76 @@ impl<'a> TypeEncoder<'a> {
     }
 }
 
-/// Resolves `type_ref`s against the entries of `type_defs` decoded so far.
-#[derive(Default)]
-struct TypeDecoder {
-    type_defs: Vec<types::Type>,
+/// # Panics
+/// If `v` has a type with no protobuf encoding, e.g. an open record.
+impl From<&validator::ValidatorEntityType> for models::EntityDecl {
+    fn from(v: &validator::ValidatorEntityType) -> Self {
+        TypeEncoder::inline().encode_entity_decl(v)
+    }
+}
+
+impl TypeDecoder {
+    fn decode_entity_decl(
+        &self,
+        v: models::EntityDecl,
+    ) -> Result<ValidatorEntityType, ProtobufConversionError> {
+        let name = ast::EntityType::try_from(
+            v.name
+                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
+        )?;
+        let descendants = v
+            .descendants
+            .into_iter()
+            .map(ast::EntityType::try_from)
+            .collect::<Result<Vec<_>, _>>()?;
+        if v.external {
+            if !v.attributes.is_empty() || v.tags.is_some() || !v.enum_choices.is_empty() {
+                return Err(ProtobufConversionError::InvalidValue(format!(
+                    "entity type `{name}` is declared `external`, so it should have no \
+                     `attributes`, `tags`, or `enum_choices`"
+                )));
+            }
+            return Ok(ValidatorEntityType::new_external(name, descendants, None));
+        }
+        match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
+            // `enum_choices` is empty, so `v` represents a standard entity type
+            None => Ok(ValidatorEntityType::new_standard(
+                name,
+                descendants,
+                self.decode_attrs(v.attributes)?,
+                types::OpenTag::default(),
+                v.tags.map(|ty| self.decode_type(ty)).transpose()?,
+                None,
+            )),
+            Some(enum_choices) => {
+                // `enum_choices` is not empty, so `v` represents an enumerated entity type.
+                // enumerated entity types must have no attributes or tags.
+                if !v.attributes.is_empty() {
+                    Err(ProtobufConversionError::InvalidValue(format!(
+                        "enum type {name} should not have attributes"
+                    )))
+                } else if v.tags.is_some() {
+                    Err(ProtobufConversionError::InvalidValue(format!(
+                        "enum type {name} should not have tags"
+                    )))
+                } else {
+                    Ok(ValidatorEntityType::new_enum(
+                        name,
+                        descendants,
+                        enum_choices.map(Eid::new),
+                        None,
+                    ))
+                }
+            }
+        }
+    }
+}
+
+impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::EntityDecl) -> Result<Self, Self::Error> {
+        TypeDecoder::default().decode_entity_decl(v)
+    }
 }
 
 impl TypeDecoder {
@@ -313,7 +405,84 @@ impl TypeDecoder {
                 }),
         }
     }
+}
 
+impl TryFrom<models::Type> for types::Type {
+    type Error = ProtobufConversionError;
+    fn try_from(v: models::Type) -> Result<Self, Self::Error> {
+        TypeDecoder::default().decode_type(v)
+    }
+}
+
+impl<'a> TypeEncoder<'a> {
+    /// # Panics
+    /// If `v` has no protobuf encoding, e.g. `Never` or an open record.
+    #[expect(clippy::expect_used, clippy::panic, reason = "experimental feature")]
+    fn encode_type(&mut self, v: &'a types::Type) -> models::Type {
+        match v {
+            types::Type::Never => panic!("can't encode Never type in protobuf; Never should never appear in a Schema"),
+            types::Type::Bool(types::BoolType::True | types::BoolType::False) => panic!("can't encode singleton boolean type in protobuf; singleton boolean types should never appear in a Schema"),
+            types::Type::Bool(types::BoolType::AnyBool) => models::Type {
+                data: Some(models::r#type::Data::Prim(models::r#type::Prim::Bool.into())),
+            },
+            types::Type::Long => models::Type {
+                data: Some(models::r#type::Data::Prim(models::r#type::Prim::Long.into())),
+            },
+            types::Type::String => models::Type {
+                data: Some(models::r#type::Data::Prim(models::r#type::Prim::String.into())),
+            },
+            types::Type::Set { element_type } => models::Type {
+                data: Some(models::r#type::Data::SetElem(Box::new(self.encode_type(
+                    element_type
+                        .as_ref()
+                        .expect("can't encode Set without element type in protobuf; Set-without-element-type should never appear in a Schema")
+                        .as_ref(),
+                )))),
+            },
+            types::Type::Entity(types::EntityKind::Entity(lub)) => models::Type {
+                data: Some(models::r#type::Data::Entity(models::Name::from(lub.get_single_entity().expect("can't encode non-singleton LUB in protobuf; non-singleton LUB types should never appear in a Schema").as_ref()))),
+            },
+            types::Type::Record{ attrs, open_attributes } => {
+                assert_eq!(open_attributes, &types::OpenTag::ClosedAttributes, "can't encode open record in protobuf");
+                let id = attrs.id();
+                if !self.shared.is_shared(attrs) {
+                    return models::Type {
+                        data: Some(models::r#type::Data::Record(models::r#type::Record { attrs: self.encode_attrs(attrs) })),
+                    };
+                }
+                let index = if let Some(index) = self.def_index.get(&id) {
+                    *index
+                } else {
+                    let def = models::Type {
+                        data: Some(models::r#type::Data::Record(models::r#type::Record { attrs: self.encode_attrs(attrs) })),
+                    };
+                    let index = u32::try_from(self.type_defs.len())
+                        .expect("a schema has fewer than 2^32 record types");
+                    self.type_defs.push(def);
+                    self.def_index.insert(id, index);
+                    index
+                };
+                models::Type {
+                    data: Some(models::r#type::Data::TypeRef(index)),
+                }
+            }
+            types::Type::Entity(types::EntityKind::AnyEntity) => panic!("can't encode AnyEntity type in protobuf; AnyEntity should never appear in a Schema"),
+            types::Type::ExtensionType { name } => models::Type {
+                data: Some(models::r#type::Data::Ext(models::Name::from(name))),
+            },
+        }
+    }
+}
+
+/// # Panics
+/// If `v` has no protobuf encoding, e.g. `Never` or an open record.
+impl From<&types::Type> for models::Type {
+    fn from(v: &types::Type) -> Self {
+        TypeEncoder::inline().encode_type(v)
+    }
+}
+
+impl TypeDecoder {
     fn decode_attrs(
         &self,
         v: HashMap<String, models::AttributeType>,
@@ -324,7 +493,29 @@ impl TypeDecoder {
                 .collect::<Result<Vec<_>, ProtobufConversionError>>()?,
         ))
     }
+}
 
+impl<'a> TypeEncoder<'a> {
+    fn encode_attrs(
+        &mut self,
+        attrs: &'a types::Attributes,
+    ) -> HashMap<String, models::AttributeType> {
+        attrs
+            .iter()
+            .map(|(k, v)| {
+                (
+                    k.to_string(),
+                    models::AttributeType {
+                        attr_type: Some(self.encode_type(&v.attr_type)),
+                        is_required: v.is_required,
+                    },
+                )
+            })
+            .collect()
+    }
+}
+
+impl TypeDecoder {
     fn decode_attribute_type(
         &self,
         v: models::AttributeType,
@@ -340,188 +531,6 @@ impl TypeDecoder {
             #[cfg(feature = "extended-schema")]
             loc: None,
         })
-    }
-
-    fn decode_action_decl(
-        &self,
-        v: models::ActionDecl,
-    ) -> Result<validator::ValidatorActionId, ProtobufConversionError> {
-        let name = ast::EntityUID::try_from(
-            v.name
-                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
-        )?;
-        let descendants = v
-            .descendants
-            .into_iter()
-            .map(ast::EntityUID::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        if v.external {
-            if !v.principal_types.is_empty()
-                || !v.resource_types.is_empty()
-                || !v.context.is_empty()
-            {
-                return Err(ProtobufConversionError::InvalidValue(format!(
-                    "action `{name}` is declared `external`, so it should have no \
-                     `principal_types`, `resource_types`, or `context`"
-                )));
-            }
-            return Ok(validator::ValidatorActionId::new_external(
-                name,
-                descendants,
-                None,
-            ));
-        }
-        Ok(validator::ValidatorActionId::new_defined(
-            name,
-            v.principal_types
-                .into_iter()
-                .map(ast::EntityType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            v.resource_types
-                .into_iter()
-                .map(ast::EntityType::try_from)
-                .collect::<Result<Vec<_>, _>>()?,
-            descendants,
-            types::Type::Record {
-                attrs: self.decode_attrs(v.context)?,
-                open_attributes: types::OpenTag::default(),
-            },
-            None,
-        ))
-    }
-
-    fn decode_entity_decl(
-        &self,
-        v: models::EntityDecl,
-    ) -> Result<validator::ValidatorEntityType, ProtobufConversionError> {
-        let name = ast::EntityType::try_from(
-            v.name
-                .ok_or_else(|| ProtobufConversionError::missing("name"))?,
-        )?;
-        let descendants = v
-            .descendants
-            .into_iter()
-            .map(ast::EntityType::try_from)
-            .collect::<Result<Vec<_>, _>>()?;
-        if v.external {
-            if !v.attributes.is_empty() || v.tags.is_some() || !v.enum_choices.is_empty() {
-                return Err(ProtobufConversionError::InvalidValue(format!(
-                    "entity type `{name}` is declared `external`, so it should have no \
-                     `attributes`, `tags`, or `enum_choices`"
-                )));
-            }
-            return Ok(validator::ValidatorEntityType::new_external(
-                name,
-                descendants,
-                None,
-            ));
-        }
-        match NonEmpty::collect(v.enum_choices.into_iter().map(SmolStr::from)) {
-            // `enum_choices` is empty, so `v` represents a standard entity type
-            None => Ok(validator::ValidatorEntityType::new_standard(
-                name,
-                descendants,
-                self.decode_attrs(v.attributes)?,
-                types::OpenTag::default(),
-                v.tags.map(|ty| self.decode_type(ty)).transpose()?,
-                None,
-            )),
-            Some(enum_choices) => {
-                // `enum_choices` is not empty, so `v` represents an enumerated entity type.
-                // enumerated entity types must have no attributes or tags.
-                if !v.attributes.is_empty() {
-                    Err(ProtobufConversionError::InvalidValue(format!(
-                        "enum type {name} should not have attributes"
-                    )))
-                } else if v.tags.is_some() {
-                    Err(ProtobufConversionError::InvalidValue(format!(
-                        "enum type {name} should not have tags"
-                    )))
-                } else {
-                    Ok(validator::ValidatorEntityType::new_enum(
-                        name,
-                        descendants,
-                        enum_choices.map(Eid::new),
-                        None,
-                    ))
-                }
-            }
-        }
-    }
-}
-
-impl From<&validator::ValidationMode> for models::ValidationMode {
-    fn from(v: &validator::ValidationMode) -> Self {
-        match v {
-            validator::ValidationMode::Strict => models::ValidationMode::Strict,
-            validator::ValidationMode::Permissive => models::ValidationMode::Permissive,
-            #[cfg(feature = "partial-validate")]
-            validator::ValidationMode::Partial => models::ValidationMode::Partial,
-        }
-    }
-}
-
-impl TryFrom<models::ValidationMode> for validator::ValidationMode {
-    type Error = ProtobufConversionError;
-    fn try_from(v: models::ValidationMode) -> Result<Self, Self::Error> {
-        match v {
-            models::ValidationMode::Strict => Ok(validator::ValidationMode::Strict),
-            models::ValidationMode::Permissive => Ok(validator::ValidationMode::Permissive),
-            #[cfg(feature = "partial-validate")]
-            models::ValidationMode::Partial => Ok(validator::ValidationMode::Partial),
-            #[cfg(not(feature = "partial-validate"))]
-            models::ValidationMode::Partial => Err(ProtobufConversionError::missing(
-                "partial-validate feature (required for partial validation mode)",
-            )),
-        }
-    }
-}
-
-// Outside a `Schema` there are no `type_defs`: types are encoded inline and
-// `type_ref`s are rejected.
-
-/// # Panics
-/// If `v` has a type with no protobuf encoding, e.g. an open record.
-impl From<&validator::ValidatorActionId> for models::ActionDecl {
-    fn from(v: &validator::ValidatorActionId) -> Self {
-        TypeEncoder::inline().encode_action_decl(v)
-    }
-}
-
-impl TryFrom<models::ActionDecl> for validator::ValidatorActionId {
-    type Error = ProtobufConversionError;
-    fn try_from(v: models::ActionDecl) -> Result<Self, Self::Error> {
-        TypeDecoder::default().decode_action_decl(v)
-    }
-}
-
-/// # Panics
-/// If `v` has a type with no protobuf encoding, e.g. an open record.
-impl From<&validator::ValidatorEntityType> for models::EntityDecl {
-    fn from(v: &validator::ValidatorEntityType) -> Self {
-        TypeEncoder::inline().encode_entity_decl(v)
-    }
-}
-
-impl TryFrom<models::EntityDecl> for validator::ValidatorEntityType {
-    type Error = ProtobufConversionError;
-    fn try_from(v: models::EntityDecl) -> Result<Self, Self::Error> {
-        TypeDecoder::default().decode_entity_decl(v)
-    }
-}
-
-impl TryFrom<models::Type> for types::Type {
-    type Error = ProtobufConversionError;
-    fn try_from(v: models::Type) -> Result<Self, Self::Error> {
-        TypeDecoder::default().decode_type(v)
-    }
-}
-
-/// # Panics
-/// If `v` has no protobuf encoding, e.g. `Never` or an open record.
-impl From<&types::Type> for models::Type {
-    fn from(v: &types::Type) -> Self {
-        TypeEncoder::inline().encode_type(v)
     }
 }
 
