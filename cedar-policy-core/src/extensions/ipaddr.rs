@@ -266,7 +266,7 @@ fn extension_err(msg: impl Into<String>, advice: Option<String>) -> evaluator::E
     )
 }
 
-/// Check whether `s` contains at least three occurences of `c`
+/// Check whether `s` contains at least three occurrences of `c`
 fn contains_at_least_two(s: &str, c: char) -> bool {
     let idx = s.find(c);
     match idx {

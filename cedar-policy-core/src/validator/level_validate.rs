@@ -1171,7 +1171,7 @@ mod levels_validation_tests {
     #[test]
     fn attr_chain_cost_from_root_entity_single_attr() {
         // This tests chain cost of ext-has-attr with a single attr. This isn't
-        // reachable through the parsing paths wich only produce an extended has for
+        // reachable through the parsing paths which only produce an extended has for
         // more than two attributes, but we want to be sure "extended has user" is
         // consistent with "has user".
         let schema = get_schema();

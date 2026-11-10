@@ -296,7 +296,7 @@ fn cyclic_tc_internal<K, V>(
     } // end for loop over parents
     #[expect(
         clippy::expect_used,
-        reason = "`node_id` must have a root. It was inserted at the begining of this function"
+        reason = "`node_id` must have a root. It was inserted at the beginning of this function"
     )]
     let node_root = root
         .get(node_id)
