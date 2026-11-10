@@ -42,7 +42,7 @@ cargo add cedar-policy
 * [cedar-policy](./cedar-policy) : Main crate for using Cedar to authorize access requests in your applications, and validate Cedar policies against a schema
 * [cedar-policy-symcc](./cedar-policy-symcc) : Crate containing the Cedar symbolic compiler, enabling verification of properties about your Cedar policies with concrete counterexamples
 * [cedar-policy-cli](./cedar-policy-cli) : Crate containing a simple command-line interface (CLI) for interacting with Cedar
-* [cedar-language-server](./cedar-language-server) : Contains the implementation for the Cedar Langauge Server
+* [cedar-language-server](./cedar-language-server) : Contains the implementation for the Cedar Language Server
 * [cedar-wasm](./cedar-wasm) : Crate defining the wasm interface for Cedar, enabling use with JavaScript and TypeScript
 * [cedar-policy-core](./cedar-policy-core) : Internal crate containing the Cedar parser, evaluator, typechecker, and other core components
 * [cedar-policy-formatter](./cedar-policy-formatter) : Internal crate containing an auto-formatter for Cedar policies
@@ -171,7 +171,7 @@ Note that this is different from:
 cedar-policy = "2.4.2"
 ```
 
-Which expresses that 2.4.2 is the minimum version of Cedar you accept, and you implicitly accept anything newer that is semver-compatible. See <https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html>.
+This expresses that 2.4.2 is the minimum version of Cedar you accept, and you implicitly accept anything newer that is semver-compatible. See <https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html>.
 
 ## Security
 

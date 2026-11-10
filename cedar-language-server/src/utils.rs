@@ -170,7 +170,7 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
     // Find the start of the word
     #[expect(
         clippy::string_slice,
-        reason = "byte_pos is computed from char_indicies()"
+        reason = "byte_pos is computed from char_indices()"
     )]
     let start = line[..byte_pos]
         .char_indices()
@@ -181,7 +181,7 @@ pub(crate) fn get_word_at_position(position: Position, text: &str) -> Option<&st
     // Find the end of the word
     #[expect(
         clippy::string_slice,
-        reason = "byte_pos is computed from char_indicies()"
+        reason = "byte_pos is computed from char_indices()"
     )]
     let end = line[byte_pos..]
         .char_indices()
@@ -214,7 +214,7 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     // Find the start of the operator
     #[expect(
         clippy::string_slice,
-        reason = "byte_pos is computed from char_indicies"
+        reason = "byte_pos is computed from char_indices"
     )]
     let start = line[..byte_pos]
         .char_indices()
@@ -225,7 +225,7 @@ pub(crate) fn get_operator_at_position(position: Position, text: &str) -> Option
     // Find the end of the operator
     #[expect(
         clippy::string_slice,
-        reason = "byte_pos is computed from char_indicies"
+        reason = "byte_pos is computed from char_indices"
     )]
     let end = line[byte_pos..]
         .char_indices()
@@ -259,14 +259,14 @@ fn get_policy_scope_ranges(policy_text: &str) -> Vec<Range> {
         for (char_idx, (byte_idx, char)) in line.char_indices().enumerate() {
             #[expect(
                 clippy::string_slice,
-                reason = "byte_idx is computed from char_indicies()"
+                reason = "byte_idx is computed from char_indices()"
             )]
             let substring = &line[byte_idx..];
 
             // Check for effect keywords
             #[expect(
                 clippy::string_slice,
-                reason = "byte_idx is computed from char_indicies()"
+                reason = "byte_idx is computed from char_indices()"
             )]
             if !in_effect_keyword
                 && (substring.starts_with("permit") || substring.starts_with("forbid"))

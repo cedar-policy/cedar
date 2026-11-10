@@ -384,7 +384,7 @@ pub struct ExpectedLiteralEntityRef {
     got: Box<Either<serde_json::Value, Expr>>,
 }
 
-/// Error type for getting any expression other than en extesion value
+/// Error type for getting any expression other than an extension value
 //
 // CAUTION: this type is publicly exported in `cedar-policy`.
 // Don't make fields `pub`, don't make breaking changes, and use caution
@@ -583,7 +583,7 @@ pub enum JsonDeserializationErrorContext {
         /// ID of the policy we were deserializing
         id: PolicyID,
     },
-    /// The error occured while deserializing a template link
+    /// The error occurred while deserializing a template link
     TemplateLink,
     /// The context was unknown, this shouldn't surface to users
     Unknown,
