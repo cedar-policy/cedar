@@ -1,0 +1,36 @@
+name: Set up cedar-wasm build toolchain
+description: >
+  Sets up the wasm-build toolchain with pinned versions for its compoenents.
+  It is used by (build_and_test.yml) and (publish_wasm.yml), so CI tests the
+  same toolchain that builds the published package.
+  Bump these versions deliberately, in a reviewed change.
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: "26" # Node 26 LTS, bundles npm 11 (needed for npm trusted publishing)
+        # Writes the .npmrc used by `npm publish` in publish_wasm.yml.
+        registry-url: "https://registry.npmjs.org"
+    - name: Install pinned Rust, TypeScript, and wasm-pack
+      shell: bash
+      env:
+        RUST_VERSION: "1.99.1"
+        # typescript@7 depends on its per-platform binary packages at the exact
+        # same version, so pinning this version pins the whole install tree.
+        TYPESCRIPT_VERSION: "7.0.2"
+        # `--locked` below pins wasm-pack's dependencies to its published
+        # Cargo.lock; `--version` pins wasm-pack itself.
+        WASM_PACK_VERSION: "0.15.1"
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUST_VERSION" --profile minimal --target wasm32-unknown-unknown
+        rustup default "$RUST_VERSION"
+        npm install --global "typescript@$TYPESCRIPT_VERSION"
+        cargo install wasm-pack --version "$WASM_PACK_VERSION" --locked
+        node --version
+        rustc --version
+        tsc --version
+        wasm-pack --version
