@@ -1115,6 +1115,25 @@ mod tests {
     }
 
     #[test]
+    fn test_all_extension_functions_roundtrip() {
+        for func in extensions::Extensions::all_available().all_funcs() {
+            // `unknown` becomes `Expr::Unknown`, which does not convert back to a call
+            if func.name().to_string() == "unknown" {
+                continue;
+            }
+            let arity = func.arg_types().len();
+            let mut arities = vec![arity];
+            if func.is_variadic() {
+                arities.push(arity + 1);
+            }
+            for n in arities {
+                let args = (0..n).map(|_| ast::Expr::val(0)).collect();
+                assert_expr_roundtrip(ast::Expr::call_extension_fn(func.name().clone(), args));
+            }
+        }
+    }
+
+    #[test]
     fn test_complex_nested_expression() {
         let cases = [
             r#"if principal.age >= 18 && resource.public == true then
