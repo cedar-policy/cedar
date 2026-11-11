@@ -835,6 +835,9 @@ impl Expr {
             return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
         }
         Ok(match args.len() {
+            0 => {
+                return Err(error_body::WrongArityError::new(name.into(), expected, got).into());
+            }
             1 => {
                 #[expect(clippy::unwrap_used, reason = "length = 1 checked in arm")]
                 let expr = args.into_iter().next().unwrap();
