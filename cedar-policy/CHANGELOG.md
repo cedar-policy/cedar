@@ -14,10 +14,15 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+## [4.15.0] - Coming Soon
+
+Cedar Language Version: 4.7
+
 ### Added
 
 - Stabilized [RFC 99 (variadic `isInRange`)](https://github.com/cedar-policy/rfcs/blob/main/text/0099-ip-is-in-range-list.md), removing
   the experimental `variadic-is-in-range` feature flag and enabling the functionality by default.
+
 ### Changed
 
 - The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
