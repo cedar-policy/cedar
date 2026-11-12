@@ -237,7 +237,7 @@ async fn tests_for_well_typed() {
     reason = "`WellTypedPolicy` is one of the gated entry points"
 )]
 fn incomplete_schema() {
-    use cedar_policy_symcc::{err::Error, CompiledPolicy, CompiledSchema};
+    use cedar_policy_symcc::{err::Error, CompiledSchema};
 
     let schema = Schema::from_str(
         r#"
@@ -266,10 +266,8 @@ fn incomplete_schema() {
         CompiledSchema::new(&schema).err(),
         Some(Error::IncompleteSchema(_))
     );
-    assert_matches!(
-        CompiledPolicy::compile(&policy, &env, &schema).err(),
-        Some(Error::IncompleteSchema(_))
-    );
+    // The `CompiledPolicy::compile` API requires a CompiledSchema, and as shown above,
+    // you can't get one from an incomplete schema.
 }
 
 #[test]
