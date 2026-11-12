@@ -5,6 +5,8 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+## 4.15.0
+
 ### Fixed
 
 - `evaluate` now adds the action entities from `--schema` to the store when `--entities` is not given, so `action in Action::"group"` follows the action hierarchy declared in the schema (#2680).
