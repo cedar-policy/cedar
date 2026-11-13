@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Fixed
+
+- Parse errors for parenthesized record keys and `like` patterns retain the parentheses
+  in the error message and source span (#1093).
+
 ## [4.15.0] - Coming Soon
 
 Cedar Language Version: 4.7
