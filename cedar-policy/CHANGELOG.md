@@ -38,6 +38,8 @@ Cedar Language Version: TBD
 - Added calls to `stacker` to guard against stack overflows when computing the transitive closure of a deep entity hierarchy (#2718).
 - Schema errors list undefined types in lexicographic order by their displayed names. The first name
   determines the help message and source location (#833).
+- Parse errors for invalid record keys and `like` patterns preserve the expression's syntax in
+  the message and source span. For example, `principal like -1` shows `-1` (#1093).
 
 ## [4.15.0] - 2026-11-16
 
