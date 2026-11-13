@@ -681,7 +681,7 @@ impl ActionsDef<ConditionalName, ConditionalName> {
         for (action_name, action_type) in schema_file_actions {
             let action_uid =
                 create_action_entity_uid_default_type(&action_name, &action_type, schema_namespace);
-            match actions.entry(action_uid.clone().try_into()?) {
+            match actions.entry(action_uid.try_into()?) {
                 Entry::Vacant(ventry) => {
                     let frag = ActionFragment::from_raw_action(action_type, schema_namespace)?;
                     ventry.insert(frag);

@@ -694,7 +694,7 @@ impl ValidatorSchema {
                     "expected all primitive and extension type names to be unqualified"
                 );
                 fragments.push(single_alias_in_empty_namespace(
-                    tyname.basename().clone(),
+                    tyname.basename(),
                     tyname.as_ref().qualify_with(Some(&InternalName::__cedar())),
                     None, // there is no source loc associated with the builtin definitions of primitive and extension types
                 ));
@@ -1483,7 +1483,7 @@ fn cedar_fragment(
             ext_type.is_unqualified(),
             "expected extension type names to be unqualified"
         );
-        let ext_type = ext_type.basename().clone();
+        let ext_type = ext_type.basename();
         common_types.insert(
             ext_type.clone(),
             json_schema::Type::Type {
