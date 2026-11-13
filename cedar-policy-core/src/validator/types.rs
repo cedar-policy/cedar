@@ -1038,6 +1038,12 @@ impl Attributes {
         self.attrs.get(attr)
     }
 
+    /// Identifies this attribute map by address, so only clones sharing the
+    /// same `Arc` have equal ids.
+    pub fn id(&self) -> RecordId<'_> {
+        RecordId(ByRef(self.attrs.as_ref()))
+    }
+
     pub(crate) fn is_subtype(&self, other: &Attributes, mode: ValidationMode) -> bool {
         // For a one record type to subtype another, all the attributes of the
         // second must be present in the first, and each attribute types must
@@ -1344,6 +1350,77 @@ impl AttributeType {
     }
 }
 
+/// The address of a record's attribute map. It borrows the map, so the address
+/// can't be reused while the `RecordId` exists, which makes it a sound memo key.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RecordId<'a>(ByRef<'a, BTreeMap<SmolStr, AttributeType>>);
+
+impl std::fmt::Debug for RecordId<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "RecordId({:p})", self.0 .0)
+    }
+}
+
+/// The record types reachable from two or more places in a schema, compared by
+/// address.
+/// Structurally equal records in different `Arc`s are not shared.
+/// Entity attribute maps and action context are roots, so the entity/context
+/// "record" type is not counted, only records nested in them.
+#[derive(Debug, Default)]
+pub struct SharedRecords<'a> {
+    in_degree: HashMap<RecordId<'a>, usize>,
+}
+
+impl<'a> SharedRecords<'a> {
+    /// Count the references to each record type in `schema`.
+    pub fn of_schema(schema: &'a ValidatorSchema) -> Self {
+        let mut vis = HashSet::<RecordId<'a>>::new();
+        let mut shared = Self::default();
+        for ety in schema.entity_types() {
+            shared.add_children(&mut vis, ety.attributes());
+            if let Some(tags) = ety.tag_type() {
+                shared.add_type(&mut vis, tags);
+            }
+        }
+        for action in schema.action_ids() {
+            if let Some(Type::Record { attrs, .. }) = action.context() {
+                shared.add_children(&mut vis, attrs);
+            }
+        }
+        shared
+    }
+
+    /// Whether `attrs` is referenced from two or more places.
+    pub fn is_shared(&self, attrs: &'a Attributes) -> bool {
+        self.in_degree.get(&attrs.id()).is_some_and(|x| *x >= 2)
+    }
+
+    fn add_children(&mut self, vis: &mut HashSet<RecordId<'a>>, attrs: &'a Attributes) {
+        for (_, attr) in attrs.iter() {
+            self.add_type(vis, &attr.attr_type);
+        }
+    }
+
+    fn add_record(&mut self, vis: &mut HashSet<RecordId<'a>>, attrs: &'a Attributes) {
+        *self.in_degree.entry(attrs.id()).or_default() += 1;
+        if vis.insert(attrs.id()) {
+            self.add_children(vis, attrs);
+        }
+    }
+
+    fn add_type(&mut self, vis: &mut HashSet<RecordId<'a>>, ty: &'a Type) {
+        // Records are the only nodes with more than one child, so they are the
+        // only nodes that need to be memoized.
+        match ty {
+            Type::Record { attrs, .. } => self.add_record(vis, attrs),
+            Type::Set {
+                element_type: Some(element_type),
+            } => self.add_type(vis, element_type),
+            _ => {}
+        }
+    }
+}
+
 /// Stack-based iterator that traverses [`Type`]s, yielding only leaf types
 /// (i.e., everything except `Set` and `Record`, which are recursed into).
 ///
@@ -1364,6 +1441,15 @@ pub(crate) struct TypeIterator<'a> {
 /// the reference keeps the referent alive, so its address can't be reused by
 /// another value while this exists.
 struct ByRef<'a, T>(&'a T);
+
+// Not derived: the derive would require `T: Clone`.
+impl<T> Clone for ByRef<'_, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T> Copy for ByRef<'_, T> {}
 
 impl<'a, T> Eq for ByRef<'a, T> {}
 
