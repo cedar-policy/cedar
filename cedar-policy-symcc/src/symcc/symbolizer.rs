@@ -202,7 +202,7 @@ impl SymEntityData {
                     })
                     .collect::<Result<BTreeMap<_, _>, _>>()?;
                 attrs_udf_table.insert(
-                    ent.uid().clone().into(),
+                    ent.uid().into(),
                     Term::from_value(&Value::record_arc(Arc::new(attrs), None), &attr_udf_out_ty)?,
                 );
             }
@@ -239,7 +239,7 @@ impl SymEntityData {
                 });
 
                 ancs_udf_table.insert(
-                    ent.uid().clone().into(),
+                    ent.uid().into(),
                     factory::set_of(anc_terms, anc_term_ty.clone()),
                 );
             }
@@ -276,7 +276,7 @@ impl SymEntityData {
         for ent in entities.iter() {
             if ent.uid().type_name() == ety {
                 keys_udf_table.insert(
-                    ent.uid().clone().into(),
+                    ent.uid().into(),
                     factory::set_of(
                         ent.as_ref().tag_keys().map(|s| s.clone().into()),
                         TermType::String,
@@ -293,7 +293,7 @@ impl SymEntityData {
                         return Err(SymbolizeError::PartialValue);
                     };
                     vals_udf_table.insert(
-                        factory::tag_of(ent.uid().clone().into(), key.clone().into()),
+                        factory::tag_of(ent.uid().into(), key.clone().into()),
                         Term::from_value(val, tag_ty)?,
                     );
                 }

@@ -379,7 +379,7 @@ impl<T: Client + Send + Sync + 'static> LanguageServer for Backend<T> {
                 let _ = schema.update_linked_documents(Some(&new_uri));
             }
             doc.set_uri(new_uri.clone());
-            self.documents.insert(new_uri.clone(), doc);
+            self.documents.insert(new_uri, doc);
         }
 
         let _ = self.client.code_lens_refresh().await;

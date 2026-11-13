@@ -105,7 +105,7 @@ impl ValidatorSchema {
         for (entity_type, validator_entity_type) in &self.entity_types {
             if let Some(ancestors) = entity_ancestors.remove(entity_type) {
                 let namespace = entity_type.as_ref().as_ref().path.clone();
-                let entity_name = entity_type.as_ref().basename().clone();
+                let entity_name = entity_type.as_ref().basename();
                 let json_entity_type = validator_entity_type.to_json_entity_type(ancestors)?;
                 let (entity_types, _) = namespaces
                     .entry(namespace)

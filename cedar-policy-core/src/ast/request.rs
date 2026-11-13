@@ -721,7 +721,9 @@ impl IsInfallible for std::convert::Infallible {
 }
 
 impl IsInfallible for Infallible {
+    #[expect(unreachable_code, reason = "intentional, this means unreachable")]
     fn never_returns(self) -> std::convert::Infallible {
+        // we can get rid of this once everyone move to rust v1.100
         self.0.never_returns()
     }
 }
@@ -737,7 +739,6 @@ impl<A, B: IsInfallible> UnwrapInfallible<A> for Result<A, B> {
     fn unwrap_infallible(self) -> A {
         match self {
             Ok(a) => a,
-            #[expect(unreachable_code, reason = "error type is uninhabited")]
             Err(e) => match e.never_returns() {},
         }
     }

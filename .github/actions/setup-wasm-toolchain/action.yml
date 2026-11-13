@@ -17,7 +17,7 @@ runs:
     - name: Install pinned Rust, TypeScript, and wasm-pack
       shell: bash
       env:
-        RUST_VERSION: "1.99.1"
+        RUST_VERSION: "1.100.0"
         # typescript@7 depends on its per-platform binary packages at the exact
         # same version, so pinning this version pins the whole install tree.
         TYPESCRIPT_VERSION: "7.0.2"
