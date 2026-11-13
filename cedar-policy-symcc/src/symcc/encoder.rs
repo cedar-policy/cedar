@@ -274,10 +274,6 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         .await
     }
 
-    #[expect(
-        clippy::double_must_use,
-        reason = "Clippy false positive on `async_recursion`"
-    )]
     #[async_recursion]
     pub async fn encode_type(&mut self, ty: &TermType) -> Result<SmolStr> {
         match self.types.get(ty) {
@@ -478,10 +474,6 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         }
     }
 
-    #[expect(
-        clippy::double_must_use,
-        reason = "Clippy false positive on `async_recursion`"
-    )]
     #[async_recursion]
     pub async fn encode_term(&mut self, t: &Term) -> Result<SmolStr> {
         if let Some(enc) = self.terms.get(t) {

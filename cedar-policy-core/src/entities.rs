@@ -218,7 +218,7 @@ impl Entities {
             &mut self.entities,
             matches!(tc_computation, TCComputation::ComputeNow),
         )?;
-        if let TCComputation::EnforceAlreadyComputed = tc_computation {
+        if tc_computation == TCComputation::EnforceAlreadyComputed {
             enforce_tc_and_dag(&self.entities)?;
         }
         Ok(self)
