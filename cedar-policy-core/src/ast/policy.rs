@@ -1171,6 +1171,10 @@ impl TemplateBody {
     pub fn condition(&self) -> Expr {
         match self {
             TemplateBody::TemplateBody(TemplateBodyImpl { .. }) => {
+                // `authorizer/scope.rs` and the action index in
+                // `ast/policy_set/action_index.rs` depend on this nesting and
+                // its evaluation order:
+                // `principal && (action && (resource && rest))`
                 let loc = self.loc().cloned();
                 Expr::and(
                     self.principal_constraint_expr(),
@@ -1547,6 +1551,19 @@ impl EntityReference {
         match self {
             EntityReference::EUID(euid) => Expr::val(euid.clone()),
             EntityReference::Slot(loc) => Expr::slot(slot).with_maybe_source_loc(loc.clone()),
+        }
+    }
+
+    /// The entity this reference names: the literal UID, or the binding of
+    /// `slot` in `env`.
+    ///
+    /// `slot` indicates what `SlotId` is implied by `EntityReference::Slot`.
+    /// Returns `None` for a slot that `env` does not bind. Evaluating such a
+    /// reference is an error.
+    pub(crate) fn resolve<'a>(&'a self, slot: SlotId, env: &'a SlotEnv) -> Option<&'a EntityUID> {
+        match self {
+            EntityReference::EUID(euid) => Some(euid.as_ref()),
+            EntityReference::Slot(_) => env.get(&slot),
         }
     }
 }
