@@ -2133,6 +2133,11 @@ pub(crate) mod test {
         match ValidatorSchema::from_json_value(src, Extensions::all_available()) {
             Err(SchemaError::TypeNotDefined(missing)) => {
                 assert_eq!(missing.undefined_types.len(), 3);
+                assert_eq!(missing.to_string(), "failed to resolve types: Er, Ev, What");
+                assert_eq!(
+                    miette::Diagnostic::help(&missing).unwrap().to_string(),
+                    "`Er` has not been declared as a common type"
+                );
             }
             x => {
                 panic!("Expected TypeNotDefined due to unknown types in commonTypes, found: {x:?}")
@@ -2199,7 +2204,7 @@ pub(crate) mod test {
             expect_err(
                 &src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Grop, Usr, Phoot"#)
+                &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Grop, Phoot, Usr"#)
                     .help("`Grop` has not been declared as an entity type")
                     .exactly_one_underline("Grop")
                     .build());
@@ -2251,9 +2256,9 @@ pub(crate) mod test {
             expect_err(
                 &src,
                 &miette::Report::new(e),
-                &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Bar::User, Bar::Photo"#)
-                    .help("`Bar::User` has not been declared as an entity type")
-                    .exactly_one_underline("Bar::User")
+                &ExpectedErrorMessageBuilder::error(r#"failed to resolve types: Bar::Photo, Bar::User"#)
+                    .help("`Bar::Photo` has not been declared as an entity type")
+                    .exactly_one_underline("Bar::Photo")
                     .build());
         });
     }
