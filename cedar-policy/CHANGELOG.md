@@ -19,6 +19,11 @@ Cedar Language Version: TBD
 - Validating a large policy set with many errors is faster, as hashing a source location no longer hashes the
   whole policy text (#2598).
 
+### Fixed
+
+- Schema errors listing undefined types now use a deterministic order, including the type
+  selected for the help message and source location (#833).
+
 ## [4.15.0] - 2026-11-16
 
 Cedar Language Version: 4.7
