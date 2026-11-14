@@ -479,17 +479,17 @@ mod tests {
         "#;
         let errs = parse_policyset(src).expect_err("expected parsing to fail");
         let unrecognized_tokens = vec![
-            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
-            ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
+            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`", Some("use `||` for logical OR")),
+            ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`", None),
         ];
-        for (token, label) in unrecognized_tokens {
-            expect_some_error_matches(
-                src,
-                &errs,
-                &ExpectedErrorMessageBuilder::error(&format!("unexpected token `{token}`"))
-                    .exactly_one_underline_with_label(token, label)
-                    .build(),
-            );
+        for (token, label, help) in unrecognized_tokens {
+            let message = format!("unexpected token `{token}`");
+            let mut expected = ExpectedErrorMessageBuilder::error(&message)
+                .exactly_one_underline_with_label(token, label);
+            if let Some(help) = help {
+                expected = expected.help(help);
+            }
+            expect_some_error_matches(src, &errs, &expected.build());
         }
         expect_n_errors(src, &errs, 2);
         assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));

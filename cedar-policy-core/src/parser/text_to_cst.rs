@@ -1470,6 +1470,69 @@ mod tests {
     }
 
     #[test]
+    fn logical_operator_hints() {
+        use miette::Diagnostic;
+
+        for (operator, help) in [
+            ("and", "use `&&` for logical AND"),
+            ("AND", "use `&&` for logical AND"),
+            ("aNd", "use `&&` for logical AND"),
+            ("&", "use `&&` for logical AND"),
+            ("or", "use `||` for logical OR"),
+            ("OR", "use `||` for logical OR"),
+            ("oR", "use `||` for logical OR"),
+            ("|", "use `||` for logical OR"),
+        ] {
+            let src = format!("true {operator} false");
+            let policy = format!("permit(principal, action, resource) when {{ {src} }};");
+            for errors in [
+                assert_parse_fails(parse_expr, &src),
+                assert_parse_fails(parse_policies, &policy),
+            ] {
+                assert_eq!(errors.len(), 1, "{src}");
+                assert_eq!(
+                    errors.help().map(|h| h.to_string()).as_deref(),
+                    Some(help),
+                    "{src}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn logical_operator_hints_preserve_identifiers() {
+        use miette::Diagnostic;
+
+        for src in [
+            "context.AND",
+            "context.OR",
+            "principal has and",
+            "principal is OR",
+            r#"AND::"user""#,
+            r#"{"or": true, and: false}"#,
+            r#""AND | &""#,
+            "true // OR &",
+        ] {
+            assert_parse_succeeds(parse_expr, src);
+        }
+        assert_parse_succeeds(
+            parse_policy,
+            r#"@AND("x") permit(principal is OR, action, resource) when {
+                context.AND && resource has OR && AND::"x" == Foo::OR::"x"
+            };"#,
+        );
+        for src in [
+            "permit(principal AND, action, resource);",
+            "permit(principal, action OR, resource);",
+            "permit(principal, action, resource) when { true candy false };",
+            "permit(principal, action, resource) when { true ORacle false };",
+        ] {
+            let errors = assert_parse_fails(parse_policy, src);
+            assert!(errors.iter().all(|error| error.help().is_none()), "{src}");
+        }
+    }
+
+    #[test]
     fn unclosed_strings() {
         #[track_caller]
         fn assert_invalid_quote_token(src: &str) {
