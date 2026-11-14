@@ -694,10 +694,15 @@ impl Diagnostic for ToCSTError {
     }
 
     fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
-        match self.err {
+        const AND_HELP: &str = "use `&&` for logical AND";
+        const OR_HELP: &str = "use `||` for logical OR";
+
+        match &self.err {
             OwnedRawParseError::InvalidToken { location } => {
-                let tok_last_char = self.src.get(location..)?.chars().next()?;
+                let tok_last_char = self.src.get(*location..)?.chars().next()?;
                 match tok_last_char {
+                    '&' => Some(Box::new(AND_HELP)),
+                    '|' => Some(Box::new(OR_HELP)),
                     '"' => Some(Box::new(
                         "try checking that all strings are closed properly",
                     )),
@@ -705,6 +710,23 @@ impl Diagnostic for ToCSTError {
                         "strings must use double quotes, not single quotes",
                     )),
                     _ => None,
+                }
+            }
+            OwnedRawParseError::UnrecognizedToken {
+                token: (_, token, _),
+                expected,
+            } => {
+                let (operator, help) = if token.eq_ignore_ascii_case("and") {
+                    (r#""&&""#, AND_HELP)
+                } else if token.eq_ignore_ascii_case("or") {
+                    (r#""||""#, OR_HELP)
+                } else {
+                    return None;
+                };
+                if expected.iter().any(|token| token == operator) {
+                    Some(Box::new(help))
+                } else {
+                    None
                 }
             }
             _ => None,

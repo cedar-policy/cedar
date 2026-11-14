@@ -14,6 +14,10 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+
 ## [4.15.0] - Coming Soon
 
 Cedar Language Version: 4.7
