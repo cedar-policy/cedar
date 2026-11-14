@@ -533,7 +533,7 @@ pub mod schema_errors {
     // Don't make fields `pub`, don't make breaking changes, and use caution
     // when adding public methods.
     #[derive(Debug, Error)]
-    #[error("failed to resolve type{}: {}", if .undefined_types.len() > 1 { "s" } else { "" }, .undefined_types.iter().map(crate::validator::ConditionalName::raw).join(", "))]
+    #[error("failed to resolve type{}: {}", if .undefined_types.len() > 1 { "s" } else { "" }, .undefined_types.iter().map(crate::validator::ConditionalName::raw).sorted_unstable().join(", "))]
     pub struct TypeNotDefinedError {
         /// Names of type(s) which were not defined
         pub(crate) undefined_types: NonEmpty<crate::validator::ConditionalName>,
@@ -543,14 +543,37 @@ pub mod schema_errors {
         fn help<'a>(&'a self) -> Option<Box<dyn Display + 'a>> {
             // we choose to give only the help for the first failed-to-resolve name, because otherwise the help message would be too cluttered and complicated
             Some(Box::new(
-                self.undefined_types.first().resolution_failure_help(),
+                self.first_undefined_type().resolution_failure_help(),
             ))
         }
 
-        impl_diagnostic_from_method_on_nonempty_field!(undefined_types, loc);
+        fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+            self.first_undefined_type()
+                .loc()
+                .map(|loc| &loc.src as &dyn miette::SourceCode)
+        }
+
+        fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+            self.first_undefined_type()
+                .loc()
+                .map(|loc| Box::new(std::iter::once(miette::LabeledSpan::underline(loc.span))) as _)
+        }
     }
 
     impl TypeNotDefinedError {
+        /// Select the first displayed name, with stable help and location for repeated names.
+        fn first_undefined_type(&self) -> &crate::validator::ConditionalName {
+            self.undefined_types.minimum_by(|left, right| {
+                left.raw()
+                    .cmp(right.raw())
+                    .then_with(|| {
+                        left.resolution_failure_help()
+                            .cmp(&right.resolution_failure_help())
+                    })
+                    .then_with(|| left.loc().cmp(&right.loc()))
+            })
+        }
+
         /// Combine all the errors into a single [`TypeNotDefinedError`].
         ///
         /// This cannot fail, because `NonEmpty` guarantees there is at least
@@ -1080,5 +1103,74 @@ pub mod schema_errors {
 
     impl Diagnostic for InvalidActionTypeError {
         impl_diagnostic_from_method_on_field!(uid, loc);
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::validator::{ConditionalName, RawName, ReferenceType};
+
+        #[test]
+        fn undefined_type_diagnostics_are_independent_of_collection_order() {
+            let src: std::sync::Arc<str> = "Zebra Apple Pear".into();
+            let names =
+                [("Zebra", 0..5), ("Apple", 6..11), ("Pear", 12..16)].map(|(name, span)| {
+                    RawName::new(name.parse().unwrap(), Some(Loc::new(span, src.clone())))
+                        .conditionally_qualify_with(None, ReferenceType::Common)
+                });
+            for permutation in names.iter().cloned().permutations(names.len()) {
+                let err = TypeNotDefinedError {
+                    undefined_types: NonEmpty::from_vec(permutation).unwrap(),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "failed to resolve types: Apple, Pear, Zebra"
+                );
+                assert_eq!(
+                    err.help().unwrap().to_string(),
+                    "`Apple` has not been declared as a common type"
+                );
+                let labels = err.labels().unwrap().collect::<Vec<_>>();
+                assert_eq!(labels.len(), 1);
+                assert_eq!(*labels.first().unwrap().inner(), (6..11).into());
+            }
+        }
+
+        #[test]
+        fn undefined_type_diagnostics_break_ties_between_identical_raw_names() {
+            let name = |namespace: &str, reference_type, src: &str, span| {
+                RawName::new("Missing".parse().unwrap(), Some(Loc::new(span, src.into())))
+                    .conditionally_qualify_with(Some(&namespace.parse().unwrap()), reference_type)
+            };
+            let names: [ConditionalName; 4] = [
+                name("Z", ReferenceType::Common, "Z::Missing", 3..10),
+                name("A", ReferenceType::Entity, "A::Missing", 3..10),
+                name("A", ReferenceType::Common, "A::Missing Missing", 11..18),
+                name("A", ReferenceType::Common, "A::Missing", 3..10),
+            ];
+            for permutation in names.iter().cloned().permutations(names.len()) {
+                let err = TypeNotDefinedError {
+                    undefined_types: NonEmpty::from_vec(permutation).unwrap(),
+                };
+                assert_eq!(
+                    err.to_string(),
+                    "failed to resolve types: Missing, Missing, Missing, Missing"
+                );
+                assert_eq!(
+                    err.help().unwrap().to_string(),
+                    "neither `A::Missing` nor `Missing` refers to anything that has been declared as a common type"
+                );
+                let labels = err.labels().unwrap().collect::<Vec<_>>();
+                assert_eq!(labels.len(), 1);
+                let label = labels.first().unwrap();
+                assert_eq!(*label.inner(), (3..10).into());
+                let source = err
+                    .source_code()
+                    .unwrap()
+                    .read_span(&(0..10).into(), 0, 0)
+                    .unwrap();
+                assert_eq!(source.data(), b"A::Missing");
+            }
+        }
     }
 }

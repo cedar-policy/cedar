@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Fixed
+
+- Schema errors listing undefined types now use a deterministic order, including the type
+  selected for the help message and source location (#833).
+
 ## [4.15.0] - Coming Soon
 
 Cedar Language Version: 4.7
