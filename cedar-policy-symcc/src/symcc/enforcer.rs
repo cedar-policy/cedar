@@ -36,7 +36,7 @@ use super::{
     env::{SymEntities, SymEnv},
     factory::{and, app, implies, is_some, not, option_get, set_is_empty, set_member, set_subset},
     function::UnaryFunction,
-    term::Term,
+    term::{Term, TermPrim},
     term_type::TermType,
     type_abbrevs::EntityType,
 };
@@ -215,16 +215,31 @@ pub(crate) fn transitivity(t1: &Term, t2: &Term, es: &SymEntities) -> Term {
                     (TermType::Entity { ety: ety1 }, TermType::Entity { ety: ety2 }) => {
                         match (es.ancestors_of_type(&ety1, &ety2), es.ancestors(&ety2)) {
                             (Some(f12), Some(anc2)) => {
-                                let t1_unwrapped = option_get(t1.clone());
-                                let t2_unwrapped = option_get(t2.clone());
-                                implies(
-                                    is_ancestor(
+                                // Short circuit if we know `t1` can't be an ancestor of `t2`. This doesn't
+                                // change the transitivity term (`is_ancestor` will be `false`, so `implies` is `true`),
+                                // but it can save significant work across the footprint^2 transitivity terms.
+                                if anc2.is_empty() {
+                                    true.into()
+                                } else {
+                                    let t1_unwrapped = option_get(t1.clone());
+                                    let t2_unwrapped = option_get(t2.clone());
+                                    match is_ancestor(
                                         t2_unwrapped.clone(),
                                         t1_unwrapped.clone(),
                                         f12.clone(),
-                                    ),
-                                    are_ancestors(&t2_unwrapped, anc2, &t1_unwrapped, &ety1),
-                                )
+                                    ) {
+                                        Term::Prim(TermPrim::Bool(false)) => true.into(),
+                                        is_ancestor => implies(
+                                            is_ancestor,
+                                            are_ancestors(
+                                                &t2_unwrapped,
+                                                anc2,
+                                                &t1_unwrapped,
+                                                &ety1,
+                                            ),
+                                        ),
+                                    }
+                                }
                             }
                             (_, _) => true.into(),
                         }
