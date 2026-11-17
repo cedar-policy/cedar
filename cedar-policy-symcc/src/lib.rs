@@ -35,6 +35,7 @@ use symccopt::{
     verify_never_matches_opt, CompiledPolicies,
 };
 
+pub use symcc::arc_ord;
 pub use symcc::bitvec;
 pub use symcc::ext;
 pub use symcc::extension_types;

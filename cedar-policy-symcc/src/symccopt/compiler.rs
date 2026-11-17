@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-use std::{
-    collections::{linked_list, LinkedList},
-    sync::Arc,
-};
+use crate::symcc::arc_ord::ArcOrd;
+use std::collections::{linked_list, LinkedList};
 
 use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind, UnaryOp, Var};
 
@@ -442,7 +440,7 @@ fn compile_app2(
             })
         }
         (In, Entity { ety: ety1 }, Set { ty }) if matches!(*ty, Entity { .. }) => {
-            match Arc::unwrap_or_clone(ty) {
+            match ArcOrd::unwrap_or_clone(ty) {
                 Entity { ety: ety2 } => {
                     let term = some_of(compile_in_set(
                         t1,

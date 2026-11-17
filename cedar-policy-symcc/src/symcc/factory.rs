@@ -21,6 +21,7 @@
 
 //! Utility functions to construct [`Term`]s.
 
+use super::arc_ord::ArcOrd;
 use super::CompileError;
 
 use super::bitvec::BitVec;
@@ -37,7 +38,6 @@ use super::term_type::TermType;
 use super::type_abbrevs::*;
 use num_traits::ToPrimitive;
 use std::collections::BTreeSet;
-use std::sync::Arc;
 
 // ---------- Checked term constructors ----------
 
@@ -46,22 +46,22 @@ pub fn none_of(ty: TermType) -> Term {
 }
 
 pub fn some_of(t: Term) -> Term {
-    Term::Some(Arc::new(t))
+    Term::Some(ArcOrd::new(t))
 }
 
 pub fn set_of(ts: impl IntoIterator<Item = Term>, elts_ty: TermType) -> Term {
     Term::Set {
-        elts: Arc::new(ts.into_iter().collect()),
+        elts: ArcOrd::new(ts.into_iter().collect()),
         elts_ty,
     }
 }
 
 pub fn record_of(ats: impl IntoIterator<Item = (Attr, Term)>) -> Term {
-    Term::Record(Arc::new(ats.into_iter().collect()))
+    Term::Record(ArcOrd::new(ats.into_iter().collect()))
 }
 
 pub fn tag_of(entity: Term, tag: Term) -> Term {
-    Term::Record(Arc::new(EntityTag::mk(entity, tag).0))
+    Term::Record(ArcOrd::new(EntityTag::mk(entity, tag).0))
 }
 
 // ---------- SMTLib core theory of equality with uninterpreted functions (`UF`) ----------
@@ -75,10 +75,10 @@ pub fn not(t: Term) -> Term {
         )]
         Term::App {
             op: Op::Not, args, ..
-        } if args.len() == 1 => Arc::unwrap_or_clone(args).into_iter().next().unwrap(),
+        } if args.len() == 1 => ArcOrd::unwrap_or_clone(args).into_iter().next().unwrap(),
         t => Term::App {
             op: Op::Not,
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -120,7 +120,7 @@ pub fn and(t1: Term, t2: Term) -> Term {
     } else {
         Term::App {
             op: Op::And,
-            args: Arc::new(vec![t1, t2]),
+            args: ArcOrd::new(vec![t1, t2]),
             ret_ty: TermType::Bool,
         }
     }
@@ -136,7 +136,7 @@ pub fn or(t1: Term, t2: Term) -> Term {
     } else {
         Term::App {
             op: Op::Or,
-            args: Arc::new(vec![t1, t2]),
+            args: ArcOrd::new(vec![t1, t2]),
             ret_ty: TermType::Bool,
         }
     }
@@ -163,14 +163,14 @@ pub fn eq(t1: Term, t2: Term) -> Term {
         } else {
             Term::App {
                 op: Op::Eq,
-                args: Arc::new(vec![t1, t2]),
+                args: ArcOrd::new(vec![t1, t2]),
                 ret_ty: TermType::Bool,
             }
         }
     };
     match (t1, t2) {
         (Term::Some(t1), Term::Some(t2)) => {
-            simplify(Arc::unwrap_or_clone(t1), Arc::unwrap_or_clone(t2))
+            simplify(ArcOrd::unwrap_or_clone(t1), ArcOrd::unwrap_or_clone(t2))
         }
         (Term::Some(_), Term::None(_)) | (Term::None(_), Term::Some(_)) => false.into(),
         (t1, t2) => simplify(t1, t2),
@@ -193,7 +193,7 @@ pub fn ite(t1: Term, t2: Term, t3: Term) -> Term {
                     let ret_ty = t2.type_of();
                     Term::App {
                         op: Op::Ite,
-                        args: Arc::new(vec![t1, t2, t3]),
+                        args: ArcOrd::new(vec![t1, t2, t3]),
                         ret_ty,
                     }
                 }
@@ -201,9 +201,9 @@ pub fn ite(t1: Term, t2: Term, t3: Term) -> Term {
         }
     };
     match (t2, t3) {
-        (Term::Some(t2), Term::Some(t3)) => Term::Some(Arc::new(simplify(
-            Arc::unwrap_or_clone(t2),
-            Arc::unwrap_or_clone(t3),
+        (Term::Some(t2), Term::Some(t3)) => Term::Some(ArcOrd::new(simplify(
+            ArcOrd::unwrap_or_clone(t2),
+            ArcOrd::unwrap_or_clone(t3),
         ))),
         (t2, t3) => simplify(t2, t3),
     }
@@ -219,7 +219,7 @@ pub fn app(f: UnaryFunction, t: Term) -> Term {
             let ret_ty = f.out.clone();
             Term::App {
                 op: Op::Uuf(f),
-                args: Arc::new(vec![t]),
+                args: ArcOrd::new(vec![t]),
                 ret_ty,
             }
         }
@@ -256,12 +256,12 @@ pub fn bvneg(t: Term) -> Term {
             op: Op::Bvneg,
             args,
             ..
-        } if args.len() == 1 => Arc::unwrap_or_clone(args).into_iter().next().unwrap(),
+        } if args.len() == 1 => ArcOrd::unwrap_or_clone(args).into_iter().next().unwrap(),
         t => {
             let ret_ty = t.type_of();
             Term::App {
                 op: Op::Bvneg,
-                args: Arc::new(vec![t]),
+                args: ArcOrd::new(vec![t]),
                 ret_ty,
             }
         }
@@ -289,7 +289,7 @@ pub fn bvapp<E: std::fmt::Debug + Into<CompileError>>(
             let ret_ty = t1.type_of();
             Term::App {
                 op,
-                args: Arc::new(vec![t1, t2]),
+                args: ArcOrd::new(vec![t1, t2]),
                 ret_ty,
             }
         }
@@ -352,7 +352,7 @@ fn bvcmp<E: std::fmt::Debug + Into<CompileError>>(
         }
         (t1, t2) => Term::App {
             op,
-            args: Arc::new(vec![t1, t2]),
+            args: ArcOrd::new(vec![t1, t2]),
             ret_ty: TermType::Bool,
         },
     }
@@ -380,7 +380,7 @@ pub fn bvnego(t: Term) -> Term {
         Term::Prim(TermPrim::Bitvec(bv)) => BitVec::overflows(bv.width(), &-bv.to_int()).into(),
         t => Term::App {
             op: Op::Bvnego,
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -394,7 +394,7 @@ pub fn bvso(op: Op, f: &dyn Fn(&Int, &Int) -> Int, t1: Term, t2: Term) -> Term {
         }
         (t1, t2) => Term::App {
             op,
-            args: Arc::new(vec![t1, t2]),
+            args: ArcOrd::new(vec![t1, t2]),
             ret_ty: TermType::Bool,
         },
     }
@@ -447,7 +447,7 @@ pub fn zero_extend(n: u32, t: Term) -> Term {
                         .expect("width will not overflow u32");
                     Term::App {
                         op: Op::ZeroExtend(n),
-                        args: Arc::new(vec![t]),
+                        args: ArcOrd::new(vec![t]),
                         ret_ty: TermType::Bitvec { n: new_width },
                     }
                 }
@@ -465,7 +465,7 @@ pub fn set_member(t: Term, ts: Term) -> Term {
         Term::Set { elts, .. } if t.is_literal() && ts.is_literal() => elts.contains(&t).into(),
         ts => Term::App {
             op: Op::SetMember,
-            args: Arc::new(vec![t, ts]),
+            args: ArcOrd::new(vec![t, ts]),
             ret_ty: TermType::Bool,
         },
     }
@@ -484,7 +484,7 @@ pub fn set_subset(sub: Term, sup: Term) -> Term {
             }
             (_, _) => Term::App {
                 op: Op::SetSubset,
-                args: Arc::new(vec![sub, sup]),
+                args: ArcOrd::new(vec![sub, sup]),
                 ret_ty: TermType::Bool,
             },
         }
@@ -505,14 +505,14 @@ pub fn set_inter(ts1: Term, ts2: Term) -> Term {
                 },
                 Term::Set { elts: elts2, .. },
             ) if ts1.is_literal() && ts2.is_literal() => Term::Set {
-                elts: Arc::new(elts1.intersection(elts2).cloned().collect()),
+                elts: ArcOrd::new(elts1.intersection(elts2).cloned().collect()),
                 elts_ty: elts_ty.clone(),
             },
             (_, _) => {
                 let ret_ty = ts1.type_of();
                 Term::App {
                     op: Op::SetInter,
-                    args: Arc::new(vec![ts1, ts2]),
+                    args: ArcOrd::new(vec![ts1, ts2]),
                     ret_ty,
                 }
             }
@@ -527,8 +527,8 @@ pub fn set_is_empty(t: Term) -> Term {
             TermType::Set { ty } => eq(
                 ts,
                 Term::Set {
-                    elts: Arc::new(BTreeSet::new()),
-                    elts_ty: Arc::unwrap_or_clone(ty),
+                    elts: ArcOrd::new(BTreeSet::new()),
+                    elts_ty: ArcOrd::unwrap_or_clone(ty),
                 },
             ),
             _ => false.into(),
@@ -545,12 +545,12 @@ pub fn set_intersects(ts1: Term, ts2: Term) -> Term {
 
 pub fn option_get(t: Term) -> Term {
     match t {
-        Term::Some(t) => Arc::unwrap_or_clone(t),
+        Term::Some(t) => ArcOrd::unwrap_or_clone(t),
         t => match t.type_of() {
             TermType::Option { ty } => Term::App {
                 op: Op::OptionGet,
-                args: Arc::new(vec![t]),
-                ret_ty: Arc::unwrap_or_clone(ty),
+                args: ArcOrd::new(vec![t]),
+                ret_ty: ArcOrd::unwrap_or_clone(ty),
             },
             _ => t,
         },
@@ -567,7 +567,7 @@ pub fn record_get(t: Term, a: &Attr) -> Term {
             TermType::Record { rty } => match rty.get(a) {
                 Some(ty) => Term::App {
                     op: Op::RecordGet(a.clone()),
-                    args: Arc::new(vec![t]),
+                    args: ArcOrd::new(vec![t]),
                     ret_ty: ty.clone(),
                 },
                 None => t,
@@ -582,7 +582,7 @@ pub fn string_like(t: Term, p: OrdPattern) -> Term {
         Term::Prim(TermPrim::String(s)) => p.wildcard_match(&s).into(),
         _ => Term::App {
             op: Op::StringLike(p),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -597,7 +597,7 @@ pub fn ext_decimal_val(t: Term) -> Term {
         }
         t => Term::App {
             op: Op::Ext(ExtOp::DecimalVal),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
@@ -608,7 +608,7 @@ pub fn ext_ipaddr_is_v4(t: Term) -> Term {
         Term::Prim(TermPrim::Ext(Ext::Ipaddr { ip })) => ip.is_v4().into(),
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrIsV4),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bool,
         },
     }
@@ -621,7 +621,7 @@ pub fn ext_ipaddr_addr_v4(t: Term) -> Term {
         }
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV4),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bitvec { n: THIRTY_TWO },
         },
     }
@@ -637,7 +637,7 @@ pub fn ext_ipaddr_prefix_v4(t: Term) -> Term {
         }
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV4),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::option_of(TermType::Bitvec { n: FIVE }),
         },
     }
@@ -650,7 +650,7 @@ pub fn ext_ipaddr_addr_v6(t: Term) -> Term {
         }
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrAddrV6),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bitvec {
                 n: HUNDRED_TWENTY_EIGHT,
             },
@@ -668,7 +668,7 @@ pub fn ext_ipaddr_prefix_v6(t: Term) -> Term {
         }
         t => Term::App {
             op: Op::Ext(ExtOp::IpaddrPrefixV6),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::option_of(TermType::Bitvec { n: SEVEN }),
         },
     }
@@ -681,7 +681,7 @@ pub fn ext_datetime_val(t: Term) -> Term {
         )),
         t => Term::App {
             op: Op::Ext(ExtOp::DatetimeVal),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
@@ -701,7 +701,7 @@ pub fn ext_datetime_of_bitvec(t: Term) -> Term {
         }
         _ => Term::App {
             op: Op::Ext(ExtOp::DatetimeOfBitVec),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Ext {
                 xty: ExtType::DateTime,
             },
@@ -716,7 +716,7 @@ pub fn ext_duration_val(t: Term) -> Term {
         )),
         t => Term::App {
             op: Op::Ext(ExtOp::DurationVal),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Bitvec { n: SIXTY_FOUR },
         },
     }
@@ -736,7 +736,7 @@ pub fn ext_duration_of_bitvec(t: Term) -> Term {
         }
         _ => Term::App {
             op: Op::Ext(ExtOp::DurationOfBitVec),
-            args: Arc::new(vec![t]),
+            args: ArcOrd::new(vec![t]),
             ret_ty: TermType::Ext {
                 xty: ExtType::Duration,
             },
@@ -764,13 +764,13 @@ pub fn is_none(t: Term) -> Term {
                 (g, Term::Some(_), Term::None(_)) => not(g.clone()),
                 (g, Term::None(_), Term::Some(_)) => g.clone(),
                 _ => match t.type_of() {
-                    TermType::Option { ty } => eq(t, Term::None(Arc::unwrap_or_clone(ty))),
+                    TermType::Option { ty } => eq(t, Term::None(ArcOrd::unwrap_or_clone(ty))),
                     _ => false.into(),
                 },
             }
         }
         _ => match t.type_of() {
-            TermType::Option { ty } => eq(t, Term::None(Arc::unwrap_or_clone(ty))),
+            TermType::Option { ty } => eq(t, Term::None(ArcOrd::unwrap_or_clone(ty))),
             _ => false.into(),
         },
     }
@@ -791,7 +791,7 @@ pub fn if_true(g: Term, t: Term) -> Term {
 
 pub fn if_some(g: Term, t: Term) -> Term {
     match t.type_of() {
-        TermType::Option { ty } => ite(is_none(g), none_of(Arc::unwrap_or_clone(ty)), t),
+        TermType::Option { ty } => ite(is_none(g), none_of(ArcOrd::unwrap_or_clone(ty)), t),
         _ => if_false(is_none(g), t),
     }
 }
@@ -807,7 +807,7 @@ pub fn any_none(gs: impl IntoIterator<Item = Term>) -> Term {
 pub fn if_all_some(gs: impl IntoIterator<Item = Term>, t: Term) -> Term {
     let g = any_none(gs);
     match t.type_of() {
-        TermType::Option { ty } => ite(g, none_of(Arc::unwrap_or_clone(ty)), t),
+        TermType::Option { ty } => ite(g, none_of(ArcOrd::unwrap_or_clone(ty)), t),
         _ => if_false(g, t),
     }
 }
