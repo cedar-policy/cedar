@@ -1470,33 +1470,30 @@ mod tests {
         );
     }
 
-    #[test]
-    fn logical_operator_hints() {
+    #[rstest::rstest]
+    #[case::and_lower("and", "use `&&` for logical AND")]
+    #[case::and_upper("AND", "use `&&` for logical AND")]
+    #[case::and_mixed("aNd", "use `&&` for logical AND")]
+    #[case::single_ampersand("&", "use `&&` for logical AND")]
+    #[case::or_lower("or", "use `||` for logical OR")]
+    #[case::or_upper("OR", "use `||` for logical OR")]
+    #[case::or_mixed("oR", "use `||` for logical OR")]
+    #[case::single_pipe("|", "use `||` for logical OR")]
+    fn logical_operator_hints(#[case] operator: &str, #[case] help: &str) {
         use miette::Diagnostic;
 
-        for (operator, help) in [
-            ("and", "use `&&` for logical AND"),
-            ("AND", "use `&&` for logical AND"),
-            ("aNd", "use `&&` for logical AND"),
-            ("&", "use `&&` for logical AND"),
-            ("or", "use `||` for logical OR"),
-            ("OR", "use `||` for logical OR"),
-            ("oR", "use `||` for logical OR"),
-            ("|", "use `||` for logical OR"),
+        let src = format!("true {operator} false");
+        let policy = format!("permit(principal, action, resource) when {{ {src} }};");
+        for errors in [
+            assert_parse_fails(parse_expr, &src),
+            assert_parse_fails(parse_policies, &policy),
         ] {
-            let src = format!("true {operator} false");
-            let policy = format!("permit(principal, action, resource) when {{ {src} }};");
-            for errors in [
-                assert_parse_fails(parse_expr, &src),
-                assert_parse_fails(parse_policies, &policy),
-            ] {
-                assert_eq!(errors.len(), 1, "{src}");
-                assert_eq!(
-                    errors.help().map(|h| h.to_string()).as_deref(),
-                    Some(help),
-                    "{src}"
-                );
-            }
+            assert_eq!(errors.len(), 1, "{src}");
+            assert_eq!(
+                errors.help().map(|h| h.to_string()).as_deref(),
+                Some(help),
+                "{src}"
+            );
         }
     }
 
