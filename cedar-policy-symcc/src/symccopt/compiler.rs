@@ -66,12 +66,6 @@ impl Footprint {
         }
     }
 
-    pub fn singleton(term: Term) -> Self {
-        Self {
-            terms: [term].into(),
-        }
-    }
-
     pub fn flatten(results: impl Iterator<Item = Self> + 'static) -> Self {
         results.fold(Self::empty(), |f1, f2| f1.chain(f2))
     }
@@ -183,10 +177,9 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<CompileResult> {
         Prim::EntityUID(uid) => {
             let uid = core_uid_into_uid(uid);
             if es.is_valid_entity_uid(uid) {
-                let term = some_of(uid.clone().into());
                 Ok(CompileResult {
-                    footprint: Footprint::singleton(term.clone()),
-                    term,
+                    term: some_of(uid.clone().into()),
+                    footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -199,10 +192,9 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
     match v {
         Var::Principal => {
             if req.principal.type_of().is_entity_type() {
-                let term = some_of(req.principal.clone());
                 Ok(CompileResult {
-                    footprint: Footprint::singleton(term.clone()),
-                    term,
+                    term: some_of(req.principal.clone()),
+                    footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -210,10 +202,9 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
         }
         Var::Action => {
             if req.action.type_of().is_entity_type() {
-                let term = some_of(req.action.clone());
                 Ok(CompileResult {
-                    footprint: Footprint::singleton(term.clone()),
-                    term,
+                    term: some_of(req.action.clone()),
+                    footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -221,10 +212,9 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
         }
         Var::Resource => {
             if req.resource.type_of().is_entity_type() {
-                let term = some_of(req.resource.clone());
                 Ok(CompileResult {
-                    footprint: Footprint::singleton(term.clone()),
-                    term,
+                    term: some_of(req.resource.clone()),
+                    footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -286,17 +276,14 @@ fn compile_app2(
     use BinaryOp::*;
     use ExtType::*;
     use TermType::*;
-    // compute the footprint of the arguments, not counting the contribution of the `direct_footprint` of the
-    // `BinaryOp` term (if any) (particularly relevant for `getTag`)
-    let args_footprint = arg1.footprint.chain(arg2.footprint);
-    // mimicking the behavior of the unoptimized compiler in how the direct footprint for the binaryOp term
-    // itself is computed
-    let binary_op_footprint =
-        |term| direct_footprint(if_some(arg1.term.clone(), if_some(arg2.term.clone(), term)));
+    // compute the footprint of the arguments, not counting the contribution of
+    // the `direct_footprint` of the `BinaryOp` term (if any) which is only
+    // relevant for `in`, the only operation which reads the entity hierarchy.
+    let footprint = arg1.footprint.chain(arg2.footprint);
     // for the rest of this function, we consider only the `option_get`-ed args.
     // see detailed note in the toplevel optimized `compile()` function below.
     let t1 = option_get(arg1.term.clone());
-    let t2 = option_get(arg2.term.clone());
+    let t2 = option_get(arg2.term);
     match (op2, t1.type_of(), t2.type_of()) {
         (Eq, ty1, ty2) => {
             let term = if reducible_eq(&ty1, &ty2)? {
@@ -304,114 +291,48 @@ fn compile_app2(
             } else {
                 some_of(false.into())
             };
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Less, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvslt(t1, t2));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Less, Ext { xty: DateTime }, Ext { xty: DateTime }) => {
             let term = some_of(bvslt(ext_datetime_val(t1), ext_datetime_val(t2)));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Less, Ext { xty: Duration }, Ext { xty: Duration }) => {
             let term = some_of(bvslt(ext_duration_val(t1), ext_duration_val(t2)));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (LessEq, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvsle(t1, t2));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (LessEq, Ext { xty: DateTime }, Ext { xty: DateTime }) => {
             let term = some_of(bvsle(ext_datetime_val(t1), ext_datetime_val(t2)));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (LessEq, Ext { xty: Duration }, Ext { xty: Duration }) => {
             let term = some_of(bvsle(ext_duration_val(t1), ext_duration_val(t2)));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Add, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvsaddo(t1.clone(), t2.clone()), bvadd(t1, t2));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Sub, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvssubo(t1.clone(), t2.clone()), bvsub(t1, t2));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Mul, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvsmulo(t1.clone(), t2.clone()), bvmul(t1, t2));
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (Contains, Set { ty: ty1 }, ty2) => {
             if *ty1 == ty2 {
                 let term = some_of(set_member(t2, t1));
-                Ok(CompileResult {
-                    // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                    // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                    // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                    term,
-                })
+                Ok(CompileResult { term, footprint })
             } else {
                 Err(CompileError::TypeError)
             }
@@ -419,13 +340,7 @@ fn compile_app2(
         (ContainsAll, Set { ty: ty1 }, Set { ty: ty2 }) => {
             if *ty1 == *ty2 {
                 let term = some_of(set_subset(t2, t1));
-                Ok(CompileResult {
-                    // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                    // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                    // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                    term,
-                })
+                Ok(CompileResult { term, footprint })
             } else {
                 Err(CompileError::TypeError)
             }
@@ -433,13 +348,7 @@ fn compile_app2(
         (ContainsAny, Set { ty: ty1 }, Set { ty: ty2 }) => {
             if *ty1 == *ty2 {
                 let term = some_of(set_intersects(t1, t2));
-                Ok(CompileResult {
-                    // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                    // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                    // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                    footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                    term,
-                })
+                Ok(CompileResult { term, footprint })
             } else {
                 Err(CompileError::TypeError)
             }
@@ -451,10 +360,9 @@ fn compile_app2(
                 es.ancestors_of_type(&ety1, &ety2).cloned(),
             ));
             Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
+                footprint: Footprint::empty()
+                    .chain_option(direct_footprint(arg1.term))
+                    .chain(footprint),
                 term,
             })
         }
@@ -467,10 +375,9 @@ fn compile_app2(
                         es.ancestors_of_type(&ety1, &ety2).cloned(),
                     ));
                     Ok(CompileResult {
-                        // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                        // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                        // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                        footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
+                        footprint: Footprint::empty()
+                            .chain_option(direct_footprint(arg1.term))
+                            .chain(footprint),
                         term,
                     })
                 }
@@ -483,22 +390,11 @@ fn compile_app2(
         }
         (HasTag, Entity { ety }, String) => {
             let term = compile_has_tag(t1, t2, es.tags(&ety), &ety)?;
-            Ok(CompileResult {
-                // assuming everything is well-typed, the `binary_op_footprint()` here will be `None`,
-                // but: (1) we want the two compilers to agree even on non-well-typed inputs,
-                // for ease of proofs in the Lean; and (2) the unoptimized compiler adds this term
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (GetTag, Entity { ety }, String) => {
             let term = compile_get_tag(t1, t2, es.tags(&ety), &ety)?;
-            Ok(CompileResult {
-                // in this `GetTag` case, the `binary_op_footprint` term could actually be nonempty,
-                // in the case where the tags are entity-typed
-                footprint: args_footprint.chain_option(binary_op_footprint(term.clone())),
-                term,
-            })
+            Ok(CompileResult { term, footprint })
         }
         (_, _, _) => Err(CompileError::TypeError),
     }
@@ -526,9 +422,6 @@ pub fn compile_has_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Resul
 }
 
 pub fn compile_get_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Result<CompileResult> {
-    // miimicking the behavior of the unoptimized compiler in how the direct
-    // footprint for the `GetAttr` term itself is computed
-    let get_attr_footprint = |term| direct_footprint(if_some(arg.term.clone(), term));
     // for the rest of this function, we consider only the `option_get`-ed args.
     // see detailed note in the toplevel optimized `compile()` function below.
     let term = option_get(arg.term.clone());
@@ -541,7 +434,7 @@ pub fn compile_get_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Resul
                 None => Err(CompileError::NoSuchAttribute(a.to_string())),
             }?;
             Ok(CompileResult {
-                footprint: arg.footprint.chain_option(get_attr_footprint(term.clone())),
+                footprint: arg.footprint,
                 term,
             })
         }

@@ -27,7 +27,7 @@
 use super::arc_ord::ArcOrd;
 use std::collections::{BTreeMap, BTreeSet};
 
-use cedar_policy_core::ast::{Expr, ExprKind};
+use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind};
 
 use super::{
     compiler::compile,
@@ -69,16 +69,9 @@ fn compiles_to_bool_or_none(x: &Expr, env: &SymEnv) -> bool {
     }
 }
 
-/// Returns the terms corresponding to subexpressions of `x` of the following form:
-///
-///   * A variable term with an entity type
-///   * An entity reference literal
-///   * An attribute access expression with an entity type
-///   * A binary (`getTag`) expression with an entity type
-///
-/// These are the only basic expressions in Cedar that may evaluate to an entity.
-/// All other expressions that evaluate to an entity are build up from the above
-/// basic expressions.
+/// Returns the terms whose ancestors the compiled term of `x` may read. Only
+/// `in` reads ancestors, and only those of its first operand, so these are the
+/// compiled first operands `x1` of subexpressions `x1 in x2` of `x`.
 ///
 /// All returned terms are of type `TermType.option .entity`.
 //
@@ -108,7 +101,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
     }
     #[expect(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
-        ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),
+        ExprKind::Lit(_) | ExprKind::Var(_) => Box::new(std::iter::empty()),
         ExprKind::If {
             test_expr,
             then_expr,
@@ -134,13 +127,17 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
             footprint(right, env),
             env,
         ),
-        ExprKind::BinaryApp { arg1, arg2, .. } => Box::new(
-            of_entity(x)
-                .chain(footprint(arg1, env))
-                .chain(footprint(arg2, env)),
+        ExprKind::BinaryApp { op, arg1, arg2 } => Box::new(
+            (if *op == BinaryOp::In {
+                of_entity(arg1)
+            } else {
+                Box::new(std::iter::empty())
+            })
+            .chain(footprint(arg1, env))
+            .chain(footprint(arg2, env)),
         ),
-        ExprKind::GetAttr { expr, .. } => Box::new(of_entity(x).chain(footprint(expr, env))),
-        ExprKind::HasAttr { expr, .. }
+        ExprKind::GetAttr { expr, .. }
+        | ExprKind::HasAttr { expr, .. }
         | ExprKind::ExtHasAttr { expr, .. }
         | ExprKind::UnaryApp { arg: expr, .. }
         | ExprKind::Like { expr, .. }
