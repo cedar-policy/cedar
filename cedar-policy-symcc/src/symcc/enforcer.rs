@@ -24,10 +24,8 @@
 //!
 //! For more technical details, see comments in SymCC/Enforcer.lean.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Arc,
-};
+use super::arc_ord::ArcOrd;
+use std::collections::{BTreeMap, BTreeSet};
 
 use cedar_policy_core::ast::{Expr, ExprKind};
 
@@ -158,7 +156,7 @@ pub(crate) fn footprints<'a>(
 pub(crate) fn acyclicity(t: &Term, es: &SymEntities) -> Term {
     match t.type_of() {
         TermType::Option { ty } if matches!(*ty, TermType::Entity { .. }) => {
-            match Arc::unwrap_or_clone(ty) {
+            match ArcOrd::unwrap_or_clone(ty) {
                 TermType::Entity { ety } => match es.ancestors_of_type(&ety, &ety) {
                     Some(f) => {
                         let t_unwrapped = option_get(t.clone());
@@ -211,7 +209,7 @@ pub(crate) fn transitivity(t1: &Term, t2: &Term, es: &SymEntities) -> Term {
     } else {
         match (t1.type_of(), t2.type_of()) {
             (TermType::Option { ty: ty1 }, TermType::Option { ty: ty2 }) => {
-                match (Arc::unwrap_or_clone(ty1), Arc::unwrap_or_clone(ty2)) {
+                match (ArcOrd::unwrap_or_clone(ty1), ArcOrd::unwrap_or_clone(ty2)) {
                     (TermType::Entity { ety: ety1 }, TermType::Entity { ety: ety2 }) => {
                         match (es.ancestors_of_type(&ety1, &ety2), es.ancestors(&ety2)) {
                             (Some(f12), Some(anc2)) => {
