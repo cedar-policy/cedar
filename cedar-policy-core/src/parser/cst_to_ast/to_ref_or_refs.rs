@@ -548,7 +548,7 @@ mod test {
     fn test_primary_rinits_node() -> Node<Option<cst::Primary>> {
         Node {
             node: Some(cst::Primary::RInits(vec![])),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -556,9 +556,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Expr(Node {
                 node: Some(cst::Expr::ErrorExpr),
-                loc: Some(Loc::new(0..1, "This is a test".into())),
+                loc: Some(Loc::new(0..1, "This is a test")),
             })),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -567,14 +567,14 @@ mod test {
             node: Some(cst::Primary::EList(vec![
                 Node {
                     node: Some(test_expr()),
-                    loc: Some(Loc::new(0..1, "This is also a test".into())),
+                    loc: Some(Loc::new(0..1, "This is also a test")),
                 },
                 Node {
                     node: Some(test_expr()),
-                    loc: Some(Loc::new(0..1, "This is also a test".into())),
+                    loc: Some(Loc::new(0..1, "This is also a test")),
                 },
             ])),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -587,10 +587,10 @@ mod test {
                         item: test_primary_ref_node(),
                         access: vec![],
                     }),
-                    loc: Some(Loc::new(0..1, "This is a test".into())),
+                    loc: Some(Loc::new(0..1, "This is a test")),
                 },
             }),
-            loc: Some(Loc::new(0..1, "This is a test".into())),
+            loc: Some(Loc::new(0..1, "This is a test")),
         }
     }
 
@@ -600,7 +600,7 @@ mod test {
                 initial: test_unary_node(),
                 extended: vec![],
             }),
-            loc: Some(Loc::new(0..1, "This is a test".into())),
+            loc: Some(Loc::new(0..1, "This is a test")),
         }
     }
 
@@ -610,7 +610,7 @@ mod test {
                 initial: test_mult_node(),
                 extended: vec![],
             }),
-            loc: Some(Loc::new(0..1, "This is a test".into())),
+            loc: Some(Loc::new(0..1, "This is a test")),
         }
     }
 
@@ -620,7 +620,7 @@ mod test {
                 initial: test_add_node(),
                 extended: vec![],
             }),
-            loc: Some(Loc::new(0..1, "This is a test".into())),
+            loc: Some(Loc::new(0..1, "This is a test")),
         }
     }
 
@@ -633,10 +633,10 @@ mod test {
                         initial: test_relation_node(),
                         extended: vec![],
                     }),
-                    loc: Some(Loc::new(0..1, "This is a test".into())),
+                    loc: Some(Loc::new(0..1, "This is a test")),
                 },
             }),
-            loc: Some(Loc::new(0..1, "This is a test".into())),
+            loc: Some(Loc::new(0..1, "This is a test")),
         })
     }
 
@@ -650,9 +650,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Expr(Node {
                 node: Some(test_expr()),
-                loc: Some(Loc::new(0..1, "This is a test".into())),
+                loc: Some(Loc::new(0..1, "This is a test")),
             })),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -662,13 +662,13 @@ mod test {
                 node: Some(Name {
                     path: vec![],
                     name: Node {
-                        loc: Some(Loc::new(0..1, "So much testing".into())),
+                        loc: Some(Loc::new(0..1, "So much testing")),
                         node: Some(cst::Ident::Ident("test".into())),
                     },
                 }),
-                loc: Some(Loc::new(0..1, "This is a test".into())),
+                loc: Some(Loc::new(0..1, "This is a test")),
             })),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -676,9 +676,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Literal(Node {
                 node: Some(cst::Literal::True),
-                loc: Some(Loc::new(0..1, "This is a test".into())),
+                loc: Some(Loc::new(0..1, "This is a test")),
             })),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -686,9 +686,9 @@ mod test {
         Node {
             node: Some(cst::Primary::Slot(Node {
                 node: Some(cst::Slot::Principal),
-                loc: Some(Loc::new(0..1, "This is a test".into())),
+                loc: Some(Loc::new(0..1, "This is a test")),
             })),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 
@@ -700,20 +700,20 @@ mod test {
                         node: Some(Name {
                             path: vec![],
                             name: Node {
-                                loc: Some(Loc::new(0..1, "So much testing".into())),
+                                loc: Some(Loc::new(0..1, "So much testing")),
                                 node: Some(cst::Ident::Ident("test".into())),
                             },
                         }),
-                        loc: Some(Loc::new(0..1, "This is a test".into())),
+                        loc: Some(Loc::new(0..1, "This is a test")),
                     },
                     eid: Node {
                         node: Some(cst::Str::String("test".into())),
-                        loc: Some(Loc::new(0..1, "This is a test".into())),
+                        loc: Some(Loc::new(0..1, "This is a test")),
                     },
                 }),
-                loc: Some(Loc::new(0..1, "This is a test".into())),
+                loc: Some(Loc::new(0..1, "This is a test")),
             })),
-            loc: Some(Loc::new(0..1, "This is also a test".into())),
+            loc: Some(Loc::new(0..1, "This is also a test")),
         }
     }
 }

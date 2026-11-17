@@ -31,7 +31,7 @@ lalrpop_mod!(
 );
 
 use super::*;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 /// This helper function calls a generated parser, collects errors that could be
 /// generated multiple ways, and returns a single Result where the error type is
@@ -41,7 +41,7 @@ fn parse_collect_errors<'a, P, T>(
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
-        &Arc<str>,
+        &SourceText,
         bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
@@ -50,22 +50,22 @@ fn parse_collect_errors<'a, P, T>(
 ) -> Result<T, err::ParseErrors> {
     // We don't need to copy the source if we won't keep it
     let shared_src = if keep_src {
-        Arc::from(text)
+        SourceText::from(text)
     } else {
-        Arc::from("")
+        SourceText::from("")
     };
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &shared_src, keep_src, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::clone(&shared_src)))
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, shared_src.clone()))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e, Arc::clone(&shared_src)).into(),
+                err::ToCSTError::from_raw_parse_err(e, shared_src.clone()).into(),
                 errors,
             ));
         }
@@ -85,24 +85,25 @@ fn parse_collect_errors_tolerant<'a, P, T>(
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
-        &Arc<str>,
+        &SourceText,
         bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), true, text);
+    let src = SourceText::from(text);
+    let result = parse(parser, &mut errs, &src, true, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, src.clone()))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
+                err::ToCSTError::from_raw_parse_err(e, src.clone()).into(),
                 errors,
             ));
         }
@@ -1068,7 +1069,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#;
         let policies = POLICIES_PARSER
-            .parse(&mut Vec::new(), &Arc::from(src), false, src)
+            .parse(&mut Vec::new(), &SourceText::from(src), false, src)
             .expect("parser error")
             .node
             .expect("no data");

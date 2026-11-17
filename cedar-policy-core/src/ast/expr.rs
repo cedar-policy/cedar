@@ -532,7 +532,7 @@ impl<T> Expr<T> {
             ExprKind::Error { .. } => Ok(builder
                 .error(ParseErrors::singleton(ToASTError::new(
                     ToASTErrorKind::ASTErrorNode,
-                    Some(Loc::new(0..1, "AST_ERROR_NODE".into())),
+                    Some(Loc::new(0..1, "AST_ERROR_NODE")),
                 )))
                 .unwrap()), // we could have unwrap_infallible + trait bound  but attributes in where clauses are unstable
         }

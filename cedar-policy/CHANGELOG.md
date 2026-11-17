@@ -14,6 +14,11 @@ Starting with version 3.2.4, changes marked with a star (*) are _language breaki
 
 Cedar Language Version: TBD
 
+### Changed
+
+- Validating a large policy set with many errors is faster, as hashing a source location no longer hashes the
+  whole policy text (#2598).
+
 ## [4.15.0] - 2026-11-16
 
 Cedar Language Version: 4.7
