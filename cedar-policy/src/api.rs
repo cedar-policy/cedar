@@ -1620,6 +1620,27 @@ fn annotation_value_to_str_ref(value: Option<&ast::Annotation>) -> &str {
     value.map_or("", |a| a.as_ref())
 }
 
+/// Follow `path` through the inline record types starting at `ty`
+fn attribute_by_path<'a, N>(
+    ty: &'a json_schema::Type<N>,
+    path: &[&str],
+) -> Option<&'a json_schema::TypeOfAttribute<N>> {
+    let (first, rest) = path.split_first()?;
+    let json_schema::Type::Type {
+        ty: json_schema::TypeVariant::Record(record),
+        ..
+    } = ty
+    else {
+        return None;
+    };
+    let attr = record.attributes.get(*first)?;
+    if rest.is_empty() {
+        Some(attr)
+    } else {
+        attribute_by_path(&attr.ty, rest)
+    }
+}
+
 fn annotations_to_pairs(annotations: &est::Annotations) -> impl Iterator<Item = (&str, &str)> {
     annotations
         .0
@@ -1734,6 +1755,66 @@ impl SchemaFragment {
         let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
         let ty = ast::UnreservedId::from_normalized_str(ty).ok()?;
         get_annotation_by_key(&ns_def.entity_types.get(&ty)?.annotations, annotation_key)
+    }
+
+    /// Get annotations of an attribute of an entity type declaration.
+    ///
+    /// `attribute_path` names the attribute: `["manager"]` is the top-level
+    /// attribute `manager`, and `["address", "city"]` is the attribute `city`
+    /// of the record type of the attribute `address`. Only record types written
+    /// inline are followed; a path does not go through common type references
+    /// or sets.
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `ty` is not a valid entity type name
+    /// or `ty` is not found in the corresponding namespace definition
+    /// or `attribute_path` is empty or does not name an attribute
+    pub fn entity_type_attribute_annotations(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        attribute_path: &[&str],
+    ) -> Option<impl Iterator<Item = (&str, &str)>> {
+        let attr = self.entity_type_attribute(namespace, ty, attribute_path)?;
+        Some(annotations_to_pairs(&attr.annotations))
+    }
+
+    /// Get annotation value of an attribute of an entity type declaration by
+    /// annotation key `annotation_key`. See
+    /// [`SchemaFragment::entity_type_attribute_annotations`] for how
+    /// `attribute_path` names the attribute.
+    ///
+    /// Returns `None` if `namespace` is not found in the [`SchemaFragment`]
+    /// or `ty` is not a valid entity type name
+    /// or `ty` is not found in the corresponding namespace definition
+    /// or `attribute_path` is empty or does not name an attribute
+    /// or `annotation_key` is not a valid annotation key
+    /// or it does not exist
+    pub fn entity_type_attribute_annotation(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        attribute_path: &[&str],
+        annotation_key: impl AsRef<str>,
+    ) -> Option<&str> {
+        let attr = self.entity_type_attribute(namespace, ty, attribute_path)?;
+        get_annotation_by_key(&attr.annotations, annotation_key)
+    }
+
+    fn entity_type_attribute(
+        &self,
+        namespace: Option<EntityNamespace>,
+        ty: &str,
+        attribute_path: &[&str],
+    ) -> Option<&json_schema::TypeOfAttribute<cedar_policy_core::validator::RawName>> {
+        let ns_def = self.lossless.0.get(&namespace.map(|n| n.0))?;
+        let ty = ast::UnreservedId::from_normalized_str(ty).ok()?;
+        match &ns_def.entity_types.get(&ty)?.kind {
+            json_schema::EntityTypeKind::Standard(entity_type) => {
+                attribute_by_path(&entity_type.shape.0, attribute_path)
+            }
+            json_schema::EntityTypeKind::Enum { .. } => None,
+        }
     }
 
     /// Get annotations of an action declaration
