@@ -597,14 +597,21 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// If a `schema` is provided, this method will also add the `Action`
+    /// entities from the `schema`, unlike [`Entities::add_entities`]. If this
+    /// structure already contains an entity with the same Entity UID as one of
+    /// these `Action` entities, the two must be identical or an error is
+    /// returned.
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
     /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
     ///   `entities` with the same Entity UID, or there is an entity in `entities` with the
-    ///   same Entity UID as a non-identical entity in this structure
+    ///   same Entity UID as a non-identical entity in this structure, or `schema` is not
+    ///   none and one of its `Action` entities has the same Entity UID as a non-identical
+    ///   entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -637,14 +644,21 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// If a `schema` is provided, this method will also add the `Action`
+    /// entities from the `schema`, unlike [`Entities::add_entities`]. If this
+    /// structure already contains an entity with the same Entity UID as one of
+    /// these `Action` entities, the two must be identical or an error is
+    /// returned.
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
     /// ## Errors
     /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in
     ///   `entities` with the same Entity UID, or there is an entity in `entities` with the same
-    ///   Entity UID as a non-identical entity in this structure
+    ///   Entity UID as a non-identical entity in this structure, or `schema` is not none and
+    ///   one of its `Action` entities has the same Entity UID as a non-identical entity in this
+    ///   structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
@@ -677,7 +691,12 @@ impl Entities {
     /// schema -- for instance, it will error if attributes have the wrong types
     /// (e.g., string instead of integer), or if required attributes are missing
     /// or superfluous attributes are provided.
-    /// (This method will not add action entities from the `schema`.)
+    ///
+    /// If a `schema` is provided, this method will also add the `Action`
+    /// entities from the `schema`, unlike [`Entities::add_entities`]. If this
+    /// structure already contains an entity with the same Entity UID as one of
+    /// these `Action` entities, the two must be identical or an error is
+    /// returned.
     ///
     /// Re-computing the transitive closure can be expensive, so it is advised
     /// to not call this method in a loop.
@@ -685,7 +704,8 @@ impl Entities {
     /// ## Errors
     /// - [`EntitiesError::Duplicate`] if there is a pair of non-identical entities in `entities`
     ///   with the same Entity UID, or there is an entity in `entities` with the same Entity UID as a
-    ///   non-identical entity in this structure
+    ///   non-identical entity in this structure, or `schema` is not none and one of its `Action`
+    ///   entities has the same Entity UID as a non-identical entity in this structure
     /// - [`EntitiesError::InvalidEntity`] if `schema` is not none and any entities do not conform
     ///   to the schema
     /// - [`EntitiesError::Deserialization`] if there are errors while parsing the json
