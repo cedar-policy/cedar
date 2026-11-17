@@ -125,6 +125,12 @@ mod test_utils {
 
     use crate::Schema;
 
+    // The declaration that the standard parser names in its errors (#435) for
+    // each of the schemas below
+    const IN_ENTITY_ATTR: &str = "in entity type `User`: ";
+    const IN_CONTEXT: &str = "in action `Act`: ";
+    const IN_COMMON: &str = "in common type `ty2`: ";
+
     fn schema_with_entity_attribute(attr_ty: &serde_json::Value) -> serde_json::Value {
         json!({
             "ns": {
@@ -194,21 +200,21 @@ mod test_utils {
         expect_err(
             "",
             &Report::new(Schema::from_json_value(in_entity_attr).unwrap_err()),
-            &ExpectedErrorMessageBuilder::error(err).build(),
+            &ExpectedErrorMessageBuilder::error(&format!("{IN_ENTITY_ATTR}{err}")).build(),
         );
         let in_context = schema_with_context_attribute(ty);
         Schema::from_deprecated_json_value(in_context.clone()).unwrap();
         expect_err(
             "",
             &Report::new(Schema::from_json_value(in_context).unwrap_err()),
-            &ExpectedErrorMessageBuilder::error(err).build(),
+            &ExpectedErrorMessageBuilder::error(&format!("{IN_CONTEXT}{err}")).build(),
         );
         let in_common = schema_with_common_type(ty);
         Schema::from_deprecated_json_value(in_common.clone()).unwrap();
         expect_err(
             "",
             &Report::new(Schema::from_json_value(in_common).unwrap_err()),
-            &ExpectedErrorMessageBuilder::error(err).build(),
+            &ExpectedErrorMessageBuilder::error(&format!("{IN_COMMON}{err}")).build(),
         );
     }
 
@@ -228,15 +234,20 @@ mod test_utils {
     #[track_caller]
     pub(crate) fn assert_type_json_err_deprecated_and_standard(
         ty: &serde_json::Value,
-        current_err: &ExpectedErrorMessage<'_>,
+        current_err: &str,
         deprecated_err: &ExpectedErrorMessage<'_>,
     ) {
-        let in_entity_attr = schema_with_entity_attribute(ty);
-        assert_schema_json_err_deprecated_and_standard(in_entity_attr, current_err, deprecated_err);
-        let in_context = schema_with_context_attribute(ty);
-        assert_schema_json_err_deprecated_and_standard(in_context, current_err, deprecated_err);
-        let in_common = schema_with_common_type(ty);
-        assert_schema_json_err_deprecated_and_standard(in_common, current_err, deprecated_err);
+        for (schema, context) in [
+            (schema_with_entity_attribute(ty), IN_ENTITY_ATTR),
+            (schema_with_context_attribute(ty), IN_CONTEXT),
+            (schema_with_common_type(ty), IN_COMMON),
+        ] {
+            assert_schema_json_err_deprecated_and_standard(
+                schema,
+                &ExpectedErrorMessageBuilder::error(&format!("{context}{current_err}")).build(),
+                deprecated_err,
+            );
+        }
     }
 
     #[track_caller]
@@ -475,8 +486,7 @@ mod extra_fields_forbidden {
                 "element": {"type": "Long"},
                 "bogus": "bogus",
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
-                .build(),
+            "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Set")
                 .help("neither `ns::Set` nor `Set` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Set")
@@ -488,8 +498,7 @@ mod extra_fields_forbidden {
                 "element": {"type": "Long"},
                 "name": "my_long",
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `name`, expected `element`")
-                .build(),
+            "unknown field `name`, expected `element`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Set")
                 .help("neither `ns::Set` nor `Set` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Set")
@@ -502,8 +511,7 @@ mod extra_fields_forbidden {
                 "element": {"type": "Long"},
                 "attributes": {},
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `attributes`, expected `element`")
-                .build(),
+            "unknown field `attributes`, expected `element`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Set")
                 .help("neither `ns::Set` nor `Set` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Set")
@@ -515,8 +523,7 @@ mod extra_fields_forbidden {
                 "element": {"type": "Long"},
                 "additionalAttributes": false,
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `additionalAttributes`, expected `element`")
-                .build(),
+            "unknown field `additionalAttributes`, expected `element`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Set")
                 .help("neither `ns::Set` nor `Set` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Set")
@@ -532,8 +539,7 @@ mod extra_fields_forbidden {
                 "name": "User",
                 "bogus": "bogus",
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
-                .build(),
+            "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Entity")
                 .help("neither `ns::Entity` nor `Entity` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Entity")
@@ -545,8 +551,7 @@ mod extra_fields_forbidden {
                 "name": "User",
                 "element": {"type": "Long"},
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `element`, expected `name`")
-                .build(),
+            "unknown field `element`, expected `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Entity")
                 .help("neither `ns::Entity` nor `Entity` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Entity")
@@ -558,8 +563,7 @@ mod extra_fields_forbidden {
                 "name": "User",
                 "attributes": {},
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `attributes`, expected `name`")
-                .build(),
+            "unknown field `attributes`, expected `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Entity")
                 .help("neither `ns::Entity` nor `Entity` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Entity")
@@ -571,8 +575,7 @@ mod extra_fields_forbidden {
                 "name": "User",
                 "additionalAttributes": false,
             }),
-            &ExpectedErrorMessageBuilder::error( "unknown field `additionalAttributes`, expected `name`",)
-                .build(),
+             "unknown field `additionalAttributes`, expected `name`",
             &ExpectedErrorMessageBuilder::error( "failed to resolve type: Entity",)
                 .help("neither `ns::Entity` nor `Entity` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Entity")
@@ -588,8 +591,7 @@ mod extra_fields_forbidden {
                 "name": "ip",
                 "bogus": "bogus"
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
-                .build(),
+            "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Extension")
                 .help("neither `ns::Extension` nor `Extension` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Extension")
@@ -601,8 +603,7 @@ mod extra_fields_forbidden {
                 "name": "ip",
                 "element": {"type": "Long"},
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `element`, expected `name`")
-                .build(),
+            "unknown field `element`, expected `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Extension")
                 .help("neither `ns::Extension` nor `Extension` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Extension")
@@ -614,8 +615,7 @@ mod extra_fields_forbidden {
                 "name": "ip",
                 "attributes": {},
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `attributes`, expected `name`")
-                .build(),
+            "unknown field `attributes`, expected `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Extension")
                 .help("neither `ns::Extension` nor `Extension` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Extension")
@@ -627,8 +627,7 @@ mod extra_fields_forbidden {
                 "name": "ip",
                 "additionalAttributes": false,
             }),
-            &ExpectedErrorMessageBuilder::error( "unknown field `additionalAttributes`, expected `name`",)
-                .build(),
+             "unknown field `additionalAttributes`, expected `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Extension")
                 .help("neither `ns::Extension` nor `Extension` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Extension")
@@ -644,8 +643,7 @@ mod extra_fields_forbidden {
                 "attributes": {},
                 "bogus": "bogus"
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`")
-                .build(),
+            "unknown field `bogus`, expected one of `type`, `element`, `attributes`, `additionalAttributes`, `name`",
             &ExpectedErrorMessageBuilder::error("failed to resolve type: Record")
                 .help("neither `ns::Record` nor `Record` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Record")
@@ -657,8 +655,7 @@ mod extra_fields_forbidden {
                 "attributes": {},
                 "element": {"type": "Long"},
             }),
-            &ExpectedErrorMessageBuilder::error( "unknown field `element`, expected `attributes` or `additionalAttributes`",)
-                .build(),
+             "unknown field `element`, expected `attributes` or `additionalAttributes`",
             &ExpectedErrorMessageBuilder::error( "failed to resolve type: Record",)
                 .help("neither `ns::Record` nor `Record` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Record")
@@ -670,8 +667,7 @@ mod extra_fields_forbidden {
                 "attributes": {},
                 "name": "ip",
             }),
-            &ExpectedErrorMessageBuilder::error( "unknown field `name`, expected `attributes` or `additionalAttributes`",)
-                 .build(),
+             "unknown field `name`, expected `attributes` or `additionalAttributes`",
             &ExpectedErrorMessageBuilder::error( "failed to resolve type: Record",)
                 .help("neither `ns::Record` nor `Record` refers to anything that has been declared as a common type")
                 .exactly_one_underline("Record")
@@ -708,7 +704,7 @@ mod extra_fields_forbidden {
                     "actions": {},
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `memberOfTypes`, `shape`, `tags`, `enum`, `external`, `annotations`").build(),
+            &ExpectedErrorMessageBuilder::error("in entity type `User`: unknown field `foo`, expected one of `memberOfTypes`, `shape`, `tags`, `enum`, `external`, `annotations`").build(),
             &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected `memberOfTypes` or `shape`").build(),
         );
     }
@@ -727,7 +723,7 @@ mod extra_fields_forbidden {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`, `external`, `annotations`").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`, `external`, `annotations`").build(),
             &ExpectedErrorMessageBuilder::error("unknown field `foo`, expected one of `attributes`, `appliesTo`, `memberOf`").build(),
         );
     }
@@ -750,7 +746,7 @@ mod extra_fields_forbidden {
                 }
             }),
             &ExpectedErrorMessageBuilder::error(
-                "unknown field `foo`, expected one of `resourceTypes`, `principalTypes`, `context`",
+                "in action `act`: unknown field `foo`, expected one of `resourceTypes`, `principalTypes`, `context`",
             )
             .build(),
             &ExpectedErrorMessageBuilder::error(
@@ -784,7 +780,8 @@ mod unspecified_not_allowed {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("missing field `principalTypes`").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: missing field `principalTypes`")
+                .build(),
             &ExpectedErrorMessageBuilder::error("missing field `principalTypes`").build(),
         );
     }
@@ -804,7 +801,8 @@ mod unspecified_not_allowed {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("missing field `resourceTypes`").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: missing field `resourceTypes`")
+                .build(),
             &ExpectedErrorMessageBuilder::error("missing field `resourceTypes`").build(),
         );
     }
@@ -822,7 +820,8 @@ mod unspecified_not_allowed {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("missing field `resourceTypes`").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: missing field `resourceTypes`")
+                .build(),
             &ExpectedErrorMessageBuilder::error("missing field `resourceTypes`").build(),
         );
     }
@@ -843,7 +842,10 @@ mod unspecified_not_allowed {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid type: null, expected a sequence").build(),
+            &ExpectedErrorMessageBuilder::error(
+                "in action `act`: invalid type: null, expected a sequence",
+            )
+            .build(),
             &ExpectedErrorMessageBuilder::error("missing field `resourceTypes`").build(),
         );
         assert_schema_json_err_deprecated_and_standard(
@@ -860,7 +862,10 @@ mod unspecified_not_allowed {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid type: null, expected a sequence").build(),
+            &ExpectedErrorMessageBuilder::error(
+                "in action `act`: invalid type: null, expected a sequence",
+            )
+            .build(),
             &ExpectedErrorMessageBuilder::error("missing field `principalTypes`").build(),
         );
     }
@@ -899,7 +904,7 @@ mod invalid_names_detected {
                     "actions": { },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid id ` space`: `Id` needs to be normalized (e.g., whitespace removed):  space").build(),
+            &ExpectedErrorMessageBuilder::error("in name of common type ` space`: invalid id ` space`: `Id` needs to be normalized (e.g., whitespace removed):  space").build(),
             &ExpectedErrorMessageBuilder::error("invalid id ` space`: `Id` needs to be normalized (e.g., whitespace removed):  space").build(),
         );
     }
@@ -922,7 +927,7 @@ mod invalid_names_detected {
                     "actions": { },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid common type ` space`: `internal name` needs to be normalized (e.g., whitespace removed):  space").build(),
+            &ExpectedErrorMessageBuilder::error("in entity type `User`: invalid common type ` space`: `internal name` needs to be normalized (e.g., whitespace removed):  space").build(),
             &ExpectedErrorMessageBuilder::error("invalid common type ` space`: `internal name` needs to be normalized (e.g., whitespace removed):  space").build(),
         );
     }
@@ -940,7 +945,7 @@ mod invalid_names_detected {
                 }
             }),
             &ExpectedErrorMessageBuilder::error(
-                "this is reserved and cannot be the basename of a common-type declaration: Long",
+                "in name of common type `Long`: this is reserved and cannot be the basename of a common-type declaration: Long",
             )
             .build(),
             &ExpectedErrorMessageBuilder::error(
@@ -961,7 +966,7 @@ mod invalid_names_detected {
                     "actions": { },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid id ` space`: `Id` needs to be normalized (e.g., whitespace removed):  space").build(),
+            &ExpectedErrorMessageBuilder::error("in name of entity type ` space`: invalid id ` space`: `Id` needs to be normalized (e.g., whitespace removed):  space").build(),
             &ExpectedErrorMessageBuilder::error("invalid id ` space`: `Id` needs to be normalized (e.g., whitespace removed):  space").build(),
         );
     }
@@ -979,7 +984,7 @@ mod invalid_names_detected {
                     "actions": { },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
+            &ExpectedErrorMessageBuilder::error("in entity type `User`: invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
             &ExpectedErrorMessageBuilder::error("invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
         );
     }
@@ -1002,7 +1007,7 @@ mod invalid_names_detected {
                     "actions": { },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid entity type ` space`: `internal name` needs to be normalized (e.g., whitespace removed):  space").build(),
+            &ExpectedErrorMessageBuilder::error("in entity type `User`: invalid entity type ` space`: `internal name` needs to be normalized (e.g., whitespace removed):  space").build(),
             &ExpectedErrorMessageBuilder::error("invalid entity type ` space`: `internal name` needs to be normalized (e.g., whitespace removed):  space").build(),
         );
     }
@@ -1025,7 +1030,7 @@ mod invalid_names_detected {
                     "actions": { },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid extension type ` ip`: `Unreserved Id` needs to be normalized (e.g., whitespace removed):  ip").build(),
+            &ExpectedErrorMessageBuilder::error("in entity type `User`: invalid extension type ` ip`: `Unreserved Id` needs to be normalized (e.g., whitespace removed):  ip").build(),
             &ExpectedErrorMessageBuilder::error("invalid extension type ` ip`: `Unreserved Id` needs to be normalized (e.g., whitespace removed):  ip").build(),
         );
     }
@@ -1046,7 +1051,7 @@ mod invalid_names_detected {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
             &ExpectedErrorMessageBuilder::error("invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
         );
     }
@@ -1067,7 +1072,7 @@ mod invalid_names_detected {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
             &ExpectedErrorMessageBuilder::error("invalid name ` User`: `internal name` needs to be normalized (e.g., whitespace removed):  User").build(),
         );
     }
@@ -1086,7 +1091,7 @@ mod invalid_names_detected {
                     },
                 }
             }),
-            &ExpectedErrorMessageBuilder::error("invalid name ` Action`: `internal name` needs to be normalized (e.g., whitespace removed):  Action").build(),
+            &ExpectedErrorMessageBuilder::error("in action `act`: invalid name ` Action`: `internal name` needs to be normalized (e.g., whitespace removed):  Action").build(),
             &ExpectedErrorMessageBuilder::error("invalid name ` Action`: `internal name` needs to be normalized (e.g., whitespace removed):  Action").build(),
         );
     }
