@@ -1144,6 +1144,41 @@ fn action_in_ancestor_typecheck_true() {
 }
 
 #[test]
+fn action_in_transitive_ancestor_typecheck_true() {
+    let schema: crate::validator::ValidatorSchema = r#"
+        entity a;
+        action "action" in ["parent"] appliesTo {
+            principal: a,
+            resource: a,
+        };
+        action "parent" in ["grandparent"];
+        action "grandparent", "other";
+    "#
+    .parse()
+    .expect("Expected that schema would parse");
+
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in Action::"grandparent""#.parse().unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema.clone(),
+        &r#"Action::"action" in [Action::"other", Action::"grandparent"]"#
+            .parse()
+            .unwrap(),
+        &Type::singleton_boolean(true),
+    );
+    assert_typechecks(
+        schema,
+        &r#"Action::"grandparent" in [Action::"other", Action::"parent"]"#
+            .parse()
+            .unwrap(),
+        &Type::singleton_boolean(false),
+    );
+}
+
+#[test]
 fn action_not_in_typecheck_false() {
     let schema: crate::validator::ValidatorSchema = r#"
         entity a;
