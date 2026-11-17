@@ -39,10 +39,20 @@ use super::{
     type_abbrevs::EntityType,
 };
 
-/// Helper function used by `footprint()`.
-/// In Lean this is defined inline inside `footprint()`, but in Rust, you can't
-/// define closures that take generic arguments (like `impl IntoIterator`), so
-/// we define it as a standalone function.
+/// Returns the compiled term of `x` if it has option-entity type.
+fn of_entity(x: &Expr, env: &SymEnv) -> Box<dyn Iterator<Item = Term>> {
+    match compile(x, env) {
+        Ok(t) => {
+            if t.type_of().is_option_entity_type() {
+                Box::new(std::iter::once(t))
+            } else {
+                Box::new(std::iter::empty())
+            }
+        }
+        Err(_) => Box::new(std::iter::empty()),
+    }
+}
+
 fn of_branch<'a>(
     x1: &Expr,
     ft1: impl IntoIterator<Item = Term> + 'a,
@@ -69,9 +79,39 @@ fn compiles_to_bool_or_none(x: &Expr, env: &SymEnv) -> bool {
     }
 }
 
+/// Returns the terms that the compiled term of `x` may evaluate to when it
+/// evaluates to an entity. These are the compiled leaves (variables, entity
+/// literals, attribute accesses, and `getTag` expressions) reachable through the
+/// branches of `if` expressions in `x`. No other expression evaluates to an entity.
+///
+/// All returned terms are of type `TermType.option .entity`.
+fn value_footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<Item = Term> + 'a> {
+    if compiles_to_bool_or_none(x, env) {
+        return Box::new(std::iter::empty());
+    }
+    match x.expr_kind() {
+        ExprKind::If {
+            test_expr,
+            then_expr,
+            else_expr,
+        } => of_branch(
+            test_expr,
+            std::iter::empty(),
+            value_footprint(then_expr, env),
+            value_footprint(else_expr, env),
+            env,
+        ),
+        ExprKind::Lit(_)
+        | ExprKind::Var(_)
+        | ExprKind::GetAttr { .. }
+        | ExprKind::BinaryApp { .. } => of_entity(x, env),
+        _ => Box::new(std::iter::empty()),
+    }
+}
+
 /// Returns the terms whose ancestors the compiled term of `x` may read. Only
-/// `in` reads ancestors, and only those of its first operand, so these are the
-/// compiled first operands `x1` of subexpressions `x1 in x2` of `x`.
+/// `in` reads ancestors, and only those of its first operand, so this is the
+/// union of `value_footprint(x1)` over subexpressions `x1 in x2` of `x`.
 ///
 /// All returned terms are of type `TermType.option .entity`.
 //
@@ -84,18 +124,6 @@ fn compiles_to_bool_or_none(x: &Expr, env: &SymEnv) -> bool {
     reason = "pattern may or may not be unreachable depending on whether `tolerant-ast` feature of cedar-policy-core is enabled"
 )]
 pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<Item = Term> + 'a> {
-    let of_entity = |x: &Expr| -> Box<dyn Iterator<Item = Term>> {
-        match compile(x, env) {
-            Ok(t) => {
-                if t.type_of().is_option_entity_type() {
-                    Box::new(std::iter::once(t))
-                } else {
-                    Box::new(std::iter::empty())
-                }
-            }
-            Err(_) => Box::new(std::iter::empty()),
-        }
-    };
     if compiles_to_bool_or_none(x, env) {
         return Box::new(std::iter::empty());
     }
@@ -129,7 +157,7 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
         ),
         ExprKind::BinaryApp { op, arg1, arg2 } => Box::new(
             (if *op == BinaryOp::In {
-                of_entity(arg1)
+                value_footprint(arg1, env)
             } else {
                 Box::new(std::iter::empty())
             })

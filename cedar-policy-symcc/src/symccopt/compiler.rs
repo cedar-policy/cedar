@@ -66,6 +66,12 @@ impl Footprint {
         }
     }
 
+    pub fn singleton(term: Term) -> Self {
+        Self {
+            terms: [term].into(),
+        }
+    }
+
     pub fn flatten(results: impl Iterator<Item = Self> + 'static) -> Self {
         results.fold(Self::empty(), |f1, f2| f1.chain(f2))
     }
@@ -90,19 +96,9 @@ impl Footprint {
 pub struct CompileResult {
     /// Well-formed term of the appropriate type, representing the compiled expression
     pub term: Term,
-    /// The "footprint" of the compiled expression.
-    ///
-    /// This is the terms corresponding to subexpressions of the compiled expression
-    /// of the following form:
-    ///
-    /// * A variable term with an entity type
-    /// * An entity reference literal
-    /// * An attribute access expression with an entity type
-    /// * A binary (`getTag`) expression with an entity type
-    ///
-    /// These are the only basic expressions in Cedar that may evaluate to an entity.
-    /// All other expressions that evaluate to an entity are built up from the above
-    /// basic expressions.
+    /// The "footprint" of the compiled expression: the terms whose ancestors
+    /// the compiled expression may read. This corresponds to `footprint` in
+    /// `symcc/enforcer.rs`.
     ///
     /// All terms in the `footprint` are of type `TermType::Option(TermType::Entity)`.
     ///
@@ -111,14 +107,23 @@ pub struct CompileResult {
     /// internally rather than `BTreeSet` here. Ultimately, the caller of
     /// `compile` will collect into a `BTreeSet` to remove duplicates.
     pub footprint: Footprint,
+    /// The terms that the compiled expression may evaluate to when it evaluates
+    /// to an entity. This corresponds to `value_footprint` in `symcc/enforcer.rs`,
+    /// and is needed to compute the `footprint` of `in`.
+    pub value_footprint: Footprint,
 }
 
 impl CompileResult {
-    /// Map on the `Term`, leaving the `footprint` unchanged
+    /// Map on the `Term`, leaving the `footprint` unchanged and emptying the `value_footprint`
+    ///
+    /// This assumes `f(t)` will include `t` somewhere, so it still has `t`'s
+    /// footprint, but that it will not evaluate to the same value as `t`, so
+    /// `value_footprint` is not the same.
     fn map_term(self, f: impl FnOnce(Term) -> Term) -> Self {
         Self {
             term: f(self.term),
-            ..self
+            footprint: self.footprint,
+            value_footprint: Footprint::empty(),
         }
     }
 
@@ -131,10 +136,12 @@ impl CompileResult {
         match &self.term {
             Term::Some(t) if matches!(**t, Term::Prim(TermPrim::Bool(_))) => Self {
                 footprint: Footprint::empty(),
+                value_footprint: Footprint::empty(),
                 ..self
             },
             Term::None(_) => Self {
                 footprint: Footprint::empty(),
+                value_footprint: Footprint::empty(),
                 ..self
             },
             _ => self,
@@ -145,7 +152,7 @@ impl CompileResult {
 /// Return the footprint of this compiled term _itself_ (not counting its subexpressions).
 /// Only terms of option-entity type have any direct footprint.
 ///
-/// This corresponds to `of_entity` in the `footprint` function in `symcc/enforcer.rs`,
+/// This corresponds to `of_entity` in `symcc/enforcer.rs`,
 /// except that we only call it when compiling to `Term` was successful, so it takes a
 /// `Term` argument rather than `Result<Term>`.
 ///
@@ -165,21 +172,26 @@ fn compile_prim(p: &Prim, es: &SymEntities) -> Result<CompileResult> {
         Prim::Bool(b) => Ok(CompileResult {
             term: some_of((*b).into()),
             footprint: Footprint::empty(),
+            value_footprint: Footprint::empty(),
         }),
         Prim::Long(i) => Ok(CompileResult {
             term: some_of((*i).into()),
             footprint: Footprint::empty(),
+            value_footprint: Footprint::empty(),
         }),
         Prim::String(s) => Ok(CompileResult {
             term: some_of(s.clone().into()),
             footprint: Footprint::empty(),
+            value_footprint: Footprint::empty(),
         }),
         Prim::EntityUID(uid) => {
             let uid = core_uid_into_uid(uid);
             if es.is_valid_entity_uid(uid) {
+                let term = some_of(uid.clone().into());
                 Ok(CompileResult {
-                    term: some_of(uid.clone().into()),
                     footprint: Footprint::empty(),
+                    value_footprint: Footprint::singleton(term.clone()),
+                    term,
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -192,9 +204,11 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
     match v {
         Var::Principal => {
             if req.principal.type_of().is_entity_type() {
+                let term = some_of(req.principal.clone());
                 Ok(CompileResult {
-                    term: some_of(req.principal.clone()),
                     footprint: Footprint::empty(),
+                    value_footprint: Footprint::singleton(term.clone()),
+                    term,
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -202,9 +216,11 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
         }
         Var::Action => {
             if req.action.type_of().is_entity_type() {
+                let term = some_of(req.action.clone());
                 Ok(CompileResult {
-                    term: some_of(req.action.clone()),
                     footprint: Footprint::empty(),
+                    value_footprint: Footprint::singleton(term.clone()),
+                    term,
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -212,9 +228,11 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
         }
         Var::Resource => {
             if req.resource.type_of().is_entity_type() {
+                let term = some_of(req.resource.clone());
                 Ok(CompileResult {
-                    term: some_of(req.resource.clone()),
                     footprint: Footprint::empty(),
+                    value_footprint: Footprint::singleton(term.clone()),
+                    term,
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -225,6 +243,7 @@ fn compile_var(v: Var, req: &SymRequest) -> Result<CompileResult> {
                 Ok(CompileResult {
                     term: some_of(req.context.clone()),
                     footprint: Footprint::empty(),
+                    value_footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -291,48 +310,92 @@ fn compile_app2(
             } else {
                 some_of(false.into())
             };
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Less, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvslt(t1, t2));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Less, Ext { xty: DateTime }, Ext { xty: DateTime }) => {
             let term = some_of(bvslt(ext_datetime_val(t1), ext_datetime_val(t2)));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Less, Ext { xty: Duration }, Ext { xty: Duration }) => {
             let term = some_of(bvslt(ext_duration_val(t1), ext_duration_val(t2)));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (LessEq, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = some_of(bvsle(t1, t2));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (LessEq, Ext { xty: DateTime }, Ext { xty: DateTime }) => {
             let term = some_of(bvsle(ext_datetime_val(t1), ext_datetime_val(t2)));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (LessEq, Ext { xty: Duration }, Ext { xty: Duration }) => {
             let term = some_of(bvsle(ext_duration_val(t1), ext_duration_val(t2)));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Add, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvsaddo(t1.clone(), t2.clone()), bvadd(t1, t2));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Sub, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvssubo(t1.clone(), t2.clone()), bvsub(t1, t2));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Mul, Bitvec { n: SIXTY_FOUR }, Bitvec { n: SIXTY_FOUR }) => {
             let term = if_false(bvsmulo(t1.clone(), t2.clone()), bvmul(t1, t2));
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (Contains, Set { ty: ty1 }, ty2) => {
             if *ty1 == ty2 {
                 let term = some_of(set_member(t2, t1));
-                Ok(CompileResult { term, footprint })
+                Ok(CompileResult {
+                    term,
+                    footprint,
+                    value_footprint: Footprint::empty(),
+                })
             } else {
                 Err(CompileError::TypeError)
             }
@@ -340,7 +403,11 @@ fn compile_app2(
         (ContainsAll, Set { ty: ty1 }, Set { ty: ty2 }) => {
             if *ty1 == *ty2 {
                 let term = some_of(set_subset(t2, t1));
-                Ok(CompileResult { term, footprint })
+                Ok(CompileResult {
+                    term,
+                    footprint,
+                    value_footprint: Footprint::empty(),
+                })
             } else {
                 Err(CompileError::TypeError)
             }
@@ -348,7 +415,11 @@ fn compile_app2(
         (ContainsAny, Set { ty: ty1 }, Set { ty: ty2 }) => {
             if *ty1 == *ty2 {
                 let term = some_of(set_intersects(t1, t2));
-                Ok(CompileResult { term, footprint })
+                Ok(CompileResult {
+                    term,
+                    footprint,
+                    value_footprint: Footprint::empty(),
+                })
             } else {
                 Err(CompileError::TypeError)
             }
@@ -360,10 +431,9 @@ fn compile_app2(
                 es.ancestors_of_type(&ety1, &ety2).cloned(),
             ));
             Ok(CompileResult {
-                footprint: Footprint::empty()
-                    .chain_option(direct_footprint(arg1.term))
-                    .chain(footprint),
+                footprint: arg1.value_footprint.chain(footprint),
                 term,
+                value_footprint: Footprint::empty(),
             })
         }
         (In, Entity { ety: ety1 }, Set { ty }) if matches!(*ty, Entity { .. }) => {
@@ -375,10 +445,9 @@ fn compile_app2(
                         es.ancestors_of_type(&ety1, &ety2).cloned(),
                     ));
                     Ok(CompileResult {
-                        footprint: Footprint::empty()
-                            .chain_option(direct_footprint(arg1.term))
-                            .chain(footprint),
+                        footprint: arg1.value_footprint.chain(footprint),
                         term,
+                        value_footprint: Footprint::empty(),
                     })
                 }
                 #[expect(
@@ -390,11 +459,19 @@ fn compile_app2(
         }
         (HasTag, Entity { ety }, String) => {
             let term = compile_has_tag(t1, t2, es.tags(&ety), &ety)?;
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (GetTag, Entity { ety }, String) => {
             let term = compile_get_tag(t1, t2, es.tags(&ety), &ety)?;
-            Ok(CompileResult { term, footprint })
+            Ok(CompileResult {
+                term,
+                footprint,
+                value_footprint: Footprint::empty(),
+            })
         }
         (_, _, _) => Err(CompileError::TypeError),
     }
@@ -407,14 +484,17 @@ pub fn compile_has_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Resul
             Some(ty) if ty.is_option_type() => Ok(CompileResult {
                 term: some_of(is_some(record_get(attrs, a))),
                 footprint: arg.footprint,
+                value_footprint: Footprint::empty(),
             }),
             Some(_) => Ok(CompileResult {
                 term: some_of(true.into()),
                 footprint: arg.footprint,
+                value_footprint: Footprint::empty(),
             }),
             None => Ok(CompileResult {
                 term: some_of(false.into()),
                 footprint: arg.footprint,
+                value_footprint: Footprint::empty(),
             }),
         },
         _ => Err(CompileError::TypeError),
@@ -436,6 +516,7 @@ pub fn compile_get_attr(arg: CompileResult, a: &Attr, es: &SymEntities) -> Resul
             Ok(CompileResult {
                 footprint: arg.footprint,
                 term,
+                value_footprint: Footprint::empty(),
             })
         }
         _ => Err(CompileError::TypeError),
@@ -460,6 +541,7 @@ pub fn compile_if(
                         ite(option_get(arg1.term), arg2.term, arg3.term),
                     ),
                     footprint: arg1.footprint.chain(arg2.footprint).chain(arg3.footprint),
+                    value_footprint: arg2.value_footprint.chain(arg3.value_footprint),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -477,6 +559,7 @@ pub fn compile_and(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<C
             Ok(CompileResult {
                 term: arg1.term,
                 footprint: Footprint::empty(),
+                value_footprint: Footprint::empty(),
             })
         }
         (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
@@ -497,6 +580,7 @@ pub fn compile_and(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<C
                         ite(option_get(arg1.term), arg2.term, some_of(false.into())),
                     ),
                     footprint,
+                    value_footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -514,6 +598,7 @@ pub fn compile_or(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<Co
             Ok(CompileResult {
                 term: arg1.term,
                 footprint: Footprint::empty(),
+                value_footprint: Footprint::empty(),
             })
         }
         (_, TermType::Option { ty: ity }) if matches!(*ity, TermType::Bool) => {
@@ -534,6 +619,7 @@ pub fn compile_or(arg1: CompileResult, arg2: Result<CompileResult>) -> Result<Co
                         ite(option_get(arg1.term), some_of(true.into()), arg2.term),
                     ),
                     footprint,
+                    value_footprint: Footprint::empty(),
                 })
             } else {
                 Err(CompileError::TypeError)
@@ -563,6 +649,7 @@ pub fn compile_set(args: Vec<CompileResult>) -> Result<CompileResult> {
                             some_of(set_of(terms.map(option_get), TermType::clone(ity))),
                         ),
                         footprint: Footprint::flatten(args.into_iter().map(|arg| arg.footprint)),
+                        value_footprint: Footprint::empty(),
                     })
                 } else {
                     Err(CompileError::TypeError)
@@ -588,6 +675,7 @@ pub fn compile_record(ats: Vec<(Attr, CompileResult)>) -> CompileResult {
             )),
         ),
         footprint: Footprint::flatten(ats.into_iter().map(|(_, res)| res.footprint)),
+        value_footprint: Footprint::empty(),
     }
 }
 
@@ -599,11 +687,13 @@ pub fn compile_call0(
         CompileResult {
             term: Term::Some(t),
             footprint,
+            ..
         } => match t.as_ref() {
             Term::Prim(TermPrim::String(s)) => match mk(s.as_ref()) {
                 Ok(v) => Ok(CompileResult {
                     term: some_of(v.into()),
                     footprint,
+                    value_footprint: Footprint::empty(),
                 }),
                 Err(err) => Err(CompileError::ExtError(err)),
             },
@@ -624,6 +714,7 @@ pub fn compile_call1_error(
         Ok(CompileResult {
             term: if_some(arg1.term.clone(), enc(option_get(arg1.term))),
             footprint: arg1.footprint,
+            value_footprint: Footprint::empty(),
         })
     } else {
         Err(CompileError::TypeError)
@@ -659,6 +750,7 @@ pub fn compile_call2_error(
                 ),
             ),
             footprint: arg1.footprint.chain(arg2.footprint),
+            value_footprint: Footprint::empty(),
         })
     } else {
         Err(CompileError::TypeError)
@@ -719,6 +811,7 @@ pub fn compile_call_n_error(
         Ok(CompileResult {
             term: result,
             footprint,
+            value_footprint: Footprint::empty(),
         })
     } else {
         Err(CompileError::TypeError)
@@ -888,7 +981,12 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             // In order to give our optimized `compile_app2` easy access to both the original and
             // `option_get` terms, we pass the original ones here.
             let res = compile_app2(*op, res1, res2, &env.entities)?;
-            Ok(res.map_term(|term| if_some(res1_term, if_some(res2_term, term))))
+            let res = res.map_term(|term| if_some(res1_term, if_some(res2_term, term)));
+            Ok(CompileResult {
+                value_footprint: Footprint::empty()
+                    .chain_option(direct_footprint(res.term.clone())),
+                ..res
+            })
         }
         ExprKind::HasAttr { expr, attr } => {
             let res1 = compile(expr, env)?;
@@ -913,6 +1011,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
                     CompileResult {
                         term: option_get(current.clone()),
                         footprint: Footprint::empty(),
+                        value_footprint: Footprint::empty(),
                     },
                     attr,
                     &env.entities,
@@ -932,6 +1031,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
                     CompileResult {
                         term: option_get(current.clone()),
                         footprint: Footprint::empty(),
+                        value_footprint: Footprint::empty(),
                     },
                     attr,
                     &env.entities,
@@ -948,6 +1048,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
                 return Ok(CompileResult {
                     term: some_of(true.into()),
                     footprint: res1_footprint,
+                    value_footprint: Footprint::empty(),
                 });
             };
             for has in results {
@@ -962,7 +1063,12 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             let res1 = compile(expr, env)?;
             let res1_term = res1.term.clone();
             let res = compile_get_attr(res1, attr, &env.entities)?;
-            Ok(res.map_term(|term| if_some(res1_term, term)))
+            let res = res.map_term(|term| if_some(res1_term, term));
+            Ok(CompileResult {
+                value_footprint: Footprint::empty()
+                    .chain_option(direct_footprint(res.term.clone())),
+                ..res
+            })
         }
         ExprKind::Like { expr, pattern } => {
             let res1 = compile(expr, env)?;
