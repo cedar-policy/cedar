@@ -331,14 +331,24 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
         ty_enc: &str,
         t_encs: impl ExactSizeIterator<Item = &'s str>,
     ) -> Result<SmolStr> {
-        let set_term = if t_encs.len() == 0 {
-            format!("(as set.empty {ty_enc})")
-        } else {
-            format!(
-                "(set.insert {} (as set.empty {}))",
-                t_encs.format(" "),
-                ty_enc
-            )
+        // Encode `{t1, ..., tn}` as
+        // `(set.union (set.singleton t1) (set.union ... (set.singleton tn)))`,
+        // matching the Lean encoder. This is written in a single pass: every
+        // element but the last opens a `set.union`, and all of them are closed
+        // at the end.
+        let set_term = match t_encs.len() {
+            0 => format!("(as set.empty {ty_enc})"),
+            n => format!(
+                "{}{}",
+                t_encs.enumerate().format_with("", |(i, t_enc), f| {
+                    if i + 1 < n {
+                        f(&format_args!("(set.union (set.singleton {t_enc}) "))
+                    } else {
+                        f(&format_args!("(set.singleton {t_enc})"))
+                    }
+                }),
+                (1..n).format_with("", |_, f| f(&")")),
+            ),
         };
         self.define_term(ty_enc, &set_term).await
     }
