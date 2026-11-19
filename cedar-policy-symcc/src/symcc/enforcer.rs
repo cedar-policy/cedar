@@ -58,6 +58,17 @@ fn of_branch<'a>(
     }
 }
 
+/// Returns true if `x` compiles to `⊙true`, `⊙false`, or `.none`
+fn compiles_to_bool_or_none(x: &Expr, env: &SymEnv) -> bool {
+    // This is the un-optimized symbolic compiler, so calling a full `compile`
+    // for every subexpressions is rather inefficient, but fine.
+    match compile(x, env) {
+        Ok(Term::Some(t)) => matches!(*t, Term::Prim(TermPrim::Bool(_))),
+        Ok(Term::None(_)) => true,
+        _ => false,
+    }
+}
+
 /// Returns the terms corresponding to subexpressions of `x` of the following form:
 ///
 ///   * A variable term with an entity type
@@ -92,6 +103,9 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
             Err(_) => Box::new(std::iter::empty()),
         }
     };
+    if compiles_to_bool_or_none(x, env) {
+        return Box::new(std::iter::empty());
+    }
     #[expect(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
         ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),

@@ -127,6 +127,25 @@ impl CompileResult {
             ..self
         }
     }
+
+    /// Drop the `footprint` if the `term` is `⊙true`, `⊙false`, or `.none`.
+    ///
+    /// These constant terms cannot depend on the hierarchy, so we do not need
+    /// to include them in the footprint. This corresponds to the unoptimized
+    /// `compiles_to_bool_or_none` check in `symcc::enforcer::footprint`.
+    fn drop_bool_or_none_footprint(self) -> Self {
+        match &self.term {
+            Term::Some(t) if matches!(**t, Term::Prim(TermPrim::Bool(_))) => Self {
+                footprint: Footprint::empty(),
+                ..self
+            },
+            Term::None(_) => Self {
+                footprint: Footprint::empty(),
+                ..self
+            },
+            _ => self,
+        }
+    }
 }
 
 /// Return the footprint of this compiled term _itself_ (not counting its subexpressions).
@@ -1099,6 +1118,7 @@ pub fn compile(x: &Expr, env: &SymEnv) -> Result<CompileResult> {
             x
         ))),
     }
+    .map(CompileResult::drop_bool_or_none_footprint)
 }
 
 #[cfg(test)]
