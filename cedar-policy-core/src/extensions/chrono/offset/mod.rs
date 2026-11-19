@@ -94,20 +94,6 @@ pub enum LocalResult<T> {
 }
 
 impl<T> MappedLocalTime<T> {
-    /// Returns `Some` if the time zone mapping has a single result.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if local time falls in a _fold_ or _gap_ in the local time, or if there was
-    /// an error.
-    #[must_use]
-    pub fn single(self) -> Option<T> {
-        match self {
-            MappedLocalTime::Single(t) => Some(t),
-            _ => None,
-        }
-    }
-
     /// Maps a `MappedLocalTime<T>` into `MappedLocalTime<U>` with given function.
     ///
     /// Returns `MappedLocalTime::None` if the function returns `None`.

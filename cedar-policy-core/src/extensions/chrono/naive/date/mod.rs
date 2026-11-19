@@ -29,7 +29,6 @@ use crate::extensions::chrono::format::{
     Item, Numeric, Pad, ParseError, ParseResult, Parsed, StrftimeItems, parse,
     write_hundreds,
 };
-use crate::extensions::chrono::month::Months;
 use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDateTime, NaiveTime};
 use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
 use crate::extensions::chrono::{expect, try_opt};
@@ -355,93 +354,6 @@ impl NaiveDate {
         parsed.to_naive_date()
     }
 
-    /// Add a duration in [`Months`] to the date
-    ///
-    /// Uses the last day of the month if the day does not exist in the resulting month.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if the resulting date would be out of range.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use chrono::{NaiveDate, Months};
-    /// assert_eq!(
-    ///     NaiveDate::from_ymd_opt(2022, 2, 20).unwrap().checked_add_months(Months::new(6)),
-    ///     Some(NaiveDate::from_ymd_opt(2022, 8, 20).unwrap())
-    /// );
-    /// assert_eq!(
-    ///     NaiveDate::from_ymd_opt(2022, 7, 31).unwrap().checked_add_months(Months::new(2)),
-    ///     Some(NaiveDate::from_ymd_opt(2022, 9, 30).unwrap())
-    /// );
-    /// ```
-    #[must_use]
-    pub const fn checked_add_months(self, months: Months) -> Option<Self> {
-        if months.0 == 0 {
-            return Some(self);
-        }
-
-        match months.0 <= i32::MAX as u32 {
-            true => self.diff_months(months.0 as i32),
-            false => None,
-        }
-    }
-
-    /// Subtract a duration in [`Months`] from the date
-    ///
-    /// Uses the last day of the month if the day does not exist in the resulting month.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if the resulting date would be out of range.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use chrono::{NaiveDate, Months};
-    /// assert_eq!(
-    ///     NaiveDate::from_ymd_opt(2022, 2, 20).unwrap().checked_sub_months(Months::new(6)),
-    ///     Some(NaiveDate::from_ymd_opt(2021, 8, 20).unwrap())
-    /// );
-    ///
-    /// assert_eq!(
-    ///     NaiveDate::from_ymd_opt(2014, 1, 1)
-    ///         .unwrap()
-    ///         .checked_sub_months(Months::new(core::i32::MAX as u32 + 1)),
-    ///     None
-    /// );
-    /// ```
-    #[must_use]
-    pub const fn checked_sub_months(self, months: Months) -> Option<Self> {
-        if months.0 == 0 {
-            return Some(self);
-        }
-
-        match months.0 <= i32::MAX as u32 {
-            true => self.diff_months(-(months.0 as i32)),
-            false => None,
-        }
-    }
-
-    const fn diff_months(self, months: i32) -> Option<Self> {
-        let months = try_opt!((self.year() * 12 + self.month() as i32 - 1).checked_add(months));
-        let year = months.div_euclid(12);
-        let month = months.rem_euclid(12) as u32 + 1;
-
-        // Clamp original day in case new month is shorter
-        let flags = YearFlags::from_year(year);
-        let feb_days = if flags.ndays() == 366 { 29 } else { 28 };
-        let days = [31, feb_days, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        let day_max = days[(month - 1) as usize];
-        let mut day = self.day();
-        if day > day_max {
-            day = day_max;
-        };
-
-        NaiveDate::from_ymd_opt(year, month, day)
-    }
-
     /// Add a duration in [`Days`] to the date
     ///
     /// # Errors
@@ -469,33 +381,6 @@ impl NaiveDate {
     pub const fn checked_add_days(self, days: Days) -> Option<Self> {
         match days.0 <= i32::MAX as u64 {
             true => self.add_days(days.0 as i32),
-            false => None,
-        }
-    }
-
-    /// Subtract a duration in [`Days`] from the date
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if the resulting date would be out of range.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # use chrono::{NaiveDate, Days};
-    /// assert_eq!(
-    ///     NaiveDate::from_ymd_opt(2022, 2, 20).unwrap().checked_sub_days(Days::new(6)),
-    ///     Some(NaiveDate::from_ymd_opt(2022, 2, 14).unwrap())
-    /// );
-    /// assert_eq!(
-    ///     NaiveDate::from_ymd_opt(2022, 2, 20).unwrap().checked_sub_days(Days::new(1000000000000)),
-    ///     None
-    /// );
-    /// ```
-    #[must_use]
-    pub const fn checked_sub_days(self, days: Days) -> Option<Self> {
-        match days.0 <= i32::MAX as u64 {
-            true => self.add_days(-(days.0 as i32)),
             false => None,
         }
     }
@@ -849,12 +734,6 @@ impl NaiveDate {
         self.yof.get()
     }
 
-    /// The minimum possible `NaiveDate` (January 1, 262144 BCE).
-    pub const MIN: NaiveDate = NaiveDate::from_yof((MIN_YEAR << 13) | (1 << 4) | 0o12 /* D */);
-    /// The maximum possible `NaiveDate` (December 31, 262142 CE).
-    pub const MAX: NaiveDate =
-        NaiveDate::from_yof((MAX_YEAR << 13) | (365 << 4) | 0o16 /* G */);
-
     /// One day before the minimum possible `NaiveDate` (December 31, 262145 BCE).
     pub(crate) const BEFORE_MIN: NaiveDate =
         NaiveDate::from_yof(((MIN_YEAR - 1) << 13) | (366 << 4) | 0o07 /* FE */);
@@ -1095,69 +974,6 @@ impl AddAssign<TimeDelta> for NaiveDate {
     }
 }
 
-/// Add `Months` to `NaiveDate`.
-///
-/// The result will be clamped to valid days in the resulting month, see `checked_add_months` for
-/// details.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using `NaiveDate::checked_add_months` to get an `Option` instead.
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{Months, NaiveDate};
-///
-/// let from_ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
-///
-/// assert_eq!(from_ymd(2014, 1, 1) + Months::new(1), from_ymd(2014, 2, 1));
-/// assert_eq!(from_ymd(2014, 1, 1) + Months::new(11), from_ymd(2014, 12, 1));
-/// assert_eq!(from_ymd(2014, 1, 1) + Months::new(12), from_ymd(2015, 1, 1));
-/// assert_eq!(from_ymd(2014, 1, 1) + Months::new(13), from_ymd(2015, 2, 1));
-/// assert_eq!(from_ymd(2014, 1, 31) + Months::new(1), from_ymd(2014, 2, 28));
-/// assert_eq!(from_ymd(2020, 1, 31) + Months::new(1), from_ymd(2020, 2, 29));
-/// ```
-impl Add<Months> for NaiveDate {
-    type Output = NaiveDate;
-
-    #[track_caller]
-    fn add(self, months: Months) -> Self::Output {
-        self.checked_add_months(months).expect("`NaiveDate + Months` out of range")
-    }
-}
-
-/// Subtract `Months` from `NaiveDate`.
-///
-/// The result will be clamped to valid days in the resulting month, see `checked_sub_months` for
-/// details.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using `NaiveDate::checked_sub_months` to get an `Option` instead.
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{Months, NaiveDate};
-///
-/// let from_ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
-///
-/// assert_eq!(from_ymd(2014, 1, 1) - Months::new(11), from_ymd(2013, 2, 1));
-/// assert_eq!(from_ymd(2014, 1, 1) - Months::new(12), from_ymd(2013, 1, 1));
-/// assert_eq!(from_ymd(2014, 1, 1) - Months::new(13), from_ymd(2012, 12, 1));
-/// ```
-impl Sub<Months> for NaiveDate {
-    type Output = NaiveDate;
-
-    #[track_caller]
-    fn sub(self, months: Months) -> Self::Output {
-        self.checked_sub_months(months).expect("`NaiveDate - Months` out of range")
-    }
-}
-
 /// Add `Days` to `NaiveDate`.
 ///
 /// # Panics
@@ -1170,21 +986,6 @@ impl Add<Days> for NaiveDate {
     #[track_caller]
     fn add(self, days: Days) -> Self::Output {
         self.checked_add_days(days).expect("`NaiveDate + Days` out of range")
-    }
-}
-
-/// Subtract `Days` from `NaiveDate`.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using `NaiveDate::checked_sub_days` to get an `Option` instead.
-impl Sub<Days> for NaiveDate {
-    type Output = NaiveDate;
-
-    #[track_caller]
-    fn sub(self, days: Days) -> Self::Output {
-        self.checked_sub_days(days).expect("`NaiveDate - Days` out of range")
     }
 }
 
@@ -1251,51 +1052,6 @@ impl SubAssign<TimeDelta> for NaiveDate {
     #[track_caller]
     fn sub_assign(&mut self, rhs: TimeDelta) {
         *self = self.sub(rhs);
-    }
-}
-
-/// Subtracts another `NaiveDate` from the current date.
-/// Returns a `TimeDelta` of integral numbers.
-///
-/// This does not overflow or underflow at all,
-/// as all possible output fits in the range of `TimeDelta`.
-///
-/// The implementation is a wrapper around
-/// [`NaiveDate::signed_duration_since`](#method.signed_duration_since).
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{NaiveDate, TimeDelta};
-///
-/// let from_ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
-///
-/// assert_eq!(from_ymd(2014, 1, 1) - from_ymd(2014, 1, 1), TimeDelta::zero());
-/// assert_eq!(from_ymd(2014, 1, 1) - from_ymd(2013, 12, 31), TimeDelta::try_days(1).unwrap());
-/// assert_eq!(from_ymd(2014, 1, 1) - from_ymd(2014, 1, 2), TimeDelta::try_days(-1).unwrap());
-/// assert_eq!(from_ymd(2014, 1, 1) - from_ymd(2013, 9, 23), TimeDelta::try_days(100).unwrap());
-/// assert_eq!(from_ymd(2014, 1, 1) - from_ymd(2013, 1, 1), TimeDelta::try_days(365).unwrap());
-/// assert_eq!(
-///     from_ymd(2014, 1, 1) - from_ymd(2010, 1, 1),
-///     TimeDelta::try_days(365 * 4 + 1).unwrap()
-/// );
-/// assert_eq!(
-///     from_ymd(2014, 1, 1) - from_ymd(1614, 1, 1),
-///     TimeDelta::try_days(365 * 400 + 97).unwrap()
-/// );
-/// ```
-impl Sub<NaiveDate> for NaiveDate {
-    type Output = TimeDelta;
-
-    #[inline]
-    fn sub(self, rhs: NaiveDate) -> TimeDelta {
-        self.signed_duration_since(rhs)
-    }
-}
-
-impl From<NaiveDateTime> for NaiveDate {
-    fn from(naive_datetime: NaiveDateTime) -> Self {
-        naive_datetime.date()
     }
 }
 
@@ -1404,22 +1160,6 @@ impl str::FromStr for NaiveDate {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, ITEMS.iter())?;
         parsed.to_naive_date()
-    }
-}
-
-/// The default value for a NaiveDate is 1st of January 1970.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use chrono::NaiveDate;
-///
-/// let default_date = NaiveDate::default();
-/// assert_eq!(default_date, NaiveDate::from_ymd_opt(1970, 1, 1).unwrap());
-/// ```
-impl Default for NaiveDate {
-    fn default() -> Self {
-        NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()
     }
 }
 

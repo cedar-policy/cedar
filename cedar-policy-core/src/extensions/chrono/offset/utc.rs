@@ -63,9 +63,3 @@ impl fmt::Debug for Utc {
     }
 }
 
-impl fmt::Display for Utc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "UTC")
-    }
-}
-

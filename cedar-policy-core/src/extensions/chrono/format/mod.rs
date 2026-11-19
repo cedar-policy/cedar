@@ -44,7 +44,7 @@ use core::str::FromStr;
 // always builds with `std`.
 use std::error::Error;
 
-use crate::extensions::chrono::{ParseWeekdayError, Weekday};
+use crate::extensions::chrono::{Weekday};
 
 mod formatting;
 mod parsed;
@@ -364,40 +364,4 @@ pub(crate) const TOO_LONG: ParseError = ParseError(ParseErrorKind::TooLong);
 const BAD_FORMAT: ParseError = ParseError(ParseErrorKind::BadFormat);
 
 // this implementation is here only because we need some private code from `scan`
-
-/// Parsing a `str` into a `Weekday` uses the format [`%A`](./format/strftime/index.html).
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::Weekday;
-///
-/// assert_eq!("Sunday".parse::<Weekday>(), Ok(Weekday::Sun));
-/// assert!("any day".parse::<Weekday>().is_err());
-/// ```
-///
-/// The parsing is case-insensitive.
-///
-/// ```ignore
-/// # use chrono::Weekday;
-/// assert_eq!("mON".parse::<Weekday>(), Ok(Weekday::Mon));
-/// ```
-///
-/// Only the shortest form (e.g. `sun`) and the longest form (e.g. `sunday`) is accepted.
-///
-/// ```ignore
-/// # use chrono::Weekday;
-/// assert!("thurs".parse::<Weekday>().is_err());
-/// ```
-impl FromStr for Weekday {
-    type Err = ParseWeekdayError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(("", w)) = scan::short_or_long_weekday(s) {
-            Ok(w)
-        } else {
-            Err(ParseWeekdayError { _dummy: () })
-        }
-    }
-}
 

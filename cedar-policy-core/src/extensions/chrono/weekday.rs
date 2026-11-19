@@ -6,8 +6,6 @@
 //   Cargo features (not enabled in Cedar) removed; code not used by Cedar removed.
 use core::fmt;
 
-use crate::extensions::chrono::OutOfRange;
-
 /// The day of week.
 ///
 /// The order of the days of week depends on the context.
@@ -106,46 +104,8 @@ impl fmt::Display for Weekday {
     }
 }
 
-/// Any weekday can be represented as an integer from 0 to 6, which equals to
-/// [`Weekday::num_days_from_monday`](#method.num_days_from_monday) in this implementation.
-/// Do not heavily depend on this though; use explicit methods whenever possible.
-impl TryFrom<u8> for Weekday {
-    type Error = OutOfRange;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Weekday::Mon),
-            1 => Ok(Weekday::Tue),
-            2 => Ok(Weekday::Wed),
-            3 => Ok(Weekday::Thu),
-            4 => Ok(Weekday::Fri),
-            5 => Ok(Weekday::Sat),
-            6 => Ok(Weekday::Sun),
-            _ => Err(OutOfRange::new()),
-        }
-    }
-}
-
 // Cedar: `impl num_traits::FromPrimitive for Weekday` removed so Cedar does not need the `num-traits`
 // dependency. Cedar does not use it.
-
-/// An error resulting from reading `Weekday` value with `FromStr`.
-#[derive(Clone, PartialEq, Eq)]
-pub struct ParseWeekdayError {
-    pub(crate) _dummy: (),
-}
-
-impl fmt::Display for ParseWeekdayError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_fmt(format_args!("{self:?}"))
-    }
-}
-
-impl fmt::Debug for ParseWeekdayError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ParseWeekdayError {{ .. }}")
-    }
-}
 
 // the actual `FromStr` implementation is in the `format` module to leverage the existing code
 

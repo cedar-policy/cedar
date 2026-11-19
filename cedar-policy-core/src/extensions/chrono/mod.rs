@@ -535,8 +535,7 @@
 // Cedar: `pub` removed from chrono's top-level modules, re-exports, and the `Duration` alias.
 // Only the items used by `cedar-policy-core`'s `datetime` extension and by `cedar-policy-symcc`
 // (`DateTime`, `NaiveDate`, `NaiveDateTime`, `NaiveTime`, `ParseError`, `TimeDelta`, `Utc`) are
-// re-exported. `OutOfRange` stays `pub` because it is an associated type in trait impls of `pub`
-// types.
+// re-exported.
 mod time_delta;
 pub use time_delta::TimeDelta;
 
@@ -559,39 +558,10 @@ use offset::{FixedOffset, TimeZone};
 pub use offset::Utc;
 
 mod weekday;
-#[doc(no_inline)]
-use weekday::ParseWeekdayError;
 use weekday::Weekday;
-
-mod month;
-use month::{Months};
 
 mod traits;
 use traits::{Datelike, Timelike};
-
-/// Out of range error type used in various converting APIs
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
-pub struct OutOfRange {
-    _private: (),
-}
-
-impl OutOfRange {
-    const fn new() -> OutOfRange {
-        OutOfRange { _private: () }
-    }
-}
-
-impl fmt::Display for OutOfRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "out of range")
-    }
-}
-
-impl fmt::Debug for OutOfRange {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "out of range")
-    }
-}
 
 /// Workaround because `?` is not (yet) available in const context.
 // Cedar: `#[macro_export]` replaced by a crate-local re-export so the macro is not exported from

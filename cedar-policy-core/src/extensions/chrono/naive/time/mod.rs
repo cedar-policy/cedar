@@ -584,7 +584,6 @@ impl NaiveTime {
 
     /// The earliest possible `NaiveTime`
     pub const MIN: Self = Self { secs: 0, frac: 0 };
-    pub(super) const MAX: Self = Self { secs: 23 * 3600 + 59 * 60 + 59, frac: 999_999_999 };
 }
 
 impl Timelike for NaiveTime {
@@ -756,17 +755,6 @@ impl Add<TimeDelta> for NaiveTime {
     }
 }
 
-/// Add-assign `TimeDelta` to `NaiveTime`.
-///
-/// This wraps around and never overflows or underflows.
-/// In particular the addition ignores integral number of days.
-impl AddAssign<TimeDelta> for NaiveTime {
-    #[inline]
-    fn add_assign(&mut self, rhs: TimeDelta) {
-        *self = self.add(rhs);
-    }
-}
-
 /// Add `std::time::Duration` to `NaiveTime`.
 ///
 /// This wraps around and never overflows or underflows.
@@ -878,17 +866,6 @@ impl Sub<TimeDelta> for NaiveTime {
     }
 }
 
-/// Subtract-assign `TimeDelta` from `NaiveTime`.
-///
-/// This wraps around and never overflows or underflows.
-/// In particular the subtraction ignores integral number of days.
-impl SubAssign<TimeDelta> for NaiveTime {
-    #[inline]
-    fn sub_assign(&mut self, rhs: TimeDelta) {
-        *self = self.sub(rhs);
-    }
-}
-
 /// Subtract `std::time::Duration` from `NaiveTime`.
 ///
 /// This wraps around and never overflows or underflows.
@@ -928,80 +905,6 @@ impl Sub<FixedOffset> for NaiveTime {
     #[inline]
     fn sub(self, rhs: FixedOffset) -> NaiveTime {
         self.overflowing_sub_offset(rhs).0
-    }
-}
-
-/// Subtracts another `NaiveTime` from the current time.
-/// Returns a `TimeDelta` within +/- 1 day.
-/// This does not overflow or underflow at all.
-///
-/// As a part of Chrono's [leap second handling](#leap-second-handling),
-/// the subtraction assumes that **there is no leap second ever**,
-/// except when any of the `NaiveTime`s themselves represents a leap second
-/// in which case the assumption becomes that
-/// **there are exactly one (or two) leap second(s) ever**.
-///
-/// The implementation is a wrapper around
-/// [`NaiveTime::signed_duration_since`](#method.signed_duration_since).
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{NaiveTime, TimeDelta};
-///
-/// let from_hmsm = |h, m, s, milli| NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap();
-///
-/// assert_eq!(from_hmsm(3, 5, 7, 900) - from_hmsm(3, 5, 7, 900), TimeDelta::zero());
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(3, 5, 7, 875),
-///     TimeDelta::try_milliseconds(25).unwrap()
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(3, 5, 6, 925),
-///     TimeDelta::try_milliseconds(975).unwrap()
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(3, 5, 0, 900),
-///     TimeDelta::try_seconds(7).unwrap()
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(3, 0, 7, 900),
-///     TimeDelta::try_seconds(5 * 60).unwrap()
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(0, 5, 7, 900),
-///     TimeDelta::try_seconds(3 * 3600).unwrap()
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(4, 5, 7, 900),
-///     TimeDelta::try_seconds(-3600).unwrap()
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 900) - from_hmsm(2, 4, 6, 800),
-///     TimeDelta::try_seconds(3600 + 60 + 1).unwrap() + TimeDelta::try_milliseconds(100).unwrap()
-/// );
-/// ```
-///
-/// Leap seconds are handled, but the subtraction assumes that
-/// there were no other leap seconds happened.
-///
-/// ```ignore
-/// # use chrono::{TimeDelta, NaiveTime};
-/// # let from_hmsm = |h, m, s, milli| { NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap() };
-/// assert_eq!(from_hmsm(3, 0, 59, 1_000) - from_hmsm(3, 0, 59, 0), TimeDelta::try_seconds(1).unwrap());
-/// assert_eq!(from_hmsm(3, 0, 59, 1_500) - from_hmsm(3, 0, 59, 0),
-///            TimeDelta::try_milliseconds(1500).unwrap());
-/// assert_eq!(from_hmsm(3, 0, 59, 1_000) - from_hmsm(3, 0, 0, 0), TimeDelta::try_seconds(60).unwrap());
-/// assert_eq!(from_hmsm(3, 0, 0, 0) - from_hmsm(2, 59, 59, 1_000), TimeDelta::try_seconds(1).unwrap());
-/// assert_eq!(from_hmsm(3, 0, 59, 1_000) - from_hmsm(2, 59, 59, 1_000),
-///            TimeDelta::try_seconds(61).unwrap());
-/// ```
-impl Sub<NaiveTime> for NaiveTime {
-    type Output = TimeDelta;
-
-    #[inline]
-    fn sub(self, rhs: NaiveTime) -> TimeDelta {
-        self.signed_duration_since(rhs)
     }
 }
 
@@ -1170,18 +1073,3 @@ impl str::FromStr for NaiveTime {
     }
 }
 
-/// The default value for a NaiveTime is midnight, 00:00:00 exactly.
-///
-/// # Example
-///
-/// ```rust,ignore
-/// use chrono::NaiveTime;
-///
-/// let default_time = NaiveTime::default();
-/// assert_eq!(default_time, NaiveTime::from_hms_opt(0, 0, 0).unwrap());
-/// ```
-impl Default for NaiveTime {
-    fn default() -> Self {
-        NaiveTime::from_hms_opt(0, 0, 0).unwrap()
-    }
-}

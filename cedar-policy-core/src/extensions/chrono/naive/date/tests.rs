@@ -7,67 +7,6 @@ use super::{Days, MAX_YEAR, MIN_YEAR, NaiveDate};
 use crate::extensions::chrono::naive::internals::{A, AG, B, BA, C, CB, D, DC, E, ED, F, FE, G, GF, YearFlags};
 use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
 
-// as it is hard to verify year flags in `NaiveDate::MIN` and `NaiveDate::MAX`,
-// we use a separate run-time test.
-#[test]
-fn test_date_bounds() {
-    let calculated_min = NaiveDate::from_ymd_opt(MIN_YEAR, 1, 1).unwrap();
-    let calculated_max = NaiveDate::from_ymd_opt(MAX_YEAR, 12, 31).unwrap();
-    assert!(
-        NaiveDate::MIN == calculated_min,
-        "`NaiveDate::MIN` should have year flag {:?}",
-        calculated_min.year_flags()
-    );
-    assert!(
-        NaiveDate::MAX == calculated_max,
-        "`NaiveDate::MAX` should have year flag {:?} and ordinal {}",
-        calculated_max.year_flags(),
-        calculated_max.ordinal()
-    );
-
-    // let's also check that the entire range do not exceed 2^44 seconds
-    // (sometimes used for bounding `TimeDelta` against overflow)
-    let maxsecs = NaiveDate::MAX.signed_duration_since(NaiveDate::MIN).num_seconds();
-    let maxsecs = maxsecs + 86401; // also take care of DateTime
-    assert!(
-        maxsecs < (1 << MAX_BITS),
-        "The entire `NaiveDate` range somehow exceeds 2^{MAX_BITS} seconds"
-    );
-
-    const BEFORE_MIN: NaiveDate = NaiveDate::BEFORE_MIN;
-    assert_eq!(BEFORE_MIN.year_flags(), YearFlags::from_year(BEFORE_MIN.year()));
-    assert_eq!((BEFORE_MIN.month(), BEFORE_MIN.day()), (12, 31));
-
-    const AFTER_MAX: NaiveDate = NaiveDate::AFTER_MAX;
-    assert_eq!(AFTER_MAX.year_flags(), YearFlags::from_year(AFTER_MAX.year()));
-    assert_eq!((AFTER_MAX.month(), AFTER_MAX.day()), (1, 1));
-}
-
-#[test]
-fn test_readme_doomsday() {
-    for y in NaiveDate::MIN.year()..=NaiveDate::MAX.year() {
-        // even months
-        let d4 = NaiveDate::from_ymd_opt(y, 4, 4).unwrap();
-        let d6 = NaiveDate::from_ymd_opt(y, 6, 6).unwrap();
-        let d8 = NaiveDate::from_ymd_opt(y, 8, 8).unwrap();
-        let d10 = NaiveDate::from_ymd_opt(y, 10, 10).unwrap();
-        let d12 = NaiveDate::from_ymd_opt(y, 12, 12).unwrap();
-
-        // nine to five, seven-eleven
-        let d59 = NaiveDate::from_ymd_opt(y, 5, 9).unwrap();
-        let d95 = NaiveDate::from_ymd_opt(y, 9, 5).unwrap();
-        let d711 = NaiveDate::from_ymd_opt(y, 7, 11).unwrap();
-        let d117 = NaiveDate::from_ymd_opt(y, 11, 7).unwrap();
-
-        // "March 0"
-        let d30 = NaiveDate::from_ymd_opt(y, 3, 1).unwrap().pred_opt().unwrap();
-
-        let weekday = d30.weekday();
-        let other_dates = [d4, d6, d8, d10, d12, d59, d95, d711, d117];
-        assert!(other_dates.iter().all(|d| d.weekday() == weekday));
-    }
-}
-
 #[test]
 fn test_date_from_ymd() {
     let from_ymd = NaiveDate::from_ymd_opt;
@@ -185,43 +124,6 @@ fn test_date_from_isoywd_and_iso_week() {
 }
 
 #[test]
-fn test_date_from_num_days_from_ce() {
-    let from_ndays_from_ce = NaiveDate::from_num_days_from_ce_opt;
-    assert_eq!(from_ndays_from_ce(1), Some(NaiveDate::from_ymd_opt(1, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(2), Some(NaiveDate::from_ymd_opt(1, 1, 2).unwrap()));
-    assert_eq!(from_ndays_from_ce(31), Some(NaiveDate::from_ymd_opt(1, 1, 31).unwrap()));
-    assert_eq!(from_ndays_from_ce(32), Some(NaiveDate::from_ymd_opt(1, 2, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(59), Some(NaiveDate::from_ymd_opt(1, 2, 28).unwrap()));
-    assert_eq!(from_ndays_from_ce(60), Some(NaiveDate::from_ymd_opt(1, 3, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(365), Some(NaiveDate::from_ymd_opt(1, 12, 31).unwrap()));
-    assert_eq!(from_ndays_from_ce(365 + 1), Some(NaiveDate::from_ymd_opt(2, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(365 * 2 + 1), Some(NaiveDate::from_ymd_opt(3, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(365 * 3 + 1), Some(NaiveDate::from_ymd_opt(4, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(365 * 4 + 2), Some(NaiveDate::from_ymd_opt(5, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(146097 + 1), Some(NaiveDate::from_ymd_opt(401, 1, 1).unwrap()));
-    assert_eq!(
-        from_ndays_from_ce(146097 * 5 + 1),
-        Some(NaiveDate::from_ymd_opt(2001, 1, 1).unwrap())
-    );
-    assert_eq!(from_ndays_from_ce(719163), Some(NaiveDate::from_ymd_opt(1970, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(0), Some(NaiveDate::from_ymd_opt(0, 12, 31).unwrap())); // 1 BCE
-    assert_eq!(from_ndays_from_ce(-365), Some(NaiveDate::from_ymd_opt(0, 1, 1).unwrap()));
-    assert_eq!(from_ndays_from_ce(-366), Some(NaiveDate::from_ymd_opt(-1, 12, 31).unwrap())); // 2 BCE
-
-    for days in (-9999..10001).map(|x| x * 100) {
-        assert_eq!(from_ndays_from_ce(days).map(|d| d.num_days_from_ce()), Some(days));
-    }
-
-    assert_eq!(from_ndays_from_ce(NaiveDate::MIN.num_days_from_ce()), Some(NaiveDate::MIN));
-    assert_eq!(from_ndays_from_ce(NaiveDate::MIN.num_days_from_ce() - 1), None);
-    assert_eq!(from_ndays_from_ce(NaiveDate::MAX.num_days_from_ce()), Some(NaiveDate::MAX));
-    assert_eq!(from_ndays_from_ce(NaiveDate::MAX.num_days_from_ce() + 1), None);
-
-    assert_eq!(from_ndays_from_ce(i32::MIN), None);
-    assert_eq!(from_ndays_from_ce(i32::MAX), None);
-}
-
-#[test]
 fn test_date_fields() {
     fn check(year: i32, month: u32, day: u32, ordinal: u32) {
         let d1 = NaiveDate::from_ymd_opt(year, month, day).unwrap();
@@ -296,26 +198,6 @@ fn test_date_num_days_from_ce() {
 }
 
 #[test]
-fn test_date_succ() {
-    let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
-    assert_eq!(ymd(2014, 5, 6).succ_opt(), Some(ymd(2014, 5, 7)));
-    assert_eq!(ymd(2014, 5, 31).succ_opt(), Some(ymd(2014, 6, 1)));
-    assert_eq!(ymd(2014, 12, 31).succ_opt(), Some(ymd(2015, 1, 1)));
-    assert_eq!(ymd(2016, 2, 28).succ_opt(), Some(ymd(2016, 2, 29)));
-    assert_eq!(ymd(NaiveDate::MAX.year(), 12, 31).succ_opt(), None);
-}
-
-#[test]
-fn test_date_pred() {
-    let ymd = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
-    assert_eq!(ymd(2016, 3, 1).pred_opt(), Some(ymd(2016, 2, 29)));
-    assert_eq!(ymd(2015, 1, 1).pred_opt(), Some(ymd(2014, 12, 31)));
-    assert_eq!(ymd(2014, 6, 1).pred_opt(), Some(ymd(2014, 5, 31)));
-    assert_eq!(ymd(2014, 5, 7).pred_opt(), Some(ymd(2014, 5, 6)));
-    assert_eq!(ymd(NaiveDate::MIN.year(), 1, 1).pred_opt(), None);
-}
-
-#[test]
 fn test_date_signed_duration_since() {
     fn check(lhs: Option<NaiveDate>, rhs: Option<NaiveDate>, delta: TimeDelta) {
         assert_eq!(lhs.unwrap().signed_duration_since(rhs.unwrap()), delta);
@@ -339,49 +221,6 @@ fn test_date_signed_duration_since() {
         ymd(MIN_YEAR, 1, 1),
         ymd(0, 1, 1),
         TimeDelta::try_days(MIN_DAYS_FROM_YEAR_0 as i64).unwrap(),
-    );
-}
-
-#[test]
-fn test_date_add_days() {
-    fn check(lhs: Option<NaiveDate>, days: Days, rhs: Option<NaiveDate>) {
-        assert_eq!(lhs.unwrap().checked_add_days(days), rhs);
-    }
-    let ymd = NaiveDate::from_ymd_opt;
-
-    check(ymd(2014, 1, 1), Days::new(0), ymd(2014, 1, 1));
-    // always round towards zero
-    check(ymd(2014, 1, 1), Days::new(1), ymd(2014, 1, 2));
-    check(ymd(2014, 1, 1), Days::new(364), ymd(2014, 12, 31));
-    check(ymd(2014, 1, 1), Days::new(365 * 4 + 1), ymd(2018, 1, 1));
-    check(ymd(2014, 1, 1), Days::new(365 * 400 + 97), ymd(2414, 1, 1));
-
-    check(ymd(-7, 1, 1), Days::new(365 * 12 + 3), ymd(5, 1, 1));
-
-    // overflow check
-    check(ymd(0, 1, 1), Days::new(MAX_DAYS_FROM_YEAR_0.try_into().unwrap()), ymd(MAX_YEAR, 12, 31));
-    check(ymd(0, 1, 1), Days::new(u64::try_from(MAX_DAYS_FROM_YEAR_0).unwrap() + 1), None);
-}
-
-#[test]
-fn test_date_sub_days() {
-    fn check(lhs: Option<NaiveDate>, days: Days, rhs: Option<NaiveDate>) {
-        assert_eq!(lhs.unwrap().checked_sub_days(days), rhs);
-    }
-    let ymd = NaiveDate::from_ymd_opt;
-
-    check(ymd(2014, 1, 1), Days::new(0), ymd(2014, 1, 1));
-    check(ymd(2014, 1, 2), Days::new(1), ymd(2014, 1, 1));
-    check(ymd(2014, 12, 31), Days::new(364), ymd(2014, 1, 1));
-    check(ymd(2015, 1, 3), Days::new(365 + 2), ymd(2014, 1, 1));
-    check(ymd(2018, 1, 1), Days::new(365 * 4 + 1), ymd(2014, 1, 1));
-    check(ymd(2414, 1, 1), Days::new(365 * 400 + 97), ymd(2014, 1, 1));
-
-    check(ymd(MAX_YEAR, 12, 31), Days::new(MAX_DAYS_FROM_YEAR_0.try_into().unwrap()), ymd(0, 1, 1));
-    check(
-        ymd(0, 1, 1),
-        Days::new((-MIN_DAYS_FROM_YEAR_0).try_into().unwrap()),
-        ymd(MIN_YEAR, 1, 1),
     );
 }
 
@@ -516,70 +355,6 @@ fn test_date_parse_from_str() {
         NaiveDate::parse_from_str("2019-01-0", "%Y-%W-%w").ok(),
         NaiveDate::from_ymd_opt(2019, 1, 13),
     );
-}
-
-#[test]
-fn test_weeks_from() {
-    // tests per: https://github.com/chronotope/chrono/issues/961
-    // these internally use `weeks_from` via the parsing infrastructure
-    assert_eq!(
-        NaiveDate::parse_from_str("2020-01-0", "%Y-%W-%w").ok(),
-        NaiveDate::from_ymd_opt(2020, 1, 12),
-    );
-    assert_eq!(
-        NaiveDate::parse_from_str("2019-01-0", "%Y-%W-%w").ok(),
-        NaiveDate::from_ymd_opt(2019, 1, 13),
-    );
-
-    // direct tests
-    for (y, starts_on) in &[
-        (2019, Weekday::Tue),
-        (2020, Weekday::Wed),
-        (2021, Weekday::Fri),
-        (2022, Weekday::Sat),
-        (2023, Weekday::Sun),
-        (2024, Weekday::Mon),
-        (2025, Weekday::Wed),
-        (2026, Weekday::Thu),
-    ] {
-        for day in &[
-            Weekday::Mon,
-            Weekday::Tue,
-            Weekday::Wed,
-            Weekday::Thu,
-            Weekday::Fri,
-            Weekday::Sat,
-            Weekday::Sun,
-        ] {
-            assert_eq!(
-                NaiveDate::from_ymd_opt(*y, 1, 1).map(|d| d.weeks_from(*day)),
-                Some(if day == starts_on { 1 } else { 0 })
-            );
-
-            // last day must always be in week 52 or 53
-            assert!(
-                [52, 53].contains(&NaiveDate::from_ymd_opt(*y, 12, 31).unwrap().weeks_from(*day)),
-            );
-        }
-    }
-
-    let base = NaiveDate::from_ymd_opt(2019, 1, 1).unwrap();
-
-    // 400 years covers all year types
-    for day in &[
-        Weekday::Mon,
-        Weekday::Tue,
-        Weekday::Wed,
-        Weekday::Thu,
-        Weekday::Fri,
-        Weekday::Sat,
-        Weekday::Sun,
-    ] {
-        // must always be below 54
-        for dplus in 1..(400 * 366) {
-            assert!((base + Days::new(dplus)).weeks_from(*day) < 54)
-        }
-    }
 }
 
 #[test]

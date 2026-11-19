@@ -146,54 +146,6 @@ impl TimeDelta {
         TimeDelta::new(secs, nanos as u32)
     }
 
-    /// Subtract two `TimeDelta`s, returning `None` if overflow occurred.
-    #[must_use]
-    pub const fn checked_sub(&self, rhs: &TimeDelta) -> Option<TimeDelta> {
-        // No overflow checks here because we stay comfortably within the range of an `i64`.
-        // Range checks happen in `TimeDelta::new`.
-        let mut secs = self.secs - rhs.secs;
-        let mut nanos = self.nanos - rhs.nanos;
-        if nanos < 0 {
-            nanos += NANOS_PER_SEC;
-            secs -= 1;
-        }
-        TimeDelta::new(secs, nanos as u32)
-    }
-
-    /// Multiply a `TimeDelta` with a i32, returning `None` if overflow occurred.
-    #[must_use]
-    pub const fn checked_mul(&self, rhs: i32) -> Option<TimeDelta> {
-        // Multiply nanoseconds as i64, because it cannot overflow that way.
-        let total_nanos = self.nanos as i64 * rhs as i64;
-        let (extra_secs, nanos) = div_mod_floor_64(total_nanos, NANOS_PER_SEC as i64);
-        // Multiply seconds as i128 to prevent overflow
-        let secs: i128 = self.secs as i128 * rhs as i128 + extra_secs as i128;
-        if secs <= i64::MIN as i128 || secs >= i64::MAX as i128 {
-            return None;
-        };
-        Some(TimeDelta { secs: secs as i64, nanos: nanos as i32 })
-    }
-
-    /// Divide a `TimeDelta` with a i32, returning `None` if dividing by 0.
-    #[must_use]
-    pub const fn checked_div(&self, rhs: i32) -> Option<TimeDelta> {
-        if rhs == 0 {
-            return None;
-        }
-        let secs = self.secs / rhs as i64;
-        let carry = self.secs % rhs as i64;
-        let extra_nanos = carry * NANOS_PER_SEC as i64 / rhs as i64;
-        let nanos = self.nanos / rhs + extra_nanos as i32;
-
-        let (secs, nanos) = match nanos {
-            i32::MIN..=-1 => (secs - 1, nanos + NANOS_PER_SEC),
-            NANOS_PER_SEC..=i32::MAX => (secs + 1, nanos - NANOS_PER_SEC),
-            _ => (secs, nanos),
-        };
-
-        Some(TimeDelta { secs, nanos })
-    }
-
     /// A `TimeDelta` where the stored seconds and nanoseconds are equal to zero.
     #[inline]
     pub const fn zero() -> TimeDelta {
@@ -248,49 +200,6 @@ impl Add for TimeDelta {
     }
 }
 
-impl Sub for TimeDelta {
-    type Output = TimeDelta;
-
-    #[track_caller]
-    fn sub(self, rhs: TimeDelta) -> TimeDelta {
-        self.checked_sub(&rhs).expect("`TimeDelta - TimeDelta` overflowed")
-    }
-}
-
-impl AddAssign for TimeDelta {
-    #[track_caller]
-    fn add_assign(&mut self, rhs: TimeDelta) {
-        let new = self.checked_add(&rhs).expect("`TimeDelta + TimeDelta` overflowed");
-        *self = new;
-    }
-}
-
-impl SubAssign for TimeDelta {
-    #[track_caller]
-    fn sub_assign(&mut self, rhs: TimeDelta) {
-        let new = self.checked_sub(&rhs).expect("`TimeDelta - TimeDelta` overflowed");
-        *self = new;
-    }
-}
-
-impl Mul<i32> for TimeDelta {
-    type Output = TimeDelta;
-
-    #[track_caller]
-    fn mul(self, rhs: i32) -> TimeDelta {
-        self.checked_mul(rhs).expect("`TimeDelta * i32` overflowed")
-    }
-}
-
-impl Div<i32> for TimeDelta {
-    type Output = TimeDelta;
-
-    #[track_caller]
-    fn div(self, rhs: i32) -> TimeDelta {
-        self.checked_div(rhs).expect("`i32` is zero")
-    }
-}
-
 impl<'a> core::iter::Sum<&'a TimeDelta> for TimeDelta {
     fn sum<I: Iterator<Item = &'a TimeDelta>>(iter: I) -> TimeDelta {
         iter.fold(TimeDelta::zero(), |acc, x| acc + *x)
@@ -303,43 +212,6 @@ impl core::iter::Sum<TimeDelta> for TimeDelta {
     }
 }
 
-impl fmt::Display for TimeDelta {
-    /// Format a `TimeDelta` using the [ISO 8601] format
-    ///
-    /// [ISO 8601]: https://en.wikipedia.org/wiki/ISO_8601#Durations
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // technically speaking, negative duration is not valid ISO 8601,
-        // but we need to print it anyway.
-        let (abs, sign) = if self.secs < 0 { (-*self, "-") } else { (*self, "") };
-
-        write!(f, "{sign}P")?;
-        // Plenty of ways to encode an empty string. `P0D` is short and not too strange.
-        if abs.secs == 0 && abs.nanos == 0 {
-            return f.write_str("0D");
-        }
-
-        f.write_fmt(format_args!("T{}", abs.secs))?;
-
-        if abs.nanos > 0 {
-            // Count the number of significant digits, while removing all trailing zero's.
-            let mut figures = 9usize;
-            let mut fraction_digits = abs.nanos;
-            loop {
-                let div = fraction_digits / 10;
-                let last_digit = fraction_digits % 10;
-                if last_digit != 0 {
-                    break;
-                }
-                fraction_digits = div;
-                figures -= 1;
-            }
-            f.write_fmt(format_args!(".{fraction_digits:0figures$}"))?;
-        }
-        f.write_str("S")?;
-        Ok(())
-    }
-}
-
 /// Represents error when converting `TimeDelta` to/from a standard library
 /// implementation
 ///
@@ -348,17 +220,6 @@ impl fmt::Display for TimeDelta {
 /// `i64::MAX` of *milliseconds*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OutOfRangeError(());
-
-impl fmt::Display for OutOfRangeError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Source duration value is out of range for the target type")
-    }
-}
-
-#[inline]
-const fn div_mod_floor_64(this: i64, other: i64) -> (i64, i64) {
-    (this.div_euclid(other), this.rem_euclid(other))
-}
 
 #[cfg(test)]
 mod tests {

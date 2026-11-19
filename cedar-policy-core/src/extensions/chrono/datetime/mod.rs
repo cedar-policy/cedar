@@ -20,7 +20,7 @@ use core::{fmt, hash, str};
 use crate::extensions::chrono::format::{ParseError, ParseResult, Parsed, StrftimeItems, parse};
 use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDate, NaiveDateTime, NaiveTime};
 use crate::extensions::chrono::offset::{FixedOffset, Offset, TimeZone, Utc};
-use crate::extensions::chrono::{Datelike, Months, TimeDelta, Timelike, Weekday};
+use crate::extensions::chrono::{Datelike, TimeDelta, Timelike, Weekday};
 use crate::extensions::chrono::{expect, try_opt};
 
 #[cfg(test)]
@@ -176,110 +176,6 @@ impl<Tz: TimeZone> DateTime<Tz> {
         Some(tz.from_utc_datetime(&datetime))
     }
 
-    /// Adds given `Months` to the current date and time.
-    ///
-    /// Uses the last day of the month if the day does not exist in the resulting month.
-    ///
-    /// See [`NaiveDate::checked_add_months`] for more details on behavior.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if:
-    /// - The local time at the resulting date does not exist or is ambiguous, for example during a
-    ///   daylight saving time transition.
-    /// - The resulting UTC datetime would be out of range.
-    /// - The resulting local datetime would be out of range (unless `months` is zero).
-    #[must_use]
-    pub fn checked_add_months(self, months: Months) -> Option<DateTime<Tz>> {
-        // `NaiveDate::checked_add_months` has a fast path for `Months(0)` that does not validate
-        // the resulting date, with which we can return `Some` even for an out of range local
-        // datetime.
-        self.overflowing_naive_local()
-            .checked_add_months(months)?
-            .and_local_timezone(Tz::from_offset(&self.offset))
-            .single()
-    }
-
-    /// Subtracts given `TimeDelta` from the current date and time.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if the resulting date would be out of range.
-    #[inline]
-    #[must_use]
-    pub fn checked_sub_signed(self, rhs: TimeDelta) -> Option<DateTime<Tz>> {
-        let datetime = self.datetime.checked_sub_signed(rhs)?;
-        let tz = self.timezone();
-        Some(tz.from_utc_datetime(&datetime))
-    }
-
-    /// Subtracts given `Months` from the current date and time.
-    ///
-    /// Uses the last day of the month if the day does not exist in the resulting month.
-    ///
-    /// See [`NaiveDate::checked_sub_months`] for more details on behavior.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if:
-    /// - The local time at the resulting date does not exist or is ambiguous, for example during a
-    ///   daylight saving time transition.
-    /// - The resulting UTC datetime would be out of range.
-    /// - The resulting local datetime would be out of range (unless `months` is zero).
-    #[must_use]
-    pub fn checked_sub_months(self, months: Months) -> Option<DateTime<Tz>> {
-        // `NaiveDate::checked_sub_months` has a fast path for `Months(0)` that does not validate
-        // the resulting date, with which we can return `Some` even for an out of range local
-        // datetime.
-        self.overflowing_naive_local()
-            .checked_sub_months(months)?
-            .and_local_timezone(Tz::from_offset(&self.offset))
-            .single()
-    }
-
-    /// Add a duration in [`Days`] to the date part of the `DateTime`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if:
-    /// - The local time at the resulting date does not exist or is ambiguous, for example during a
-    ///   daylight saving time transition.
-    /// - The resulting UTC datetime would be out of range.
-    /// - The resulting local datetime would be out of range (unless `days` is zero).
-    #[must_use]
-    pub fn checked_add_days(self, days: Days) -> Option<Self> {
-        if days == Days::new(0) {
-            return Some(self);
-        }
-        // `NaiveDate::add_days` has a fast path if the result remains within the same year, that
-        // does not validate the resulting date. This allows us to return `Some` even for an out of
-        // range local datetime when adding `Days(0)`.
-        self.overflowing_naive_local()
-            .checked_add_days(days)
-            .and_then(|dt| self.timezone().from_local_datetime(&dt).single())
-            .filter(|dt| dt <= &DateTime::<Utc>::MAX_UTC)
-    }
-
-    /// Subtract a duration in [`Days`] from the date part of the `DateTime`.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if:
-    /// - The local time at the resulting date does not exist or is ambiguous, for example during a
-    ///   daylight saving time transition.
-    /// - The resulting UTC datetime would be out of range.
-    /// - The resulting local datetime would be out of range (unless `days` is zero).
-    #[must_use]
-    pub fn checked_sub_days(self, days: Days) -> Option<Self> {
-        // `NaiveDate::add_days` has a fast path if the result remains within the same year, that
-        // does not validate the resulting date. This allows us to return `Some` even for an out of
-        // range local datetime when adding `Days(0)`.
-        self.overflowing_naive_local()
-            .checked_sub_days(days)
-            .and_then(|dt| self.timezone().from_local_datetime(&dt).single())
-            .filter(|dt| dt >= &DateTime::<Utc>::MIN_UTC)
-    }
-
     /// Subtracts another `DateTime` from the current date and time.
     /// This does not overflow or underflow at all.
     #[inline]
@@ -323,11 +219,6 @@ impl<Tz: TimeZone> DateTime<Tz> {
     pub(crate) fn overflowing_naive_local(&self) -> NaiveDateTime {
         self.datetime.overflowing_add_offset(self.offset.fix())
     }
-
-    /// The minimum possible `DateTime<Utc>`.
-    pub const MIN_UTC: DateTime<Utc> = DateTime { datetime: NaiveDateTime::MIN, offset: Utc };
-    /// The maximum possible `DateTime<Utc>`.
-    pub const MAX_UTC: DateTime<Utc> = DateTime { datetime: NaiveDateTime::MAX, offset: Utc };
 }
 
 impl DateTime<Utc> {
@@ -433,50 +324,6 @@ impl DateTime<Utc> {
         expect(NaiveDate::from_ymd_opt(1970, 1, 1), "").and_time(NaiveTime::MIN).and_utc();
 }
 
-impl Default for DateTime<Utc> {
-    fn default() -> Self {
-        Utc.from_utc_datetime(&NaiveDateTime::default())
-    }
-}
-
-impl Default for DateTime<FixedOffset> {
-    fn default() -> Self {
-        FixedOffset::west_opt(0).unwrap().from_utc_datetime(&NaiveDateTime::default())
-    }
-}
-
-/// Convert a `DateTime<Utc>` instance into a `DateTime<FixedOffset>` instance.
-impl From<DateTime<Utc>> for DateTime<FixedOffset> {
-    /// Convert this `DateTime<Utc>` instance into a `DateTime<FixedOffset>` instance.
-    ///
-    /// Conversion is done via [`DateTime::with_timezone`]. Note that the converted value returned by
-    /// this will be created with a fixed timezone offset of 0.
-    fn from(src: DateTime<Utc>) -> Self {
-        src.with_timezone(&FixedOffset::east_opt(0).unwrap())
-    }
-}
-
-/// Convert a `DateTime<FixedOffset>` instance into a `DateTime<Utc>` instance.
-impl From<DateTime<FixedOffset>> for DateTime<Utc> {
-    /// Convert this `DateTime<FixedOffset>` instance into a `DateTime<Utc>` instance.
-    ///
-    /// Conversion is performed via [`DateTime::with_timezone`], accounting for the timezone
-    /// difference.
-    fn from(src: DateTime<FixedOffset>) -> Self {
-        src.with_timezone(&Utc)
-    }
-}
-
-/// Maps the local datetime to other datetime with given conversion function.
-fn map_local<Tz: TimeZone, F>(dt: &DateTime<Tz>, mut f: F) -> Option<DateTime<Tz>>
-where
-    F: FnMut(NaiveDateTime) -> Option<NaiveDateTime>,
-{
-    f(dt.overflowing_naive_local())
-        .and_then(|datetime| dt.timezone().from_local_datetime(&datetime).single())
-        .filter(|dt| dt >= &DateTime::<Utc>::MIN_UTC && dt <= &DateTime::<Utc>::MAX_UTC)
-}
-
 impl DateTime<FixedOffset> {
     /// Parses a string from a user-specified format into a `DateTime<FixedOffset>` value.
     ///
@@ -511,68 +358,6 @@ impl DateTime<FixedOffset> {
         let mut parsed = Parsed::new();
         parse(&mut parsed, s, StrftimeItems::new(fmt))?;
         parsed.to_datetime()
-    }
-}
-
-impl<Tz: TimeZone> Datelike for DateTime<Tz> {
-    #[inline]
-    fn year(&self) -> i32 {
-        self.overflowing_naive_local().year()
-    }
-    #[inline]
-    fn month(&self) -> u32 {
-        self.overflowing_naive_local().month()
-    }
-    #[inline]
-    fn day(&self) -> u32 {
-        self.overflowing_naive_local().day()
-    }
-    #[inline]
-    fn ordinal(&self) -> u32 {
-        self.overflowing_naive_local().ordinal()
-    }
-    #[inline]
-    fn weekday(&self) -> Weekday {
-        self.overflowing_naive_local().weekday()
-    }
-    #[inline]
-    fn iso_week(&self) -> IsoWeek {
-        self.overflowing_naive_local().iso_week()
-    }
-
-    /// Makes a new `DateTime` with the day of year (starting from 1) changed.
-    ///
-    /// See also the [`NaiveDate::with_ordinal`] method.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if:
-    /// - The resulting date does not exist (`with_ordinal(366)` in a non-leap year).
-    /// - The value for `ordinal` is invalid.
-    /// - The local time at the resulting date does not exist or is ambiguous, for example during a
-    ///   daylight saving time transition.
-    #[inline]
-    fn with_ordinal(&self, ordinal: u32) -> Option<DateTime<Tz>> {
-        map_local(self, |datetime| datetime.with_ordinal(ordinal))
-    }
-}
-
-impl<Tz: TimeZone> Timelike for DateTime<Tz> {
-    #[inline]
-    fn hour(&self) -> u32 {
-        self.overflowing_naive_local().hour()
-    }
-    #[inline]
-    fn minute(&self) -> u32 {
-        self.overflowing_naive_local().minute()
-    }
-    #[inline]
-    fn second(&self) -> u32 {
-        self.overflowing_naive_local().second()
-    }
-    #[inline]
-    fn nanosecond(&self) -> u32 {
-        self.overflowing_naive_local().nanosecond()
     }
 }
 
@@ -620,18 +405,6 @@ impl<Tz: TimeZone, Tz2: TimeZone> PartialOrd<DateTime<Tz2>> for DateTime<Tz> {
     }
 }
 
-impl<Tz: TimeZone> Ord for DateTime<Tz> {
-    fn cmp(&self, other: &DateTime<Tz>) -> Ordering {
-        self.datetime.cmp(&other.datetime)
-    }
-}
-
-impl<Tz: TimeZone> hash::Hash for DateTime<Tz> {
-    fn hash<H: hash::Hasher>(&self, state: &mut H) {
-        self.datetime.hash(state)
-    }
-}
-
 /// Add `TimeDelta` to `DateTime`.
 ///
 /// As a part of Chrono's [leap second handling], the addition assumes that **there is no leap
@@ -648,28 +421,6 @@ impl<Tz: TimeZone> Add<TimeDelta> for DateTime<Tz> {
     #[inline]
     #[track_caller]
     fn add(self, rhs: TimeDelta) -> DateTime<Tz> {
-        self.checked_add_signed(rhs).expect("`DateTime + TimeDelta` overflowed")
-    }
-}
-
-/// Add `std::time::Duration` to `DateTime`.
-///
-/// As a part of Chrono's [leap second handling], the addition assumes that **there is no leap
-/// second ever**, except when the `NaiveDateTime` itself represents a leap second in which case
-/// the assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using [`DateTime<Tz>::checked_add_signed`] to get an `Option` instead.
-impl<Tz: TimeZone> Add<Duration> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    #[track_caller]
-    fn add(self, rhs: Duration) -> DateTime<Tz> {
-        let rhs = TimeDelta::from_std(rhs)
-            .expect("overflow converting from core::time::Duration to TimeDelta");
         self.checked_add_signed(rhs).expect("`DateTime + TimeDelta` overflowed")
     }
 }
@@ -692,109 +443,6 @@ impl<Tz: TimeZone> AddAssign<TimeDelta> for DateTime<Tz> {
             self.datetime.checked_add_signed(rhs).expect("`DateTime + TimeDelta` overflowed");
         let tz = self.timezone();
         *self = tz.from_utc_datetime(&datetime);
-    }
-}
-
-/// Add-assign `std::time::Duration` to `DateTime`.
-///
-/// As a part of Chrono's [leap second handling], the addition assumes that **there is no leap
-/// second ever**, except when the `NaiveDateTime` itself represents a leap second in which case
-/// the assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using [`DateTime<Tz>::checked_add_signed`] to get an `Option` instead.
-impl<Tz: TimeZone> AddAssign<Duration> for DateTime<Tz> {
-    #[inline]
-    #[track_caller]
-    fn add_assign(&mut self, rhs: Duration) {
-        let rhs = TimeDelta::from_std(rhs)
-            .expect("overflow converting from core::time::Duration to TimeDelta");
-        *self += rhs;
-    }
-}
-
-/// Add `FixedOffset` to the datetime value of `DateTime` (offset remains unchanged).
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-impl<Tz: TimeZone> Add<FixedOffset> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    #[track_caller]
-    fn add(mut self, rhs: FixedOffset) -> DateTime<Tz> {
-        self.datetime =
-            self.naive_utc().checked_add_offset(rhs).expect("`DateTime + FixedOffset` overflowed");
-        self
-    }
-}
-
-/// Add `Months` to `DateTime`.
-///
-/// The result will be clamped to valid days in the resulting month, see `checked_add_months` for
-/// details.
-///
-/// # Panics
-///
-/// Panics if:
-/// - The resulting date would be out of range.
-/// - The local time at the resulting date does not exist or is ambiguous, for example during a
-///   daylight saving time transition.
-///
-/// Strongly consider using [`DateTime<Tz>::checked_add_months`] to get an `Option` instead.
-impl<Tz: TimeZone> Add<Months> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[track_caller]
-    fn add(self, rhs: Months) -> Self::Output {
-        self.checked_add_months(rhs).expect("`DateTime + Months` out of range")
-    }
-}
-
-/// Subtract `TimeDelta` from `DateTime`.
-///
-/// This is the same as the addition with a negated `TimeDelta`.
-///
-/// As a part of Chrono's [leap second handling] the subtraction assumes that **there is no leap
-/// second ever**, except when the `DateTime` itself represents a leap second in which case
-/// the assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using [`DateTime<Tz>::checked_sub_signed`] to get an `Option` instead.
-impl<Tz: TimeZone> Sub<TimeDelta> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    #[track_caller]
-    fn sub(self, rhs: TimeDelta) -> DateTime<Tz> {
-        self.checked_sub_signed(rhs).expect("`DateTime - TimeDelta` overflowed")
-    }
-}
-
-/// Subtract `std::time::Duration` from `DateTime`.
-///
-/// As a part of Chrono's [leap second handling] the subtraction assumes that **there is no leap
-/// second ever**, except when the `DateTime` itself represents a leap second in which case
-/// the assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using [`DateTime<Tz>::checked_sub_signed`] to get an `Option` instead.
-impl<Tz: TimeZone> Sub<Duration> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    #[track_caller]
-    fn sub(self, rhs: Duration) -> DateTime<Tz> {
-        let rhs = TimeDelta::from_std(rhs)
-            .expect("overflow converting from core::time::Duration to TimeDelta");
-        self.checked_sub_signed(rhs).expect("`DateTime - TimeDelta` overflowed")
     }
 }
 
@@ -821,118 +469,12 @@ impl<Tz: TimeZone> SubAssign<TimeDelta> for DateTime<Tz> {
     }
 }
 
-/// Subtract-assign `std::time::Duration` from `DateTime`.
-///
-/// As a part of Chrono's [leap second handling], the addition assumes that **there is no leap
-/// second ever**, except when the `DateTime` itself represents a leap second in which case
-/// the assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-/// Consider using [`DateTime<Tz>::checked_sub_signed`] to get an `Option` instead.
-impl<Tz: TimeZone> SubAssign<Duration> for DateTime<Tz> {
-    #[inline]
-    #[track_caller]
-    fn sub_assign(&mut self, rhs: Duration) {
-        let rhs = TimeDelta::from_std(rhs)
-            .expect("overflow converting from core::time::Duration to TimeDelta");
-        *self -= rhs;
-    }
-}
-
-/// Subtract `FixedOffset` from the datetime value of `DateTime` (offset remains unchanged).
-///
-/// # Panics
-///
-/// Panics if the resulting date would be out of range.
-impl<Tz: TimeZone> Sub<FixedOffset> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[inline]
-    #[track_caller]
-    fn sub(mut self, rhs: FixedOffset) -> DateTime<Tz> {
-        self.datetime =
-            self.naive_utc().checked_sub_offset(rhs).expect("`DateTime - FixedOffset` overflowed");
-        self
-    }
-}
-
-/// Subtract `Months` from `DateTime`.
-///
-/// The result will be clamped to valid days in the resulting month, see
-/// [`DateTime<Tz>::checked_sub_months`] for details.
-///
-/// # Panics
-///
-/// Panics if:
-/// - The resulting date would be out of range.
-/// - The local time at the resulting date does not exist or is ambiguous, for example during a
-///   daylight saving time transition.
-///
-/// Strongly consider using [`DateTime<Tz>::checked_sub_months`] to get an `Option` instead.
-impl<Tz: TimeZone> Sub<Months> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[track_caller]
-    fn sub(self, rhs: Months) -> Self::Output {
-        self.checked_sub_months(rhs).expect("`DateTime - Months` out of range")
-    }
-}
-
 impl<Tz: TimeZone> Sub<DateTime<Tz>> for DateTime<Tz> {
     type Output = TimeDelta;
 
     #[inline]
     fn sub(self, rhs: DateTime<Tz>) -> TimeDelta {
         self.signed_duration_since(rhs)
-    }
-}
-
-impl<Tz: TimeZone> Sub<&DateTime<Tz>> for DateTime<Tz> {
-    type Output = TimeDelta;
-
-    #[inline]
-    fn sub(self, rhs: &DateTime<Tz>) -> TimeDelta {
-        self.signed_duration_since(rhs)
-    }
-}
-
-/// Add `Days` to `NaiveDateTime`.
-///
-/// # Panics
-///
-/// Panics if:
-/// - The resulting date would be out of range.
-/// - The local time at the resulting date does not exist or is ambiguous, for example during a
-///   daylight saving time transition.
-///
-/// Strongly consider using `DateTime<Tz>::checked_add_days` to get an `Option` instead.
-impl<Tz: TimeZone> Add<Days> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[track_caller]
-    fn add(self, days: Days) -> Self::Output {
-        self.checked_add_days(days).expect("`DateTime + Days` out of range")
-    }
-}
-
-/// Subtract `Days` from `DateTime`.
-///
-/// # Panics
-///
-/// Panics if:
-/// - The resulting date would be out of range.
-/// - The local time at the resulting date does not exist or is ambiguous, for example during a
-///   daylight saving time transition.
-///
-/// Strongly consider using `DateTime<Tz>::checked_sub_days` to get an `Option` instead.
-impl<Tz: TimeZone> Sub<Days> for DateTime<Tz> {
-    type Output = DateTime<Tz>;
-
-    #[track_caller]
-    fn sub(self, days: Days) -> Self::Output {
-        self.checked_sub_days(days).expect("`DateTime - Days` out of range")
     }
 }
 
@@ -952,17 +494,6 @@ impl<Tz: TimeZone> fmt::Debug for DateTime<Tz> {
 // * https://github.com/rust-lang/rust/issues/26925
 // * https://github.com/rkyv/rkyv/issues/333
 // * https://github.com/dtolnay/syn/issues/370
-
-impl<Tz: TimeZone> fmt::Display for DateTime<Tz>
-where
-    Tz::Offset: fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.overflowing_naive_local().fmt(f)?;
-        f.write_char(' ')?;
-        self.offset.fmt(f)
-    }
-}
 
 /// Accepts a relaxed form of RFC3339.
 /// A space or a 'T' are accepted as the separator between the date and time

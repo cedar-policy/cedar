@@ -54,31 +54,6 @@ impl FixedOffset {
         }
     }
 
-    /// Makes a new `FixedOffset` for the Western Hemisphere with given timezone difference.
-    /// The negative `secs` means the Eastern Hemisphere.
-    ///
-    /// Returns `None` on the out-of-bound `secs`.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # #[cfg(feature = "alloc")] {
-    /// use chrono::{FixedOffset, TimeZone};
-    /// let hour = 3600;
-    /// let datetime =
-    ///     FixedOffset::west_opt(5 * hour).unwrap().with_ymd_and_hms(2016, 11, 08, 0, 0, 0).unwrap();
-    /// assert_eq!(&datetime.to_rfc3339(), "2016-11-08T00:00:00-05:00")
-    /// # }
-    /// ```
-    #[must_use]
-    pub const fn west_opt(secs: i32) -> Option<FixedOffset> {
-        if -86_400 < secs && secs < 86_400 {
-            Some(FixedOffset { local_minus_utc: -secs })
-        } else {
-            None
-        }
-    }
-
     /// Returns the number of seconds to add to convert from UTC to the local time.
     #[inline]
     pub const fn local_minus_utc(&self) -> i32 {
@@ -130,12 +105,6 @@ impl fmt::Debug for FixedOffset {
         } else {
             write!(f, "{sign}{hour:02}:{min:02}:{sec:02}")
         }
-    }
-}
-
-impl fmt::Display for FixedOffset {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, f)
     }
 }
 
