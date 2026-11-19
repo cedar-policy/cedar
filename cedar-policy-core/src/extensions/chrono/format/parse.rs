@@ -6,7 +6,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! Date and time parsing routines.
 
@@ -359,23 +359,7 @@ where
                 s = &s[prefix.len()..];
             }
 
-            #[cfg(feature = "alloc")]
-            Item::OwnedLiteral(ref prefix) => {
-                if s.len() < prefix.len() {
-                    return Err(TOO_SHORT);
-                }
-                if !s.starts_with(&prefix[..]) {
-                    return Err(INVALID);
-                }
-                s = &s[prefix.len()..];
-            }
-
             Item::Space(_) => {
-                s = s.trim_start();
-            }
-
-            #[cfg(feature = "alloc")]
-            Item::OwnedSpace(_) => {
                 s = s.trim_start();
             }
 
@@ -1766,8 +1750,6 @@ mod tests {
 
         // Test against test data above
         for &(date, checkdate) in testdates.iter() {
-            #[cfg(feature = "std")]
-            eprintln!("Test input: {date:?}\n    Expect: {checkdate:?}");
             let dt = rfc2822_to_datetime(date); // parse a date
             if dt != checkdate {
                 // check for expected result
@@ -1784,9 +1766,6 @@ mod tests {
 
         let dt = Utc.with_ymd_and_hms(1994, 11, 6, 8, 49, 37).unwrap();
 
-        // Check that the format is what we expect
-        #[cfg(feature = "alloc")]
-        assert_eq!(dt.format(RFC850_FMT).to_string(), "Sunday, 06-Nov-94 08:49:37 GMT");
 
         // Check that it parses correctly
         assert_eq!(

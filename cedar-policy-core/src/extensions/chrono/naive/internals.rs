@@ -1,9 +1,8 @@
 // This file is `src/naive/internals.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
+// Modified by Cedar Contributors: code behind chrono's Cargo features (not enabled in Cedar) removed.
 //! Internal helper types for working with dates.
-
-#![cfg_attr(feature = "__internal_bench", allow(missing_docs))]
 
 use core::fmt;
 

@@ -5,44 +5,27 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! ISO 8601 date and time with time zone.
 
-#[cfg(all(feature = "alloc", not(feature = "std"), not(test)))]
-use alloc::string::String;
 use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::fmt::Write;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
 use core::{fmt, hash, str};
-#[cfg(feature = "std")]
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[allow(deprecated)]
 use crate::extensions::chrono::Date;
-#[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-use crate::extensions::chrono::format::Locale;
-#[cfg(feature = "alloc")]
-use crate::extensions::chrono::format::{DelayedFormat, SecondsFormat, write_rfc2822, write_rfc3339};
 use crate::extensions::chrono::format::{
     Fixed, Item, ParseError, ParseResult, Parsed, StrftimeItems, parse, parse_and_remainder,
     parse_rfc3339,
 };
 use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDate, NaiveDateTime, NaiveTime};
-#[cfg(feature = "clock")]
-use crate::extensions::chrono::offset::Local;
 use crate::extensions::chrono::offset::{FixedOffset, LocalResult, Offset, TimeZone, Utc};
 use crate::extensions::chrono::{Datelike, Months, TimeDelta, Timelike, Weekday};
 use crate::extensions::chrono::{expect, try_opt};
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
-
-/// documented at re-export site
-#[cfg(feature = "serde")]
-pub(super) mod serde;
 
 #[cfg(test)]
 mod tests;
@@ -53,12 +36,6 @@ mod tests;
 /// the general-purpose constructors are all via the methods on the
 /// [`TimeZone`](./offset/trait.TimeZone.html) implementations.
 #[derive(Clone)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
 pub struct DateTime<Tz: TimeZone> {
     datetime: NaiveDateTime,
     offset: Tz::Offset,
@@ -618,75 +595,6 @@ impl<Tz: TimeZone> DateTime<Tz> {
         }
     }
 
-    /// Returns an RFC 2822 date and time string such as `Tue, 1 Jul 2003 10:52:37 +0200`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the date can not be represented in this format: the year may not be negative and
-    /// can not have more than 4 digits.
-    #[cfg(feature = "alloc")]
-    #[must_use]
-    #[track_caller]
-    pub fn to_rfc2822(&self) -> String {
-        let mut result = String::with_capacity(32);
-        write_rfc2822(&mut result, self.overflowing_naive_local(), self.offset.fix())
-            .expect("date cannot be represented by RFC 2822");
-        result
-    }
-
-    /// Returns an RFC 3339 and ISO 8601 date and time string such as `1996-12-19T16:39:57-08:00`.
-    #[cfg(feature = "alloc")]
-    #[must_use]
-    pub fn to_rfc3339(&self) -> String {
-        // For some reason a string with a capacity less than 32 is ca 20% slower when benchmarking.
-        let mut result = String::with_capacity(32);
-        let naive = self.overflowing_naive_local();
-        let offset = self.offset.fix();
-        write_rfc3339(&mut result, naive, offset, SecondsFormat::AutoSi, false)
-            .expect("writing rfc3339 datetime to string should never fail");
-        result
-    }
-
-    /// Return an RFC 3339 and ISO 8601 date and time string with subseconds
-    /// formatted as per `SecondsFormat`.
-    ///
-    /// If `use_z` is true and the timezone is UTC (offset 0), uses `Z` as
-    /// per [`Fixed::TimezoneOffsetColonZ`]. If `use_z` is false, uses
-    /// [`Fixed::TimezoneOffsetColon`]
-    ///
-    /// # Examples
-    ///
-    /// ```rust,ignore
-    /// # use chrono::{FixedOffset, SecondsFormat, TimeZone, NaiveDate};
-    /// let dt = NaiveDate::from_ymd_opt(2018, 1, 26)
-    ///     .unwrap()
-    ///     .and_hms_micro_opt(18, 30, 9, 453_829)
-    ///     .unwrap()
-    ///     .and_utc();
-    /// assert_eq!(dt.to_rfc3339_opts(SecondsFormat::Millis, false), "2018-01-26T18:30:09.453+00:00");
-    /// assert_eq!(dt.to_rfc3339_opts(SecondsFormat::Millis, true), "2018-01-26T18:30:09.453Z");
-    /// assert_eq!(dt.to_rfc3339_opts(SecondsFormat::Secs, true), "2018-01-26T18:30:09Z");
-    ///
-    /// let pst = FixedOffset::east_opt(8 * 60 * 60).unwrap();
-    /// let dt = pst
-    ///     .from_local_datetime(
-    ///         &NaiveDate::from_ymd_opt(2018, 1, 26)
-    ///             .unwrap()
-    ///             .and_hms_micro_opt(10, 30, 9, 453_829)
-    ///             .unwrap(),
-    ///     )
-    ///     .unwrap();
-    /// assert_eq!(dt.to_rfc3339_opts(SecondsFormat::Secs, true), "2018-01-26T10:30:09+08:00");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[must_use]
-    pub fn to_rfc3339_opts(&self, secform: SecondsFormat, use_z: bool) -> String {
-        let mut result = String::with_capacity(38);
-        write_rfc3339(&mut result, self.naive_local(), self.offset.fix(), secform, use_z)
-            .expect("writing rfc3339 datetime to string should never fail");
-        result
-    }
-
     /// Set the time to a new fixed time on the existing date.
     ///
     /// # Errors
@@ -930,13 +838,6 @@ impl Default for DateTime<Utc> {
     }
 }
 
-#[cfg(feature = "clock")]
-impl Default for DateTime<Local> {
-    fn default() -> Self {
-        Local.from_utc_datetime(&NaiveDateTime::default())
-    }
-}
-
 impl Default for DateTime<FixedOffset> {
     fn default() -> Self {
         FixedOffset::west_opt(0).unwrap().from_utc_datetime(&NaiveDateTime::default())
@@ -954,17 +855,6 @@ impl From<DateTime<Utc>> for DateTime<FixedOffset> {
     }
 }
 
-/// Convert a `DateTime<Utc>` instance into a `DateTime<Local>` instance.
-#[cfg(feature = "clock")]
-impl From<DateTime<Utc>> for DateTime<Local> {
-    /// Convert this `DateTime<Utc>` instance into a `DateTime<Local>` instance.
-    ///
-    /// Conversion is performed via [`DateTime::with_timezone`], accounting for the difference in timezones.
-    fn from(src: DateTime<Utc>) -> Self {
-        src.with_timezone(&Local)
-    }
-}
-
 /// Convert a `DateTime<FixedOffset>` instance into a `DateTime<Utc>` instance.
 impl From<DateTime<FixedOffset>> for DateTime<Utc> {
     /// Convert this `DateTime<FixedOffset>` instance into a `DateTime<Utc>` instance.
@@ -973,41 +863,6 @@ impl From<DateTime<FixedOffset>> for DateTime<Utc> {
     /// difference.
     fn from(src: DateTime<FixedOffset>) -> Self {
         src.with_timezone(&Utc)
-    }
-}
-
-/// Convert a `DateTime<FixedOffset>` instance into a `DateTime<Local>` instance.
-#[cfg(feature = "clock")]
-impl From<DateTime<FixedOffset>> for DateTime<Local> {
-    /// Convert this `DateTime<FixedOffset>` instance into a `DateTime<Local>` instance.
-    ///
-    /// Conversion is performed via [`DateTime::with_timezone`]. Returns the equivalent value in local
-    /// time.
-    fn from(src: DateTime<FixedOffset>) -> Self {
-        src.with_timezone(&Local)
-    }
-}
-
-/// Convert a `DateTime<Local>` instance into a `DateTime<Utc>` instance.
-#[cfg(feature = "clock")]
-impl From<DateTime<Local>> for DateTime<Utc> {
-    /// Convert this `DateTime<Local>` instance into a `DateTime<Utc>` instance.
-    ///
-    /// Conversion is performed via [`DateTime::with_timezone`], accounting for the difference in
-    /// timezones.
-    fn from(src: DateTime<Local>) -> Self {
-        src.with_timezone(&Utc)
-    }
-}
-
-/// Convert a `DateTime<Local>` instance into a `DateTime<FixedOffset>` instance.
-#[cfg(feature = "clock")]
-impl From<DateTime<Local>> for DateTime<FixedOffset> {
-    /// Convert this `DateTime<Local>` instance into a `DateTime<FixedOffset>` instance.
-    ///
-    /// Conversion is performed via [`DateTime::with_timezone`].
-    fn from(src: DateTime<Local>) -> Self {
-        src.with_timezone(&src.offset().fix())
     }
 }
 
@@ -1155,76 +1010,7 @@ impl<Tz: TimeZone> DateTime<Tz>
 where
     Tz::Offset: fmt::Display,
 {
-    /// Formats the combined date and time with the specified formatting items.
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        let local = self.overflowing_naive_local();
-        DelayedFormat::new_with_offset(Some(local.date()), Some(local.time()), &self.offset, items)
-    }
 
-    /// Formats the combined date and time per the specified format string.
-    ///
-    /// See the [`crate::extensions::chrono::format::strftime`] module for the supported escape sequences.
-    ///
-    /// # Example
-    /// ```rust,ignore
-    /// use chrono::prelude::*;
-    ///
-    /// let date_time: DateTime<Utc> = Utc.with_ymd_and_hms(2017, 04, 02, 12, 50, 32).unwrap();
-    /// let formatted = format!("{}", date_time.format("%d/%m/%Y %H:%M"));
-    /// assert_eq!(formatted, "02/04/2017 12:50");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_with_items(StrftimeItems::new(fmt))
-    }
-
-    /// Formats the combined date and time with the specified formatting items and locale.
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized_with_items<'a, I, B>(
-        &self,
-        items: I,
-        locale: Locale,
-    ) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        let local = self.overflowing_naive_local();
-        DelayedFormat::new_with_offset_and_locale(
-            Some(local.date()),
-            Some(local.time()),
-            &self.offset,
-            items,
-            locale,
-        )
-    }
-
-    /// Formats the combined date and time per the specified format string and
-    /// locale.
-    ///
-    /// See the [`crate::extensions::chrono::format::strftime`] module on the supported escape
-    /// sequences.
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized<'a>(
-        &self,
-        fmt: &'a str,
-        locale: Locale,
-    ) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_localized_with_items(StrftimeItems::new_with_locale(fmt, locale), locale)
-    }
 }
 
 impl<Tz: TimeZone> Datelike for DateTime<Tz> {
@@ -1833,16 +1619,6 @@ impl<Tz: TimeZone> fmt::Debug for DateTime<Tz> {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl<Tz: TimeZone> defmt::Format for DateTime<Tz>
-where
-    Tz::Offset: defmt::Format,
-{
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "{}{}", self.overflowing_naive_local(), self.offset);
-    }
-}
-
 // `fmt::Debug` is hand implemented for the `rkyv::Archive` variant of `DateTime` because
 // deriving a trait recursively does not propagate trait defined associated types with their own
 // constraints:
@@ -1852,21 +1628,6 @@ where
 // * https://github.com/rust-lang/rust/issues/26925
 // * https://github.com/rkyv/rkyv/issues/333
 // * https://github.com/dtolnay/syn/issues/370
-#[cfg(feature = "rkyv-validation")]
-impl<Tz: TimeZone> fmt::Debug for ArchivedDateTime<Tz>
-where
-    Tz: Archive,
-    <Tz as Archive>::Archived: fmt::Debug,
-    <<Tz as TimeZone>::Offset as Archive>::Archived: fmt::Debug,
-    <Tz as TimeZone>::Offset: fmt::Debug + Archive,
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("ArchivedDateTime")
-            .field("datetime", &self.datetime)
-            .field("offset", &self.offset)
-            .finish()
-    }
-}
 
 impl<Tz: TimeZone> fmt::Display for DateTime<Tz>
 where
@@ -1900,116 +1661,6 @@ impl str::FromStr for DateTime<Utc> {
     }
 }
 
-/// Accepts a relaxed form of RFC3339.
-/// A space or a 'T' are accepted as the separator between the date and time
-/// parts.
-///
-/// All of these examples are equivalent:
-/// ```ignore
-/// # use chrono::{DateTime, Local};
-/// "2012-12-12T12:12:12Z".parse::<DateTime<Local>>()?;
-/// "2012-12-12 12:12:12Z".parse::<DateTime<Local>>()?;
-/// "2012-12-12 12:12:12+0000".parse::<DateTime<Local>>()?;
-/// "2012-12-12 12:12:12+00:00".parse::<DateTime<Local>>()?;
-/// # Ok::<(), chrono::ParseError>(())
-/// ```
-#[cfg(feature = "clock")]
-impl str::FromStr for DateTime<Local> {
-    type Err = ParseError;
-
-    fn from_str(s: &str) -> ParseResult<DateTime<Local>> {
-        s.parse::<DateTime<FixedOffset>>().map(|dt| dt.with_timezone(&Local))
-    }
-}
-
-#[cfg(feature = "std")]
-impl From<SystemTime> for DateTime<Utc> {
-    fn from(t: SystemTime) -> DateTime<Utc> {
-        let (sec, nsec) = match t.duration_since(UNIX_EPOCH) {
-            Ok(dur) => (dur.as_secs() as i64, dur.subsec_nanos()),
-            Err(e) => {
-                // unlikely but should be handled
-                let dur = e.duration();
-                let (sec, nsec) = (dur.as_secs() as i64, dur.subsec_nanos());
-                if nsec == 0 { (-sec, 0) } else { (-sec - 1, 1_000_000_000 - nsec) }
-            }
-        };
-        Utc.timestamp_opt(sec, nsec).unwrap()
-    }
-}
-
-#[cfg(feature = "clock")]
-impl From<SystemTime> for DateTime<Local> {
-    fn from(t: SystemTime) -> DateTime<Local> {
-        DateTime::<Utc>::from(t).with_timezone(&Local)
-    }
-}
-
-#[cfg(feature = "std")]
-impl<Tz: TimeZone> From<DateTime<Tz>> for SystemTime {
-    fn from(dt: DateTime<Tz>) -> SystemTime {
-        let sec = dt.timestamp();
-        let nsec = dt.timestamp_subsec_nanos();
-        if sec < 0 {
-            // unlikely but should be handled
-            UNIX_EPOCH - Duration::new(-sec as u64, 0) + Duration::new(0, nsec)
-        } else {
-            UNIX_EPOCH + Duration::new(sec as u64, nsec)
-        }
-    }
-}
-
-#[cfg(all(
-    target_arch = "wasm32",
-    feature = "wasmbind",
-    not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
-))]
-impl From<js_sys::Date> for DateTime<Utc> {
-    fn from(date: js_sys::Date) -> DateTime<Utc> {
-        DateTime::<Utc>::from(&date)
-    }
-}
-
-#[cfg(all(
-    target_arch = "wasm32",
-    feature = "wasmbind",
-    not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
-))]
-impl From<&js_sys::Date> for DateTime<Utc> {
-    fn from(date: &js_sys::Date) -> DateTime<Utc> {
-        Utc.timestamp_millis_opt(date.get_time() as i64).unwrap()
-    }
-}
-
-#[cfg(all(
-    target_arch = "wasm32",
-    feature = "wasmbind",
-    not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
-))]
-impl From<DateTime<Utc>> for js_sys::Date {
-    /// Converts a `DateTime<Utc>` to a JS `Date`. The resulting value may be lossy,
-    /// any values that have a millisecond timestamp value greater/less than ±8,640,000,000,000,000
-    /// (April 20, 271821 BCE ~ September 13, 275760 CE) will become invalid dates in JS.
-    fn from(date: DateTime<Utc>) -> js_sys::Date {
-        let js_millis = wasm_bindgen::JsValue::from_f64(date.timestamp_millis() as f64);
-        js_sys::Date::new(&js_millis)
-    }
-}
-
-// Note that implementation of Arbitrary cannot be simply derived for DateTime<Tz>, due to
-// the nontrivial bound <Tz as TimeZone>::Offset: Arbitrary.
-#[cfg(all(feature = "arbitrary", feature = "std"))]
-impl<'a, Tz> arbitrary::Arbitrary<'a> for DateTime<Tz>
-where
-    Tz: TimeZone,
-    <Tz as TimeZone>::Offset: arbitrary::Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<DateTime<Tz>> {
-        let datetime = NaiveDateTime::arbitrary(u)?;
-        let offset = <Tz as TimeZone>::Offset::arbitrary(u)?;
-        Ok(DateTime::from_naive_utc_and_offset(datetime, offset))
-    }
-}
 
 /// Number of days between January 1, 1970 and December 31, 1 BCE which we define to be day 0.
 /// 4 full leap year cycles until December 31, 1600     4 * 146097 = 584388

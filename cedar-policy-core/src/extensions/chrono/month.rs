@@ -2,11 +2,9 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; other changes marked with `Cedar:` comments.
+//   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
+//   Cargo features (not enabled in Cedar) removed.
 use core::fmt;
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::extensions::chrono::OutOfRange;
 use crate::extensions::chrono::naive::NaiveDate;
@@ -35,15 +33,6 @@ use crate::extensions::chrono::naive::NaiveDate;
 /// Can be Serialized/Deserialized with serde
 // Actual implementation is zero-indexed, API intended as 1-indexed for more intuitive behavior.
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash, PartialOrd, Ord)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
-#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Month {
     /// January
     January = 0,
@@ -220,8 +209,6 @@ impl TryFrom<u8> for Month {
 
 /// A duration in calendar months
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Months(pub(crate) u32);
 
 impl Months {
@@ -243,12 +230,6 @@ pub struct ParseMonthError {
     pub(crate) _dummy: (),
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for ParseMonthError {}
-
-#[cfg(all(not(feature = "std"), feature = "core-error"))]
-impl core::error::Error for ParseMonthError {}
-
 impl fmt::Display for ParseMonthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ParseMonthError {{ .. }}")
@@ -258,56 +239,6 @@ impl fmt::Display for ParseMonthError {
 impl fmt::Debug for ParseMonthError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "ParseMonthError {{ .. }}")
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl defmt::Format for ParseMonthError {
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "ParseMonthError {{ .. }}")
-    }
-}
-
-#[cfg(feature = "serde")]
-mod month_serde {
-    use super::Month;
-    use serde::{de, ser};
-
-    use core::fmt;
-
-    impl ser::Serialize for Month {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: ser::Serializer,
-        {
-            serializer.collect_str(self.name())
-        }
-    }
-
-    struct MonthVisitor;
-
-    impl de::Visitor<'_> for MonthVisitor {
-        type Value = Month;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("Month")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value.parse().map_err(|_| E::custom("short (3-letter) or full month names expected"))
-        }
-    }
-
-    impl<'de> de::Deserialize<'de> for Month {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: de::Deserializer<'de>,
-        {
-            deserializer.deserialize_str(MonthVisitor)
-        }
     }
 }
 
@@ -355,77 +286,6 @@ mod tests {
         assert_eq!(Months::new(0).as_u32(), 0);
         assert_eq!(Months::new(1).as_u32(), 1);
         assert_eq!(Months::new(u32::MAX).as_u32(), u32::MAX);
-    }
-
-    #[test]
-    #[cfg(feature = "serde")]
-    fn test_serde_serialize() {
-        use Month::*;
-        use serde_json::to_string;
-
-        let cases: Vec<(Month, &str)> = vec![
-            (January, "\"January\""),
-            (February, "\"February\""),
-            (March, "\"March\""),
-            (April, "\"April\""),
-            (May, "\"May\""),
-            (June, "\"June\""),
-            (July, "\"July\""),
-            (August, "\"August\""),
-            (September, "\"September\""),
-            (October, "\"October\""),
-            (November, "\"November\""),
-            (December, "\"December\""),
-        ];
-
-        for (month, expected_str) in cases {
-            let string = to_string(&month).unwrap();
-            assert_eq!(string, expected_str);
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "serde")]
-    fn test_serde_deserialize() {
-        use Month::*;
-        use serde_json::from_str;
-
-        let cases: Vec<(&str, Month)> = vec![
-            ("\"january\"", January),
-            ("\"jan\"", January),
-            ("\"FeB\"", February),
-            ("\"MAR\"", March),
-            ("\"mar\"", March),
-            ("\"april\"", April),
-            ("\"may\"", May),
-            ("\"june\"", June),
-            ("\"JULY\"", July),
-            ("\"august\"", August),
-            ("\"september\"", September),
-            ("\"October\"", October),
-            ("\"November\"", November),
-            ("\"DECEmbEr\"", December),
-        ];
-
-        for (string, expected_month) in cases {
-            let month = from_str::<Month>(string).unwrap();
-            assert_eq!(month, expected_month);
-        }
-
-        let errors: Vec<&str> =
-            vec!["\"not a month\"", "\"ja\"", "\"Dece\"", "Dec", "\"Augustin\""];
-
-        for string in errors {
-            from_str::<Month>(string).unwrap_err();
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "rkyv-validation")]
-    fn test_rkyv_validation() {
-        let month = Month::January;
-        let bytes = rkyv::to_bytes::<_, 1>(&month).unwrap();
-        assert_eq!(rkyv::from_bytes::<Month>(&bytes).unwrap(), month);
     }
 
     #[test]

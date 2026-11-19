@@ -5,29 +5,14 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! The UTC (Coordinated Universal Time) time zone.
 
 use core::fmt;
-#[cfg(all(
-    feature = "now",
-    not(all(
-        target_arch = "wasm32",
-        feature = "wasmbind",
-        not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
-    ))
-))]
-use std::time::{SystemTime, UNIX_EPOCH};
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{FixedOffset, MappedLocalTime, Offset, TimeZone};
 use crate::extensions::chrono::naive::{NaiveDate, NaiveDateTime};
-#[cfg(feature = "now")]
-#[allow(deprecated)]
-use crate::extensions::chrono::{Date, DateTime};
 
 /// The UTC time zone. This is the most efficient time zone when you don't need the local time.
 /// It is also used as an offset (which is also a dummy type).
@@ -47,75 +32,7 @@ use crate::extensions::chrono::{Date, DateTime};
 /// assert_eq!(Utc.with_ymd_and_hms(1970, 1, 1, 0, 1, 1).unwrap(), dt);
 /// ```
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
-#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
 pub struct Utc;
-
-#[cfg(feature = "now")]
-impl Utc {
-    /// Returns a `Date` which corresponds to the current date.
-    #[deprecated(
-        since = "0.4.23",
-        note = "use `Utc::now()` instead, potentially with `.date_naive()`"
-    )]
-    #[allow(deprecated)]
-    #[must_use]
-    pub fn today() -> Date<Utc> {
-        Utc::now().date()
-    }
-
-    /// Returns a `DateTime<Utc>` which corresponds to the current date and time in UTC.
-    ///
-    /// See also the similar [`Local::now()`] which returns `DateTime<Local>`, i.e. the local date
-    /// and time including offset from UTC.
-    ///
-    /// [`Local::now()`]: crate::extensions::chrono::Local::now
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # #![allow(unused_variables)]
-    /// # use chrono::{FixedOffset, Utc};
-    /// // Current time in UTC
-    /// let now_utc = Utc::now();
-    ///
-    /// // Current date in UTC
-    /// let today_utc = now_utc.date_naive();
-    ///
-    /// // Current time in some timezone (let's use +05:00)
-    /// let offset = FixedOffset::east_opt(5 * 60 * 60).unwrap();
-    /// let now_with_offset = Utc::now().with_timezone(&offset);
-    /// ```
-    #[cfg(not(all(
-        target_arch = "wasm32",
-        feature = "wasmbind",
-        not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
-    )))]
-    #[must_use]
-    pub fn now() -> DateTime<Utc> {
-        let now =
-            SystemTime::now().duration_since(UNIX_EPOCH).expect("system time before Unix epoch");
-        DateTime::from_timestamp(now.as_secs() as i64, now.subsec_nanos()).unwrap()
-    }
-
-    /// Returns a `DateTime` which corresponds to the current date and time.
-    #[cfg(all(
-        target_arch = "wasm32",
-        feature = "wasmbind",
-        not(any(target_os = "emscripten", target_os = "wasi", target_os = "linux"))
-    ))]
-    #[must_use]
-    pub fn now() -> DateTime<Utc> {
-        let now = js_sys::Date::new_0();
-        DateTime::<Utc>::from(now)
-    }
-}
 
 impl TimeZone for Utc {
     type Offset = Utc;
@@ -157,9 +74,3 @@ impl fmt::Display for Utc {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for Utc {
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "Z");
-    }
-}

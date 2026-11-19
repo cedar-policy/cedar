@@ -5,7 +5,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! A collection of parsed date and time items.
 //! They can be constructed incrementally while being checked for consistency.
@@ -132,7 +132,6 @@ use crate::extensions::chrono::{DateTime, Datelike, TimeDelta, Timelike, Weekday
 /// ```
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Parsed {
     #[doc(hidden)]
     pub year: Option<i32>,

@@ -5,22 +5,15 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! ISO 8601 date and time without timezone.
 
-#[cfg(feature = "alloc")]
-use core::borrow::Borrow;
 use core::fmt::Write;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
 use core::{fmt, str};
 
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
-
-#[cfg(feature = "alloc")]
-use crate::extensions::chrono::format::DelayedFormat;
 use crate::extensions::chrono::format::{Fixed, Item, Numeric, Pad};
 use crate::extensions::chrono::format::{ParseError, ParseResult, Parsed, StrftimeItems, parse, parse_and_remainder};
 use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
@@ -30,10 +23,6 @@ use crate::extensions::chrono::{
     DateTime, Datelike, FixedOffset, MappedLocalTime, Months, TimeDelta, TimeZone, Timelike,
     Weekday, expect, try_opt,
 };
-
-/// Tools to help serializing/deserializing `NaiveDateTime`s
-#[cfg(feature = "serde")]
-pub(crate) mod serde;
 
 #[cfg(test)]
 mod tests;
@@ -71,14 +60,6 @@ pub const MAX_DATETIME: NaiveDateTime = NaiveDateTime::MAX;
 /// assert_eq!(dt.num_seconds_from_midnight(), 33011);
 /// ```
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
-#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
 pub struct NaiveDateTime {
     date: NaiveDate,
     time: NaiveTime,
@@ -828,83 +809,6 @@ impl NaiveDateTime {
                 .checked_add(&self.time.signed_duration_since(rhs.time)),
             "always in range",
         )
-    }
-
-    /// Formats the combined date and time with the specified formatting items.
-    /// Otherwise it is the same as the ordinary [`format`](#method.format) method.
-    ///
-    /// The `Iterator` of items should be `Clone`able,
-    /// since the resulting `DelayedFormat` value may be formatted multiple times.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::strftime::StrftimeItems;
-    /// use chrono::NaiveDate;
-    ///
-    /// let fmt = StrftimeItems::new("%Y-%m-%d %H:%M:%S");
-    /// let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(dt.format_with_items(fmt.clone()).to_string(), "2015-09-05 23:56:04");
-    /// assert_eq!(dt.format("%Y-%m-%d %H:%M:%S").to_string(), "2015-09-05 23:56:04");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```ignore
-    /// # use chrono::NaiveDate;
-    /// # use chrono::format::strftime::StrftimeItems;
-    /// # let fmt = StrftimeItems::new("%Y-%m-%d %H:%M:%S").clone();
-    /// # let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", dt.format_with_items(fmt)), "2015-09-05 23:56:04");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new(Some(self.date), Some(self.time), items)
-    }
-
-    /// Formats the combined date and time with the specified format string.
-    /// See the [`format::strftime` module](crate::extensions::chrono::format::strftime)
-    /// on the supported escape sequences.
-    ///
-    /// This returns a `DelayedFormat`,
-    /// which gets converted to a string only when actual formatting happens.
-    /// You may use the `to_string` method to get a `String`,
-    /// or just feed it into `print!` and other formatting macros.
-    /// (In this way it avoids the redundant memory allocation.)
-    ///
-    /// A wrong format string does *not* issue an error immediately.
-    /// Rather, converting or formatting the `DelayedFormat` fails.
-    /// You are recommended to immediately use `DelayedFormat` for this reason.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveDate;
-    ///
-    /// let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(dt.format("%Y-%m-%d %H:%M:%S").to_string(), "2015-09-05 23:56:04");
-    /// assert_eq!(dt.format("around %l %p on %b %-d").to_string(), "around 11 PM on Sep 5");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```ignore
-    /// # use chrono::NaiveDate;
-    /// # let dt = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap().and_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", dt.format("%Y-%m-%d %H:%M:%S")), "2015-09-05 23:56:04");
-    /// assert_eq!(format!("{}", dt.format("around %l %p on %b %-d")), "around 11 PM on Sep 5");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_with_items(StrftimeItems::new(fmt))
     }
 
     /// Converts the `NaiveDateTime` into a timezone-aware `DateTime<Tz>` with the provided
@@ -2074,13 +1978,6 @@ impl fmt::Debug for NaiveDateTime {
         self.date.fmt(f)?;
         f.write_char('T')?;
         self.time.fmt(f)
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl defmt::Format for NaiveDateTime {
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "{}T{}", self.date, self.time);
     }
 }
 

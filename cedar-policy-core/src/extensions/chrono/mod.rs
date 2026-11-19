@@ -3,7 +3,7 @@
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: moved from `src/lib.rs`; `crate::` paths rewritten to
 //   `crate::extensions::chrono::`; doc examples marked `ignore`; other changes marked with `Cedar:`
-//   comments.
+//   comments; code behind chrono's Cargo features (not enabled in Cedar) removed.
 //! # Chrono: Date and Time for Rust
 //!
 //! Chrono aims to provide all functionality needed to do correct operations on dates and times in
@@ -522,18 +522,14 @@
 #![allow(
     dead_code,
     unused,
-    unexpected_cfgs,
     rust_2018_idioms,
     missing_debug_implementations,
     private_interfaces,
     private_bounds,
     rustdoc::private_intra_doc_links,
     rustdoc::broken_intra_doc_links,
-    reason = "vendored chrono code: only part of it is used by Cedar, its `feature` cfgs refer to chrono's features, and its docs link to items Cedar keeps private"
+    reason = "vendored chrono code: only part of it is used by Cedar, and its docs link to items Cedar keeps private"
 )]
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
 
 // Cedar: `pub` removed from chrono's top-level modules, re-exports, and the `Duration` alias.
 // Only the items used by `cedar-policy-core`'s `datetime` extension and by `cedar-policy-symcc`
@@ -541,9 +537,6 @@ extern crate alloc;
 // re-exported. `OutOfRange` stays `pub` because it is an associated type in trait impls of `pub`
 // types.
 mod time_delta;
-#[doc(no_inline)]
-#[cfg(any(feature = "std", feature = "core-error"))]
-use time_delta::OutOfRangeError;
 pub use time_delta::TimeDelta;
 
 /// Alias of [`TimeDelta`].
@@ -555,10 +548,6 @@ use core::fmt;
 mod prelude {
     #[allow(deprecated)]
     pub(super) use crate::extensions::chrono::Date;
-    #[cfg(feature = "clock")]
-    pub(super) use crate::extensions::chrono::Local;
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    pub(super) use crate::extensions::chrono::Locale;
     pub(super) use crate::extensions::chrono::SubsecRound;
     pub(super) use crate::extensions::chrono::{DateTime, SecondsFormat};
     pub(super) use crate::extensions::chrono::{Datelike, Month, Timelike, Weekday};
@@ -581,9 +570,6 @@ pub use datetime::DateTime;
 use datetime::{MAX_DATETIME, MIN_DATETIME};
 
 mod format;
-/// L10n locales.
-#[cfg(feature = "unstable-locales")]
-use format::Locale;
 pub use format::ParseError;
 use format::{ParseResult, SecondsFormat};
 
@@ -594,9 +580,6 @@ pub use naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use naive::{IsoWeek, NaiveWeek};
 
 mod offset;
-#[cfg(feature = "clock")]
-#[doc(inline)]
-use offset::Local;
 #[doc(hidden)]
 use offset::LocalResult;
 use offset::MappedLocalTime;
@@ -623,78 +606,6 @@ use month::{Month, Months};
 mod traits;
 use traits::{Datelike, Timelike};
 
-#[cfg(feature = "__internal_bench")]
-#[doc(hidden)]
-use naive::__BenchYearFlags;
-
-/// Serialization/Deserialization with serde
-///
-/// The [`DateTime`] type has default implementations for (de)serializing to/from the [RFC 3339]
-/// format. This module provides alternatives for serializing to timestamps.
-///
-/// The alternatives are for use with serde's [`with` annotation] combined with the module name.
-/// Alternatively the individual `serialize` and `deserialize` functions in each module can be used
-/// with serde's [`serialize_with`] and [`deserialize_with`] annotations.
-///
-/// *Available on crate feature 'serde' only.*
-///
-/// [RFC 3339]: https://tools.ietf.org/html/rfc3339
-/// [`with` annotation]: https://serde.rs/field-attrs.html#with
-/// [`serialize_with`]: https://serde.rs/field-attrs.html#serialize_with
-/// [`deserialize_with`]: https://serde.rs/field-attrs.html#deserialize_with
-#[cfg(feature = "serde")]
-mod serde {
-    use core::fmt;
-    use serde::de;
-
-    pub use super::datetime::serde::*;
-
-    /// Create a custom `de::Error` with `SerdeError::InvalidTimestamp`.
-    pub(crate) fn invalid_ts<E, T>(value: T) -> E
-    where
-        E: de::Error,
-        T: fmt::Display,
-    {
-        E::custom(SerdeError::InvalidTimestamp(value))
-    }
-
-    enum SerdeError<T: fmt::Display> {
-        InvalidTimestamp(T),
-    }
-
-    impl<T: fmt::Display> fmt::Display for SerdeError<T> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            match self {
-                SerdeError::InvalidTimestamp(ts) => {
-                    write!(f, "value is not a legal timestamp: {ts}")
-                }
-            }
-        }
-    }
-}
-
-/// Zero-copy serialization/deserialization with rkyv.
-///
-/// This module re-exports the `Archived*` versions of chrono's types.
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-mod rkyv {
-    pub use crate::extensions::chrono::datetime::ArchivedDateTime;
-    pub use crate::extensions::chrono::month::ArchivedMonth;
-    pub use crate::extensions::chrono::naive::date::ArchivedNaiveDate;
-    pub use crate::extensions::chrono::naive::datetime::ArchivedNaiveDateTime;
-    pub use crate::extensions::chrono::naive::isoweek::ArchivedIsoWeek;
-    pub use crate::extensions::chrono::naive::time::ArchivedNaiveTime;
-    pub use crate::extensions::chrono::offset::fixed::ArchivedFixedOffset;
-    #[cfg(feature = "clock")]
-    pub use crate::extensions::chrono::offset::local::ArchivedLocal;
-    pub use crate::extensions::chrono::offset::utc::ArchivedUtc;
-    pub use crate::extensions::chrono::time_delta::ArchivedTimeDelta;
-    pub use crate::extensions::chrono::weekday::ArchivedWeekday;
-
-    /// Alias of [`ArchivedTimeDelta`]
-    pub type ArchivedDuration = ArchivedTimeDelta;
-}
-
 /// Out of range error type used in various converting APIs
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub struct OutOfRange {
@@ -719,19 +630,6 @@ impl fmt::Debug for OutOfRange {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for OutOfRange {
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "out of range");
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for OutOfRange {}
-
-#[cfg(all(not(feature = "std"), feature = "core-error"))]
-impl core::error::Error for OutOfRange {}
-
 /// Workaround because `?` is not (yet) available in const context.
 // Cedar: `#[macro_export]` replaced by a crate-local re-export so the macro is not exported from
 // `cedar-policy-core`.
@@ -755,24 +653,5 @@ pub(crate) const fn expect<T: Copy>(opt: Option<T>, msg: &str) -> T {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "clock")]
-    use crate::extensions::chrono::{DateTime, FixedOffset, Local, NaiveDate, NaiveDateTime, NaiveTime, Utc};
 
-    #[test]
-    #[allow(deprecated)]
-    #[cfg(feature = "clock")]
-    fn test_type_sizes() {
-        use core::mem::size_of;
-        assert_eq!(size_of::<NaiveDate>(), 4);
-        assert_eq!(size_of::<Option<NaiveDate>>(), 4);
-        assert_eq!(size_of::<NaiveTime>(), 8);
-        assert_eq!(size_of::<Option<NaiveTime>>(), 12);
-        assert_eq!(size_of::<NaiveDateTime>(), 12);
-        assert_eq!(size_of::<Option<NaiveDateTime>>(), 12);
-
-        assert_eq!(size_of::<DateTime<Utc>>(), 12);
-        assert_eq!(size_of::<DateTime<FixedOffset>>(), 16);
-        assert_eq!(size_of::<DateTime<Local>>(), 16);
-        assert_eq!(size_of::<Option<DateTime<FixedOffset>>>(), 16);
-    }
 }

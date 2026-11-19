@@ -5,7 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; other changes marked with `Cedar:` comments.
+//   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
+//   Cargo features (not enabled in Cedar) removed.
 
 //! ISO 8601 calendar date without timezone.
 //!
@@ -19,24 +20,13 @@
 //! `W`: weekday before the first day of the year
 //! `LWWW`: will also be referred to as the year flags (`F`)
 
-#[cfg(feature = "alloc")]
-use core::borrow::Borrow;
 use core::iter::FusedIterator;
 use core::num::NonZeroI32;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::{fmt, str};
 
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
-
-/// L10n locales.
-#[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-use pure_rust_locales::Locale;
-
 use super::internals::{Mdf, YearFlags};
 use crate::extensions::chrono::datetime::UNIX_EPOCH_DAY;
-#[cfg(feature = "alloc")]
-use crate::extensions::chrono::format::DelayedFormat;
 use crate::extensions::chrono::format::{
     Item, Numeric, Pad, ParseError, ParseResult, Parsed, StrftimeItems, parse, parse_and_remainder,
     write_hundreds,
@@ -98,13 +88,6 @@ mod tests;
 ///
 /// [proleptic Gregorian date]: crate::extensions::chrono::NaiveDate#calendar-date
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
 pub struct NaiveDate {
     yof: NonZeroI32, // (year << 13) | of
 }
@@ -115,16 +98,6 @@ pub const MIN_DATE: NaiveDate = NaiveDate::MIN;
 /// The maximum possible `NaiveDate` (December 31, 262143 CE).
 #[deprecated(since = "0.4.20", note = "Use NaiveDate::MAX instead")]
 pub const MAX_DATE: NaiveDate = NaiveDate::MAX;
-
-#[cfg(all(feature = "arbitrary", feature = "std"))]
-impl arbitrary::Arbitrary<'_> for NaiveDate {
-    fn arbitrary(u: &mut arbitrary::Unstructured) -> arbitrary::Result<NaiveDate> {
-        let year = u.int_in_range(MIN_YEAR..=MAX_YEAR)?;
-        let max_days = YearFlags::from_year(year).ndays();
-        let ord = u.int_in_range(1..=max_days)?;
-        NaiveDate::from_yo_opt(year, ord).ok_or(arbitrary::Error::IncorrectFormat)
-    }
-}
 
 impl NaiveDate {
     pub(crate) fn weeks_from(&self, day: Weekday) -> i32 {
@@ -1216,116 +1189,6 @@ impl NaiveDate {
         }
     }
 
-    /// Formats the date with the specified formatting items.
-    /// Otherwise it is the same as the ordinary `format` method.
-    ///
-    /// The `Iterator` of items should be `Clone`able,
-    /// since the resulting `DelayedFormat` value may be formatted multiple times.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::strftime::StrftimeItems;
-    /// use chrono::NaiveDate;
-    ///
-    /// let fmt = StrftimeItems::new("%Y-%m-%d");
-    /// let d = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap();
-    /// assert_eq!(d.format_with_items(fmt.clone()).to_string(), "2015-09-05");
-    /// assert_eq!(d.format("%Y-%m-%d").to_string(), "2015-09-05");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```ignore
-    /// # use chrono::NaiveDate;
-    /// # use chrono::format::strftime::StrftimeItems;
-    /// # let fmt = StrftimeItems::new("%Y-%m-%d").clone();
-    /// # let d = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap();
-    /// assert_eq!(format!("{}", d.format_with_items(fmt)), "2015-09-05");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new(Some(*self), None, items)
-    }
-
-    /// Formats the date with the specified format string.
-    /// See the [`format::strftime` module](crate::extensions::chrono::format::strftime)
-    /// on the supported escape sequences.
-    ///
-    /// This returns a `DelayedFormat`,
-    /// which gets converted to a string only when actual formatting happens.
-    /// You may use the `to_string` method to get a `String`,
-    /// or just feed it into `print!` and other formatting macros.
-    /// (In this way it avoids the redundant memory allocation.)
-    ///
-    /// # Panics
-    ///
-    /// Converting or formatting the returned `DelayedFormat` panics if the format string is wrong.
-    /// Because of this delayed failure, you are recommended to immediately use the `DelayedFormat`
-    /// value.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveDate;
-    ///
-    /// let d = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap();
-    /// assert_eq!(d.format("%Y-%m-%d").to_string(), "2015-09-05");
-    /// assert_eq!(d.format("%A, %-d %B, %C%y").to_string(), "Saturday, 5 September, 2015");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```ignore
-    /// # use chrono::NaiveDate;
-    /// # let d = NaiveDate::from_ymd_opt(2015, 9, 5).unwrap();
-    /// assert_eq!(format!("{}", d.format("%Y-%m-%d")), "2015-09-05");
-    /// assert_eq!(format!("{}", d.format("%A, %-d %B, %C%y")), "Saturday, 5 September, 2015");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_with_items(StrftimeItems::new(fmt))
-    }
-
-    /// Formats the date with the specified formatting items and locale.
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized_with_items<'a, I, B>(
-        &self,
-        items: I,
-        locale: Locale,
-    ) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new_with_locale(Some(*self), None, items, locale)
-    }
-
-    /// Formats the date with the specified format string and locale.
-    ///
-    /// See the [`crate::extensions::chrono::format::strftime`] module on the supported escape
-    /// sequences.
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized<'a>(
-        &self,
-        fmt: &'a str,
-        locale: Locale,
-    ) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_localized_with_items(StrftimeItems::new_with_locale(fmt, locale), locale)
-    }
-
     /// Returns an iterator that steps by days across all representable dates.
     ///
     /// # Example
@@ -2329,23 +2192,6 @@ impl fmt::Debug for NaiveDate {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for NaiveDate {
-    fn format(&self, fmt: defmt::Formatter) {
-        let year = self.year();
-        let mdf = self.mdf();
-        if (0..=9999).contains(&year) {
-            defmt::write!(fmt, "{:02}{:02}", year / 100, year % 100);
-        } else {
-            // ISO 8601 requires the explicit sign for out-of-range years
-            let sign = ['+', '-'][(year < 0) as usize];
-            defmt::write!(fmt, "{}{:05}", sign, year.abs());
-        }
-
-        defmt::write!(fmt, "-{:02}-{:02}", mdf.month(), mdf.day());
-    }
-}
-
 /// The `Display` output of the naive date `d` is the same as
 /// [`d.format("%Y-%m-%d")`](crate::extensions::chrono::format::strftime).
 ///
@@ -2497,146 +2343,3 @@ const YEAR_DELTAS: &[u8; 401] = &[
     96, 97, 97, 97, 97, // 400+1
 ];
 
-#[cfg(feature = "serde")]
-mod serde {
-    use super::NaiveDate;
-    use core::fmt;
-    use serde::{de, ser};
-
-    // TODO not very optimized for space (binary formats would want something better)
-
-    impl ser::Serialize for NaiveDate {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: ser::Serializer,
-        {
-            struct FormatWrapped<'a, D: 'a> {
-                inner: &'a D,
-            }
-
-            impl<D: fmt::Debug> fmt::Display for FormatWrapped<'_, D> {
-                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                    self.inner.fmt(f)
-                }
-            }
-
-            serializer.collect_str(&FormatWrapped { inner: &self })
-        }
-    }
-
-    struct NaiveDateVisitor;
-
-    impl de::Visitor<'_> for NaiveDateVisitor {
-        type Value = NaiveDate;
-
-        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("a formatted date string")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value.parse().map_err(E::custom)
-        }
-    }
-
-    impl<'de> de::Deserialize<'de> for NaiveDate {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: de::Deserializer<'de>,
-        {
-            deserializer.deserialize_str(NaiveDateVisitor)
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use crate::extensions::chrono::NaiveDate;
-
-        #[test]
-        fn test_serde_serialize() {
-            assert_eq!(
-                serde_json::to_string(&NaiveDate::from_ymd_opt(2014, 7, 24).unwrap()).ok(),
-                Some(r#""2014-07-24""#.into())
-            );
-            assert_eq!(
-                serde_json::to_string(&NaiveDate::from_ymd_opt(0, 1, 1).unwrap()).ok(),
-                Some(r#""0000-01-01""#.into())
-            );
-            assert_eq!(
-                serde_json::to_string(&NaiveDate::from_ymd_opt(-1, 12, 31).unwrap()).ok(),
-                Some(r#""-0001-12-31""#.into())
-            );
-            assert_eq!(
-                serde_json::to_string(&NaiveDate::MIN).ok(),
-                Some(r#""-262143-01-01""#.into())
-            );
-            assert_eq!(
-                serde_json::to_string(&NaiveDate::MAX).ok(),
-                Some(r#""+262142-12-31""#.into())
-            );
-        }
-
-        #[test]
-        fn test_serde_deserialize() {
-            let from_str = serde_json::from_str::<NaiveDate>;
-
-            assert_eq!(
-                from_str(r#""2016-07-08""#).ok(),
-                Some(NaiveDate::from_ymd_opt(2016, 7, 8).unwrap())
-            );
-            assert_eq!(
-                from_str(r#""2016-7-8""#).ok(),
-                Some(NaiveDate::from_ymd_opt(2016, 7, 8).unwrap())
-            );
-            assert_eq!(from_str(r#""+002016-07-08""#).ok(), NaiveDate::from_ymd_opt(2016, 7, 8));
-            assert_eq!(
-                from_str(r#""0000-01-01""#).ok(),
-                Some(NaiveDate::from_ymd_opt(0, 1, 1).unwrap())
-            );
-            assert_eq!(
-                from_str(r#""0-1-1""#).ok(),
-                Some(NaiveDate::from_ymd_opt(0, 1, 1).unwrap())
-            );
-            assert_eq!(
-                from_str(r#""-0001-12-31""#).ok(),
-                Some(NaiveDate::from_ymd_opt(-1, 12, 31).unwrap())
-            );
-            assert_eq!(from_str(r#""-262143-01-01""#).ok(), Some(NaiveDate::MIN));
-            assert_eq!(from_str(r#""+262142-12-31""#).ok(), Some(NaiveDate::MAX));
-
-            // bad formats
-            assert!(from_str(r#""""#).is_err());
-            assert!(from_str(r#""20001231""#).is_err());
-            assert!(from_str(r#""2000-00-00""#).is_err());
-            assert!(from_str(r#""2000-02-30""#).is_err());
-            assert!(from_str(r#""2001-02-29""#).is_err());
-            assert!(from_str(r#""2002-002-28""#).is_err());
-            assert!(from_str(r#""yyyy-mm-dd""#).is_err());
-            assert!(from_str(r#"0"#).is_err());
-            assert!(from_str(r#"20.01"#).is_err());
-            let min = i32::MIN.to_string();
-            assert!(from_str(&min).is_err());
-            let max = i32::MAX.to_string();
-            assert!(from_str(&max).is_err());
-            let min = i64::MIN.to_string();
-            assert!(from_str(&min).is_err());
-            let max = i64::MAX.to_string();
-            assert!(from_str(&max).is_err());
-            assert!(from_str(r#"{}"#).is_err());
-        }
-
-        #[test]
-        fn test_serde_bincode() {
-            // Bincode is relevant to test separately from JSON because
-            // it is not self-describing.
-            use bincode::{deserialize, serialize};
-
-            let d = NaiveDate::from_ymd_opt(2014, 7, 24).unwrap();
-            let encoded = serialize(&d).unwrap();
-            let decoded: NaiveDate = deserialize(&encoded).unwrap();
-            assert_eq!(d, decoded);
-        }
-    }
-}

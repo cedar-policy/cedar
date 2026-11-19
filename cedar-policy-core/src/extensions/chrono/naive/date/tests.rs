@@ -1,7 +1,8 @@
 // This file is `src/naive/date/tests.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`.
+// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
+//   behind chrono's Cargo features (not enabled in Cedar) removed.
 use super::{Days, MAX_YEAR, MIN_YEAR, Months, NaiveDate};
 use crate::extensions::chrono::naive::internals::{A, AG, B, BA, C, CB, D, DC, E, ED, F, FE, G, GF, YearFlags};
 use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
@@ -896,18 +897,6 @@ const YEAR_FLAGS: [(i32, YearFlags, Weekday); 14] = [
     (2008, FE, Weekday::Tue),
     (2024, GF, Weekday::Mon),
 ];
-
-#[test]
-#[cfg(feature = "rkyv-validation")]
-fn test_rkyv_validation() {
-    let date_min = NaiveDate::MIN;
-    let bytes = rkyv::to_bytes::<_, 4>(&date_min).unwrap();
-    assert_eq!(rkyv::from_bytes::<NaiveDate>(&bytes).unwrap(), date_min);
-
-    let date_max = NaiveDate::MAX;
-    let bytes = rkyv::to_bytes::<_, 4>(&date_max).unwrap();
-    assert_eq!(rkyv::from_bytes::<NaiveDate>(&bytes).unwrap(), date_max);
-}
 
 //   MAX_YEAR-12-31 minus 0000-01-01
 // = (MAX_YEAR-12-31 minus 0000-12-31) + (0000-12-31 - 0000-01-01)

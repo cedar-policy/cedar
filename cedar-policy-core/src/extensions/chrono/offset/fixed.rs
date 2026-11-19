@@ -5,15 +5,12 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! The time zone which has a fixed offset from UTC.
 
 use core::fmt;
 use core::str::FromStr;
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
 
 use super::{MappedLocalTime, Offset, TimeZone};
 use crate::extensions::chrono::format::{OUT_OF_RANGE, ParseError, scan};
@@ -26,13 +23,6 @@ use crate::extensions::chrono::naive::{NaiveDate, NaiveDateTime};
 /// `DateTime<FixedOffset>` instances. See the [`east_opt`](#method.east_opt) and
 /// [`west_opt`](#method.west_opt) methods for examples.
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, Hash, Debug))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
 pub struct FixedOffset {
     local_minus_utc: i32,
 }
@@ -180,33 +170,6 @@ impl fmt::Display for FixedOffset {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for FixedOffset {
-    fn format(&self, f: defmt::Formatter) {
-        let offset = self.local_minus_utc;
-        let (sign, offset) = if offset < 0 { ('-', -offset) } else { ('+', offset) };
-        let sec = offset.rem_euclid(60);
-        let mins = offset.div_euclid(60);
-        let min = mins.rem_euclid(60);
-        let hour = mins.div_euclid(60);
-        if sec == 0 {
-            defmt::write!(f, "{}{:02}:{:02}", sign, hour, min)
-        } else {
-            defmt::write!(f, "{}{:02}:{:02}:{:02}", sign, hour, min, sec)
-        }
-    }
-}
-
-#[cfg(all(feature = "arbitrary", feature = "std"))]
-impl arbitrary::Arbitrary<'_> for FixedOffset {
-    fn arbitrary(u: &mut arbitrary::Unstructured) -> arbitrary::Result<FixedOffset> {
-        let secs = u.int_in_range(-86_399..=86_399)?;
-        let fixed_offset = FixedOffset::east_opt(secs)
-            .expect("Could not generate a valid chrono::FixedOffset. It looks like implementation of Arbitrary for FixedOffset is erroneous.");
-        Ok(fixed_offset)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::FixedOffset;
@@ -249,11 +212,4 @@ mod tests {
         assert_eq!(offset.local_minus_utc, (6 * 3600) + 1800);
     }
 
-    #[test]
-    #[cfg(feature = "rkyv-validation")]
-    fn test_rkyv_validation() {
-        let offset = FixedOffset::from_str("-0500").unwrap();
-        let bytes = rkyv::to_bytes::<_, 4>(&offset).unwrap();
-        assert_eq!(rkyv::from_bytes::<FixedOffset>(&bytes).unwrap(), offset);
-    }
 }

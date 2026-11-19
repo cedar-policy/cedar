@@ -5,7 +5,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! The time zone, which calculates offsets from the local time to UTC.
 //!
@@ -34,11 +34,6 @@ use crate::extensions::chrono::{Date, DateTime};
 
 pub(crate) mod fixed;
 pub use self::fixed::FixedOffset;
-
-#[cfg(feature = "clock")]
-pub(crate) mod local;
-#[cfg(feature = "clock")]
-pub use self::local::Local;
 
 pub(crate) mod utc;
 pub use self::utc::Utc;
@@ -82,7 +77,6 @@ pub use self::utc::Utc;
 /// The type of `T` is usually a [`DateTime`] but may also be only an offset.
 pub type MappedLocalTime<T> = LocalResult<T>;
 #[derive(Clone, PartialEq, Debug, Copy, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 /// Old name of [`MappedLocalTime`]. See that type for more documentation.
 pub enum LocalResult<T> {
     /// The local time maps to a single unique result.

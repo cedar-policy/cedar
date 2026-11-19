@@ -2,7 +2,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 //! Date and time types unconcerned with timezones.
 //!
 //! They are primarily building blocks for other types
@@ -29,14 +29,9 @@ pub use self::datetime::{MAX_DATETIME, MIN_DATETIME, NaiveDateTime};
 pub use self::isoweek::IsoWeek;
 pub use self::time::NaiveTime;
 
-#[cfg(feature = "__internal_bench")]
-#[doc(hidden)]
-pub use self::internals::YearFlags as __BenchYearFlags;
-
 /// A week represented by a [`NaiveDate`] and a [`Weekday`] which is the first
 /// day of the week.
 #[derive(Clone, Copy, Debug, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct NaiveWeek {
     date: NaiveDate,
     start: Weekday,
@@ -235,7 +230,6 @@ impl Hash for NaiveWeek {
 /// difference applies only when dealing with `DateTime<TimeZone>` data types and in other cases
 /// `TimeDelta::days(n)` and `Days::new(n)` are equivalent.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Days(pub(crate) u64);
 
 impl Days {
@@ -243,17 +237,6 @@ impl Days {
     pub const fn new(num: u64) -> Self {
         Self(num)
     }
-}
-
-/// Serialization/Deserialization of `NaiveDateTime` in alternate formats
-///
-/// The various modules in here are intended to be used with serde's [`with` annotation] to
-/// serialize as something other than the default ISO 8601 format.
-///
-/// [`with` annotation]: https://serde.rs/field-attrs.html#with
-#[cfg(feature = "serde")]
-pub mod serde {
-    pub use super::datetime::serde::*;
 }
 
 #[cfg(test)]

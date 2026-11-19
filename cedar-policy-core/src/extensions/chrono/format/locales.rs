@@ -1,61 +1,8 @@
 // This file is `src/format/locales.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-#[cfg(feature = "unstable-locales")]
-mod localized {
-    use pure_rust_locales::{Locale, locale_match};
+// Modified by Cedar Contributors: code behind chrono's Cargo features (not enabled in Cedar) removed.
 
-    pub(crate) const fn default_locale() -> Locale {
-        Locale::POSIX
-    }
-
-    pub(crate) const fn short_months(locale: Locale) -> &'static [&'static str] {
-        locale_match!(locale => LC_TIME::ABMON)
-    }
-
-    pub(crate) const fn long_months(locale: Locale) -> &'static [&'static str] {
-        locale_match!(locale => LC_TIME::MON)
-    }
-
-    pub(crate) const fn short_weekdays(locale: Locale) -> &'static [&'static str] {
-        locale_match!(locale => LC_TIME::ABDAY)
-    }
-
-    pub(crate) const fn long_weekdays(locale: Locale) -> &'static [&'static str] {
-        locale_match!(locale => LC_TIME::DAY)
-    }
-
-    pub(crate) const fn am_pm(locale: Locale) -> &'static [&'static str] {
-        locale_match!(locale => LC_TIME::AM_PM)
-    }
-
-    pub(crate) const fn decimal_point(locale: Locale) -> &'static str {
-        locale_match!(locale => LC_NUMERIC::DECIMAL_POINT)
-    }
-
-    pub(crate) const fn d_fmt(locale: Locale) -> &'static str {
-        locale_match!(locale => LC_TIME::D_FMT)
-    }
-
-    pub(crate) const fn d_t_fmt(locale: Locale) -> &'static str {
-        locale_match!(locale => LC_TIME::D_T_FMT)
-    }
-
-    pub(crate) const fn t_fmt(locale: Locale) -> &'static str {
-        locale_match!(locale => LC_TIME::T_FMT)
-    }
-
-    pub(crate) const fn t_fmt_ampm(locale: Locale) -> &'static str {
-        locale_match!(locale => LC_TIME::T_FMT_AMPM)
-    }
-}
-
-#[cfg(feature = "unstable-locales")]
-pub(crate) use localized::*;
-#[cfg(feature = "unstable-locales")]
-pub use pure_rust_locales::Locale;
-
-#[cfg(not(feature = "unstable-locales"))]
 mod unlocalized {
     #[derive(Copy, Clone, Debug)]
     pub(crate) struct Locale;
@@ -102,5 +49,4 @@ mod unlocalized {
     }
 }
 
-#[cfg(not(feature = "unstable-locales"))]
 pub(crate) use unlocalized::*;

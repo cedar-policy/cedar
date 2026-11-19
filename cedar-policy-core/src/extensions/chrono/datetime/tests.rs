@@ -1,11 +1,10 @@
 // This file is `src/datetime/tests.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`.
+// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
+//   behind chrono's Cargo features (not enabled in Cedar) removed.
 use super::DateTime;
 use crate::extensions::chrono::naive::{NaiveDate, NaiveTime};
-#[cfg(feature = "clock")]
-use crate::extensions::chrono::offset::Local;
 use crate::extensions::chrono::offset::{FixedOffset, Offset, TimeZone, Utc};
 use crate::extensions::chrono::{Datelike, Days, MappedLocalTime, Months, NaiveDateTime, TimeDelta, Timelike, Weekday};
 
@@ -143,8 +142,6 @@ fn test_datetime_from_timestamp_millis() {
     for (timestamp_millis, _formatted) in valid_map.iter().copied() {
         let datetime = DateTime::from_timestamp_millis(timestamp_millis).unwrap();
         assert_eq!(timestamp_millis, datetime.timestamp_millis());
-        #[cfg(feature = "alloc")]
-        assert_eq!(datetime.format("%F %T%.9f").to_string(), _formatted);
     }
 
     let invalid = [i64::MAX, i64::MIN];
@@ -181,8 +178,6 @@ fn test_datetime_from_timestamp_micros() {
     for (timestamp_micros, _formatted) in valid_map.iter().copied() {
         let datetime = DateTime::from_timestamp_micros(timestamp_micros).unwrap();
         assert_eq!(timestamp_micros, datetime.timestamp_micros());
-        #[cfg(feature = "alloc")]
-        assert_eq!(datetime.format("%F %T%.9f").to_string(), _formatted);
     }
 
     let invalid = [i64::MAX, i64::MIN];
@@ -221,8 +216,6 @@ fn test_datetime_from_timestamp_nanos() {
     for (timestamp_nanos, _formatted) in valid_map.iter().copied() {
         let datetime = DateTime::from_timestamp_nanos(timestamp_nanos);
         assert_eq!(timestamp_nanos, datetime.timestamp_nanos_opt().unwrap());
-        #[cfg(feature = "alloc")]
-        assert_eq!(datetime.format("%F %T%.9f").to_string(), _formatted);
     }
 
     const A_BILLION: i64 = 1_000_000_000;
@@ -476,50 +469,10 @@ fn ymdhms_milli(
 }
 
 // local helper function to easily create a DateTime<FixedOffset>
-#[allow(clippy::too_many_arguments)]
-#[cfg(feature = "alloc")]
-fn ymdhms_micro(
-    fixedoffset: &FixedOffset,
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    min: u32,
-    sec: u32,
-    micro: u32,
-) -> DateTime<FixedOffset> {
-    fixedoffset
-        .with_ymd_and_hms(year, month, day, hour, min, sec)
-        .unwrap()
-        .with_nanosecond(micro * 1000)
-        .unwrap()
-}
 
 // local helper function to easily create a DateTime<FixedOffset>
-#[allow(clippy::too_many_arguments)]
-#[cfg(feature = "alloc")]
-fn ymdhms_nano(
-    fixedoffset: &FixedOffset,
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    min: u32,
-    sec: u32,
-    nano: u32,
-) -> DateTime<FixedOffset> {
-    fixedoffset
-        .with_ymd_and_hms(year, month, day, hour, min, sec)
-        .unwrap()
-        .with_nanosecond(nano)
-        .unwrap()
-}
 
 // local helper function to easily create a DateTime<Utc>
-#[cfg(feature = "alloc")]
-fn ymdhms_utc(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> DateTime<Utc> {
-    Utc.with_ymd_and_hms(year, month, day, hour, min, sec).unwrap()
-}
 
 // local helper function to easily create a DateTime<Utc>
 fn ymdhms_milli_utc(
@@ -644,263 +597,6 @@ fn test_datetime_date_and_time() {
 
     let utc_d = Utc.with_ymd_and_hms(2017, 8, 9, 12, 34, 56).unwrap();
     assert!(utc_d < d);
-}
-
-#[test]
-#[cfg(feature = "clock")]
-fn test_datetime_with_timezone() {
-    let local_now = Local::now();
-    let utc_now = local_now.with_timezone(&Utc);
-    let local_now2 = utc_now.with_timezone(&Local);
-    assert_eq!(local_now, local_now2);
-}
-
-#[test]
-#[cfg(feature = "alloc")]
-fn test_datetime_rfc2822() {
-    let edt = FixedOffset::east_opt(5 * 60 * 60).unwrap();
-
-    // timezone 0
-    assert_eq!(
-        Utc.with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap().to_rfc2822(),
-        "Wed, 18 Feb 2015 23:16:09 +0000"
-    );
-    assert_eq!(
-        Utc.with_ymd_and_hms(2015, 2, 1, 23, 16, 9).unwrap().to_rfc2822(),
-        "Sun, 1 Feb 2015 23:16:09 +0000"
-    );
-    // timezone +05
-    assert_eq!(
-        edt.from_local_datetime(
-            &NaiveDate::from_ymd_opt(2015, 2, 18)
-                .unwrap()
-                .and_hms_milli_opt(23, 16, 9, 150)
-                .unwrap()
-        )
-        .unwrap()
-        .to_rfc2822(),
-        "Wed, 18 Feb 2015 23:16:09 +0500"
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:59:60 +0500"),
-        Ok(edt
-            .from_local_datetime(
-                &NaiveDate::from_ymd_opt(2015, 2, 18)
-                    .unwrap()
-                    .and_hms_milli_opt(23, 59, 59, 1_000)
-                    .unwrap()
-            )
-            .unwrap())
-    );
-    assert!(DateTime::parse_from_rfc2822("31 DEC 262143 23:59 -2359").is_err());
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567+05:00"),
-        Ok(edt
-            .from_local_datetime(
-                &NaiveDate::from_ymd_opt(2015, 2, 18)
-                    .unwrap()
-                    .and_hms_micro_opt(23, 59, 59, 1_234_567)
-                    .unwrap()
-            )
-            .unwrap())
-    );
-    // seconds 60
-    assert_eq!(
-        edt.from_local_datetime(
-            &NaiveDate::from_ymd_opt(2015, 2, 18)
-                .unwrap()
-                .and_hms_micro_opt(23, 59, 59, 1_234_567)
-                .unwrap()
-        )
-        .unwrap()
-        .to_rfc2822(),
-        "Wed, 18 Feb 2015 23:59:60 +0500"
-    );
-
-    assert_eq!(
-        DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:16:09 +0000"),
-        Ok(FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap())
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:16:09 -0000"),
-        Ok(FixedOffset::east_opt(0).unwrap().with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap())
-    );
-    assert_eq!(
-        ymdhms_micro(&edt, 2015, 2, 18, 23, 59, 59, 1_234_567).to_rfc2822(),
-        "Wed, 18 Feb 2015 23:59:60 +0500"
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:59:58 +0500"),
-        Ok(ymdhms(&edt, 2015, 2, 18, 23, 59, 58))
-    );
-    assert_ne!(
-        DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:59:58 +0500"),
-        Ok(ymdhms_milli(&edt, 2015, 2, 18, 23, 59, 58, 500))
-    );
-
-    // many varying whitespace intermixed
-    assert_eq!(
-        DateTime::parse_from_rfc2822(
-            "\t\t\tWed,\n\t\t18 \r\n\t\tFeb \u{3000} 2015\r\n\t\t\t23:59:58    \t+0500"
-        ),
-        Ok(ymdhms(&edt, 2015, 2, 18, 23, 59, 58))
-    );
-    // example from RFC 2822 Appendix A.5.
-    assert_eq!(
-        DateTime::parse_from_rfc2822(
-            "Thu,\n\t13\n      Feb\n        1969\n    23:32\n             -0330 (Newfoundland Time)"
-        ),
-        Ok(
-            ymdhms(&FixedOffset::east_opt(-3 * 60 * 60 - 30 * 60).unwrap(), 1969, 2, 13, 23, 32, 0,)
-        )
-    );
-    // example from RFC 2822 Appendix A.5. without trailing " (Newfoundland Time)"
-    assert_eq!(
-        DateTime::parse_from_rfc2822(
-            "Thu,\n\t13\n      Feb\n        1969\n    23:32\n             -0330"
-        ),
-        Ok(
-            ymdhms(&FixedOffset::east_opt(-3 * 60 * 60 - 30 * 60).unwrap(), 1969, 2, 13, 23, 32, 0,)
-        )
-    );
-
-    // bad year
-    assert!(DateTime::parse_from_rfc2822("31 DEC 262143 23:59 -2359").is_err());
-    // wrong format
-    assert!(DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:16:09 +00:00").is_err());
-    // full name day of week
-    assert!(DateTime::parse_from_rfc2822("Wednesday, 18 Feb 2015 23:16:09 +0000").is_err());
-    // full name day of week
-    assert!(DateTime::parse_from_rfc2822("Wednesday 18 Feb 2015 23:16:09 +0000").is_err());
-    // wrong day of week separator '.'
-    assert!(DateTime::parse_from_rfc2822("Wed. 18 Feb 2015 23:16:09 +0000").is_err());
-    // *trailing* space causes failure
-    assert!(DateTime::parse_from_rfc2822("Wed, 18 Feb 2015 23:16:09 +0000   ").is_err());
-}
-
-#[test]
-#[cfg(feature = "alloc")]
-fn test_datetime_rfc3339() {
-    let edt5 = FixedOffset::east_opt(5 * 60 * 60).unwrap();
-    let edt0 = FixedOffset::east_opt(0).unwrap();
-
-    // timezone 0
-    assert_eq!(
-        Utc.with_ymd_and_hms(2015, 2, 18, 23, 16, 9).unwrap().to_rfc3339(),
-        "2015-02-18T23:16:09+00:00"
-    );
-    // timezone +05
-    assert_eq!(
-        edt5.from_local_datetime(
-            &NaiveDate::from_ymd_opt(2015, 2, 18)
-                .unwrap()
-                .and_hms_milli_opt(23, 16, 9, 150)
-                .unwrap()
-        )
-        .unwrap()
-        .to_rfc3339(),
-        "2015-02-18T23:16:09.150+05:00"
-    );
-
-    assert_eq!(ymdhms_utc(2015, 2, 18, 23, 16, 9).to_rfc3339(), "2015-02-18T23:16:09+00:00");
-    assert_eq!(
-        ymdhms_milli(&edt5, 2015, 2, 18, 23, 16, 9, 150).to_rfc3339(),
-        "2015-02-18T23:16:09.150+05:00"
-    );
-    assert_eq!(
-        ymdhms_micro(&edt5, 2015, 2, 18, 23, 59, 59, 1_234_567).to_rfc3339(),
-        "2015-02-18T23:59:60.234567+05:00"
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T23:59:59.123+05:00"),
-        Ok(ymdhms_micro(&edt5, 2015, 2, 18, 23, 59, 59, 123_000))
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T23:59:59.123456+05:00"),
-        Ok(ymdhms_micro(&edt5, 2015, 2, 18, 23, 59, 59, 123_456))
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T23:59:59.123456789+05:00"),
-        Ok(ymdhms_nano(&edt5, 2015, 2, 18, 23, 59, 59, 123_456_789))
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T23:16:09Z"),
-        Ok(ymdhms(&edt0, 2015, 2, 18, 23, 16, 9))
-    );
-
-    assert_eq!(
-        ymdhms_micro(&edt5, 2015, 2, 18, 23, 59, 59, 1_234_567).to_rfc3339(),
-        "2015-02-18T23:59:60.234567+05:00"
-    );
-    assert_eq!(
-        ymdhms_milli(&edt5, 2015, 2, 18, 23, 16, 9, 150).to_rfc3339(),
-        "2015-02-18T23:16:09.150+05:00"
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T00:00:00.234567+05:00"),
-        Ok(ymdhms_micro(&edt5, 2015, 2, 18, 0, 0, 0, 234_567))
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18T23:16:09Z"),
-        Ok(ymdhms(&edt0, 2015, 2, 18, 23, 16, 9))
-    );
-    assert_eq!(
-        DateTime::parse_from_rfc3339("2015-02-18 23:59:60.234567+05:00"),
-        Ok(ymdhms_micro(&edt5, 2015, 2, 18, 23, 59, 59, 1_234_567))
-    );
-    assert_eq!(ymdhms_utc(2015, 2, 18, 23, 16, 9).to_rfc3339(), "2015-02-18T23:16:09+00:00");
-
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567 +05:00").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:059:60.234567+05:00").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567+05:00PST").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567+PST").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567PST").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567+0500").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567+05:00:00").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567:+05:00").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567+05:00 ").is_err());
-    assert!(DateTime::parse_from_rfc3339(" 2015-02-18T23:59:60.234567+05:00").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015- 02-18T23:59:60.234567+05:00").is_err());
-    assert!(DateTime::parse_from_rfc3339("2015-02-18T23:59:60.234567A+05:00").is_err());
-}
-
-#[test]
-#[cfg(feature = "alloc")]
-fn test_rfc3339_opts() {
-    use crate::extensions::chrono::SecondsFormat::*;
-    let pst = FixedOffset::east_opt(8 * 60 * 60).unwrap();
-    let dt = pst
-        .from_local_datetime(
-            &NaiveDate::from_ymd_opt(2018, 1, 11)
-                .unwrap()
-                .and_hms_nano_opt(10, 5, 13, 84_660_000)
-                .unwrap(),
-        )
-        .unwrap();
-    assert_eq!(dt.to_rfc3339_opts(Secs, false), "2018-01-11T10:05:13+08:00");
-    assert_eq!(dt.to_rfc3339_opts(Secs, true), "2018-01-11T10:05:13+08:00");
-    assert_eq!(dt.to_rfc3339_opts(Millis, false), "2018-01-11T10:05:13.084+08:00");
-    assert_eq!(dt.to_rfc3339_opts(Micros, false), "2018-01-11T10:05:13.084660+08:00");
-    assert_eq!(dt.to_rfc3339_opts(Nanos, false), "2018-01-11T10:05:13.084660000+08:00");
-    assert_eq!(dt.to_rfc3339_opts(AutoSi, false), "2018-01-11T10:05:13.084660+08:00");
-
-    let ut = dt.naive_utc().and_utc();
-    assert_eq!(ut.to_rfc3339_opts(Secs, false), "2018-01-11T02:05:13+00:00");
-    assert_eq!(ut.to_rfc3339_opts(Secs, true), "2018-01-11T02:05:13Z");
-    assert_eq!(ut.to_rfc3339_opts(Millis, false), "2018-01-11T02:05:13.084+00:00");
-    assert_eq!(ut.to_rfc3339_opts(Millis, true), "2018-01-11T02:05:13.084Z");
-    assert_eq!(ut.to_rfc3339_opts(Micros, true), "2018-01-11T02:05:13.084660Z");
-    assert_eq!(ut.to_rfc3339_opts(Nanos, true), "2018-01-11T02:05:13.084660000Z");
-    assert_eq!(ut.to_rfc3339_opts(AutoSi, true), "2018-01-11T02:05:13.084660Z");
-}
-
-#[test]
-#[should_panic]
-#[cfg(feature = "alloc")]
-fn test_rfc3339_opts_nonexhaustive() {
-    use crate::extensions::chrono::SecondsFormat;
-    let dt = Utc.with_ymd_and_hms(1999, 10, 9, 1, 2, 3).unwrap();
-    let _ = dt.to_rfc3339_opts(SecondsFormat::__NonExhaustive, true);
 }
 
 #[test]
@@ -1315,21 +1011,6 @@ fn test_to_string_round_trip() {
 }
 
 #[test]
-#[cfg(feature = "clock")]
-fn test_to_string_round_trip_with_local() {
-    let ndt = Local::now();
-    let _dt: DateTime<FixedOffset> = ndt.to_string().parse().unwrap();
-}
-
-#[test]
-#[cfg(feature = "clock")]
-fn test_datetime_format_with_local() {
-    // if we are not around the year boundary, local and UTC date should have the same year
-    let dt = Local::now().with_month(5).unwrap();
-    assert_eq!(dt.format("%Y").to_string(), dt.with_timezone(&Utc).format("%Y").to_string());
-}
-
-#[test]
 fn test_datetime_is_send_and_copy() {
     #[derive(Clone)]
     struct Tz {
@@ -1390,79 +1071,6 @@ fn test_subsecond_part() {
 // Some targets, such as `wasm32-wasi`, have a problematic definition of `SystemTime`, such as an
 // `i32` (year 2035 problem), or an `u64` (no values before `UNIX-EPOCH`).
 // See https://github.com/rust-lang/rust/issues/44394.
-#[test]
-#[cfg(all(feature = "std", not(all(target_arch = "wasm32", target_os = "wasi"))))]
-fn test_from_system_time() {
-    use std::time::{Duration, SystemTime, UNIX_EPOCH};
-
-    let nanos = 999_999_000;
-
-    let epoch = Utc.with_ymd_and_hms(1970, 1, 1, 0, 0, 0).unwrap();
-
-    // SystemTime -> DateTime<Utc>
-    assert_eq!(DateTime::<Utc>::from(UNIX_EPOCH), epoch);
-    assert_eq!(
-        DateTime::<Utc>::from(UNIX_EPOCH + Duration::new(999_999_999, nanos)),
-        Utc.from_local_datetime(
-            &NaiveDate::from_ymd_opt(2001, 9, 9)
-                .unwrap()
-                .and_hms_nano_opt(1, 46, 39, nanos)
-                .unwrap()
-        )
-        .unwrap()
-    );
-    assert_eq!(
-        DateTime::<Utc>::from(UNIX_EPOCH - Duration::new(999_999_999, nanos)),
-        Utc.from_local_datetime(
-            &NaiveDate::from_ymd_opt(1938, 4, 24)
-                .unwrap()
-                .and_hms_nano_opt(22, 13, 20, 1_000)
-                .unwrap()
-        )
-        .unwrap()
-    );
-
-    // DateTime<Utc> -> SystemTime
-    assert_eq!(SystemTime::from(epoch), UNIX_EPOCH);
-    assert_eq!(
-        SystemTime::from(
-            Utc.from_local_datetime(
-                &NaiveDate::from_ymd_opt(2001, 9, 9)
-                    .unwrap()
-                    .and_hms_nano_opt(1, 46, 39, nanos)
-                    .unwrap()
-            )
-            .unwrap()
-        ),
-        UNIX_EPOCH + Duration::new(999_999_999, nanos)
-    );
-    assert_eq!(
-        SystemTime::from(
-            Utc.from_local_datetime(
-                &NaiveDate::from_ymd_opt(1938, 4, 24)
-                    .unwrap()
-                    .and_hms_nano_opt(22, 13, 20, 1_000)
-                    .unwrap()
-            )
-            .unwrap()
-        ),
-        UNIX_EPOCH - Duration::new(999_999_999, nanos)
-    );
-
-    // DateTime<any tz> -> SystemTime (via `with_timezone`)
-    #[cfg(feature = "clock")]
-    {
-        assert_eq!(SystemTime::from(epoch.with_timezone(&Local)), UNIX_EPOCH);
-    }
-    assert_eq!(
-        SystemTime::from(epoch.with_timezone(&FixedOffset::east_opt(32400).unwrap())),
-        UNIX_EPOCH
-    );
-    assert_eq!(
-        SystemTime::from(epoch.with_timezone(&FixedOffset::west_opt(28800).unwrap())),
-        UNIX_EPOCH
-    );
-}
 
 #[test]
 #[allow(deprecated)]
@@ -1489,34 +1097,6 @@ fn test_datetime_from_local() {
 }
 
 #[test]
-#[cfg(feature = "clock")]
-fn test_datetime_before_windows_api_limits() {
-    // dt corresponds to `FILETIME = 147221225472` from issue 651.
-    // (https://github.com/chronotope/chrono/issues/651)
-    // This used to fail on Windows for timezones with an offset of -5:00 or greater.
-    // The API limits years to 1601..=30827.
-    let dt = NaiveDate::from_ymd_opt(1601, 1, 1).unwrap().and_hms_milli_opt(4, 5, 22, 122).unwrap();
-    let local_dt = Local.from_utc_datetime(&dt);
-    dbg!(local_dt);
-}
-
-#[test]
-#[cfg(feature = "clock")]
-fn test_years_elapsed() {
-    // A bit more than 1 year
-    let one_year_ago = Utc::now().date_naive() - Days::new(400);
-    // A bit more than 2 years
-    let two_year_ago = Utc::now().date_naive() - Days::new(750);
-
-    assert_eq!(Utc::now().date_naive().years_since(one_year_ago), Some(1));
-    assert_eq!(Utc::now().date_naive().years_since(two_year_ago), Some(2));
-
-    // If the given DateTime is later than now, the function will always return 0.
-    let future = Utc::now().date_naive() + Days(100);
-    assert_eq!(Utc::now().date_naive().years_since(future), None);
-}
-
-#[test]
 fn test_datetime_add_assign() {
     let naivedatetime = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
     let datetime = naivedatetime.and_utc();
@@ -1536,21 +1116,6 @@ fn test_datetime_add_assign() {
     let datetime_add = datetime_add.with_timezone(&timezone);
 
     assert_eq!(datetime_add, datetime + TimeDelta::try_seconds(60).unwrap());
-}
-
-#[test]
-#[cfg(feature = "clock")]
-fn test_datetime_add_assign_local() {
-    let naivedatetime = NaiveDate::from_ymd_opt(2022, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-
-    let datetime = Local.from_utc_datetime(&naivedatetime);
-    let mut datetime_add = Local.from_utc_datetime(&naivedatetime);
-
-    // ensure we cross a DST transition
-    for i in 1..=365 {
-        datetime_add += TimeDelta::try_days(1).unwrap();
-        assert_eq!(datetime_add, datetime + TimeDelta::try_days(i).unwrap())
-    }
 }
 
 #[test]
@@ -1585,13 +1150,6 @@ fn test_min_max_getters() {
     assert_eq!(format!("{beyond_min:?}"), "-262144-12-31T22:00:00-02:00");
     // RFC 2822 doesn't support years with more than 4 digits.
     // assert_eq!(beyond_min.to_rfc2822(), "");
-    #[cfg(feature = "alloc")]
-    assert_eq!(beyond_min.to_rfc3339(), "-262144-12-31T22:00:00-02:00");
-    #[cfg(feature = "alloc")]
-    assert_eq!(
-        beyond_min.format("%Y-%m-%dT%H:%M:%S%:z").to_string(),
-        "-262144-12-31T22:00:00-02:00"
-    );
     assert_eq!(beyond_min.year(), -262144);
     assert_eq!(beyond_min.month(), 12);
     assert_eq!(beyond_min.month0(), 11);
@@ -1610,13 +1168,6 @@ fn test_min_max_getters() {
     assert_eq!(format!("{beyond_max:?}"), "+262143-01-01T01:59:59.999999999+02:00");
     // RFC 2822 doesn't support years with more than 4 digits.
     // assert_eq!(beyond_max.to_rfc2822(), "");
-    #[cfg(feature = "alloc")]
-    assert_eq!(beyond_max.to_rfc3339(), "+262143-01-01T01:59:59.999999999+02:00");
-    #[cfg(feature = "alloc")]
-    assert_eq!(
-        beyond_max.format("%Y-%m-%dT%H:%M:%S%.9f%:z").to_string(),
-        "+262143-01-01T01:59:59.999999999+02:00"
-    );
     assert_eq!(beyond_max.year(), 262143);
     assert_eq!(beyond_max.month(), 1);
     assert_eq!(beyond_max.month0(), 0);
@@ -1754,21 +1305,6 @@ fn test_local_beyond_max_datetime() {
 }
 
 #[test]
-#[cfg(feature = "clock")]
-fn test_datetime_sub_assign_local() {
-    let naivedatetime = NaiveDate::from_ymd_opt(2022, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-
-    let datetime = Local.from_utc_datetime(&naivedatetime);
-    let mut datetime_sub = Local.from_utc_datetime(&naivedatetime);
-
-    // ensure we cross a DST transition
-    for i in 1..=365 {
-        datetime_sub -= TimeDelta::try_days(1).unwrap();
-        assert_eq!(datetime_sub, datetime - TimeDelta::try_days(i).unwrap())
-    }
-}
-
-#[test]
 fn test_core_duration_ops() {
     use core::time::Duration;
 
@@ -1787,19 +1323,6 @@ fn test_core_duration_max() {
 
     let mut utc_dt = Utc.with_ymd_and_hms(2023, 8, 29, 11, 34, 12).unwrap();
     utc_dt += Duration::MAX;
-}
-
-#[test]
-#[cfg(feature = "clock")]
-fn test_datetime_local_from_preserves_offset() {
-    let naivedatetime = NaiveDate::from_ymd_opt(2023, 1, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-
-    let datetime = Local.from_utc_datetime(&naivedatetime);
-    let offset = datetime.offset().fix();
-
-    let datetime_fixed: DateTime<FixedOffset> = datetime.into();
-    assert_eq!(&offset, datetime_fixed.offset());
-    assert_eq!(datetime.fixed_offset(), datetime_fixed);
 }
 
 #[test]
@@ -1849,37 +1372,6 @@ fn test_auto_conversion() {
         .unwrap();
     let utc_dt2: DateTime<Utc> = cdt_dt.into();
     assert_eq!(utc_dt, utc_dt2);
-}
-
-#[test]
-#[cfg(feature = "clock")]
-#[allow(deprecated)]
-fn test_test_deprecated_from_offset() {
-    let now = Local::now();
-    let naive = now.naive_local();
-    let utc = now.naive_utc();
-    let offset: FixedOffset = *now.offset();
-
-    assert_eq!(DateTime::<Local>::from_local(naive, offset), now);
-    assert_eq!(DateTime::<Local>::from_utc(utc, offset), now);
-}
-
-#[test]
-#[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-fn locale_decimal_point() {
-    use crate::extensions::chrono::Locale::{ar_SY, nl_NL};
-    let dt =
-        Utc.with_ymd_and_hms(2018, 9, 5, 18, 58, 0).unwrap().with_nanosecond(123456780).unwrap();
-
-    assert_eq!(dt.format_localized("%T%.f", nl_NL).to_string(), "18:58:00,123456780");
-    assert_eq!(dt.format_localized("%T%.3f", nl_NL).to_string(), "18:58:00,123");
-    assert_eq!(dt.format_localized("%T%.6f", nl_NL).to_string(), "18:58:00,123456");
-    assert_eq!(dt.format_localized("%T%.9f", nl_NL).to_string(), "18:58:00,123456780");
-
-    assert_eq!(dt.format_localized("%T%.f", ar_SY).to_string(), "18:58:00.123456780");
-    assert_eq!(dt.format_localized("%T%.3f", ar_SY).to_string(), "18:58:00.123");
-    assert_eq!(dt.format_localized("%T%.6f", ar_SY).to_string(), "18:58:00.123456");
-    assert_eq!(dt.format_localized("%T%.9f", ar_SY).to_string(), "18:58:00.123456780");
 }
 
 /// This is an extended test for <https://github.com/chronotope/chrono/issues/1289>.

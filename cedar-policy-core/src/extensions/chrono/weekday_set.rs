@@ -2,7 +2,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 use core::{
     fmt::{self, Debug},
     iter::FusedIterator,
@@ -333,23 +333,6 @@ impl WeekdaySet {
 impl Debug for WeekdaySet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "WeekdaySet({:0>7b})", self.0)
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl defmt::Format for WeekdaySet {
-    fn format(&self, f: defmt::Formatter<'_>) {
-        defmt::write!(
-            f,
-            "WeekdaySet({}{}{}{}{}{}{})",
-            0x1 & (self.0 >> 6),
-            0x1 & (self.0 >> 5),
-            0x1 & (self.0 >> 4),
-            0x1 & (self.0 >> 3),
-            0x1 & (self.0 >> 2),
-            0x1 & (self.0 >> 1),
-            0x1 & (self.0 >> 0),
-        )
     }
 }
 

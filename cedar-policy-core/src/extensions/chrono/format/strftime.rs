@@ -5,7 +5,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 /*!
 `strftime`/`strptime`-inspired date and time formatting syntax.
@@ -165,17 +165,8 @@ Notes:
    China Daylight Time.
 */
 
-#[cfg(feature = "alloc")]
-extern crate alloc;
-
-#[cfg(any(feature = "alloc", feature = "std"))]
-use super::{BAD_FORMAT, ParseError};
 use super::{Fixed, InternalInternal, Item, Numeric, Pad};
-#[cfg(feature = "unstable-locales")]
-use super::{Locale, locales};
 use super::{fixed, internal_fixed, num, num0, nums};
-#[cfg(all(feature = "alloc", not(feature = "std"), not(test)))]
-use alloc::vec::Vec;
 
 /// Parsing iterator for `strftime`-like format strings.
 ///
@@ -195,7 +186,6 @@ use alloc::vec::Vec;
 /// [`DateTime`]: crate::extensions::chrono::DateTime
 /// [`format::parse()`]: crate::extensions::chrono::format::parse()
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct StrftimeItems<'a> {
     /// Remaining portion of the string.
     remainder: &'a str,
@@ -203,10 +193,6 @@ pub struct StrftimeItems<'a> {
     /// `queue` stores a slice of `Item`s that have to be returned one by one.
     queue: &'static [Item<'static>],
     lenient: bool,
-    #[cfg(feature = "unstable-locales")]
-    locale_str: &'a str,
-    #[cfg(feature = "unstable-locales")]
-    locale: Option<Locale>,
 }
 
 impl<'a> StrftimeItems<'a> {
@@ -239,10 +225,6 @@ impl<'a> StrftimeItems<'a> {
             remainder: s,
             queue: &[],
             lenient: false,
-            #[cfg(feature = "unstable-locales")]
-            locale_str: "",
-            #[cfg(feature = "unstable-locales")]
-            locale: None,
         }
     }
 
@@ -271,165 +253,7 @@ impl<'a> StrftimeItems<'a> {
             remainder: s,
             queue: &[],
             lenient: true,
-            #[cfg(feature = "unstable-locales")]
-            locale_str: "",
-            #[cfg(feature = "unstable-locales")]
-            locale: None,
         }
-    }
-
-    /// Creates a new parsing iterator from a `strftime`-like format string, with some formatting
-    /// specifiers adjusted to match [`Locale`].
-    ///
-    /// Note: `StrftimeItems::new_with_locale` only localizes the *format*. You usually want to
-    /// combine it with other locale-aware methods such as
-    /// [`DateTime::format_localized_with_items`] to get things like localized month or day names.
-    ///
-    /// The `%x` formatting specifier will use the local date format, `%X` the local time format,
-    ///  and `%c` the local format for date and time.
-    /// `%r` will use the local 12-hour clock format (e.g., 11:11:04 PM). Not all locales have such
-    /// a format, in which case we fall back to a 24-hour clock (`%X`).
-    ///
-    /// See the [`format::strftime` module](crate::extensions::chrono::format::strftime) for all supported formatting
-    /// specifiers.
-    ///
-    ///  [`DateTime::format_localized_with_items`]: crate::extensions::chrono::DateTime::format_localized_with_items
-    ///
-    /// # Errors
-    ///
-    /// While iterating [`Item::Error`] will be returned if the format string contains an invalid
-    /// or unrecognized formatting specifier.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # #[cfg(feature = "alloc")] {
-    /// use chrono::format::{Locale, StrftimeItems};
-    /// use chrono::{FixedOffset, TimeZone};
-    ///
-    /// let dt = FixedOffset::east_opt(9 * 60 * 60)
-    ///     .unwrap()
-    ///     .with_ymd_and_hms(2023, 7, 11, 0, 34, 59)
-    ///     .unwrap();
-    ///
-    /// // Note: you usually want to combine `StrftimeItems::new_with_locale` with other
-    /// // locale-aware methods such as `DateTime::format_localized_with_items`.
-    /// // We use the regular `format_with_items` to show only how the formatting changes.
-    ///
-    /// let fmtr = dt.format_with_items(StrftimeItems::new_with_locale("%x", Locale::en_US));
-    /// assert_eq!(fmtr.to_string(), "07/11/2023");
-    /// let fmtr = dt.format_with_items(StrftimeItems::new_with_locale("%x", Locale::ko_KR));
-    /// assert_eq!(fmtr.to_string(), "2023년 07월 11일");
-    /// let fmtr = dt.format_with_items(StrftimeItems::new_with_locale("%x", Locale::ja_JP));
-    /// assert_eq!(fmtr.to_string(), "2023年07月11日");
-    /// # }
-    /// ```
-    #[cfg(feature = "unstable-locales")]
-    #[must_use]
-    pub const fn new_with_locale(s: &'a str, locale: Locale) -> StrftimeItems<'a> {
-        StrftimeItems {
-            remainder: s,
-            queue: &[],
-            lenient: false,
-            locale_str: "",
-            locale: Some(locale),
-        }
-    }
-
-    /// Parse format string into a `Vec` of formatting [`Item`]'s.
-    ///
-    /// If you need to format or parse multiple values with the same format string, it is more
-    /// efficient to convert it to a `Vec` of formatting [`Item`]'s than to re-parse the format
-    /// string on every use.
-    ///
-    /// The `format_with_items` methods on [`DateTime`], [`NaiveDateTime`], [`NaiveDate`] and
-    /// [`NaiveTime`] accept the result for formatting. [`format::parse()`] can make use of it for
-    /// parsing.
-    ///
-    /// [`DateTime`]: crate::extensions::chrono::DateTime::format_with_items
-    /// [`NaiveDateTime`]: crate::extensions::chrono::NaiveDateTime::format_with_items
-    /// [`NaiveDate`]: crate::extensions::chrono::NaiveDate::format_with_items
-    /// [`NaiveTime`]: crate::extensions::chrono::NaiveTime::format_with_items
-    /// [`format::parse()`]: crate::extensions::chrono::format::parse()
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the format string contains an invalid or unrecognized formatting
-    /// specifier and the [`StrftimeItems`] wasn't constructed with [`new_lenient`][Self::new_lenient].
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::{parse, Parsed, StrftimeItems};
-    /// use chrono::NaiveDate;
-    ///
-    /// let fmt_items = StrftimeItems::new("%e %b %Y %k.%M").parse()?;
-    /// let datetime = NaiveDate::from_ymd_opt(2023, 7, 11).unwrap().and_hms_opt(9, 0, 0).unwrap();
-    ///
-    /// // Formatting
-    /// assert_eq!(
-    ///     datetime.format_with_items(fmt_items.as_slice().iter()).to_string(),
-    ///     "11 Jul 2023  9.00"
-    /// );
-    ///
-    /// // Parsing
-    /// let mut parsed = Parsed::new();
-    /// parse(&mut parsed, "11 Jul 2023  9.00", fmt_items.as_slice().iter())?;
-    /// let parsed_dt = parsed.to_naive_datetime_with_offset(0)?;
-    /// assert_eq!(parsed_dt, datetime);
-    /// # Ok::<(), chrono::ParseError>(())
-    /// ```
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    pub fn parse(self) -> Result<Vec<Item<'a>>, ParseError> {
-        self.into_iter()
-            .map(|item| match item == Item::Error {
-                false => Ok(item),
-                true => Err(BAD_FORMAT),
-            })
-            .collect()
-    }
-
-    /// Parse format string into a `Vec` of [`Item`]'s that contain no references to slices of the
-    /// format string.
-    ///
-    /// A `Vec` created with [`StrftimeItems::parse`] contains references to the format string,
-    /// binding the lifetime of the `Vec` to that string. [`StrftimeItems::parse_to_owned`] will
-    /// convert the references to owned types.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the format string contains an invalid or unrecognized formatting
-    /// specifier and the [`StrftimeItems`] wasn't constructed with [`new_lenient`][Self::new_lenient].
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::{Item, ParseError, StrftimeItems};
-    /// use chrono::NaiveDate;
-    ///
-    /// fn format_items(date_fmt: &str, time_fmt: &str) -> Result<Vec<Item<'static>>, ParseError> {
-    ///     // `fmt_string` is dropped at the end of this function.
-    ///     let fmt_string = format!("{} {}", date_fmt, time_fmt);
-    ///     StrftimeItems::new(&fmt_string).parse_to_owned()
-    /// }
-    ///
-    /// let fmt_items = format_items("%e %b %Y", "%k.%M")?;
-    /// let datetime = NaiveDate::from_ymd_opt(2023, 7, 11).unwrap().and_hms_opt(9, 0, 0).unwrap();
-    ///
-    /// assert_eq!(
-    ///     datetime.format_with_items(fmt_items.as_slice().iter()).to_string(),
-    ///     "11 Jul 2023  9.00"
-    /// );
-    /// # Ok::<(), ParseError>(())
-    /// ```
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    pub fn parse_to_owned(self) -> Result<Vec<Item<'static>>, ParseError> {
-        self.into_iter()
-            .map(|item| match item == Item::Error {
-                false => Ok(item.to_owned()),
-                true => Err(BAD_FORMAT),
-            })
-            .collect()
     }
 
     fn parse_next_item(&mut self, mut remainder: &'a str) -> Option<(&'a str, Item<'a>)> {
@@ -498,7 +322,6 @@ impl<'a> StrftimeItems<'a> {
             })
         }
 
-        #[cfg(not(feature = "unstable-locales"))]
         macro_rules! queue_from_slice {
             ($slice:expr) => {{
                 self.queue = &$slice[1..];
@@ -527,18 +350,12 @@ impl<'a> StrftimeItems<'a> {
             'U' => num0(WeekFromSun),
             'V' => num0(IsoWeek),
             'W' => num0(WeekFromMon),
-            #[cfg(not(feature = "unstable-locales"))]
             'X' => queue_from_slice!(T_FMT),
-            #[cfg(feature = "unstable-locales")]
-            'X' => self.switch_to_locale_str(locales::t_fmt, T_FMT),
             'Y' => num0(Year),
             'Z' => fixed(Fixed::TimezoneName),
             'a' => fixed(Fixed::ShortWeekdayName),
             'b' | 'h' => fixed(Fixed::ShortMonthName),
-            #[cfg(not(feature = "unstable-locales"))]
             'c' => queue_from_slice!(D_T_FMT),
-            #[cfg(feature = "unstable-locales")]
-            'c' => self.switch_to_locale_str(locales::d_t_fmt, D_T_FMT),
             'd' => num0(Day),
             'e' => nums(Day),
             'f' => num0(Nanosecond),
@@ -550,17 +367,7 @@ impl<'a> StrftimeItems<'a> {
             'n' => Space("\n"),
             'p' => fixed(Fixed::UpperAmPm),
             'q' => num(Quarter),
-            #[cfg(not(feature = "unstable-locales"))]
             'r' => queue_from_slice!(T_FMT_AMPM),
-            #[cfg(feature = "unstable-locales")]
-            'r' => {
-                if self.locale.is_some() && locales::t_fmt_ampm(self.locale.unwrap()).is_empty() {
-                    // 12-hour clock not supported by this locale. Switch to 24-hour format.
-                    self.switch_to_locale_str(locales::t_fmt, T_FMT)
-                } else {
-                    self.switch_to_locale_str(locales::t_fmt_ampm, T_FMT_AMPM)
-                }
-            }
             's' => num(Timestamp),
             't' => Space("\t"),
             'u' => num(WeekdayFromMon),
@@ -574,10 +381,7 @@ impl<'a> StrftimeItems<'a> {
                 ]
             }
             'w' => num(NumDaysFromSun),
-            #[cfg(not(feature = "unstable-locales"))]
             'x' => queue_from_slice!(D_FMT),
-            #[cfg(feature = "unstable-locales")]
-            'x' => self.switch_to_locale_str(locales::d_fmt, D_FMT),
             'y' => num0(YearMod100),
             'z' => {
                 if is_alternate {
@@ -655,22 +459,6 @@ impl<'a> StrftimeItems<'a> {
         }
     }
 
-    #[cfg(feature = "unstable-locales")]
-    fn switch_to_locale_str(
-        &mut self,
-        localized_fmt_str: impl Fn(Locale) -> &'static str,
-        fallback: &'static [Item<'static>],
-    ) -> Item<'a> {
-        if let Some(locale) = self.locale {
-            assert!(self.locale_str.is_empty());
-            let (fmt_str, item) = self.parse_next_item(localized_fmt_str(locale)).unwrap();
-            self.locale_str = fmt_str;
-            item
-        } else {
-            self.queue = &fallback[1..];
-            fallback[0].clone()
-        }
-    }
 }
 
 impl<'a> Iterator for StrftimeItems<'a> {
@@ -683,13 +471,6 @@ impl<'a> Iterator for StrftimeItems<'a> {
             return Some(item.clone());
         }
 
-        // We are in the middle of parsing the localized formatting string of a specifier.
-        #[cfg(feature = "unstable-locales")]
-        if !self.locale_str.is_empty() {
-            let (remainder, item) = self.parse_next_item(self.locale_str)?;
-            self.locale_str = remainder;
-            return Some(item);
-        }
 
         // Normal: we are parsing the formatting string.
         let (remainder, item) = self.parse_next_item(self.remainder)?;
@@ -743,12 +524,8 @@ const HAVE_ALTERNATES: &str = "z";
 mod tests {
     use super::StrftimeItems;
     use crate::extensions::chrono::format::Item::{self, Literal, Space};
-    #[cfg(feature = "unstable-locales")]
-    use crate::extensions::chrono::format::Locale;
     use crate::extensions::chrono::format::{Fixed, InternalInternal, Numeric::*};
     use crate::extensions::chrono::format::{fixed, internal_fixed, num, num0, nums};
-    #[cfg(feature = "alloc")]
-    use crate::extensions::chrono::{DateTime, FixedOffset, NaiveDate, TimeZone, Timelike, Utc};
 
     #[test]
     fn test_strftime_items() {
@@ -908,316 +685,4 @@ mod tests {
         assert_eq!(parse_and_collect("%#m"), [Item::Error]);
     }
 
-    #[test]
-    #[cfg(feature = "alloc")]
-    fn test_strftime_docs() {
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .from_local_datetime(
-                &NaiveDate::from_ymd_opt(2001, 7, 8)
-                    .unwrap()
-                    .and_hms_nano_opt(0, 34, 59, 1_026_490_708)
-                    .unwrap(),
-            )
-            .unwrap();
-
-        // date specifiers
-        assert_eq!(dt.format("%Y").to_string(), "2001");
-        assert_eq!(dt.format("%C").to_string(), "20");
-        assert_eq!(dt.format("%y").to_string(), "01");
-        assert_eq!(dt.format("%q").to_string(), "3");
-        assert_eq!(dt.format("%m").to_string(), "07");
-        assert_eq!(dt.format("%b").to_string(), "Jul");
-        assert_eq!(dt.format("%B").to_string(), "July");
-        assert_eq!(dt.format("%h").to_string(), "Jul");
-        assert_eq!(dt.format("%d").to_string(), "08");
-        assert_eq!(dt.format("%e").to_string(), " 8");
-        assert_eq!(dt.format("%e").to_string(), dt.format("%_d").to_string());
-        assert_eq!(dt.format("%a").to_string(), "Sun");
-        assert_eq!(dt.format("%A").to_string(), "Sunday");
-        assert_eq!(dt.format("%w").to_string(), "0");
-        assert_eq!(dt.format("%u").to_string(), "7");
-        assert_eq!(dt.format("%U").to_string(), "27");
-        assert_eq!(dt.format("%W").to_string(), "27");
-        assert_eq!(dt.format("%G").to_string(), "2001");
-        assert_eq!(dt.format("%g").to_string(), "01");
-        assert_eq!(dt.format("%V").to_string(), "27");
-        assert_eq!(dt.format("%j").to_string(), "189");
-        assert_eq!(dt.format("%D").to_string(), "07/08/01");
-        assert_eq!(dt.format("%x").to_string(), "07/08/01");
-        assert_eq!(dt.format("%F").to_string(), "2001-07-08");
-        assert_eq!(dt.format("%v").to_string(), " 8-Jul-2001");
-
-        // time specifiers
-        assert_eq!(dt.format("%H").to_string(), "00");
-        assert_eq!(dt.format("%k").to_string(), " 0");
-        assert_eq!(dt.format("%k").to_string(), dt.format("%_H").to_string());
-        assert_eq!(dt.format("%I").to_string(), "12");
-        assert_eq!(dt.format("%l").to_string(), "12");
-        assert_eq!(dt.format("%l").to_string(), dt.format("%_I").to_string());
-        assert_eq!(dt.format("%P").to_string(), "am");
-        assert_eq!(dt.format("%p").to_string(), "AM");
-        assert_eq!(dt.format("%M").to_string(), "34");
-        assert_eq!(dt.format("%S").to_string(), "60");
-        assert_eq!(dt.format("%f").to_string(), "026490708");
-        assert_eq!(dt.format("%.f").to_string(), ".026490708");
-        assert_eq!(dt.with_nanosecond(1_026_490_000).unwrap().format("%.f").to_string(), ".026490");
-        assert_eq!(dt.format("%.3f").to_string(), ".026");
-        assert_eq!(dt.format("%.6f").to_string(), ".026490");
-        assert_eq!(dt.format("%.9f").to_string(), ".026490708");
-        assert_eq!(dt.format("%3f").to_string(), "026");
-        assert_eq!(dt.format("%6f").to_string(), "026490");
-        assert_eq!(dt.format("%9f").to_string(), "026490708");
-        assert_eq!(dt.format("%R").to_string(), "00:34");
-        assert_eq!(dt.format("%T").to_string(), "00:34:60");
-        assert_eq!(dt.format("%X").to_string(), "00:34:60");
-        assert_eq!(dt.format("%r").to_string(), "12:34:60 AM");
-
-        // time zone specifiers
-        //assert_eq!(dt.format("%Z").to_string(), "ACST");
-        assert_eq!(dt.format("%z").to_string(), "+0930");
-        assert_eq!(dt.format("%:z").to_string(), "+09:30");
-        assert_eq!(dt.format("%::z").to_string(), "+09:30:00");
-        assert_eq!(dt.format("%:::z").to_string(), "+09");
-
-        // date & time specifiers
-        assert_eq!(dt.format("%c").to_string(), "Sun Jul  8 00:34:60 2001");
-        assert_eq!(dt.format("%+").to_string(), "2001-07-08T00:34:60.026490708+09:30");
-
-        assert_eq!(
-            dt.with_timezone(&Utc).format("%+").to_string(),
-            "2001-07-07T15:04:60.026490708+00:00"
-        );
-        assert_eq!(
-            dt.with_timezone(&Utc),
-            DateTime::parse_from_str("2001-07-07T15:04:60.026490708Z", "%+").unwrap()
-        );
-        assert_eq!(
-            dt.with_timezone(&Utc),
-            DateTime::parse_from_str("2001-07-07T15:04:60.026490708UTC", "%+").unwrap()
-        );
-        assert_eq!(
-            dt.with_timezone(&Utc),
-            DateTime::parse_from_str("2001-07-07t15:04:60.026490708utc", "%+").unwrap()
-        );
-
-        assert_eq!(
-            dt.with_nanosecond(1_026_490_000).unwrap().format("%+").to_string(),
-            "2001-07-08T00:34:60.026490+09:30"
-        );
-        assert_eq!(dt.format("%s").to_string(), "994518299");
-
-        // special specifiers
-        assert_eq!(dt.format("%t").to_string(), "\t");
-        assert_eq!(dt.format("%n").to_string(), "\n");
-        assert_eq!(dt.format("%%").to_string(), "%");
-
-        // complex format specifiers
-        assert_eq!(dt.format("  %Y%d%m%%%%%t%H%M%S\t").to_string(), "  20010807%%\t003460\t");
-        assert_eq!(
-            dt.format("  %Y%d%m%%%%%t%H:%P:%M%S%:::z\t").to_string(),
-            "  20010807%%\t00:am:3460+09\t"
-        );
-    }
-
-    #[test]
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    fn test_strftime_docs_localized() {
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .with_ymd_and_hms(2001, 7, 8, 0, 34, 59)
-            .unwrap()
-            .with_nanosecond(1_026_490_708)
-            .unwrap();
-
-        // date specifiers
-        assert_eq!(dt.format_localized("%b", Locale::fr_BE).to_string(), "jui");
-        assert_eq!(dt.format_localized("%B", Locale::fr_BE).to_string(), "juillet");
-        assert_eq!(dt.format_localized("%h", Locale::fr_BE).to_string(), "jui");
-        assert_eq!(dt.format_localized("%a", Locale::fr_BE).to_string(), "dim");
-        assert_eq!(dt.format_localized("%A", Locale::fr_BE).to_string(), "dimanche");
-        assert_eq!(dt.format_localized("%D", Locale::fr_BE).to_string(), "07/08/01");
-        assert_eq!(dt.format_localized("%x", Locale::fr_BE).to_string(), "08/07/01");
-        assert_eq!(dt.format_localized("%F", Locale::fr_BE).to_string(), "2001-07-08");
-        assert_eq!(dt.format_localized("%v", Locale::fr_BE).to_string(), " 8-jui-2001");
-
-        // time specifiers
-        assert_eq!(dt.format_localized("%P", Locale::fr_BE).to_string(), "");
-        assert_eq!(dt.format_localized("%p", Locale::fr_BE).to_string(), "");
-        assert_eq!(dt.format_localized("%R", Locale::fr_BE).to_string(), "00:34");
-        assert_eq!(dt.format_localized("%T", Locale::fr_BE).to_string(), "00:34:60");
-        assert_eq!(dt.format_localized("%X", Locale::fr_BE).to_string(), "00:34:60");
-        assert_eq!(dt.format_localized("%r", Locale::fr_BE).to_string(), "00:34:60");
-
-        // date & time specifiers
-        assert_eq!(
-            dt.format_localized("%c", Locale::fr_BE).to_string(),
-            "dim 08 jui 2001 00:34:60 +09:30"
-        );
-
-        let nd = NaiveDate::from_ymd_opt(2001, 7, 8).unwrap();
-
-        // date specifiers
-        assert_eq!(nd.format_localized("%b", Locale::de_DE).to_string(), "Jul");
-        assert_eq!(nd.format_localized("%B", Locale::de_DE).to_string(), "Juli");
-        assert_eq!(nd.format_localized("%h", Locale::de_DE).to_string(), "Jul");
-        assert_eq!(nd.format_localized("%a", Locale::de_DE).to_string(), "So");
-        assert_eq!(nd.format_localized("%A", Locale::de_DE).to_string(), "Sonntag");
-        assert_eq!(nd.format_localized("%D", Locale::de_DE).to_string(), "07/08/01");
-        assert_eq!(nd.format_localized("%x", Locale::de_DE).to_string(), "08.07.2001");
-        assert_eq!(nd.format_localized("%F", Locale::de_DE).to_string(), "2001-07-08");
-        assert_eq!(nd.format_localized("%v", Locale::de_DE).to_string(), " 8-Jul-2001");
-    }
-
-    /// Ensure parsing a timestamp with the parse-only stftime formatter "%#z" does
-    /// not cause a panic.
-    ///
-    /// See <https://github.com/chronotope/chrono/issues/1139>.
-    #[test]
-    #[cfg(feature = "alloc")]
-    fn test_parse_only_timezone_offset_permissive_no_panic() {
-        use crate::extensions::chrono::NaiveDate;
-        use crate::extensions::chrono::{FixedOffset, TimeZone};
-        use std::fmt::Write;
-
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .from_local_datetime(
-                &NaiveDate::from_ymd_opt(2001, 7, 8)
-                    .unwrap()
-                    .and_hms_nano_opt(0, 34, 59, 1_026_490_708)
-                    .unwrap(),
-            )
-            .unwrap();
-
-        let mut buf = String::new();
-        let _ = write!(buf, "{}", dt.format("%#z")).expect_err("parse-only formatter should fail");
-    }
-
-    #[test]
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    fn test_strftime_localized_korean() {
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .with_ymd_and_hms(2001, 7, 8, 0, 34, 59)
-            .unwrap()
-            .with_nanosecond(1_026_490_708)
-            .unwrap();
-
-        // date specifiers
-        assert_eq!(dt.format_localized("%b", Locale::ko_KR).to_string(), " 7월");
-        assert_eq!(dt.format_localized("%B", Locale::ko_KR).to_string(), "7월");
-        assert_eq!(dt.format_localized("%h", Locale::ko_KR).to_string(), " 7월");
-        assert_eq!(dt.format_localized("%a", Locale::ko_KR).to_string(), "일");
-        assert_eq!(dt.format_localized("%A", Locale::ko_KR).to_string(), "일요일");
-        assert_eq!(dt.format_localized("%D", Locale::ko_KR).to_string(), "07/08/01");
-        assert_eq!(dt.format_localized("%x", Locale::ko_KR).to_string(), "2001년 07월 08일");
-        assert_eq!(dt.format_localized("%F", Locale::ko_KR).to_string(), "2001-07-08");
-        assert_eq!(dt.format_localized("%v", Locale::ko_KR).to_string(), " 8- 7월-2001");
-        assert_eq!(dt.format_localized("%r", Locale::ko_KR).to_string(), "오전 12시 34분 60초");
-
-        // date & time specifiers
-        assert_eq!(
-            dt.format_localized("%c", Locale::ko_KR).to_string(),
-            "2001년 07월 08일 (일) 오전 12시 34분 60초"
-        );
-    }
-
-    #[test]
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    fn test_strftime_localized_japanese() {
-        let dt = FixedOffset::east_opt(34200)
-            .unwrap()
-            .with_ymd_and_hms(2001, 7, 8, 0, 34, 59)
-            .unwrap()
-            .with_nanosecond(1_026_490_708)
-            .unwrap();
-
-        // date specifiers
-        assert_eq!(dt.format_localized("%b", Locale::ja_JP).to_string(), " 7月");
-        assert_eq!(dt.format_localized("%B", Locale::ja_JP).to_string(), "7月");
-        assert_eq!(dt.format_localized("%h", Locale::ja_JP).to_string(), " 7月");
-        assert_eq!(dt.format_localized("%a", Locale::ja_JP).to_string(), "日");
-        assert_eq!(dt.format_localized("%A", Locale::ja_JP).to_string(), "日曜日");
-        assert_eq!(dt.format_localized("%D", Locale::ja_JP).to_string(), "07/08/01");
-        assert_eq!(dt.format_localized("%x", Locale::ja_JP).to_string(), "2001年07月08日");
-        assert_eq!(dt.format_localized("%F", Locale::ja_JP).to_string(), "2001-07-08");
-        assert_eq!(dt.format_localized("%v", Locale::ja_JP).to_string(), " 8- 7月-2001");
-        assert_eq!(dt.format_localized("%r", Locale::ja_JP).to_string(), "午前12時34分60秒");
-
-        // date & time specifiers
-        assert_eq!(
-            dt.format_localized("%c", Locale::ja_JP).to_string(),
-            "2001年07月08日 00時34分60秒"
-        );
-    }
-
-    #[test]
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    fn test_strftime_localized_time() {
-        let dt1 = Utc.with_ymd_and_hms(2024, 2, 9, 6, 54, 32).unwrap();
-        let dt2 = Utc.with_ymd_and_hms(2024, 2, 9, 18, 54, 32).unwrap();
-        // Some of these locales gave issues before pure-rust-locales 0.8.0 with chrono 0.4.27+
-        assert_eq!(dt1.format_localized("%X", Locale::nl_NL).to_string(), "06:54:32");
-        assert_eq!(dt2.format_localized("%X", Locale::nl_NL).to_string(), "18:54:32");
-        assert_eq!(dt1.format_localized("%X", Locale::en_US).to_string(), "06:54:32 AM");
-        assert_eq!(dt2.format_localized("%X", Locale::en_US).to_string(), "06:54:32 PM");
-        assert_eq!(dt1.format_localized("%X", Locale::hy_AM).to_string(), "06:54:32");
-        assert_eq!(dt2.format_localized("%X", Locale::hy_AM).to_string(), "18:54:32");
-        assert_eq!(dt1.format_localized("%X", Locale::chr_US).to_string(), "06:54:32 ᏌᎾᎴ");
-        assert_eq!(dt2.format_localized("%X", Locale::chr_US).to_string(), "06:54:32 ᏒᎯᏱᎢᏗᏢ");
-    }
-
-    #[test]
-    #[cfg(all(feature = "unstable-locales", target_pointer_width = "64"))]
-    fn test_type_sizes() {
-        use core::mem::size_of;
-        assert_eq!(size_of::<Item>(), 24);
-        assert_eq!(size_of::<StrftimeItems>(), 56);
-        assert_eq!(size_of::<Locale>(), 2);
-    }
-
-    #[test]
-    #[cfg(all(feature = "unstable-locales", target_pointer_width = "32"))]
-    fn test_type_sizes() {
-        use core::mem::size_of;
-        assert_eq!(size_of::<Item>(), 12);
-        assert_eq!(size_of::<StrftimeItems>(), 28);
-        assert_eq!(size_of::<Locale>(), 2);
-    }
-
-    #[test]
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    fn test_strftime_parse() {
-        let fmt_str = StrftimeItems::new("%Y-%m-%dT%H:%M:%S%z");
-        let fmt_items = fmt_str.parse().unwrap();
-        let dt = Utc.with_ymd_and_hms(2014, 5, 7, 12, 34, 56).unwrap();
-        assert_eq!(&dt.format_with_items(fmt_items.iter()).to_string(), "2014-05-07T12:34:56+0000");
-    }
-
-    #[test]
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    fn test_strftime_parse_lenient() {
-        let fmt_str = StrftimeItems::new_lenient("%Y-%m-%dT%H:%M:%S%z%Q%.2f%%%");
-        let fmt_items = fmt_str.parse().unwrap();
-        let dt = Utc.with_ymd_and_hms(2014, 5, 7, 12, 34, 56).unwrap();
-        assert_eq!(
-            &dt.format_with_items(fmt_items.iter()).to_string(),
-            "2014-05-07T12:34:56+0000%Q%.2f%%"
-        );
-    }
-
-    /// Regression test for https://github.com/chronotope/chrono/issues/1725
-    #[test]
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    fn test_finite() {
-        let mut i = 0;
-        for item in StrftimeItems::new("%2f") {
-            println!("{:?}", item);
-            i += 1;
-            if i > 10 {
-                panic!("infinite loop");
-            }
-        }
-    }
 }

@@ -2,11 +2,9 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; other changes marked with `Cedar:` comments.
+//   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
+//   Cargo features (not enabled in Cedar) removed.
 use core::fmt;
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
 
 use crate::extensions::chrono::OutOfRange;
 
@@ -35,15 +33,6 @@ use crate::extensions::chrono::OutOfRange;
 /// assert_eq!(sunday.pred(), Weekday::Sat);
 /// ```
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
-#[cfg_attr(all(feature = "arbitrary", feature = "std"), derive(arbitrary::Arbitrary))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Weekday {
     /// Monday.
     Mon = 0,
@@ -214,12 +203,6 @@ pub struct ParseWeekdayError {
     pub(crate) _dummy: (),
 }
 
-#[cfg(all(not(feature = "std"), feature = "core-error"))]
-impl core::error::Error for ParseWeekdayError {}
-
-#[cfg(feature = "std")]
-impl std::error::Error for ParseWeekdayError {}
-
 impl fmt::Display for ParseWeekdayError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_fmt(format_args!("{self:?}"))
@@ -232,56 +215,7 @@ impl fmt::Debug for ParseWeekdayError {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for ParseWeekdayError {
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "ParseWeekdayError {{ .. }}")
-    }
-}
-
 // the actual `FromStr` implementation is in the `format` module to leverage the existing code
-
-#[cfg(feature = "serde")]
-mod weekday_serde {
-    use super::Weekday;
-    use core::fmt;
-    use serde::{de, ser};
-
-    impl ser::Serialize for Weekday {
-        fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: ser::Serializer,
-        {
-            serializer.collect_str(&self)
-        }
-    }
-
-    struct WeekdayVisitor;
-
-    impl de::Visitor<'_> for WeekdayVisitor {
-        type Value = Weekday;
-
-        fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            f.write_str("Weekday")
-        }
-
-        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-        where
-            E: de::Error,
-        {
-            value.parse().map_err(|_| E::custom("short or long weekday names expected"))
-        }
-    }
-
-    impl<'de> de::Deserialize<'de> for Weekday {
-        fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: de::Deserializer<'de>,
-        {
-            deserializer.deserialize_str(WeekdayVisitor)
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -323,72 +257,4 @@ mod tests {
         assert_eq!(format!("{:Z<7}", Weekday::Mon), "MonZZZZ");
     }
 
-    #[test]
-    #[cfg(feature = "serde")]
-    fn test_serde_serialize() {
-        use Weekday::*;
-        use serde_json::to_string;
-
-        let cases: Vec<(Weekday, &str)> = vec![
-            (Mon, "\"Mon\""),
-            (Tue, "\"Tue\""),
-            (Wed, "\"Wed\""),
-            (Thu, "\"Thu\""),
-            (Fri, "\"Fri\""),
-            (Sat, "\"Sat\""),
-            (Sun, "\"Sun\""),
-        ];
-
-        for (weekday, expected_str) in cases {
-            let string = to_string(&weekday).unwrap();
-            assert_eq!(string, expected_str);
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "serde")]
-    fn test_serde_deserialize() {
-        use Weekday::*;
-        use serde_json::from_str;
-
-        let cases: Vec<(&str, Weekday)> = vec![
-            ("\"mon\"", Mon),
-            ("\"MONDAY\"", Mon),
-            ("\"MonDay\"", Mon),
-            ("\"mOn\"", Mon),
-            ("\"tue\"", Tue),
-            ("\"tuesday\"", Tue),
-            ("\"wed\"", Wed),
-            ("\"wednesday\"", Wed),
-            ("\"thu\"", Thu),
-            ("\"thursday\"", Thu),
-            ("\"fri\"", Fri),
-            ("\"friday\"", Fri),
-            ("\"sat\"", Sat),
-            ("\"saturday\"", Sat),
-            ("\"sun\"", Sun),
-            ("\"sunday\"", Sun),
-        ];
-
-        for (str, expected_weekday) in cases {
-            let weekday = from_str::<Weekday>(str).unwrap();
-            assert_eq!(weekday, expected_weekday);
-        }
-
-        let errors: Vec<&str> =
-            vec!["\"not a weekday\"", "\"monDAYs\"", "\"mond\"", "mon", "\"thur\"", "\"thurs\""];
-
-        for str in errors {
-            from_str::<Weekday>(str).unwrap_err();
-        }
-    }
-
-    #[test]
-    #[cfg(feature = "rkyv-validation")]
-    fn test_rkyv_validation() {
-        let mon = Weekday::Mon;
-        let bytes = rkyv::to_bytes::<_, 1>(&mon).unwrap();
-
-        assert_eq!(rkyv::from_bytes::<Weekday>(&bytes).unwrap(), mon);
-    }
 }

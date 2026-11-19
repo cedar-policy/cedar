@@ -1,7 +1,8 @@
 // This file is `src/naive/datetime/tests.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`.
+// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
+//   behind chrono's Cargo features (not enabled in Cedar) removed.
 use super::NaiveDateTime;
 use crate::extensions::chrono::{Datelike, FixedOffset, MappedLocalTime, NaiveDate, TimeDelta, Utc};
 
@@ -396,14 +397,3 @@ fn test_and_timezone_min_max_dates() {
     }
 }
 
-#[test]
-#[cfg(feature = "rkyv-validation")]
-fn test_rkyv_validation() {
-    let dt_min = NaiveDateTime::MIN;
-    let bytes = rkyv::to_bytes::<_, 12>(&dt_min).unwrap();
-    assert_eq!(rkyv::from_bytes::<NaiveDateTime>(&bytes).unwrap(), dt_min);
-
-    let dt_max = NaiveDateTime::MAX;
-    let bytes = rkyv::to_bytes::<_, 12>(&dt_max).unwrap();
-    assert_eq!(rkyv::from_bytes::<NaiveDateTime>(&bytes).unwrap(), dt_max);
-}

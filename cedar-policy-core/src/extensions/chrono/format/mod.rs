@@ -5,7 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; other changes marked with `Cedar:` comments.
+//   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
+//   Cargo features (not enabled in Cedar) removed.
 
 //! Formatting (and parsing) utilities for date and time.
 //!
@@ -37,10 +38,6 @@
 //! # Ok::<(), chrono::ParseError>(())
 //! ```
 
-#[cfg(all(feature = "alloc", not(feature = "std"), not(test)))]
-use alloc::boxed::Box;
-#[cfg(all(feature = "core-error", not(feature = "std")))]
-use core::error::Error;
 use core::fmt;
 use core::str::FromStr;
 // Cedar: always use `std::error::Error`; upstream gates it on chrono's `std` feature, and Cedar
@@ -65,15 +62,6 @@ pub(crate) mod locales;
 
 pub use formatting::SecondsFormat;
 pub(crate) use formatting::write_hundreds;
-#[cfg(feature = "alloc")]
-pub(crate) use formatting::write_rfc2822;
-#[cfg(any(feature = "alloc", feature = "serde"))]
-pub(crate) use formatting::write_rfc3339;
-#[cfg(feature = "alloc")]
-#[allow(deprecated)]
-pub use formatting::{DelayedFormat, format, format_item};
-#[cfg(feature = "unstable-locales")]
-pub use locales::Locale;
 pub(crate) use parse::parse_rfc3339;
 pub use parse::{parse, parse_and_remainder};
 pub use parsed::Parsed;
@@ -85,7 +73,6 @@ enum Void {}
 
 /// Padding characters for numeric items.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Pad {
     /// No padding.
     None,
@@ -110,7 +97,6 @@ pub enum Pad {
 /// parsed with the same formatting items.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Numeric {
     /// Full Gregorian year (FW=4, PW=∞).
     /// May accept years before 1 BCE or after 9999 CE, given an initial sign (+/-).
@@ -179,20 +165,12 @@ impl fmt::Debug for InternalNumeric {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for InternalNumeric {
-    fn format(&self, f: defmt::Formatter) {
-        defmt::write!(f, "<InternalNumeric>")
-    }
-}
-
 /// Fixed-format item types.
 ///
 /// They have their own rules of formatting and parsing.
 /// Otherwise noted, they print in the specified cases but parse case-insensitively.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Fixed {
     /// Abbreviated month names.
     ///
@@ -277,13 +255,11 @@ pub enum Fixed {
 
 /// An opaque type representing fixed-format item types for internal uses only.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct InternalFixed {
     val: InternalInternal,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 enum InternalInternal {
     /// Same as [`TimezoneOffsetColonZ`](#variant.TimezoneOffsetColonZ), but
     /// allows missing minutes (per [ISO 8601][iso8601]).
@@ -304,7 +280,6 @@ enum InternalInternal {
 
 /// Type for specifying the format of UTC offsets.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct OffsetFormat {
     /// See `OffsetPrecision`.
     pub precision: OffsetPrecision,
@@ -318,7 +293,6 @@ pub struct OffsetFormat {
 
 /// The precision of an offset from UTC formatting item.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum OffsetPrecision {
     /// Format offset from UTC as only hours. Not recommended, it is not uncommon for timezones to
     /// have an offset of 30 minutes, 15 minutes, etc.
@@ -340,7 +314,6 @@ pub enum OffsetPrecision {
 
 /// The separator between hours and minutes in an offset.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Colons {
     /// No separator
     None,
@@ -355,14 +328,8 @@ pub enum Colons {
 pub enum Item<'a> {
     /// A literally printed and parsed text.
     Literal(&'a str),
-    /// Same as `Literal` but with the string owned by the item.
-    #[cfg(feature = "alloc")]
-    OwnedLiteral(Box<str>),
     /// Whitespace. Prints literally but reads zero or more whitespace.
     Space(&'a str),
-    /// Same as `Space` but with the string owned by the item.
-    #[cfg(feature = "alloc")]
-    OwnedSpace(Box<str>),
     /// Numeric item. Can be optionally padded to the maximal length (if any) when formatting;
     /// the parser simply ignores any padded whitespace and zeroes.
     Numeric(Numeric, Pad),
@@ -370,23 +337,6 @@ pub enum Item<'a> {
     Fixed(Fixed),
     /// Issues a formatting error. Used to signal an invalid format string.
     Error,
-}
-
-#[cfg(feature = "defmt")]
-impl<'a> defmt::Format for Item<'a> {
-    fn format(&self, f: defmt::Formatter) {
-        match self {
-            Item::Literal(v) => defmt::write!(f, "Literal {{ {} }}", v),
-            #[cfg(feature = "alloc")]
-            Item::OwnedLiteral(_) => {}
-            Item::Space(v) => defmt::write!(f, "Space {{ {}  }}", v),
-            #[cfg(feature = "alloc")]
-            Item::OwnedSpace(_) => {}
-            Item::Numeric(u, v) => defmt::write!(f, "Numeric {{ {}, {} }}", u, v),
-            Item::Fixed(v) => defmt::write!(f, "Fixed {{ {}  }}", v),
-            Item::Error => defmt::write!(f, "Error"),
-        }
-    }
 }
 
 const fn num(numeric: Numeric) -> Item<'static> {
@@ -410,24 +360,10 @@ const fn internal_fixed(val: InternalInternal) -> Item<'static> {
 }
 
 impl Item<'_> {
-    /// Convert items that contain a reference to the format string into an owned variant.
-    #[cfg(any(feature = "alloc", feature = "std"))]
-    pub fn to_owned(self) -> Item<'static> {
-        match self {
-            Item::Literal(s) => Item::OwnedLiteral(Box::from(s)),
-            Item::Space(s) => Item::OwnedSpace(Box::from(s)),
-            Item::Numeric(n, p) => Item::Numeric(n, p),
-            Item::Fixed(f) => Item::Fixed(f),
-            Item::OwnedLiteral(l) => Item::OwnedLiteral(l),
-            Item::OwnedSpace(s) => Item::OwnedSpace(s),
-            Item::Error => Item::Error,
-        }
-    }
 }
 
 /// An error from the `parse` function.
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ParseError(ParseErrorKind);
 
 impl ParseError {
@@ -440,7 +376,6 @@ impl ParseError {
 /// The category of parse error
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum ParseErrorKind {
     /// Given field is out of permitted range.
     OutOfRange,

@@ -5,30 +5,20 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! ISO 8601 time without timezone.
 
-#[cfg(feature = "alloc")]
-use core::borrow::Borrow;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
 use core::{fmt, str};
 
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
-
-#[cfg(feature = "alloc")]
-use crate::extensions::chrono::format::DelayedFormat;
 use crate::extensions::chrono::format::{
     Fixed, Item, Numeric, Pad, ParseError, ParseResult, Parsed, StrftimeItems, parse,
     parse_and_remainder, write_hundreds,
 };
 use crate::extensions::chrono::{FixedOffset, TimeDelta, Timelike};
 use crate::extensions::chrono::{expect, try_opt};
-
-#[cfg(feature = "serde")]
-mod serde;
 
 #[cfg(test)]
 mod tests;
@@ -216,32 +206,9 @@ mod tests;
 /// Since Chrono alone cannot determine any existence of leap seconds,
 /// **there is absolutely no guarantee that the leap second read has actually happened**.
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
 pub struct NaiveTime {
     secs: u32,
     frac: u32,
-}
-
-#[cfg(feature = "arbitrary")]
-impl arbitrary::Arbitrary<'_> for NaiveTime {
-    fn arbitrary(u: &mut arbitrary::Unstructured) -> arbitrary::Result<NaiveTime> {
-        let mins = u.int_in_range(0..=1439)?;
-        let mut secs = u.int_in_range(0..=60)?;
-        let mut nano = u.int_in_range(0..=999_999_999)?;
-        if secs == 60 {
-            secs = 59;
-            nano += 1_000_000_000;
-        }
-        let time = NaiveTime::from_num_seconds_from_midnight_opt(mins * 60 + secs, nano)
-            .expect("Could not generate a valid chrono::NaiveTime. It looks like implementation of Arbitrary for NaiveTime is erroneous.");
-        Ok(time)
-    }
 }
 
 impl NaiveTime {
@@ -795,85 +762,6 @@ impl NaiveTime {
         let days = secs.div_euclid(86_400);
         let secs = secs.rem_euclid(86_400);
         (NaiveTime { secs: secs as u32, frac: self.frac }, days)
-    }
-
-    /// Formats the time with the specified formatting items.
-    /// Otherwise it is the same as the ordinary [`format`](#method.format) method.
-    ///
-    /// The `Iterator` of items should be `Clone`able,
-    /// since the resulting `DelayedFormat` value may be formatted multiple times.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::strftime::StrftimeItems;
-    /// use chrono::NaiveTime;
-    ///
-    /// let fmt = StrftimeItems::new("%H:%M:%S");
-    /// let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(t.format_with_items(fmt.clone()).to_string(), "23:56:04");
-    /// assert_eq!(t.format("%H:%M:%S").to_string(), "23:56:04");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```ignore
-    /// # use chrono::NaiveTime;
-    /// # use chrono::format::strftime::StrftimeItems;
-    /// # let fmt = StrftimeItems::new("%H:%M:%S").clone();
-    /// # let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-    /// assert_eq!(format!("{}", t.format_with_items(fmt)), "23:56:04");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new(None, Some(*self), items)
-    }
-
-    /// Formats the time with the specified format string.
-    /// See the [`format::strftime` module](crate::extensions::chrono::format::strftime)
-    /// on the supported escape sequences.
-    ///
-    /// This returns a `DelayedFormat`,
-    /// which gets converted to a string only when actual formatting happens.
-    /// You may use the `to_string` method to get a `String`,
-    /// or just feed it into `print!` and other formatting macros.
-    /// (In this way it avoids the redundant memory allocation.)
-    ///
-    /// A wrong format string does *not* issue an error immediately.
-    /// Rather, converting or formatting the `DelayedFormat` fails.
-    /// You are recommended to immediately use `DelayedFormat` for this reason.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveTime;
-    ///
-    /// let t = NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap();
-    /// assert_eq!(t.format("%H:%M:%S").to_string(), "23:56:04");
-    /// assert_eq!(t.format("%H:%M:%S%.6f").to_string(), "23:56:04.012345");
-    /// assert_eq!(t.format("%-I:%M %p").to_string(), "11:56 PM");
-    /// ```
-    ///
-    /// The resulting `DelayedFormat` can be formatted directly via the `Display` trait.
-    ///
-    /// ```ignore
-    /// # use chrono::NaiveTime;
-    /// # let t = NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap();
-    /// assert_eq!(format!("{}", t.format("%H:%M:%S")), "23:56:04");
-    /// assert_eq!(format!("{}", t.format("%H:%M:%S%.6f")), "23:56:04.012345");
-    /// assert_eq!(format!("{}", t.format("%-I:%M %p")), "11:56 PM");
-    /// ```
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_with_items(StrftimeItems::new(fmt))
     }
 
     /// Returns a triple of the hour, minute and second numbers.
@@ -1531,31 +1419,6 @@ impl fmt::Debug for NaiveTime {
             write!(f, ".{:06}", nano / 1_000)
         } else {
             write!(f, ".{nano:09}")
-        }
-    }
-}
-
-#[cfg(feature = "defmt")]
-impl defmt::Format for NaiveTime {
-    fn format(&self, fmt: defmt::Formatter) {
-        let (hour, min, sec) = self.hms();
-        let (sec, nano) = if self.frac >= 1_000_000_000 {
-            (sec + 1, self.frac - 1_000_000_000)
-        } else {
-            (sec, self.frac)
-        };
-
-        let (hour, min, sec) = (hour as u8, min as u8, sec as u8);
-        defmt::write!(fmt, "{:02}:{:02}:{:02}", hour, min, sec);
-
-        if nano == 0 {
-            return;
-        } else if nano % 1_000_000 == 0 {
-            defmt::write!(fmt, ".{:03}", nano / 1_000_000);
-        } else if nano % 1_000 == 0 {
-            defmt::write!(fmt, ".{:06}", nano / 1_000);
-        } else {
-            defmt::write!(fmt, ".{:09}", nano);
         }
     }
 }

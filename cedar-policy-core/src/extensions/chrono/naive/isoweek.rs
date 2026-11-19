@@ -5,16 +5,13 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! ISO 8601 week.
 
 use core::fmt;
 
 use super::internals::YearFlags;
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
 
 /// ISO 8601 week.
 ///
@@ -23,13 +20,6 @@ use rkyv::{Archive, Deserialize, Serialize};
 /// One can retrieve this type from the existing [`Datelike`](../trait.Datelike.html) types
 /// via the [`Datelike::iso_week`](../trait.Datelike.html#tymethod.iso_week) method.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
 pub struct IsoWeek {
     // Note that this allows for larger year range than `NaiveDate`.
     // This is crucial because we have an edge case for the first and last week supported,
@@ -166,25 +156,8 @@ impl fmt::Debug for IsoWeek {
     }
 }
 
-#[cfg(feature = "defmt")]
-impl defmt::Format for IsoWeek {
-    fn format(&self, fmt: defmt::Formatter) {
-        let year = self.year();
-        let week = self.week();
-        if (0..=9999).contains(&year) {
-            defmt::write!(fmt, "{:04}-W{:02}", year, week)
-        } else {
-            // ISO 8601 requires the explicit sign for out-of-range years
-            let sign = ['+', '-'][(year < 0) as usize];
-            defmt::write!(fmt, "{}{:05}-W{:02}", sign, year.abs(), week)
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "rkyv-validation")]
-    use super::IsoWeek;
     use crate::extensions::chrono::Datelike;
     use crate::extensions::chrono::naive::date::{self, NaiveDate};
 
@@ -196,14 +169,10 @@ mod tests {
         assert_eq!(minweek.year(), date::MIN_YEAR);
         assert_eq!(minweek.week(), 1);
         assert_eq!(minweek.week0(), 0);
-        #[cfg(feature = "alloc")]
-        assert_eq!(format!("{minweek:?}"), NaiveDate::MIN.format("%G-W%V").to_string());
 
         assert_eq!(maxweek.year(), date::MAX_YEAR + 1);
         assert_eq!(maxweek.week(), 1);
         assert_eq!(maxweek.week0(), 0);
-        #[cfg(feature = "alloc")]
-        assert_eq!(format!("{maxweek:?}"), NaiveDate::MAX.format("%G-W%V").to_string());
     }
 
     #[test]
@@ -240,15 +209,4 @@ mod tests {
         assert!(monday.iso_week() <= friday.iso_week());
     }
 
-    #[test]
-    #[cfg(feature = "rkyv-validation")]
-    fn test_rkyv_validation() {
-        let minweek = NaiveDate::MIN.iso_week();
-        let bytes = rkyv::to_bytes::<_, 4>(&minweek).unwrap();
-        assert_eq!(rkyv::from_bytes::<IsoWeek>(&bytes).unwrap(), minweek);
-
-        let maxweek = NaiveDate::MAX.iso_week();
-        let bytes = rkyv::to_bytes::<_, 4>(&maxweek).unwrap();
-        assert_eq!(rkyv::from_bytes::<IsoWeek>(&bytes).unwrap(), maxweek);
-    }
 }

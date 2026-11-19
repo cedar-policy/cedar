@@ -5,7 +5,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! Functionality for rounding or truncating a `DateTime` by a `TimeDelta`.
 
@@ -110,16 +110,8 @@ const fn span_for_digits(digits: u16) -> u32 {
 /// `TimeDelta` or the `DateTime` are too big to represented as nanoseconds. They
 /// will also fail if the `TimeDelta` is bigger than the timestamp, negative or zero.
 pub trait DurationRound: Sized {
-    /// Error that can occur in rounding or truncating
-    #[cfg(feature = "std")]
-    type Err: std::error::Error;
 
     /// Error that can occur in rounding or truncating
-    #[cfg(all(not(feature = "std"), feature = "core-error"))]
-    type Err: core::error::Error;
-
-    /// Error that can occur in rounding or truncating
-    #[cfg(all(not(feature = "std"), not(feature = "core-error")))]
     type Err: fmt::Debug + fmt::Display;
 
     /// Return a copy rounded by TimeDelta.
@@ -311,7 +303,6 @@ where
 ///
 /// See: [`DurationRound`]
 #[derive(Debug, Clone, PartialEq, Eq, Copy)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum RoundingError {
     /// Error when the TimeDelta exceeds the TimeDelta from or until the Unix epoch.
     ///
@@ -362,22 +353,6 @@ impl fmt::Display for RoundingError {
                 write!(f, "timestamp exceeds num_nanoseconds limit")
             }
         }
-    }
-}
-
-#[cfg(feature = "std")]
-impl std::error::Error for RoundingError {
-    #[allow(deprecated)]
-    fn description(&self) -> &str {
-        "error from rounding or truncating with DurationRound"
-    }
-}
-
-#[cfg(all(not(feature = "std"), feature = "core-error"))]
-impl core::error::Error for RoundingError {
-    #[allow(deprecated)]
-    fn description(&self) -> &str {
-        "error from rounding or truncating with DurationRound"
     }
 }
 

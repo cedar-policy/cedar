@@ -5,24 +5,16 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; other
-//   changes marked with `Cedar:` comments.
+//   changes marked with `Cedar:` comments; code behind chrono's Cargo features (not enabled in
+//   Cedar) removed.
 
 //! ISO 8601 calendar date with time zone.
 #![allow(deprecated)]
 
-#[cfg(feature = "alloc")]
-use core::borrow::Borrow;
 use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::{fmt, hash};
 
-#[cfg(feature = "rkyv")]
-use rkyv::{Archive, Deserialize, Serialize};
-
-#[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-use crate::extensions::chrono::format::Locale;
-#[cfg(feature = "alloc")]
-use crate::extensions::chrono::format::{DelayedFormat, Item, StrftimeItems};
 use crate::extensions::chrono::naive::{IsoWeek, NaiveDate, NaiveTime};
 use crate::extensions::chrono::offset::{TimeZone, Utc};
 use crate::extensions::chrono::{DateTime, Datelike, TimeDelta, Weekday};
@@ -60,7 +52,6 @@ use crate::extensions::chrono::{DateTime, Datelike, TimeDelta, Weekday};
 ///   even though the raw calculation between `NaiveDate` and `TimeDelta` may not.
 #[deprecated(since = "0.4.23", note = "Use `NaiveDate` or `DateTime<Tz>` instead")]
 #[derive(Clone)]
-#[cfg_attr(feature = "rkyv", derive(Archive, Deserialize, Serialize))]
 pub struct Date<Tz: TimeZone> {
     date: NaiveDate,
     offset: Tz::Offset,
@@ -336,63 +327,7 @@ impl<Tz: TimeZone> Date<Tz>
 where
     Tz::Offset: fmt::Display,
 {
-    /// Formats the date with the specified formatting items.
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format_with_items<'a, I, B>(&self, items: I) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new_with_offset(Some(self.naive_local()), None, &self.offset, items)
-    }
 
-    /// Formats the date with the specified format string.
-    /// See the [`crate::extensions::chrono::format::strftime`] module
-    /// on the supported escape sequences.
-    #[cfg(feature = "alloc")]
-    #[inline]
-    #[must_use]
-    pub fn format<'a>(&self, fmt: &'a str) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_with_items(StrftimeItems::new(fmt))
-    }
-
-    /// Formats the date with the specified formatting items and locale.
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized_with_items<'a, I, B>(
-        &self,
-        items: I,
-        locale: Locale,
-    ) -> DelayedFormat<I>
-    where
-        I: Iterator<Item = B> + Clone,
-        B: Borrow<Item<'a>>,
-    {
-        DelayedFormat::new_with_offset_and_locale(
-            Some(self.naive_local()),
-            None,
-            &self.offset,
-            items,
-            locale,
-        )
-    }
-
-    /// Formats the date with the specified format string and locale.
-    /// See the [`crate::extensions::chrono::format::strftime`] module
-    /// on the supported escape sequences.
-    #[cfg(all(feature = "unstable-locales", feature = "alloc"))]
-    #[inline]
-    #[must_use]
-    pub fn format_localized<'a>(
-        &self,
-        fmt: &'a str,
-        locale: Locale,
-    ) -> DelayedFormat<StrftimeItems<'a>> {
-        self.format_localized_with_items(StrftimeItems::new_with_locale(fmt, locale), locale)
-    }
 }
 
 impl<Tz: TimeZone> Datelike for Date<Tz> {
@@ -562,57 +497,12 @@ where
     }
 }
 
-#[cfg(feature = "defmt")]
-impl<Tz: TimeZone> defmt::Format for Date<Tz>
-where
-    Tz::Offset: defmt::Format,
-{
-    fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, "{}{}", self.naive_local(), self.offset);
-    }
-}
-
-// Note that implementation of Arbitrary cannot be automatically derived for Date<Tz>, due to
-// the nontrivial bound <Tz as TimeZone>::Offset: Arbitrary.
-#[cfg(all(feature = "arbitrary", feature = "std"))]
-impl<'a, Tz> arbitrary::Arbitrary<'a> for Date<Tz>
-where
-    Tz: TimeZone,
-    <Tz as TimeZone>::Offset: arbitrary::Arbitrary<'a>,
-{
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Date<Tz>> {
-        let date = NaiveDate::arbitrary(u)?;
-        let offset = <Tz as TimeZone>::Offset::arbitrary(u)?;
-        Ok(Date::from_utc(date, offset))
-    }
-}
 
 #[cfg(test)]
 mod tests {
     use super::Date;
 
     use crate::extensions::chrono::{FixedOffset, NaiveDate, TimeDelta, Utc};
-
-    #[cfg(feature = "clock")]
-    use crate::extensions::chrono::offset::{Local, TimeZone};
-
-    #[test]
-    #[cfg(feature = "clock")]
-    fn test_years_elapsed() {
-        const WEEKS_PER_YEAR: f32 = 52.1775;
-
-        // This is always at least one year because 1 year = 52.1775 weeks.
-        let one_year_ago = Utc::today() - TimeDelta::weeks((WEEKS_PER_YEAR * 1.5).ceil() as i64);
-        // A bit more than 2 years.
-        let two_year_ago = Utc::today() - TimeDelta::weeks((WEEKS_PER_YEAR * 2.5).ceil() as i64);
-
-        assert_eq!(Utc::today().years_since(one_year_ago), Some(1));
-        assert_eq!(Utc::today().years_since(two_year_ago), Some(2));
-
-        // If the given DateTime is later than now, the function will always return 0.
-        let future = Utc::today() + TimeDelta::weeks(12);
-        assert_eq!(Utc::today().years_since(future), None);
-    }
 
     #[test]
     fn test_date_add_assign() {
@@ -633,18 +523,6 @@ mod tests {
         let date = date.with_timezone(&timezone);
         let date_add = date_add.with_timezone(&timezone);
 
-        assert_eq!(date_add, date + TimeDelta::days(5));
-    }
-
-    #[test]
-    #[cfg(feature = "clock")]
-    fn test_date_add_assign_local() {
-        let naivedate = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
-
-        let date = Local.from_utc_date(&naivedate);
-        let mut date_add = date;
-
-        date_add += TimeDelta::days(5);
         assert_eq!(date_add, date + TimeDelta::days(5));
     }
 
@@ -670,15 +548,4 @@ mod tests {
         assert_eq!(date_sub, date - TimeDelta::days(5));
     }
 
-    #[test]
-    #[cfg(feature = "clock")]
-    fn test_date_sub_assign_local() {
-        let naivedate = NaiveDate::from_ymd_opt(2000, 1, 1).unwrap();
-
-        let date = Local.from_utc_date(&naivedate);
-        let mut date_sub = date;
-
-        date_sub -= TimeDelta::days(5);
-        assert_eq!(date_sub, date - TimeDelta::days(5));
-    }
 }

@@ -11,22 +11,16 @@
 // This file is `src/time_delta.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`.
+// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
+//   behind chrono's Cargo features (not enabled in Cedar) removed.
 
 //! Temporal quantification
 
-#[cfg(all(not(feature = "std"), feature = "core-error"))]
-use core::error::Error;
 use core::fmt;
 use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
 use core::time::Duration;
-#[cfg(feature = "std")]
-use std::error::Error;
 
 use crate::extensions::chrono::{expect, try_opt};
-
-#[cfg(any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"))]
-use rkyv::{Archive, Deserialize, Serialize};
 
 /// The number of nanoseconds in a microsecond.
 const NANOS_PER_MICRO: i32 = 1000;
@@ -57,14 +51,6 @@ const SECS_PER_WEEK: i64 = 604_800;
 /// range of `i64::MIN`. This is to allow easy flipping of sign, so that for
 /// instance `abs()` can be called without any checks.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
-#[cfg_attr(
-    any(feature = "rkyv", feature = "rkyv-16", feature = "rkyv-32", feature = "rkyv-64"),
-    derive(Archive, Deserialize, Serialize),
-    archive(compare(PartialEq, PartialOrd)),
-    archive_attr(derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash))
-)]
-#[cfg_attr(feature = "rkyv-validation", archive(check_bytes))]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct TimeDelta {
     secs: i64,
     nanos: i32, // Always 0 <= nanos < NANOS_PER_SEC
@@ -643,7 +629,6 @@ impl fmt::Display for TimeDelta {
 /// *seconds*, while this module supports signed range of up to
 /// `i64::MAX` of *milliseconds*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct OutOfRangeError(());
 
 impl fmt::Display for OutOfRangeError {
@@ -652,76 +637,9 @@ impl fmt::Display for OutOfRangeError {
     }
 }
 
-#[cfg(any(feature = "std", feature = "core-error"))]
-impl Error for OutOfRangeError {
-    #[allow(deprecated)]
-    fn description(&self) -> &str {
-        "out of range error"
-    }
-}
-
 #[inline]
 const fn div_mod_floor_64(this: i64, other: i64) -> (i64, i64) {
     (this.div_euclid(other), this.rem_euclid(other))
-}
-
-#[cfg(all(feature = "arbitrary", feature = "std"))]
-impl arbitrary::Arbitrary<'_> for TimeDelta {
-    fn arbitrary(u: &mut arbitrary::Unstructured) -> arbitrary::Result<TimeDelta> {
-        const MIN_SECS: i64 = -i64::MAX / MILLIS_PER_SEC - 1;
-        const MAX_SECS: i64 = i64::MAX / MILLIS_PER_SEC;
-
-        let secs: i64 = u.int_in_range(MIN_SECS..=MAX_SECS)?;
-        let nanos: i32 = u.int_in_range(0..=(NANOS_PER_SEC - 1))?;
-        let duration = TimeDelta { secs, nanos };
-
-        if duration < MIN || duration > MAX {
-            Err(arbitrary::Error::IncorrectFormat)
-        } else {
-            Ok(duration)
-        }
-    }
-}
-
-#[cfg(feature = "serde")]
-mod serde {
-    use super::TimeDelta;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error};
-
-    impl Serialize for TimeDelta {
-        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            <(i64, i32) as Serialize>::serialize(&(self.secs, self.nanos), serializer)
-        }
-    }
-
-    impl<'de> Deserialize<'de> for TimeDelta {
-        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-            let (secs, nanos) = <(i64, i32) as Deserialize>::deserialize(deserializer)?;
-            TimeDelta::new(secs, nanos as u32).ok_or(Error::custom("TimeDelta out of bounds"))
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::{super::MAX, TimeDelta};
-
-        #[test]
-        fn test_serde() {
-            let duration = TimeDelta::new(123, 456).unwrap();
-            assert_eq!(
-                serde_json::from_value::<TimeDelta>(serde_json::to_value(duration).unwrap())
-                    .unwrap(),
-                duration
-            );
-        }
-
-        #[test]
-        #[should_panic(expected = "TimeDelta out of bounds")]
-        fn test_serde_oob_panic() {
-            let _ =
-                serde_json::from_value::<TimeDelta>(serde_json::json!([MAX.secs + 1, 0])).unwrap();
-        }
-    }
 }
 
 #[cfg(test)]
@@ -1451,11 +1369,4 @@ mod tests {
         );
     }
 
-    #[test]
-    #[cfg(feature = "rkyv-validation")]
-    fn test_rkyv_validation() {
-        let duration = TimeDelta::try_seconds(1).unwrap();
-        let bytes = rkyv::to_bytes::<_, 16>(&duration).unwrap();
-        assert_eq!(rkyv::from_bytes::<TimeDelta>(&bytes).unwrap(), duration);
-    }
 }
