@@ -26,7 +26,6 @@ pub mod decimal;
 // It is public only so that `cedar-policy-symcc` can use it; it is not part of the Cedar API.
 #[cfg(feature = "datetime")]
 #[doc(hidden)]
-#[rustfmt::skip]
 pub mod chrono;
 #[cfg(feature = "datetime")]
 pub mod datetime;
