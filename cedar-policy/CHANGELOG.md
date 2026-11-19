@@ -20,6 +20,8 @@ Cedar Language Version: TBD
   whole policy text (#2598).
 - `Schema::schema_link` now permits enumerated entity types in multiple partial schemas when their possible values
   agree, independent of declaration order.
+- External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
+  An external declaration still cannot be resolved by linking it to an enum definition.
 
 ## [4.15.0] - 2026-11-16
 

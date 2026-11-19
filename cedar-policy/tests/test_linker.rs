@@ -829,13 +829,11 @@ entity decimal;
     );
 }
 
-/// Neither input has the forbidden shape on its own: `p` declares nothing
-/// `external` and `c` declares no enum. Linking them would give the external
-/// `E` the enum `F` as an ancestor, which no schema may hold.
+/// Linking can give an external entity type a transitive enum ancestor.
 #[test]
-fn a_link_may_not_give_an_external_an_enum_ancestor() {
-    link_err(
-        "a_link_may_not_give_an_external_an_enum_ancestor",
+fn a_link_may_give_an_external_an_enum_ancestor() {
+    link_ok(
+        "a_link_may_give_an_external_an_enum_ancestor",
         r#"
 entity F enum ["x"];
 entity M in [F];
@@ -845,8 +843,26 @@ external entity M;
 external entity E in [M];
 entity Leaf { e: E };
 "#,
-        "externalWithEnumAncestor",
+        r#"
+entity F enum ["x"];
+entity M in [F];
+external entity E in [M, F];
+entity Leaf { e: E };
+"#,
     );
+}
+
+#[test]
+fn linking_with_a_shared_enum_ancestor_is_associative() {
+    let schema = |text| Schema::from_cedarschema_str(text).expect("valid schema").0;
+    let p = schema(r#"entity E enum ["x"]; external entity X; entity Y in [X, E];"#);
+    let c = schema("external entity X; external entity Y in X;");
+    let d = schema(r#"entity E enum ["x"]; entity X in E;"#);
+    let link = |a, b| Schema::schema_link([a, b]).expect("schemas link");
+    let left = link(link(p.clone(), c.clone()), d.clone());
+    let right = link(p, link(c, d));
+    assert_same_schema("both groupings", &left, &right);
+    assert!(left.is_complete());
 }
 
 /// Link with the extensions active. They are an argument to the link rather
