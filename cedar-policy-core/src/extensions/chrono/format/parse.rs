@@ -15,9 +15,9 @@ use core::borrow::Borrow;
 use core::str;
 
 use super::scan;
-use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_LONG, TOO_SHORT};
 use super::{Fixed, InternalFixed, InternalInternal, Item, Numeric, Pad, Parsed};
 use super::{ParseError, ParseResult};
+use super::{BAD_FORMAT, INVALID, OUT_OF_RANGE, TOO_LONG, TOO_SHORT};
 use crate::extensions::chrono::{DateTime, FixedOffset, Weekday};
 
 fn set_weekday_with_num_days_from_sunday(p: &mut Parsed, v: i64) -> ParseResult<()> {
@@ -246,7 +246,9 @@ where
                         }
                     }
 
-                    &Internal(InternalFixed { val: InternalInternal::Nanosecond3NoDot }) => {
+                    &Internal(InternalFixed {
+                        val: InternalInternal::Nanosecond3NoDot,
+                    }) => {
                         if s.len() < 3 {
                             return Err(TOO_SHORT);
                         }
@@ -254,7 +256,9 @@ where
                         parsed.set_nanosecond(nano)?;
                     }
 
-                    &Internal(InternalFixed { val: InternalInternal::Nanosecond6NoDot }) => {
+                    &Internal(InternalFixed {
+                        val: InternalInternal::Nanosecond6NoDot,
+                    }) => {
                         if s.len() < 6 {
                             return Err(TOO_SHORT);
                         }
@@ -262,7 +266,9 @@ where
                         parsed.set_nanosecond(nano)?;
                     }
 
-                    &Internal(InternalFixed { val: InternalInternal::Nanosecond9NoDot }) => {
+                    &Internal(InternalFixed {
+                        val: InternalInternal::Nanosecond9NoDot,
+                    }) => {
                         if s.len() < 9 {
                             return Err(TOO_SHORT);
                         }
@@ -524,11 +530,23 @@ mod tests {
         parses("\tab\n", &[Space("\t"), Literal("ab"), Space("\n")]);
         parses(
             "ab\tcd\ne",
-            &[Literal("ab"), Space("\t"), Literal("cd"), Space("\n"), Literal("e")],
+            &[
+                Literal("ab"),
+                Space("\t"),
+                Literal("cd"),
+                Space("\n"),
+                Literal("e"),
+            ],
         );
         parses(
             "+1ab\tcd\r\n+,.",
-            &[Literal("+1ab"), Space("\t"), Literal("cd"), Space("\r\n"), Literal("+,.")],
+            &[
+                Literal("+1ab"),
+                Space("\t"),
+                Literal("cd"),
+                Space("\r\n"),
+                Literal("+,."),
+            ],
         );
         // whitespace and literals can be intermixed
         parses("a\tb", &[Literal("a\tb")]);
@@ -553,25 +571,73 @@ mod tests {
         check("Apri", &[fixed(LongMonthName)], Err(TOO_LONG)); // `Apr` is parsed
         check("April", &[fixed(LongMonthName)], parsed!(month: 4));
         check("Aprill", &[fixed(LongMonthName)], Err(TOO_LONG));
-        check("Aprill", &[fixed(LongMonthName), Literal("l")], parsed!(month: 4));
-        check("Aprl", &[fixed(LongMonthName), Literal("l")], parsed!(month: 4));
-        check("April", &[fixed(LongMonthName), Literal("il")], Err(TOO_SHORT)); // do not backtrack
-        check("thu", &[fixed(ShortWeekdayName)], parsed!(weekday: Weekday::Thu));
-        check("Thu", &[fixed(ShortWeekdayName)], parsed!(weekday: Weekday::Thu));
-        check("THU", &[fixed(ShortWeekdayName)], parsed!(weekday: Weekday::Thu));
-        check("tHu", &[fixed(ShortWeekdayName)], parsed!(weekday: Weekday::Thu));
+        check(
+            "Aprill",
+            &[fixed(LongMonthName), Literal("l")],
+            parsed!(month: 4),
+        );
+        check(
+            "Aprl",
+            &[fixed(LongMonthName), Literal("l")],
+            parsed!(month: 4),
+        );
+        check(
+            "April",
+            &[fixed(LongMonthName), Literal("il")],
+            Err(TOO_SHORT),
+        ); // do not backtrack
+        check(
+            "thu",
+            &[fixed(ShortWeekdayName)],
+            parsed!(weekday: Weekday::Thu),
+        );
+        check(
+            "Thu",
+            &[fixed(ShortWeekdayName)],
+            parsed!(weekday: Weekday::Thu),
+        );
+        check(
+            "THU",
+            &[fixed(ShortWeekdayName)],
+            parsed!(weekday: Weekday::Thu),
+        );
+        check(
+            "tHu",
+            &[fixed(ShortWeekdayName)],
+            parsed!(weekday: Weekday::Thu),
+        );
         check("Thursday", &[fixed(ShortWeekdayName)], Err(TOO_LONG)); // `Thu` is parsed
         check("T", &[fixed(ShortWeekdayName)], Err(TOO_SHORT));
         check("The", &[fixed(ShortWeekdayName)], Err(INVALID));
         check("Nop", &[fixed(ShortWeekdayName)], Err(INVALID));
-        check("Thu", &[fixed(LongWeekdayName)], parsed!(weekday: Weekday::Thu));
+        check(
+            "Thu",
+            &[fixed(LongWeekdayName)],
+            parsed!(weekday: Weekday::Thu),
+        );
         check("Thur", &[fixed(LongWeekdayName)], Err(TOO_LONG)); // `Thu` is parsed
         check("Thurs", &[fixed(LongWeekdayName)], Err(TOO_LONG)); // `Thu` is parsed
-        check("Thursday", &[fixed(LongWeekdayName)], parsed!(weekday: Weekday::Thu));
+        check(
+            "Thursday",
+            &[fixed(LongWeekdayName)],
+            parsed!(weekday: Weekday::Thu),
+        );
         check("Thursdays", &[fixed(LongWeekdayName)], Err(TOO_LONG));
-        check("Thursdays", &[fixed(LongWeekdayName), Literal("s")], parsed!(weekday: Weekday::Thu));
-        check("Thus", &[fixed(LongWeekdayName), Literal("s")], parsed!(weekday: Weekday::Thu));
-        check("Thursday", &[fixed(LongWeekdayName), Literal("rsday")], Err(TOO_SHORT)); // do not backtrack
+        check(
+            "Thursdays",
+            &[fixed(LongWeekdayName), Literal("s")],
+            parsed!(weekday: Weekday::Thu),
+        );
+        check(
+            "Thus",
+            &[fixed(LongWeekdayName), Literal("s")],
+            parsed!(weekday: Weekday::Thu),
+        );
+        check(
+            "Thursday",
+            &[fixed(LongWeekdayName), Literal("rsday")],
+            Err(TOO_SHORT),
+        ); // do not backtrack
 
         // fixed: am/pm
         check("am", &[fixed(LowerAmPm)], parsed!(hour_div_12: 0));
@@ -583,9 +649,21 @@ mod tests {
         check("AM", &[fixed(UpperAmPm)], parsed!(hour_div_12: 0));
         check("PM", &[fixed(UpperAmPm)], parsed!(hour_div_12: 1));
         check("Am", &[fixed(LowerAmPm)], parsed!(hour_div_12: 0));
-        check(" Am", &[Space(" "), fixed(LowerAmPm)], parsed!(hour_div_12: 0));
-        check("Am🤠", &[fixed(LowerAmPm), Literal("🤠")], parsed!(hour_div_12: 0));
-        check("🤠Am", &[Literal("🤠"), fixed(LowerAmPm)], parsed!(hour_div_12: 0));
+        check(
+            " Am",
+            &[Space(" "), fixed(LowerAmPm)],
+            parsed!(hour_div_12: 0),
+        );
+        check(
+            "Am🤠",
+            &[fixed(LowerAmPm), Literal("🤠")],
+            parsed!(hour_div_12: 0),
+        );
+        check(
+            "🤠Am",
+            &[Literal("🤠"), fixed(LowerAmPm)],
+            parsed!(hour_div_12: 0),
+        );
         check("\u{0363}am", &[fixed(LowerAmPm)], Err(INVALID));
         check("\u{0360}am", &[fixed(LowerAmPm)], Err(INVALID));
         check(" Am", &[fixed(LowerAmPm)], Err(INVALID));
@@ -602,7 +680,9 @@ mod tests {
 
     #[test]
     fn test_parse_fixed_nanosecond() {
-        use crate::extensions::chrono::format::Fixed::{Nanosecond, Nanosecond3, Nanosecond6, Nanosecond9};
+        use crate::extensions::chrono::format::Fixed::{
+            Nanosecond, Nanosecond3, Nanosecond6, Nanosecond9,
+        };
         use crate::extensions::chrono::format::InternalInternal::*;
         use crate::extensions::chrono::format::Item::Literal;
         use crate::extensions::chrono::format::Numeric::Second;
@@ -614,24 +694,80 @@ mod tests {
         check("4", &[fixed(Nanosecond), num(Second)], parsed!(second: 4));
         check(".0", &[fixed(Nanosecond)], parsed!(nanosecond: 0));
         check(".4", &[fixed(Nanosecond)], parsed!(nanosecond: 400_000_000));
-        check(".42", &[fixed(Nanosecond)], parsed!(nanosecond: 420_000_000));
-        check(".421", &[fixed(Nanosecond)], parsed!(nanosecond: 421_000_000));
-        check(".42195", &[fixed(Nanosecond)], parsed!(nanosecond: 421_950_000));
-        check(".421951", &[fixed(Nanosecond)], parsed!(nanosecond: 421_951_000));
-        check(".4219512", &[fixed(Nanosecond)], parsed!(nanosecond: 421_951_200));
-        check(".42195123", &[fixed(Nanosecond)], parsed!(nanosecond: 421_951_230));
-        check(".421950803", &[fixed(Nanosecond)], parsed!(nanosecond: 421_950_803));
-        check(".4219508035", &[fixed(Nanosecond)], parsed!(nanosecond: 421_950_803));
-        check(".42195080354", &[fixed(Nanosecond)], parsed!(nanosecond: 421_950_803));
-        check(".421950803547", &[fixed(Nanosecond)], parsed!(nanosecond: 421_950_803));
+        check(
+            ".42",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 420_000_000),
+        );
+        check(
+            ".421",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_000_000),
+        );
+        check(
+            ".42195",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_950_000),
+        );
+        check(
+            ".421951",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_951_000),
+        );
+        check(
+            ".4219512",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_951_200),
+        );
+        check(
+            ".42195123",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_951_230),
+        );
+        check(
+            ".421950803",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_950_803),
+        );
+        check(
+            ".4219508035",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_950_803),
+        );
+        check(
+            ".42195080354",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_950_803),
+        );
+        check(
+            ".421950803547",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 421_950_803),
+        );
         check(".000000003", &[fixed(Nanosecond)], parsed!(nanosecond: 3));
         check(".0000000031", &[fixed(Nanosecond)], parsed!(nanosecond: 3));
         check(".0000000035", &[fixed(Nanosecond)], parsed!(nanosecond: 3));
-        check(".000000003547", &[fixed(Nanosecond)], parsed!(nanosecond: 3));
+        check(
+            ".000000003547",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 3),
+        );
         check(".0000000009", &[fixed(Nanosecond)], parsed!(nanosecond: 0));
-        check(".000000000547", &[fixed(Nanosecond)], parsed!(nanosecond: 0));
-        check(".0000000009999999999999999999999999", &[fixed(Nanosecond)], parsed!(nanosecond: 0));
-        check(".4🤠", &[fixed(Nanosecond), Literal("🤠")], parsed!(nanosecond: 400_000_000));
+        check(
+            ".000000000547",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 0),
+        );
+        check(
+            ".0000000009999999999999999999999999",
+            &[fixed(Nanosecond)],
+            parsed!(nanosecond: 0),
+        );
+        check(
+            ".4🤠",
+            &[fixed(Nanosecond), Literal("🤠")],
+            parsed!(nanosecond: 400_000_000),
+        );
         check(".4x", &[fixed(Nanosecond)], Err(TOO_LONG));
         check(".  4", &[fixed(Nanosecond)], Err(INVALID));
         check("  .4", &[fixed(Nanosecond)], Err(TOO_LONG)); // no automatic trimming
@@ -640,23 +776,47 @@ mod tests {
         check("", &[fixed(Nanosecond3)], parsed!()); // no field set, but not an error
         check("4", &[fixed(Nanosecond3)], Err(TOO_LONG)); // never consumes `4`
         check(".12", &[fixed(Nanosecond3)], Err(TOO_SHORT));
-        check(".123", &[fixed(Nanosecond3)], parsed!(nanosecond: 123_000_000));
+        check(
+            ".123",
+            &[fixed(Nanosecond3)],
+            parsed!(nanosecond: 123_000_000),
+        );
         check(".1234", &[fixed(Nanosecond3)], Err(TOO_LONG));
-        check(".1234", &[fixed(Nanosecond3), Literal("4")], parsed!(nanosecond: 123_000_000));
+        check(
+            ".1234",
+            &[fixed(Nanosecond3), Literal("4")],
+            parsed!(nanosecond: 123_000_000),
+        );
 
         check("", &[fixed(Nanosecond6)], parsed!()); // no field set, but not an error
         check("4", &[fixed(Nanosecond6)], Err(TOO_LONG)); // never consumes `4`
         check(".12345", &[fixed(Nanosecond6)], Err(TOO_SHORT));
-        check(".123456", &[fixed(Nanosecond6)], parsed!(nanosecond: 123_456_000));
+        check(
+            ".123456",
+            &[fixed(Nanosecond6)],
+            parsed!(nanosecond: 123_456_000),
+        );
         check(".1234567", &[fixed(Nanosecond6)], Err(TOO_LONG));
-        check(".1234567", &[fixed(Nanosecond6), Literal("7")], parsed!(nanosecond: 123_456_000));
+        check(
+            ".1234567",
+            &[fixed(Nanosecond6), Literal("7")],
+            parsed!(nanosecond: 123_456_000),
+        );
 
         check("", &[fixed(Nanosecond9)], parsed!()); // no field set, but not an error
         check("4", &[fixed(Nanosecond9)], Err(TOO_LONG)); // never consumes `4`
         check(".12345678", &[fixed(Nanosecond9)], Err(TOO_SHORT));
-        check(".123456789", &[fixed(Nanosecond9)], parsed!(nanosecond: 123_456_789));
+        check(
+            ".123456789",
+            &[fixed(Nanosecond9)],
+            parsed!(nanosecond: 123_456_789),
+        );
         check(".1234567890", &[fixed(Nanosecond9)], Err(TOO_LONG));
-        check(".1234567890", &[fixed(Nanosecond9), Literal("0")], parsed!(nanosecond: 123_456_789));
+        check(
+            ".1234567890",
+            &[fixed(Nanosecond9), Literal("0")],
+            parsed!(nanosecond: 123_456_789),
+        );
 
         // fixed: nanoseconds without the dot
         check("", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
@@ -664,7 +824,11 @@ mod tests {
         check("0", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
         check("4", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
         check("42", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
-        check("421", &[internal_fixed(Nanosecond3NoDot)], parsed!(nanosecond: 421_000_000));
+        check(
+            "421",
+            &[internal_fixed(Nanosecond3NoDot)],
+            parsed!(nanosecond: 421_000_000),
+        );
         check("4210", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_LONG));
         check(
             "42143",
@@ -682,7 +846,11 @@ mod tests {
             parsed!(nanosecond: 421_000_000),
         );
         check("42195", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_LONG));
-        check("123456789", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_LONG));
+        check(
+            "123456789",
+            &[internal_fixed(Nanosecond3NoDot)],
+            Err(TOO_LONG),
+        );
         check("4x", &[internal_fixed(Nanosecond3NoDot)], Err(TOO_SHORT));
         check("  4", &[internal_fixed(Nanosecond3NoDot)], Err(INVALID));
         check(".421", &[internal_fixed(Nanosecond3NoDot)], Err(INVALID));
@@ -692,11 +860,31 @@ mod tests {
         check("0", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
         check("1234", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
         check("12345", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
-        check("421950", &[internal_fixed(Nanosecond6NoDot)], parsed!(nanosecond: 421_950_000));
-        check("000003", &[internal_fixed(Nanosecond6NoDot)], parsed!(nanosecond: 3000));
-        check("000000", &[internal_fixed(Nanosecond6NoDot)], parsed!(nanosecond: 0));
-        check("1234567", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_LONG));
-        check("123456789", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_LONG));
+        check(
+            "421950",
+            &[internal_fixed(Nanosecond6NoDot)],
+            parsed!(nanosecond: 421_950_000),
+        );
+        check(
+            "000003",
+            &[internal_fixed(Nanosecond6NoDot)],
+            parsed!(nanosecond: 3000),
+        );
+        check(
+            "000000",
+            &[internal_fixed(Nanosecond6NoDot)],
+            parsed!(nanosecond: 0),
+        );
+        check(
+            "1234567",
+            &[internal_fixed(Nanosecond6NoDot)],
+            Err(TOO_LONG),
+        );
+        check(
+            "123456789",
+            &[internal_fixed(Nanosecond6NoDot)],
+            Err(TOO_LONG),
+        );
         check("4x", &[internal_fixed(Nanosecond6NoDot)], Err(TOO_SHORT));
         check("     4", &[internal_fixed(Nanosecond6NoDot)], Err(INVALID));
         check(".42100", &[internal_fixed(Nanosecond6NoDot)], Err(INVALID));
@@ -704,19 +892,51 @@ mod tests {
         check("", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
         check(".", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
         check("42195", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
-        check("12345678", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_SHORT));
-        check("421950803", &[internal_fixed(Nanosecond9NoDot)], parsed!(nanosecond: 421_950_803));
-        check("000000003", &[internal_fixed(Nanosecond9NoDot)], parsed!(nanosecond: 3));
+        check(
+            "12345678",
+            &[internal_fixed(Nanosecond9NoDot)],
+            Err(TOO_SHORT),
+        );
+        check(
+            "421950803",
+            &[internal_fixed(Nanosecond9NoDot)],
+            parsed!(nanosecond: 421_950_803),
+        );
+        check(
+            "000000003",
+            &[internal_fixed(Nanosecond9NoDot)],
+            parsed!(nanosecond: 3),
+        );
         check(
             "42195080354",
             &[internal_fixed(Nanosecond9NoDot), num(Second)],
             parsed!(nanosecond: 421_950_803, second: 54),
         ); // don't skip digits that come after the 9
-        check("1234567890", &[internal_fixed(Nanosecond9NoDot)], Err(TOO_LONG));
-        check("000000000", &[internal_fixed(Nanosecond9NoDot)], parsed!(nanosecond: 0));
-        check("00000000x", &[internal_fixed(Nanosecond9NoDot)], Err(INVALID));
-        check("        4", &[internal_fixed(Nanosecond9NoDot)], Err(INVALID));
-        check(".42100000", &[internal_fixed(Nanosecond9NoDot)], Err(INVALID));
+        check(
+            "1234567890",
+            &[internal_fixed(Nanosecond9NoDot)],
+            Err(TOO_LONG),
+        );
+        check(
+            "000000000",
+            &[internal_fixed(Nanosecond9NoDot)],
+            parsed!(nanosecond: 0),
+        );
+        check(
+            "00000000x",
+            &[internal_fixed(Nanosecond9NoDot)],
+            Err(INVALID),
+        );
+        check(
+            "        4",
+            &[internal_fixed(Nanosecond9NoDot)],
+            Err(INVALID),
+        );
+        check(
+            ".42100000",
+            &[internal_fixed(Nanosecond9NoDot)],
+            Err(INVALID),
+        );
     }
 
     #[test]

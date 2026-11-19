@@ -15,11 +15,13 @@ use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::time::Duration;
 use core::{fmt, str};
 
+use crate::extensions::chrono::format::{parse, ParseError, ParseResult, Parsed, StrftimeItems};
 use crate::extensions::chrono::format::{Fixed, Item, Numeric, Pad};
-use crate::extensions::chrono::format::{ParseError, ParseResult, Parsed, StrftimeItems, parse};
 use crate::extensions::chrono::naive::{IsoWeek, NaiveDate, NaiveTime};
 use crate::extensions::chrono::offset::Utc;
-use crate::extensions::chrono::{DateTime, Datelike, FixedOffset, TimeDelta, Timelike, Weekday, expect, try_opt};
+use crate::extensions::chrono::{
+    expect, try_opt, DateTime, Datelike, FixedOffset, TimeDelta, Timelike, Weekday,
+};
 
 #[cfg(test)]
 mod tests;
@@ -624,7 +626,9 @@ impl Datelike for NaiveDateTime {
     /// ```
     #[inline]
     fn with_ordinal(&self, ordinal: u32) -> Option<NaiveDateTime> {
-        self.date.with_ordinal(ordinal).map(|d| NaiveDateTime { date: d, ..*self })
+        self.date
+            .with_ordinal(ordinal)
+            .map(|d| NaiveDateTime { date: d, ..*self })
     }
 }
 
@@ -766,7 +770,8 @@ impl Add<TimeDelta> for NaiveDateTime {
     #[inline]
     #[track_caller]
     fn add(self, rhs: TimeDelta) -> NaiveDateTime {
-        self.checked_add_signed(rhs).expect("`NaiveDateTime + TimeDelta` overflowed")
+        self.checked_add_signed(rhs)
+            .expect("`NaiveDateTime + TimeDelta` overflowed")
     }
 }
 
@@ -788,7 +793,8 @@ impl Add<Duration> for NaiveDateTime {
     fn add(self, rhs: Duration) -> NaiveDateTime {
         let rhs = TimeDelta::from_std(rhs)
             .expect("overflow converting from core::time::Duration to TimeDelta");
-        self.checked_add_signed(rhs).expect("`NaiveDateTime + TimeDelta` overflowed")
+        self.checked_add_signed(rhs)
+            .expect("`NaiveDateTime + TimeDelta` overflowed")
     }
 }
 
@@ -872,7 +878,8 @@ impl Sub<TimeDelta> for NaiveDateTime {
     #[inline]
     #[track_caller]
     fn sub(self, rhs: TimeDelta) -> NaiveDateTime {
-        self.checked_sub_signed(rhs).expect("`NaiveDateTime - TimeDelta` overflowed")
+        self.checked_sub_signed(rhs)
+            .expect("`NaiveDateTime - TimeDelta` overflowed")
     }
 }
 
@@ -894,7 +901,8 @@ impl Sub<Duration> for NaiveDateTime {
     fn sub(self, rhs: Duration) -> NaiveDateTime {
         let rhs = TimeDelta::from_std(rhs)
             .expect("overflow converting from core::time::Duration to TimeDelta");
-        self.checked_sub_signed(rhs).expect("`NaiveDateTime - TimeDelta` overflowed")
+        self.checked_sub_signed(rhs)
+            .expect("`NaiveDateTime - TimeDelta` overflowed")
     }
 }
 

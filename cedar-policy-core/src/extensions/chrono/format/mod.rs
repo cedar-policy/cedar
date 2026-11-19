@@ -268,8 +268,7 @@ const fn internal_fixed(val: InternalInternal) -> Item<'static> {
     Item::Fixed(Fixed::Internal(InternalFixed { val }))
 }
 
-impl Item<'_> {
-}
+impl Item<'_> {}
 
 /// An error from the `parse` function.
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
@@ -356,4 +355,3 @@ pub(crate) const TOO_LONG: ParseError = ParseError(ParseErrorKind::TooLong);
 const BAD_FORMAT: ParseError = ParseError(ParseErrorKind::BadFormat);
 
 // this implementation is here only because we need some private code from `scan`
-

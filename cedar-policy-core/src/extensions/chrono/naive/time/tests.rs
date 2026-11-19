@@ -127,4 +127,3 @@ fn test_time_from_str() {
         assert!(s.parse::<NaiveTime>().is_err());
     }
 }
-

@@ -8,10 +8,17 @@ use crate::extensions::chrono::{NaiveDate, TimeDelta, Utc};
 
 #[test]
 fn test_datetime_sub() {
-    let ymdhms =
-        |y, m, d, h, n, s| NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, n, s).unwrap();
+    let ymdhms = |y, m, d, h, n, s| {
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(h, n, s)
+            .unwrap()
+    };
     let since = NaiveDateTime::signed_duration_since;
-    assert_eq!(since(ymdhms(2014, 5, 6, 7, 8, 9), ymdhms(2014, 5, 6, 7, 8, 9)), TimeDelta::zero());
+    assert_eq!(
+        since(ymdhms(2014, 5, 6, 7, 8, 9), ymdhms(2014, 5, 6, 7, 8, 9)),
+        TimeDelta::zero()
+    );
     assert_eq!(
         since(ymdhms(2014, 5, 6, 7, 8, 10), ymdhms(2014, 5, 6, 7, 8, 9)),
         TimeDelta::try_seconds(1).unwrap()
@@ -34,12 +41,21 @@ fn test_datetime_sub() {
 fn test_core_duration_ops() {
     use core::time::Duration;
 
-    let mut dt = NaiveDate::from_ymd_opt(2023, 8, 29).unwrap().and_hms_opt(11, 34, 12).unwrap();
+    let mut dt = NaiveDate::from_ymd_opt(2023, 8, 29)
+        .unwrap()
+        .and_hms_opt(11, 34, 12)
+        .unwrap();
     let same = dt + Duration::ZERO;
     assert_eq!(dt, same);
 
     dt += Duration::new(3600, 0);
-    assert_eq!(dt, NaiveDate::from_ymd_opt(2023, 8, 29).unwrap().and_hms_opt(12, 34, 12).unwrap());
+    assert_eq!(
+        dt,
+        NaiveDate::from_ymd_opt(2023, 8, 29)
+            .unwrap()
+            .and_hms_opt(12, 34, 12)
+            .unwrap()
+    );
 }
 
 #[test]
@@ -47,7 +63,10 @@ fn test_core_duration_ops() {
 fn test_core_duration_max() {
     use core::time::Duration;
 
-    let mut utc_dt = NaiveDate::from_ymd_opt(2023, 8, 29).unwrap().and_hms_opt(11, 34, 12).unwrap();
+    let mut utc_dt = NaiveDate::from_ymd_opt(2023, 8, 29)
+        .unwrap()
+        .and_hms_opt(11, 34, 12)
+        .unwrap();
     utc_dt += Duration::MAX;
 }
 
@@ -119,24 +138,75 @@ fn test_datetime_from_str() {
 #[test]
 fn test_datetime_parse_from_str_with_spaces() {
     let parse_from_str = NaiveDateTime::parse_from_str;
-    let dt = NaiveDate::from_ymd_opt(2013, 8, 9).unwrap().and_hms_opt(23, 54, 35).unwrap();
+    let dt = NaiveDate::from_ymd_opt(2013, 8, 9)
+        .unwrap()
+        .and_hms_opt(23, 54, 35)
+        .unwrap();
     // with varying spaces - should succeed
-    assert_eq!(parse_from_str(" Aug 09 2013 23:54:35", " %b %d %Y %H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug 09 2013 23:54:35 ", "%b %d %Y %H:%M:%S "), Ok(dt));
-    assert_eq!(parse_from_str(" Aug 09 2013  23:54:35 ", " %b %d %Y  %H:%M:%S "), Ok(dt));
-    assert_eq!(parse_from_str("  Aug 09 2013 23:54:35", "  %b %d %Y %H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("   Aug 09 2013 23:54:35", "   %b %d %Y %H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("\n\tAug 09 2013 23:54:35  ", "\n\t%b %d %Y %H:%M:%S  "), Ok(dt));
-    assert_eq!(parse_from_str("\tAug 09 2013 23:54:35\t", "\t%b %d %Y %H:%M:%S\t"), Ok(dt));
-    assert_eq!(parse_from_str("Aug  09 2013 23:54:35", "%b  %d %Y %H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug    09 2013 23:54:35", "%b    %d %Y %H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug  09 2013\t23:54:35", "%b  %d %Y\t%H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug  09 2013\t\t23:54:35", "%b  %d %Y\t\t%H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug 09 2013 23:54:35 ", "%b %d %Y %H:%M:%S\n"), Ok(dt));
-    assert_eq!(parse_from_str("Aug 09 2013 23:54:35", "%b %d %Y\t%H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug 09 2013 23:54:35", "%b %d %Y %H:%M:%S "), Ok(dt));
-    assert_eq!(parse_from_str("Aug 09 2013 23:54:35", " %b %d %Y %H:%M:%S"), Ok(dt));
-    assert_eq!(parse_from_str("Aug 09 2013 23:54:35", "%b %d %Y %H:%M:%S\n"), Ok(dt));
+    assert_eq!(
+        parse_from_str(" Aug 09 2013 23:54:35", " %b %d %Y %H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug 09 2013 23:54:35 ", "%b %d %Y %H:%M:%S "),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str(" Aug 09 2013  23:54:35 ", " %b %d %Y  %H:%M:%S "),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("  Aug 09 2013 23:54:35", "  %b %d %Y %H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("   Aug 09 2013 23:54:35", "   %b %d %Y %H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("\n\tAug 09 2013 23:54:35  ", "\n\t%b %d %Y %H:%M:%S  "),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("\tAug 09 2013 23:54:35\t", "\t%b %d %Y %H:%M:%S\t"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug  09 2013 23:54:35", "%b  %d %Y %H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug    09 2013 23:54:35", "%b    %d %Y %H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug  09 2013\t23:54:35", "%b  %d %Y\t%H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug  09 2013\t\t23:54:35", "%b  %d %Y\t\t%H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug 09 2013 23:54:35 ", "%b %d %Y %H:%M:%S\n"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug 09 2013 23:54:35", "%b %d %Y\t%H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug 09 2013 23:54:35", "%b %d %Y %H:%M:%S "),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug 09 2013 23:54:35", " %b %d %Y %H:%M:%S"),
+        Ok(dt)
+    );
+    assert_eq!(
+        parse_from_str("Aug 09 2013 23:54:35", "%b %d %Y %H:%M:%S\n"),
+        Ok(dt)
+    );
     // with varying spaces - should fail
     // leading space in data
     assert!(parse_from_str(" Aug 09 2013 23:54:35", "%b %d %Y %H:%M:%S").is_err());
@@ -152,9 +222,11 @@ fn test_datetime_parse_from_str_with_spaces() {
 
 #[test]
 fn test_and_utc() {
-    let ndt = NaiveDate::from_ymd_opt(2023, 1, 30).unwrap().and_hms_opt(19, 32, 33).unwrap();
+    let ndt = NaiveDate::from_ymd_opt(2023, 1, 30)
+        .unwrap()
+        .and_hms_opt(19, 32, 33)
+        .unwrap();
     let dt_utc = ndt.and_utc();
     assert_eq!(dt_utc.naive_local(), ndt);
     assert_eq!(dt_utc.timezone(), Utc);
 }
-

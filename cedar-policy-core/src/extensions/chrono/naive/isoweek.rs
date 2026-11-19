@@ -51,7 +51,9 @@ impl IsoWeek {
             }
         };
         let flags = YearFlags::from_year(year);
-        IsoWeek { ywf: (year << 10) | (week << 4) as i32 | i32::from(flags.0) }
+        IsoWeek {
+            ywf: (year << 10) | (week << 4) as i32 | i32::from(flags.0),
+        }
     }
 
     /// Returns the year number for this ISO week.
@@ -142,8 +144,8 @@ impl fmt::Debug for IsoWeek {
 
 #[cfg(test)]
 mod tests {
-    use crate::extensions::chrono::Datelike;
     use crate::extensions::chrono::naive::date::NaiveDate;
+    use crate::extensions::chrono::Datelike;
 
     #[test]
     fn test_iso_week_equivalence_for_first_week() {

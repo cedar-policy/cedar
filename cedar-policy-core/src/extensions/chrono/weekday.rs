@@ -86,7 +86,11 @@ impl Weekday {
     pub const fn days_since(&self, other: Weekday) -> u32 {
         let lhs = *self as u32;
         let rhs = other as u32;
-        if lhs < rhs { 7 + lhs - rhs } else { lhs - rhs }
+        if lhs < rhs {
+            7 + lhs - rhs
+        } else {
+            lhs - rhs
+        }
     }
 }
 

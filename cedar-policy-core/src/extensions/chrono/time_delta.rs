@@ -72,7 +72,10 @@ impl TimeDelta {
         {
             return None;
         }
-        Some(TimeDelta { secs, nanos: nanos as i32 })
+        Some(TimeDelta {
+            secs,
+            nanos: nanos as i32,
+        })
     }
 
     /// Makes a new `TimeDelta` with the given number of days.
@@ -109,7 +112,11 @@ impl TimeDelta {
     /// Returns the total number of whole seconds in the `TimeDelta`.
     pub const fn num_seconds(&self) -> i64 {
         // If secs is negative, nanos should be subtracted from the duration.
-        if self.secs < 0 && self.nanos > 0 { self.secs + 1 } else { self.secs }
+        if self.secs < 0 && self.nanos > 0 {
+            self.secs + 1
+        } else {
+            self.secs
+        }
     }
 
     /// Returns the total number of whole milliseconds in the `TimeDelta`.
@@ -128,7 +135,11 @@ impl TimeDelta {
     /// `subsec_nanos() + num_seconds() * 1_000_000_000` is the total number of
     /// nanoseconds in the `TimeDelta`.
     pub const fn subsec_nanos(&self) -> i32 {
-        if self.secs < 0 && self.nanos > 0 { self.nanos - NANOS_PER_SEC } else { self.nanos }
+        if self.secs < 0 && self.nanos > 0 {
+            self.nanos - NANOS_PER_SEC
+        } else {
+            self.nanos
+        }
     }
 
     /// Add two `TimeDelta`s, returning `None` if overflow occurred.
@@ -172,7 +183,10 @@ impl TimeDelta {
             0 => (0, 0),
             nanos => (1, NANOS_PER_SEC - nanos),
         };
-        TimeDelta { secs: -self.secs - secs_diff, nanos }
+        TimeDelta {
+            secs: -self.secs - secs_diff,
+            nanos,
+        }
     }
 }
 
@@ -186,7 +200,10 @@ impl Neg for TimeDelta {
             0 => (0, 0),
             nanos => (1, NANOS_PER_SEC - nanos),
         };
-        TimeDelta { secs: -self.secs - secs_diff, nanos }
+        TimeDelta {
+            secs: -self.secs - secs_diff,
+            nanos,
+        }
     }
 }
 
@@ -195,7 +212,8 @@ impl Add for TimeDelta {
 
     #[track_caller]
     fn add(self, rhs: TimeDelta) -> TimeDelta {
-        self.checked_add(&rhs).expect("`TimeDelta + TimeDelta` overflowed")
+        self.checked_add(&rhs)
+            .expect("`TimeDelta + TimeDelta` overflowed")
     }
 }
 
@@ -233,8 +251,14 @@ mod tests {
         assert_eq!(TimeDelta::try_seconds(86_401).unwrap().num_days(), 1);
         assert_eq!(TimeDelta::try_seconds(-86_399).unwrap().num_days(), 0);
         assert_eq!(TimeDelta::try_seconds(-86_401).unwrap().num_days(), -1);
-        assert_eq!(TimeDelta::try_days(i32::MAX as i64).unwrap().num_days(), i32::MAX as i64);
-        assert_eq!(TimeDelta::try_days(i32::MIN as i64).unwrap().num_days(), i32::MIN as i64);
+        assert_eq!(
+            TimeDelta::try_days(i32::MAX as i64).unwrap().num_days(),
+            i32::MAX as i64
+        );
+        assert_eq!(
+            TimeDelta::try_days(i32::MIN as i64).unwrap().num_days(),
+            i32::MIN as i64
+        );
     }
 
     #[test]

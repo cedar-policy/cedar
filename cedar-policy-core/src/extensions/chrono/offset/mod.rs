@@ -29,7 +29,7 @@ use core::fmt;
 
 use crate::extensions::chrono::naive::NaiveDateTime;
 #[allow(deprecated)]
-use crate::extensions::chrono::{DateTime};
+use crate::extensions::chrono::DateTime;
 
 pub(crate) mod fixed;
 pub use self::fixed::FixedOffset;
@@ -113,8 +113,7 @@ impl<T> MappedLocalTime<T> {
     }
 }
 
-impl<T: fmt::Debug> MappedLocalTime<T> {
-}
+impl<T: fmt::Debug> MappedLocalTime<T> {}
 
 /// The offset from the local time to UTC.
 pub trait Offset: Sized + Clone + fmt::Debug {
@@ -159,5 +158,4 @@ pub trait TimeZone: Sized + Clone {
 }
 
 #[cfg(test)]
-mod tests {
-}
+mod tests {}

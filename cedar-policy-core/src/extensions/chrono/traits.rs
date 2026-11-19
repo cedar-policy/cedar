@@ -98,4 +98,3 @@ pub trait Timelike: Sized {
     /// the [leap second](./naive/struct.NaiveTime.html#leap-second-handling).
     fn nanosecond(&self) -> u32;
 }
-

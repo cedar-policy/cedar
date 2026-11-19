@@ -544,8 +544,8 @@ mod format;
 pub use format::ParseError;
 
 mod naive;
+use naive::IsoWeek;
 pub use naive::{NaiveDate, NaiveDateTime, NaiveTime};
-use naive::{IsoWeek};
 
 mod offset;
 #[doc(inline)]
@@ -578,4 +578,3 @@ pub(crate) const fn expect<T: Copy>(opt: Option<T>, msg: &str) -> T {
         None => panic!("{}", msg),
     }
 }
-

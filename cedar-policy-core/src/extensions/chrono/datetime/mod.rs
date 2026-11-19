@@ -15,7 +15,7 @@ use core::cmp::Ordering;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
 use core::{fmt, str};
 
-use crate::extensions::chrono::format::{ParseError, ParseResult, Parsed, StrftimeItems, parse};
+use crate::extensions::chrono::format::{parse, ParseError, ParseResult, Parsed, StrftimeItems};
 use crate::extensions::chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use crate::extensions::chrono::offset::{FixedOffset, Offset, TimeZone, Utc};
 use crate::extensions::chrono::TimeDelta;
@@ -313,13 +313,17 @@ impl DateTime<Utc> {
             return None;
         }
         let date = try_opt!(NaiveDate::from_num_days_from_ce_opt(days as i32));
-        let time = try_opt!(NaiveTime::from_num_seconds_from_midnight_opt(secs as u32, nsecs));
+        let time = try_opt!(NaiveTime::from_num_seconds_from_midnight_opt(
+            secs as u32,
+            nsecs
+        ));
         Some(date.and_time(time).and_utc())
     }
 
     /// The Unix Epoch, 1970-01-01 00:00:00 UTC.
-    pub const UNIX_EPOCH: Self =
-        expect(NaiveDate::from_ymd_opt(1970, 1, 1), "").and_time(NaiveTime::MIN).and_utc();
+    pub const UNIX_EPOCH: Self = expect(NaiveDate::from_ymd_opt(1970, 1, 1), "")
+        .and_time(NaiveTime::MIN)
+        .and_utc();
 }
 
 impl DateTime<FixedOffset> {
@@ -419,7 +423,8 @@ impl<Tz: TimeZone> Add<TimeDelta> for DateTime<Tz> {
     #[inline]
     #[track_caller]
     fn add(self, rhs: TimeDelta) -> DateTime<Tz> {
-        self.checked_add_signed(rhs).expect("`DateTime + TimeDelta` overflowed")
+        self.checked_add_signed(rhs)
+            .expect("`DateTime + TimeDelta` overflowed")
     }
 }
 
@@ -437,8 +442,10 @@ impl<Tz: TimeZone> AddAssign<TimeDelta> for DateTime<Tz> {
     #[inline]
     #[track_caller]
     fn add_assign(&mut self, rhs: TimeDelta) {
-        let datetime =
-            self.datetime.checked_add_signed(rhs).expect("`DateTime + TimeDelta` overflowed");
+        let datetime = self
+            .datetime
+            .checked_add_signed(rhs)
+            .expect("`DateTime + TimeDelta` overflowed");
         let tz = self.timezone();
         *self = tz.from_utc_datetime(&datetime);
     }
@@ -460,8 +467,10 @@ impl<Tz: TimeZone> SubAssign<TimeDelta> for DateTime<Tz> {
     #[inline]
     #[track_caller]
     fn sub_assign(&mut self, rhs: TimeDelta) {
-        let datetime =
-            self.datetime.checked_sub_signed(rhs).expect("`DateTime - TimeDelta` overflowed");
+        let datetime = self
+            .datetime
+            .checked_sub_signed(rhs)
+            .expect("`DateTime - TimeDelta` overflowed");
         let tz = self.timezone();
         *self = tz.from_utc_datetime(&datetime)
     }
@@ -510,7 +519,8 @@ impl str::FromStr for DateTime<Utc> {
     type Err = ParseError;
 
     fn from_str(s: &str) -> ParseResult<DateTime<Utc>> {
-        s.parse::<DateTime<FixedOffset>>().map(|dt| dt.with_timezone(&Utc))
+        s.parse::<DateTime<FixedOffset>>()
+            .map(|dt| dt.with_timezone(&Utc))
     }
 }
 

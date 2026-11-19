@@ -15,11 +15,11 @@ use core::time::Duration;
 use core::{fmt, str};
 
 use crate::extensions::chrono::format::{
-    Fixed, Item, Numeric, Pad, ParseError, ParseResult, Parsed, parse,
-    parse_and_remainder, write_hundreds,
+    parse, parse_and_remainder, write_hundreds, Fixed, Item, Numeric, Pad, ParseError, ParseResult,
+    Parsed,
 };
-use crate::extensions::chrono::{FixedOffset, TimeDelta, Timelike};
 use crate::extensions::chrono::{expect, try_opt};
+use crate::extensions::chrono::{FixedOffset, TimeDelta, Timelike};
 
 #[cfg(test)]
 mod tests;
@@ -387,7 +387,13 @@ impl NaiveTime {
                 frac -= 1_000_000_000;
                 secs += 1;
             } else {
-                return (NaiveTime { secs: self.secs, frac: (frac + frac_to_add) as u32 }, 0);
+                return (
+                    NaiveTime {
+                        secs: self.secs,
+                        frac: (frac + frac_to_add) as u32,
+                    },
+                    0,
+                );
             }
         }
 
@@ -404,7 +410,13 @@ impl NaiveTime {
 
         let secs_in_day = secs.rem_euclid(86_400);
         let remaining = secs - secs_in_day;
-        (NaiveTime { secs: secs_in_day as u32, frac: frac as u32 }, remaining)
+        (
+            NaiveTime {
+                secs: secs_in_day as u32,
+                frac: frac as u32,
+            },
+            remaining,
+        )
     }
 
     /// Subtracts given `TimeDelta` from the current time, and also returns the number of *seconds*
@@ -529,7 +541,10 @@ impl NaiveTime {
         let secs_from_frac = frac.div_euclid(1_000_000_000);
         let frac = frac.rem_euclid(1_000_000_000) as u32;
 
-        expect(TimeDelta::new(secs + secs_from_frac, frac), "must be in range")
+        expect(
+            TimeDelta::new(secs + secs_from_frac, frac),
+            "must be in range",
+        )
     }
 
     /// Adds given `FixedOffset` to the current time, and returns the number of days that should be
@@ -542,7 +557,13 @@ impl NaiveTime {
         let secs = self.secs as i32 + offset.local_minus_utc();
         let days = secs.div_euclid(86_400);
         let secs = secs.rem_euclid(86_400);
-        (NaiveTime { secs: secs as u32, frac: self.frac }, days)
+        (
+            NaiveTime {
+                secs: secs as u32,
+                frac: self.frac,
+            },
+            days,
+        )
     }
 
     /// Subtracts given `FixedOffset` from the current time, and returns the number of days that
@@ -555,7 +576,13 @@ impl NaiveTime {
         let secs = self.secs as i32 - offset.local_minus_utc();
         let days = secs.div_euclid(86_400);
         let secs = secs.rem_euclid(86_400);
-        (NaiveTime { secs: secs as u32, frac: self.frac }, days)
+        (
+            NaiveTime {
+                secs: secs as u32,
+                frac: self.frac,
+            },
+            days,
+        )
     }
 
     /// Returns a triple of the hour, minute and second numbers.
@@ -1072,4 +1099,3 @@ impl str::FromStr for NaiveTime {
         parsed.to_naive_time()
     }
 }
-

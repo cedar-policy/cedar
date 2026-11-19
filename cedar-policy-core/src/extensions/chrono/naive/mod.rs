@@ -18,9 +18,9 @@ mod internals;
 pub(crate) mod isoweek;
 pub(crate) mod time;
 
-pub use self::date::{NaiveDate};
+pub use self::date::NaiveDate;
 #[allow(deprecated)]
-pub use self::datetime::{NaiveDateTime};
+pub use self::datetime::NaiveDateTime;
 pub use self::isoweek::IsoWeek;
 pub use self::time::NaiveTime;
 
@@ -33,9 +33,7 @@ pub use self::time::NaiveTime;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub struct Days(pub(crate) u64);
 
-impl Days {
-}
+impl Days {}
 
 #[cfg(test)]
-mod test {
-}
+mod test {}

@@ -15,20 +15,42 @@ fn test_datetime_from_timestamp_secs() {
     for timestamp_secs in valid.iter().copied() {
         let datetime = DateTime::from_timestamp_secs(timestamp_secs).unwrap();
         assert_eq!(timestamp_secs, datetime.timestamp());
-        assert_eq!(DateTime::from_timestamp(timestamp_secs, 0).unwrap(), datetime);
+        assert_eq!(
+            DateTime::from_timestamp(timestamp_secs, 0).unwrap(),
+            datetime
+        );
     }
 }
 
 #[test]
 fn test_datetime_from_timestamp() {
     let ymdhms = |y, m, d, h, n, s| {
-        NaiveDate::from_ymd_opt(y, m, d).unwrap().and_hms_opt(h, n, s).unwrap().and_utc()
+        NaiveDate::from_ymd_opt(y, m, d)
+            .unwrap()
+            .and_hms_opt(h, n, s)
+            .unwrap()
+            .and_utc()
     };
-    assert_eq!(DateTime::from_timestamp_secs(-1), Some(ymdhms(1969, 12, 31, 23, 59, 59)));
-    assert_eq!(DateTime::from_timestamp_secs(0), Some(ymdhms(1970, 1, 1, 0, 0, 0)));
-    assert_eq!(DateTime::from_timestamp_secs(1), Some(ymdhms(1970, 1, 1, 0, 0, 1)));
-    assert_eq!(DateTime::from_timestamp_secs(1_000_000_000), Some(ymdhms(2001, 9, 9, 1, 46, 40)));
-    assert_eq!(DateTime::from_timestamp_secs(0x7fffffff), Some(ymdhms(2038, 1, 19, 3, 14, 7)));
+    assert_eq!(
+        DateTime::from_timestamp_secs(-1),
+        Some(ymdhms(1969, 12, 31, 23, 59, 59))
+    );
+    assert_eq!(
+        DateTime::from_timestamp_secs(0),
+        Some(ymdhms(1970, 1, 1, 0, 0, 0))
+    );
+    assert_eq!(
+        DateTime::from_timestamp_secs(1),
+        Some(ymdhms(1970, 1, 1, 0, 0, 1))
+    );
+    assert_eq!(
+        DateTime::from_timestamp_secs(1_000_000_000),
+        Some(ymdhms(2001, 9, 9, 1, 46, 40))
+    );
+    assert_eq!(
+        DateTime::from_timestamp_secs(0x7fffffff),
+        Some(ymdhms(2038, 1, 19, 3, 14, 7))
+    );
     assert_eq!(DateTime::from_timestamp_secs(i64::MIN), None);
     assert_eq!(DateTime::from_timestamp_secs(i64::MAX), None);
 }
@@ -173,4 +195,3 @@ fn test_datetime_is_send_and_copy() {
 // Some targets, such as `wasm32-wasi`, have a problematic definition of `SystemTime`, such as an
 // `i32` (year 2035 problem), or an `u64` (no values before `UNIX-EPOCH`).
 // See https://github.com/rust-lang/rust/issues/44394.
-

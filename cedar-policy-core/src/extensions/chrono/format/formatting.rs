@@ -23,4 +23,3 @@ pub(crate) fn write_hundreds(w: &mut (impl Write + ?Sized), n: u8) -> fmt::Resul
     w.write_char(tens as char)?;
     w.write_char(ones as char)
 }
-

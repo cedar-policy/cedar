@@ -26,12 +26,11 @@ use core::{fmt, str};
 
 use super::internals::{Mdf, YearFlags};
 use crate::extensions::chrono::format::{
-    Item, Numeric, Pad, ParseError, ParseResult, Parsed, StrftimeItems, parse,
-    write_hundreds,
+    parse, write_hundreds, Item, Numeric, Pad, ParseError, ParseResult, Parsed, StrftimeItems,
 };
 use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDateTime, NaiveTime};
-use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
 use crate::extensions::chrono::{expect, try_opt};
+use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
 
 #[cfg(test)]
 mod tests;
@@ -121,7 +120,9 @@ impl NaiveDate {
         if year < MIN_YEAR || year > MAX_YEAR {
             return None; // Out-of-range
         }
-        Some(NaiveDate::from_yof((year << 13) | try_opt!(mdf.ordinal_and_flags())))
+        Some(NaiveDate::from_yof(
+            (year << 13) | try_opt!(mdf.ordinal_and_flags()),
+        ))
     }
 
     /// Makes a new `NaiveDate` from the [calendar date](#calendar-date)
@@ -514,7 +515,9 @@ impl NaiveDate {
     pub const fn pred_opt(&self) -> Option<NaiveDate> {
         let new_shifted_ordinal = (self.yof() & ORDINAL_MASK) - (1 << 4);
         match new_shifted_ordinal > 0 {
-            true => Some(NaiveDate::from_yof(self.yof() & !ORDINAL_MASK | new_shifted_ordinal)),
+            true => Some(NaiveDate::from_yof(
+                self.yof() & !ORDINAL_MASK | new_shifted_ordinal,
+            )),
             false => NaiveDate::from_ymd_opt(self.year() - 1, 12, 31),
         }
     }
@@ -725,7 +728,9 @@ impl NaiveDate {
         debug_assert!((yof & 0b111) != 000);
         // Cedar: `unsafe { NonZeroI32::new_unchecked(yof) }` replaced with a checked conversion
         // because Cedar forbids `unsafe_code`. The invariants above guarantee `yof != 0`.
-        NaiveDate { yof: expect(NonZeroI32::new(yof), "invalid year-ordinal-flags value") }
+        NaiveDate {
+            yof: expect(NonZeroI32::new(yof), "invalid year-ordinal-flags value"),
+        }
     }
 
     /// Get the raw year-ordinal-flags `i32`.
@@ -953,7 +958,8 @@ impl Add<TimeDelta> for NaiveDate {
     #[inline]
     #[track_caller]
     fn add(self, rhs: TimeDelta) -> NaiveDate {
-        self.checked_add_signed(rhs).expect("`NaiveDate + TimeDelta` overflowed")
+        self.checked_add_signed(rhs)
+            .expect("`NaiveDate + TimeDelta` overflowed")
     }
 }
 
@@ -985,7 +991,8 @@ impl Add<Days> for NaiveDate {
 
     #[track_caller]
     fn add(self, days: Days) -> Self::Output {
-        self.checked_add_days(days).expect("`NaiveDate + Days` out of range")
+        self.checked_add_days(days)
+            .expect("`NaiveDate + Days` out of range")
     }
 }
 
@@ -1033,7 +1040,8 @@ impl Sub<TimeDelta> for NaiveDate {
     #[inline]
     #[track_caller]
     fn sub(self, rhs: TimeDelta) -> NaiveDate {
-        self.checked_sub_signed(rhs).expect("`NaiveDate - TimeDelta` overflowed")
+        self.checked_sub_signed(rhs)
+            .expect("`NaiveDate - TimeDelta` overflowed")
     }
 }
 
@@ -1232,4 +1240,3 @@ const YEAR_DELTAS: &[u8; 401] = &[
     90, 91, 91, 91, 91, 92, 92, 92, 92, 93, 93, 93, 93, 94, 94, 94, 94, 95, 95, 95, 95, 96, 96, 96,
     96, 97, 97, 97, 97, // 400+1
 ];
-

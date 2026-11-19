@@ -323,7 +323,7 @@ impl fmt::Debug for Mdf {
 #[cfg(test)]
 mod tests {
     use super::Mdf;
-    use super::{A, AG, B, BA, C, CB, D, DC, E, ED, F, FE, G, GF, YearFlags};
+    use super::{YearFlags, A, AG, B, BA, C, CB, D, DC, E, ED, F, FE, G, GF};
 
     const NONLEAP_FLAGS: [YearFlags; 7] = [A, B, C, D, E, F, G];
     const LEAP_FLAGS: [YearFlags; 7] = [AG, BA, CB, DC, ED, FE, GF];

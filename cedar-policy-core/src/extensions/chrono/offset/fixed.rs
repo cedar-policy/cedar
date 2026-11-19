@@ -14,7 +14,7 @@ use core::fmt;
 use core::str::FromStr;
 
 use super::{MappedLocalTime, Offset, TimeZone};
-use crate::extensions::chrono::format::{OUT_OF_RANGE, ParseError, scan};
+use crate::extensions::chrono::format::{scan, ParseError, OUT_OF_RANGE};
 use crate::extensions::chrono::naive::NaiveDateTime;
 
 /// The time zone with fixed offset, from UTC-23:59:59 to UTC+23:59:59.
@@ -48,7 +48,9 @@ impl FixedOffset {
     #[must_use]
     pub const fn east_opt(secs: i32) -> Option<FixedOffset> {
         if -86_400 < secs && secs < 86_400 {
-            Some(FixedOffset { local_minus_utc: secs })
+            Some(FixedOffset {
+                local_minus_utc: secs,
+            })
         } else {
             None
         }
@@ -95,7 +97,11 @@ impl Offset for FixedOffset {
 impl fmt::Debug for FixedOffset {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let offset = self.local_minus_utc;
-        let (sign, offset) = if offset < 0 { ('-', -offset) } else { ('+', offset) };
+        let (sign, offset) = if offset < 0 {
+            ('-', -offset)
+        } else {
+            ('+', offset)
+        };
         let sec = offset.rem_euclid(60);
         let mins = offset.div_euclid(60);
         let min = mins.rem_euclid(60);
