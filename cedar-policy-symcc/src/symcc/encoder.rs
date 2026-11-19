@@ -333,16 +333,22 @@ impl<S: tokio::io::AsyncWrite + Unpin + Send> Encoder<'_, S> {
     ) -> Result<SmolStr> {
         // Encode `{t1, ..., tn}` as
         // `(set.union (set.singleton t1) (set.union ... (set.singleton tn)))`,
-        // matching the Lean encoder.
-        let mut singletons: Vec<String> = t_encs
-            .map(|t_enc| format!("(set.singleton {t_enc})"))
-            .collect();
-        let set_term = match singletons.pop() {
-            None => format!("(as set.empty {ty_enc})"),
-            Some(last) => singletons
-                .into_iter()
-                .rev()
-                .fold(last, |acc, s| format!("(set.union {s} {acc})")),
+        // matching the Lean encoder. This is written in a single pass: every
+        // element but the last opens a `set.union`, and all of them are closed
+        // at the end.
+        let set_term = match t_encs.len() {
+            0 => format!("(as set.empty {ty_enc})"),
+            n => format!(
+                "{}{}",
+                t_encs.enumerate().format_with("", |(i, t_enc), f| {
+                    if i + 1 < n {
+                        f(&format_args!("(set.union (set.singleton {t_enc}) "))
+                    } else {
+                        f(&format_args!("(set.singleton {t_enc})"))
+                    }
+                }),
+                (1..n).format_with("", |_, f| f(&")")),
+            ),
         };
         self.define_term(ty_enc, &set_term).await
     }
