@@ -18,6 +18,8 @@ Cedar Language Version: TBD
 
 - Validating a large policy set with many errors is faster, as hashing a source location no longer hashes the
   whole policy text (#2598).
+- `Schema::schema_link` now permits enumerated entity types in multiple partial schemas when their possible values
+  agree, independent of declaration order.
 
 ## [4.15.0] - 2026-11-16
 

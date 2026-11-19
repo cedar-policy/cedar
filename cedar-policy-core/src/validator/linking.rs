@@ -68,9 +68,7 @@ pub enum LinkError {
     /// Both schemas define the action.
     #[error("action `{0}` is defined twice")]
     DuplicateAction(EntityUID),
-    /// Retained for compatibility with the original RFC 116 linker; enum
-    /// definitions may now resolve external declarations, so this is no
-    /// longer emitted.
+    /// An external entity type links to an enumerated entity type.
     #[error("external entity type `{0}` links to an enumerated entity type")]
     ExternalIsEnum(EntityType),
     /// Two definitions of an enumerated entity type have different values.
@@ -388,21 +386,24 @@ fn link_entity_type(
     current_ety: (ValidatorEntityType, HashSet<EntityType>),
     incoming_ety: (ValidatorEntityType, HashSet<EntityType>),
 ) -> Result<(ValidatorEntityType, HashSet<EntityType>), LinkError> {
-    let (curr_entry, curr_ancestors) = current_ety;
+    let (mut curr_entry, curr_ancestors) = current_ety;
     let (inc_entry, inc_ancestors) = incoming_ety;
-    if let (ValidatorEntityTypeKind::Enum(curr_enum_values), ValidatorEntityTypeKind::Enum(inc_enum_values)) =
-        (&curr_entry.kind, &inc_entry.kind)
+    if let (
+        ValidatorEntityTypeKind::Enum(curr_enum_values),
+        ValidatorEntityTypeKind::Enum(inc_enum_values),
+    ) = (&mut curr_entry.kind, &inc_entry.kind)
     {
         if !enum_values_equal(curr_enum_values, inc_enum_values) {
             return Err(LinkError::EnumValuesMismatch(ety.clone()));
         }
-        let canonical_values = curr_enum_values.clone();
-        return Ok((
-            canonical_enum_entry(curr_entry, &canonical_values),
-            curr_ancestors,
-        ));
+        // Canonicalize the merged definition without losing non-emptiness.
+        curr_enum_values.sort();
+        return Ok((curr_entry, curr_ancestors));
     }
-    match (is_external_entity(&curr_entry), is_external_entity(&inc_entry)) {
+    match (
+        is_external_entity(&curr_entry),
+        is_external_entity(&inc_entry),
+    ) {
         (false, false) => Err(LinkError::DuplicateEntityType(ety.clone())),
         (true, true) => {
             let mut ancestors = curr_ancestors;
@@ -410,7 +411,7 @@ fn link_entity_type(
             Ok((curr_entry, ancestors))
         }
         (true, false) => resolve_external_entity(ety, &curr_ancestors, inc_entry, inc_ancestors),
-        (false, true) => resolve_external_entity(ety, &inc_ancestors, p_entry, p_ancestors),
+        (false, true) => resolve_external_entity(ety, &inc_ancestors, curr_entry, curr_ancestors),
     }
 }
 
@@ -422,7 +423,9 @@ fn resolve_external_entity(
     defined: ValidatorEntityType,
     defined_ancestors: HashSet<EntityType>,
 ) -> Result<(ValidatorEntityType, HashSet<EntityType>), LinkError> {
-    if parents.is_subset(&defined_ancestors) {
+    if matches!(defined.kind, ValidatorEntityTypeKind::Enum(_)) {
+        Err(LinkError::ExternalIsEnum(ety.clone()))
+    } else if parents.is_subset(&defined_ancestors) {
         Ok((defined, defined_ancestors))
     } else {
         Err(LinkError::DefinedEntityAncestorsChanged(ety.clone()))
@@ -433,20 +436,6 @@ fn resolve_external_entity(
 /// not part of its meaning.
 fn enum_values_equal(left: &NonEmpty<Eid>, right: &NonEmpty<Eid>) -> bool {
     left.iter().collect::<HashSet<_>>() == right.iter().collect::<HashSet<_>>()
-}
-
-/// Pick a stable representation when equal enum definitions are merged, so
-/// linking remains independent of input order even for schema equality.
-fn canonical_enum_entry(
-    mut entry: ValidatorEntityType,
-    values: &NonEmpty<Eid>,
-) -> ValidatorEntityType {
-    let mut values: Vec<_> = values.iter().cloned().collect();
-    values.sort_unstable();
-    entry.kind = ValidatorEntityTypeKind::Enum(
-        NonEmpty::from_vec(values).expect("an enum always has at least one value"),
-    );
-    entry
 }
 
 /// How many declared parents each defined entity type has.
@@ -773,26 +762,26 @@ mod test {
     }
 
     #[test]
-    fn an_external_may_resolve_to_an_enum() {
+    fn an_external_may_not_resolve_to_an_enum() {
         assert_matches!(
             link_entity_type(
                 &ety("A"),
                 (external("A"), set(&[])),
                 (enumerated("A"), set(&[]))
             ),
-            Ok((entry, _)) => assert!(matches!(entry.kind, ValidatorEntityTypeKind::Enum(_)))
+            Err(LinkError::ExternalIsEnum(_))
         );
     }
 
     #[test]
-    fn an_enum_may_resolve_an_external_in_either_order() {
+    fn an_enum_may_not_resolve_an_external_in_either_order() {
         assert_matches!(
             link_entity_type(
                 &ety("A"),
                 (enumerated("A"), set(&[])),
                 (external("A"), set(&[]))
             ),
-            Ok((entry, _)) => assert!(matches!(entry.kind, ValidatorEntityTypeKind::Enum(_)))
+            Err(LinkError::ExternalIsEnum(_))
         );
     }
 
@@ -1125,13 +1114,14 @@ mod test {
     }
 
     #[test]
-    fn an_external_that_resolves_to_an_enum_is_allowed() {
-        let out = linked(&[
-            "external entity E;\nentity A { e: E };",
-            "entity E enum [\"x\"];",
-        ]);
-        assert!(out.is_complete());
-        assert!(out.entity_type_names().any(|name| name == &ety("E")));
+    fn an_external_that_resolves_to_an_enum_is_refused() {
+        assert_matches!(
+            link_all(&[
+                "external entity E;\nentity A { e: E };",
+                "entity E enum [\"x\"];",
+            ]),
+            Err(LinkError::ExternalIsEnum(_))
+        );
     }
 
     #[test]

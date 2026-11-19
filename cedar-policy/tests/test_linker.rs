@@ -339,11 +339,11 @@ action w in [g, r];
     );
 }
 
-/// An external declaration may resolve to an enumerated entity type.
+/// An external declaration may not resolve to an enumerated entity type.
 #[test]
-fn an_external_entity_can_resolve_to_an_enum() {
-    link_ok(
-        "an_external_entity_can_resolve_to_an_enum",
+fn an_external_entity_cannot_resolve_to_an_enum() {
+    link_err(
+        "an_external_entity_cannot_resolve_to_an_enum",
         r#"
 external entity E;
 entity A { e: E };
@@ -351,10 +351,7 @@ entity A { e: E };
         r#"
 entity E enum ["x"];
 "#,
-        r#"
-entity E enum ["x"];
-entity A { e: E };
-"#,
+        "externalIsEnum",
     );
 }
 
@@ -790,11 +787,11 @@ entity B { x: String };
     );
 }
 
-/// Link resolves to an enum.
+/// Linking an external declaration to an enum is rejected.
 #[test]
-fn an_external_may_resolve_to_an_enum_across_a_link() {
-    link_ok(
-        "an_external_may_resolve_to_an_enum_across_a_link",
+fn an_external_may_not_resolve_to_an_enum_across_a_link() {
+    link_err(
+        "an_external_may_not_resolve_to_an_enum_across_a_link",
         r#"
 external entity E;
 entity A in E;
@@ -802,10 +799,7 @@ entity A in E;
         r#"
 entity E enum ["x"];
 "#,
-        r#"
-entity E enum ["x"];
-entity A in E;
-"#,
+        "externalIsEnum",
     );
 }
 
