@@ -2240,8 +2240,8 @@ impl Schema {
     /// - [`LinkError::DuplicateEntityType`]: two schemas define the same
     ///   entity type.
     /// - [`LinkError::DuplicateAction`]: two schemas define the same action.
-    /// - [`LinkError::ExternalIsEnum`]: an external entity type resolves to an
-    ///   enumerated entity type.
+    /// - [`LinkError::EnumValuesMismatch`]: two definitions of an enumerated
+    ///   entity type have different possible values.
     /// - [`LinkError::DefinedEntityAncestorsChanged`]: linking would give a
     ///   defined entity type an ancestor its definition omits.
     /// - [`LinkError::ExternalActionParentsMismatch`]: two declarations of one

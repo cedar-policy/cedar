@@ -339,11 +339,11 @@ action w in [g, r];
     );
 }
 
-/// Error: an external can't be an enumerated type.
+/// An external declaration may resolve to an enumerated entity type.
 #[test]
-fn an_external_entity_cannot_resolve_to_an_enum() {
-    link_err(
-        "an_external_entity_cannot_resolve_to_an_enum",
+fn an_external_entity_can_resolve_to_an_enum() {
+    link_ok(
+        "an_external_entity_can_resolve_to_an_enum",
         r#"
 external entity E;
 entity A { e: E };
@@ -351,7 +351,10 @@ entity A { e: E };
         r#"
 entity E enum ["x"];
 "#,
-        "externalIsEnum",
+        r#"
+entity E enum ["x"];
+entity A { e: E };
+"#,
     );
 }
 
@@ -789,9 +792,9 @@ entity B { x: String };
 
 /// Link resolves to an enum.
 #[test]
-fn an_external_may_not_resolve_to_an_enum_across_a_link() {
-    link_err(
-        "an_external_may_not_resolve_to_an_enum_across_a_link",
+fn an_external_may_resolve_to_an_enum_across_a_link() {
+    link_ok(
+        "an_external_may_resolve_to_an_enum_across_a_link",
         r#"
 external entity E;
 entity A in E;
@@ -799,7 +802,21 @@ entity A in E;
         r#"
 entity E enum ["x"];
 "#,
-        "externalIsEnum",
+        r#"
+entity E enum ["x"];
+entity A in E;
+"#,
+    );
+}
+
+/// Equal enum definitions may use different source orders.
+#[test]
+fn enum_values_may_be_declared_in_different_orders() {
+    link_ok(
+        "enum_values_may_be_declared_in_different_orders",
+        r#"entity E enum ["x", "y"];"#,
+        r#"entity E enum ["y", "x"];"#,
+        r#"entity E enum ["x", "y"];"#,
     );
 }
 
