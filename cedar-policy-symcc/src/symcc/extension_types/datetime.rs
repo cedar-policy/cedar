@@ -20,7 +20,7 @@
 
 use std::str::FromStr;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use cedar_policy_core::extensions::chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
 use miette::Diagnostic;
 use num_bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use thiserror::Error;
@@ -52,7 +52,7 @@ pub enum DatetimeError {
     DatetimeParseError(String),
     /// Chrono internal parse error.
     #[error("chrono parse error")]
-    ChronoParseError(#[from] chrono::ParseError),
+    ChronoParseError(#[from] cedar_policy_core::extensions::chrono::ParseError),
     /// Integer overflow during parsing.
     #[error("integer overflow during parsing")]
     IntegerOverflowDuringParsing,

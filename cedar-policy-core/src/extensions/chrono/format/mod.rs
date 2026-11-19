@@ -5,7 +5,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`.
+//   examples marked `ignore`; other changes marked with `Cedar:` comments.
 
 //! Formatting (and parsing) utilities for date and time.
 //!
@@ -43,7 +43,8 @@ use alloc::boxed::Box;
 use core::error::Error;
 use core::fmt;
 use core::str::FromStr;
-#[cfg(feature = "std")]
+// Cedar: always use `std::error::Error`; upstream gates it on chrono's `std` feature, and Cedar
+// always builds with `std`.
 use std::error::Error;
 
 use crate::extensions::chrono::{Month, ParseMonthError, ParseWeekdayError, Weekday};
@@ -492,7 +493,8 @@ impl fmt::Display for ParseError {
     }
 }
 
-#[cfg(any(feature = "core-error", feature = "std"))]
+// Cedar: implemented unconditionally (upstream: `#[cfg(any(feature = "core-error", feature = "std"))]`)
+// because `cedar-policy-symcc` wraps `ParseError` in a `thiserror` `#[source]`.
 impl Error for ParseError {
     #[allow(deprecated)]
     fn description(&self) -> &str {

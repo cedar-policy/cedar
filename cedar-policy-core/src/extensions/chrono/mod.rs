@@ -527,21 +527,24 @@
     missing_debug_implementations,
     private_interfaces,
     private_bounds,
-    reason = "vendored chrono code: only part of it is used by Cedar, and its `feature` cfgs refer to chrono's features"
+    rustdoc::private_intra_doc_links,
+    rustdoc::broken_intra_doc_links,
+    reason = "vendored chrono code: only part of it is used by Cedar, its `feature` cfgs refer to chrono's features, and its docs link to items Cedar keeps private"
 )]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
 // Cedar: `pub` removed from chrono's top-level modules, re-exports, and the `Duration` alias.
-// Only the items used by Cedar's `datetime` extension (`DateTime`, `NaiveDate`, `NaiveDateTime`,
-// `NaiveTime`, `TimeDelta`, `Utc`) are re-exported, as `pub(crate)`. `OutOfRange` stays `pub`
-// because it is an associated type in trait impls of `pub` types.
+// Only the items used by `cedar-policy-core`'s `datetime` extension and by `cedar-policy-symcc`
+// (`DateTime`, `NaiveDate`, `NaiveDateTime`, `NaiveTime`, `ParseError`, `TimeDelta`, `Utc`) are
+// re-exported. `OutOfRange` stays `pub` because it is an associated type in trait impls of `pub`
+// types.
 mod time_delta;
 #[doc(no_inline)]
 #[cfg(any(feature = "std", feature = "core-error"))]
 use time_delta::OutOfRangeError;
-pub(crate) use time_delta::TimeDelta;
+pub use time_delta::TimeDelta;
 
 /// Alias of [`TimeDelta`].
 type Duration = TimeDelta;
@@ -572,7 +575,7 @@ use date::Date;
 use date::{MAX_DATE, MIN_DATE};
 
 mod datetime;
-pub(crate) use datetime::DateTime;
+pub use datetime::DateTime;
 #[allow(deprecated)]
 #[doc(no_inline)]
 use datetime::{MAX_DATETIME, MIN_DATETIME};
@@ -581,12 +584,13 @@ mod format;
 /// L10n locales.
 #[cfg(feature = "unstable-locales")]
 use format::Locale;
-use format::{ParseError, ParseResult, SecondsFormat};
+pub use format::ParseError;
+use format::{ParseResult, SecondsFormat};
 
 mod naive;
 #[doc(inline)]
 use naive::Days;
-pub(crate) use naive::{NaiveDate, NaiveDateTime, NaiveTime};
+pub use naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use naive::{IsoWeek, NaiveWeek};
 
 mod offset;
@@ -598,7 +602,7 @@ use offset::LocalResult;
 use offset::MappedLocalTime;
 #[doc(inline)]
 use offset::{FixedOffset, Offset, TimeZone};
-pub(crate) use offset::Utc;
+pub use offset::Utc;
 
 mod round;
 use round::{DurationRound, RoundingError, SubsecRound};
