@@ -828,6 +828,28 @@ mod enumerated_entity_types {
     }
 
     #[test]
+    fn link_invalid_enum() {
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal == ?principal, action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let policy = Template::link(
+            std::sync::Arc::new(template),
+            PolicyID::from_string("test"),
+            HashMap::from_iter([(SlotId::principal(), r#"Foo::"fo""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut policy_set = PolicySet::new();
+        policy_set.add(policy).unwrap();
+        let result = Validator::new(schema())
+            .validate(&policy_set, crate::validator::ValidationMode::Strict);
+        assert_matches!(&result.validation_errors().collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "fo").unwrap());
+        });
+    }
+
+    #[test]
     fn basic_invalid() {
         let schema = schema();
         let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();

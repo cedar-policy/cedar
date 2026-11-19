@@ -19,6 +19,12 @@ Cedar Language Version: TBD
 - Validating a large policy set with many errors is faster, as hashing a source location no longer hashes the
   whole policy text (#2598).
 
+### Fixed
+
+- The validator now rejects a template-linked policy whose slot is filled with an entity of an enumerated entity type
+  but an eid that is not one of the declared choices, as it already does for the equivalent static policy. Such a link
+  would have been reported as a warning, and results in a policy that never applies. (*)
+
 ## [4.15.0] - 2026-11-16
 
 Cedar Language Version: 4.7
