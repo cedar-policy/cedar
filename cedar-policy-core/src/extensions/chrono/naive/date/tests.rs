@@ -3,7 +3,7 @@
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
 //   behind chrono's Cargo features (not enabled in Cedar) removed; code not used by Cedar removed.
-use super::{Days, MAX_YEAR, MIN_YEAR, NaiveDate};
+use super::{MAX_YEAR, MIN_YEAR, NaiveDate};
 use crate::extensions::chrono::naive::internals::{A, AG, B, BA, C, CB, D, DC, E, ED, F, FE, G, GF, YearFlags};
 use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
 
@@ -425,5 +425,3 @@ const MAX_DAYS_FROM_YEAR_0: i32 =
 // = MIN_YEAR * 365 + (# of leap years from MIN_YEAR to 0000)
 const MIN_DAYS_FROM_YEAR_0: i32 = MIN_YEAR * 365 + MIN_YEAR / 4 - MIN_YEAR / 100 + MIN_YEAR / 400;
 
-// only used for testing, but duplicated in naive::datetime
-const MAX_BITS: usize = 44;

@@ -6,7 +6,7 @@
 use super::DateTime;
 use crate::extensions::chrono::naive::NaiveDate;
 use crate::extensions::chrono::offset::{FixedOffset, Offset, TimeZone, Utc};
-use crate::extensions::chrono::{NaiveDateTime, TimeDelta};
+use crate::extensions::chrono::NaiveDateTime;
 
 #[test]
 fn test_datetime_from_timestamp_secs() {
@@ -149,7 +149,7 @@ fn test_datetime_is_send_and_copy() {
         fn offset_from_local_datetime(
             &self,
             _: &NaiveDateTime,
-        ) -> crate::extensions::chrono::MappedLocalTime<Self::Offset> {
+        ) -> crate::extensions::chrono::offset::MappedLocalTime<Self::Offset> {
             unimplemented!()
         }
         fn offset_from_utc_datetime(&self, _: &NaiveDateTime) -> Self::Offset {

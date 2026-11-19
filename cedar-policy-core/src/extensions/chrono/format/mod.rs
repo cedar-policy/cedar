@@ -39,12 +39,9 @@
 //! ```
 
 use core::fmt;
-use core::str::FromStr;
 // Cedar: always use `std::error::Error`; upstream gates it on chrono's `std` feature, and Cedar
 // always builds with `std`.
 use std::error::Error;
-
-use crate::extensions::chrono::{Weekday};
 
 mod formatting;
 mod parsed;
@@ -54,11 +51,6 @@ mod parse;
 pub(crate) mod scan;
 
 pub mod strftime;
-
-#[allow(unused)]
-// TODO: remove '#[allow(unused)]' once we use this module for parsing or something else that does
-// not require `alloc`.
-pub(crate) mod locales;
 
 pub(crate) use formatting::write_hundreds;
 pub use parse::{parse, parse_and_remainder};

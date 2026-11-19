@@ -925,8 +925,6 @@ fn resolve_week_date(
 mod tests {
     use super::super::{IMPOSSIBLE, NOT_ENOUGH, OUT_OF_RANGE};
     use super::Parsed;
-    use crate::extensions::chrono::Datelike;
-    use crate::extensions::chrono::Weekday::*;
     use crate::extensions::chrono::naive::{NaiveDate, NaiveTime};
 
     #[test]

@@ -12,15 +12,13 @@
 
 use core::borrow::Borrow;
 use core::cmp::Ordering;
-use core::fmt::Write;
 use core::ops::{Add, AddAssign, Sub, SubAssign};
-use core::time::Duration;
-use core::{fmt, hash, str};
+use core::{fmt, str};
 
 use crate::extensions::chrono::format::{ParseError, ParseResult, Parsed, StrftimeItems, parse};
-use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDate, NaiveDateTime, NaiveTime};
+use crate::extensions::chrono::naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use crate::extensions::chrono::offset::{FixedOffset, Offset, TimeZone, Utc};
-use crate::extensions::chrono::{Datelike, TimeDelta, Timelike, Weekday};
+use crate::extensions::chrono::TimeDelta;
 use crate::extensions::chrono::{expect, try_opt};
 
 #[cfg(test)]

@@ -521,15 +521,13 @@
     reason = "vendored chrono code is kept as close to upstream as possible"
 )]
 #![allow(
-    dead_code,
-    unused,
     rust_2018_idioms,
     missing_debug_implementations,
     private_interfaces,
     private_bounds,
     rustdoc::private_intra_doc_links,
     rustdoc::broken_intra_doc_links,
-    reason = "vendored chrono code: only part of it is used by Cedar, and its docs link to items Cedar keeps private"
+    reason = "vendored chrono code is kept close to upstream, and its docs link to items Cedar keeps private"
 )]
 
 // Cedar: `pub` removed from chrono's top-level modules, re-exports, and the `Duration` alias.
@@ -538,8 +536,6 @@
 // re-exported.
 mod time_delta;
 pub use time_delta::TimeDelta;
-
-use core::fmt;
 
 mod datetime;
 pub use datetime::DateTime;
@@ -552,9 +548,8 @@ pub use naive::{NaiveDate, NaiveDateTime, NaiveTime};
 use naive::{IsoWeek};
 
 mod offset;
-use offset::MappedLocalTime;
 #[doc(inline)]
-use offset::{FixedOffset, TimeZone};
+use offset::FixedOffset;
 pub use offset::Utc;
 
 mod weekday;

@@ -16,8 +16,7 @@
 
 //! Temporal quantification
 
-use core::fmt;
-use core::ops::{Add, AddAssign, Div, Mul, Neg, Sub, SubAssign};
+use core::ops::{Add, Neg};
 use core::time::Duration;
 
 use crate::extensions::chrono::try_opt;

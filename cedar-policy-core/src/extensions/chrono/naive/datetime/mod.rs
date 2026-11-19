@@ -17,9 +17,9 @@ use core::{fmt, str};
 
 use crate::extensions::chrono::format::{Fixed, Item, Numeric, Pad};
 use crate::extensions::chrono::format::{ParseError, ParseResult, Parsed, StrftimeItems, parse};
-use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDate, NaiveTime};
+use crate::extensions::chrono::naive::{IsoWeek, NaiveDate, NaiveTime};
 use crate::extensions::chrono::offset::Utc;
-use crate::extensions::chrono::{DateTime, Datelike, FixedOffset, MappedLocalTime, TimeDelta, TimeZone, Timelike, Weekday, expect, try_opt};
+use crate::extensions::chrono::{DateTime, Datelike, FixedOffset, TimeDelta, Timelike, Weekday, expect, try_opt};
 
 #[cfg(test)]
 mod tests;
@@ -323,23 +323,6 @@ impl NaiveDateTime {
     #[must_use]
     pub(crate) fn overflowing_add_offset(self, rhs: FixedOffset) -> NaiveDateTime {
         let (time, days) = self.time.overflowing_add_offset(rhs);
-        let date = match days {
-            -1 => self.date.pred_opt().unwrap_or(NaiveDate::BEFORE_MIN),
-            1 => self.date.succ_opt().unwrap_or(NaiveDate::AFTER_MAX),
-            _ => self.date,
-        };
-        NaiveDateTime { date, time }
-    }
-
-    /// Subtracts given `FixedOffset` from the current datetime.
-    /// The resulting value may be outside the valid range of [`NaiveDateTime`].
-    ///
-    /// This can be useful for intermediate values, but the resulting out-of-range `NaiveDate`
-    /// should not be exposed to library users.
-    #[must_use]
-    #[allow(unused)] // currently only used in `Local` but not on all platforms
-    pub(crate) fn overflowing_sub_offset(self, rhs: FixedOffset) -> NaiveDateTime {
-        let (time, days) = self.time.overflowing_sub_offset(rhs);
         let date = match days {
             -1 => self.date.pred_opt().unwrap_or(NaiveDate::BEFORE_MIN),
             1 => self.date.succ_opt().unwrap_or(NaiveDate::AFTER_MAX),

@@ -4,7 +4,6 @@
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
 //   behind chrono's Cargo features (not enabled in Cedar) removed; code not used by Cedar removed.
 use super::NaiveTime;
-use crate::extensions::chrono::FixedOffset;
 
 #[test]
 fn test_time_from_hms_milli() {

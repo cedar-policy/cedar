@@ -397,6 +397,7 @@ fn parse_rfc3339_relaxed<'a>(parsed: &mut Parsed, mut s: &'a str) -> ParseResult
 #[cfg(test)]
 mod tests {
     use crate::extensions::chrono::format::*;
+    use crate::extensions::chrono::Weekday;
 
     macro_rules! parsed {
         ($($k:ident: $v:expr),*) => (#[allow(unused_mut)] {
