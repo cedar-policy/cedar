@@ -551,12 +551,9 @@ fn rfc_basic_example() {
     }
 }
 
-/// An external declaration cannot say which values of an enum ancestor are
-/// allowed, so a schema that gives an external entity type an enum ancestor is
-/// refused when it is constructed. The ancestor may be reached transitively,
-/// so the check runs on the closed hierarchy.
+/// An external entity type can list an enum type among its known ancestors.
 #[test]
-fn an_external_entity_type_may_not_have_an_enum_ancestor() {
+fn an_external_entity_type_may_have_an_enum_ancestor() {
     check_both_syntaxes(
         "an enum as the direct ancestor of an external entity type",
         r#"entity F enum ["x"]; external entity E in [F];"#,
@@ -567,7 +564,7 @@ fn an_external_entity_type_may_not_have_an_enum_ancestor() {
             },
             "actions": {}
         } })),
-        &Invalid("cannot have the enum entity type `F` as an ancestor"),
+        &Valid,
     );
     check_both_syntaxes(
         "an enum as a transitive ancestor of an external entity type",
@@ -580,7 +577,7 @@ fn an_external_entity_type_may_not_have_an_enum_ancestor() {
             },
             "actions": {}
         } })),
-        &Invalid("cannot have the enum entity type `F` as an ancestor"),
+        &Valid,
     );
     check_both_syntaxes(
         "an enum ancestor of a defined entity type is still accepted",
