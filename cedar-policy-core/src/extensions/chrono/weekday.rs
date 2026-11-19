@@ -3,7 +3,7 @@
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
 //   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
-//   Cargo features (not enabled in Cedar) removed.
+//   Cargo features (not enabled in Cedar) removed; code not used by Cedar removed.
 use core::fmt;
 
 use crate::extensions::chrono::OutOfRange;
@@ -51,64 +51,6 @@ pub enum Weekday {
 }
 
 impl Weekday {
-    /// The next day in the week.
-    ///
-    /// `w`:        | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
-    /// ----------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
-    /// `w.succ()`: | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun` | `Mon`
-    #[inline]
-    #[must_use]
-    pub const fn succ(&self) -> Weekday {
-        match *self {
-            Weekday::Mon => Weekday::Tue,
-            Weekday::Tue => Weekday::Wed,
-            Weekday::Wed => Weekday::Thu,
-            Weekday::Thu => Weekday::Fri,
-            Weekday::Fri => Weekday::Sat,
-            Weekday::Sat => Weekday::Sun,
-            Weekday::Sun => Weekday::Mon,
-        }
-    }
-
-    /// The previous day in the week.
-    ///
-    /// `w`:        | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
-    /// ----------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
-    /// `w.pred()`: | `Sun` | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat`
-    #[inline]
-    #[must_use]
-    pub const fn pred(&self) -> Weekday {
-        match *self {
-            Weekday::Mon => Weekday::Sun,
-            Weekday::Tue => Weekday::Mon,
-            Weekday::Wed => Weekday::Tue,
-            Weekday::Thu => Weekday::Wed,
-            Weekday::Fri => Weekday::Thu,
-            Weekday::Sat => Weekday::Fri,
-            Weekday::Sun => Weekday::Sat,
-        }
-    }
-
-    /// Returns a day-of-week number starting from Monday = 1. (ISO 8601 weekday number)
-    ///
-    /// `w`:                      | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
-    /// ------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
-    /// `w.number_from_monday()`: | 1     | 2     | 3     | 4     | 5     | 6     | 7
-    #[inline]
-    pub const fn number_from_monday(&self) -> u32 {
-        self.days_since(Weekday::Mon) + 1
-    }
-
-    /// Returns a day-of-week number starting from Sunday = 1.
-    ///
-    /// `w`:                      | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
-    /// ------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
-    /// `w.number_from_sunday()`: | 2     | 3     | 4     | 5     | 6     | 7     | 1
-    #[inline]
-    pub const fn number_from_sunday(&self) -> u32 {
-        self.days_since(Weekday::Sun) + 1
-    }
-
     /// Returns a day-of-week number starting from Monday = 0.
     ///
     /// `w`:                        | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
@@ -131,16 +73,6 @@ impl Weekday {
     #[inline]
     pub const fn num_days_from_monday(&self) -> u32 {
         self.days_since(Weekday::Mon)
-    }
-
-    /// Returns a day-of-week number starting from Sunday = 0.
-    ///
-    /// `w`:                        | `Mon` | `Tue` | `Wed` | `Thu` | `Fri` | `Sat` | `Sun`
-    /// --------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
-    /// `w.num_days_from_sunday()`: | 1     | 2     | 3     | 4     | 5     | 6     | 0
-    #[inline]
-    pub const fn num_days_from_sunday(&self) -> u32 {
-        self.days_since(Weekday::Sun)
     }
 
     /// The number of days since the given day.
@@ -222,32 +154,6 @@ mod tests {
     use super::Weekday;
 
     #[test]
-    fn test_days_since() {
-        for i in 0..7 {
-            let base_day = Weekday::try_from(i).unwrap();
-
-            assert_eq!(base_day.num_days_from_monday(), base_day.days_since(Weekday::Mon));
-            assert_eq!(base_day.num_days_from_sunday(), base_day.days_since(Weekday::Sun));
-
-            assert_eq!(base_day.days_since(base_day), 0);
-
-            assert_eq!(base_day.days_since(base_day.pred()), 1);
-            assert_eq!(base_day.days_since(base_day.pred().pred()), 2);
-            assert_eq!(base_day.days_since(base_day.pred().pred().pred()), 3);
-            assert_eq!(base_day.days_since(base_day.pred().pred().pred().pred()), 4);
-            assert_eq!(base_day.days_since(base_day.pred().pred().pred().pred().pred()), 5);
-            assert_eq!(base_day.days_since(base_day.pred().pred().pred().pred().pred().pred()), 6);
-
-            assert_eq!(base_day.days_since(base_day.succ()), 6);
-            assert_eq!(base_day.days_since(base_day.succ().succ()), 5);
-            assert_eq!(base_day.days_since(base_day.succ().succ().succ()), 4);
-            assert_eq!(base_day.days_since(base_day.succ().succ().succ().succ()), 3);
-            assert_eq!(base_day.days_since(base_day.succ().succ().succ().succ().succ()), 2);
-            assert_eq!(base_day.days_since(base_day.succ().succ().succ().succ().succ().succ()), 1);
-        }
-    }
-
-    #[test]
     fn test_formatting_alignment() {
         // No exhaustive testing here as we just delegate the
         // implementation to Formatter::pad. Just some basic smoke
@@ -256,5 +162,4 @@ mod tests {
         assert_eq!(format!("{:^7}", Weekday::Mon), "  Mon  ");
         assert_eq!(format!("{:Z<7}", Weekday::Mon), "MonZZZZ");
     }
-
 }

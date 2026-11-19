@@ -6,7 +6,7 @@
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
 //   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
-//   Cargo features (not enabled in Cedar) removed.
+//   Cargo features (not enabled in Cedar) removed; code not used by Cedar removed.
 
 //! Formatting (and parsing) utilities for date and time.
 //!
@@ -44,7 +44,7 @@ use core::str::FromStr;
 // always builds with `std`.
 use std::error::Error;
 
-use crate::extensions::chrono::{Month, ParseMonthError, ParseWeekdayError, Weekday};
+use crate::extensions::chrono::{ParseWeekdayError, Weekday};
 
 mod formatting;
 mod parsed;
@@ -60,16 +60,10 @@ pub mod strftime;
 // not require `alloc`.
 pub(crate) mod locales;
 
-pub use formatting::SecondsFormat;
 pub(crate) use formatting::write_hundreds;
-pub(crate) use parse::parse_rfc3339;
 pub use parse::{parse, parse_and_remainder};
 pub use parsed::Parsed;
 pub use strftime::StrftimeItems;
-
-/// An uninhabited type used for `InternalNumeric` and `InternalFixed` below.
-#[derive(Clone, PartialEq, Eq, Hash)]
-enum Void {}
 
 /// Padding characters for numeric items.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
@@ -108,8 +102,6 @@ pub enum Numeric {
     /// Year in the ISO week date (FW=4, PW=∞).
     /// May accept years before 1 BCE or after 9999 CE, given an initial sign.
     IsoYear,
-    /// Year in the ISO week date, divided by 100 (FW=PW=2). Implies the non-negative year.
-    IsoYearDiv100,
     /// Year in the ISO week date, modulo 100 (FW=PW=2). Cannot be negative.
     IsoYearMod100,
     /// Quarter (FW=PW=1).
@@ -145,24 +137,6 @@ pub enum Numeric {
     /// The number of non-leap seconds since the midnight UTC on January 1, 1970 (FW=1, PW=∞).
     /// For formatting, it assumes UTC upon the absence of time zone offset.
     Timestamp,
-
-    /// Internal uses only.
-    ///
-    /// This item exists so that one can add additional internal-only formatting
-    /// without breaking major compatibility (as enum variants cannot be selectively private).
-    Internal(InternalNumeric),
-}
-
-/// An opaque type representing numeric item types for internal uses only.
-#[derive(Clone, Eq, Hash, PartialEq)]
-pub struct InternalNumeric {
-    _dummy: Void,
-}
-
-impl fmt::Debug for InternalNumeric {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<InternalNumeric>")
-    }
 }
 
 /// Fixed-format item types.
@@ -228,21 +202,9 @@ pub enum Fixed {
     /// The offset is limited from `-24` to `+24`,
     /// which is the same as [`FixedOffset`](../offset/struct.FixedOffset.html)'s range.
     TimezoneOffsetTripleColon,
-    /// Offset from the local time to UTC (`+09:00` or `-04:00` or `Z`).
-    ///
-    /// In the parser, the colon can be omitted and/or surrounded with any amount of whitespace,
-    /// and `Z` can be either in upper case or in lower case.
-    /// The offset is limited from `-24:00` to `+24:00`,
-    /// which is the same as [`FixedOffset`](../offset/struct.FixedOffset.html)'s range.
-    TimezoneOffsetColonZ,
     /// Same as [`TimezoneOffsetColon`](#variant.TimezoneOffsetColon) but prints no colon.
     /// Parsing allows an optional colon.
     TimezoneOffset,
-    /// Same as [`TimezoneOffsetColonZ`](#variant.TimezoneOffsetColonZ) but prints no colon.
-    /// Parsing allows an optional colon.
-    TimezoneOffsetZ,
-    /// RFC 2822 date and time syntax. Commonly used for email and MIME date and time.
-    RFC2822,
     /// RFC 3339 & ISO 8601 date and time syntax.
     RFC3339,
 
@@ -276,51 +238,6 @@ enum InternalInternal {
     Nanosecond6NoDot,
     /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 9 and there is no leading dot.
     Nanosecond9NoDot,
-}
-
-/// Type for specifying the format of UTC offsets.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct OffsetFormat {
-    /// See `OffsetPrecision`.
-    pub precision: OffsetPrecision,
-    /// Separator between hours, minutes and seconds.
-    pub colons: Colons,
-    /// Represent `+00:00` as `Z`.
-    pub allow_zulu: bool,
-    /// Pad the hour value to two digits.
-    pub padding: Pad,
-}
-
-/// The precision of an offset from UTC formatting item.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum OffsetPrecision {
-    /// Format offset from UTC as only hours. Not recommended, it is not uncommon for timezones to
-    /// have an offset of 30 minutes, 15 minutes, etc.
-    /// Any minutes and seconds get truncated.
-    Hours,
-    /// Format offset from UTC as hours and minutes.
-    /// Any seconds will be rounded to the nearest minute.
-    Minutes,
-    /// Format offset from UTC as hours, minutes and seconds.
-    Seconds,
-    /// Format offset from UTC as hours, and optionally with minutes.
-    /// Any seconds will be rounded to the nearest minute.
-    OptionalMinutes,
-    /// Format offset from UTC as hours and minutes, and optionally seconds.
-    OptionalSeconds,
-    /// Format offset from UTC as hours and optionally minutes and seconds.
-    OptionalMinutesAndSeconds,
-}
-
-/// The separator between hours and minutes in an offset.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum Colons {
-    /// No separator
-    None,
-    /// Colon (`:`) as separator
-    Colon,
-    /// No separator when formatting, colon allowed when parsing.
-    Maybe,
 }
 
 /// A single formatting item. This is used for both formatting and parsing.
@@ -484,53 +401,3 @@ impl FromStr for Weekday {
     }
 }
 
-/// Parsing a `str` into a `Month` uses the format [`%B`](./format/strftime/index.html).
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::Month;
-///
-/// assert_eq!("January".parse::<Month>(), Ok(Month::January));
-/// assert!("any day".parse::<Month>().is_err());
-/// ```
-///
-/// The parsing is case-insensitive.
-///
-/// ```ignore
-/// # use chrono::Month;
-/// assert_eq!("fEbruARy".parse::<Month>(), Ok(Month::February));
-/// ```
-///
-/// Only the shortest form (e.g. `jan`) and the longest form (e.g. `january`) is accepted.
-///
-/// ```ignore
-/// # use chrono::Month;
-/// assert!("septem".parse::<Month>().is_err());
-/// assert!("Augustin".parse::<Month>().is_err());
-/// ```
-impl FromStr for Month {
-    type Err = ParseMonthError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok(("", w)) = scan::short_or_long_month0(s) {
-            match w {
-                0 => Ok(Month::January),
-                1 => Ok(Month::February),
-                2 => Ok(Month::March),
-                3 => Ok(Month::April),
-                4 => Ok(Month::May),
-                5 => Ok(Month::June),
-                6 => Ok(Month::July),
-                7 => Ok(Month::August),
-                8 => Ok(Month::September),
-                9 => Ok(Month::October),
-                10 => Ok(Month::November),
-                11 => Ok(Month::December),
-                _ => Err(ParseMonthError { _dummy: () }),
-            }
-        } else {
-            Err(ParseMonthError { _dummy: () })
-        }
-    }
-}

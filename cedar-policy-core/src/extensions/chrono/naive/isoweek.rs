@@ -5,7 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
+//   code not used by Cedar removed.
 
 //! ISO 8601 week.
 
@@ -94,23 +95,6 @@ impl IsoWeek {
     pub const fn week(&self) -> u32 {
         ((self.ywf >> 4) & 0x3f) as u32
     }
-
-    /// Returns the ISO week number starting from 0.
-    ///
-    /// The return value ranges from 0 to 52. (The last week of year differs by years.)
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{Datelike, NaiveDate, Weekday};
-    ///
-    /// let d = NaiveDate::from_isoywd_opt(2015, 15, Weekday::Mon).unwrap();
-    /// assert_eq!(d.iso_week().week0(), 14);
-    /// ```
-    #[inline]
-    pub const fn week0(&self) -> u32 {
-        ((self.ywf >> 4) & 0x3f) as u32 - 1
-    }
 }
 
 /// The `Debug` output of the ISO week `w` is the same as
@@ -159,21 +143,7 @@ impl fmt::Debug for IsoWeek {
 #[cfg(test)]
 mod tests {
     use crate::extensions::chrono::Datelike;
-    use crate::extensions::chrono::naive::date::{self, NaiveDate};
-
-    #[test]
-    fn test_iso_week_extremes() {
-        let minweek = NaiveDate::MIN.iso_week();
-        let maxweek = NaiveDate::MAX.iso_week();
-
-        assert_eq!(minweek.year(), date::MIN_YEAR);
-        assert_eq!(minweek.week(), 1);
-        assert_eq!(minweek.week0(), 0);
-
-        assert_eq!(maxweek.year(), date::MAX_YEAR + 1);
-        assert_eq!(maxweek.week(), 1);
-        assert_eq!(maxweek.week0(), 0);
-    }
+    use crate::extensions::chrono::naive::date::NaiveDate;
 
     #[test]
     fn test_iso_week_equivalence_for_first_week() {
@@ -208,5 +178,4 @@ mod tests {
         assert!(monday.iso_week() >= friday.iso_week());
         assert!(monday.iso_week() <= friday.iso_week());
     }
-
 }

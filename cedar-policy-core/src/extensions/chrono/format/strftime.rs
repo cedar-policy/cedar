@@ -5,7 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed.
+//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
+//   code not used by Cedar removed.
 
 /*!
 `strftime`/`strptime`-inspired date and time formatting syntax.
@@ -228,34 +229,6 @@ impl<'a> StrftimeItems<'a> {
         }
     }
 
-    /// The same as [`StrftimeItems::new`], but returns [`Item::Literal`] instead of [`Item::Error`].
-    ///
-    /// Useful for formatting according to potentially invalid format strings.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::*;
-    ///
-    /// let strftime_parser = StrftimeItems::new_lenient("%Y-%Q"); // %Y: year, %Q: invalid
-    ///
-    /// const ITEMS: &[Item<'static>] = &[
-    ///     Item::Numeric(Numeric::Year, Pad::Zero),
-    ///     Item::Literal("-"),
-    ///     Item::Literal("%Q"),
-    /// ];
-    /// println!("{:?}", strftime_parser.clone().collect::<Vec<_>>());
-    /// assert!(strftime_parser.eq(ITEMS.iter().cloned()));
-    /// ```
-    #[must_use]
-    pub const fn new_lenient(s: &'a str) -> StrftimeItems<'a> {
-        StrftimeItems {
-            remainder: s,
-            queue: &[],
-            lenient: true,
-        }
-    }
-
     fn parse_next_item(&mut self, mut remainder: &'a str) -> Option<(&'a str, Item<'a>)> {
         use InternalInternal::*;
         use Item::{Literal, Space};
@@ -458,7 +431,6 @@ impl<'a> StrftimeItems<'a> {
             true => Item::Literal(&original[..original.len() - remainder.len()]),
         }
     }
-
 }
 
 impl<'a> Iterator for StrftimeItems<'a> {
@@ -470,7 +442,6 @@ impl<'a> Iterator for StrftimeItems<'a> {
             self.queue = remainder;
             return Some(item.clone());
         }
-
 
         // Normal: we are parsing the formatting string.
         let (remainder, item) = self.parse_next_item(self.remainder)?;
@@ -684,5 +655,4 @@ mod tests {
         );
         assert_eq!(parse_and_collect("%#m"), [Item::Error]);
     }
-
 }

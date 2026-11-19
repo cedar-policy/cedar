@@ -4,7 +4,8 @@
 // This file is `src/format/scan.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`.
+// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; code
+//   not used by Cedar removed.
 
 /*!
  * Various scanning routines for the parser.
@@ -165,27 +166,6 @@ pub(super) fn short_or_long_weekday(s: &str) -> ParseResult<(&str, Weekday)> {
     Ok((s, weekday))
 }
 
-/// Tries to consume exactly one given character.
-pub(super) fn char(s: &str, c1: u8) -> ParseResult<&str> {
-    match s.as_bytes().first() {
-        Some(&c) if c == c1 => Ok(&s[1..]),
-        Some(_) => Err(INVALID),
-        None => Err(TOO_SHORT),
-    }
-}
-
-/// Tries to consume one or more whitespace.
-pub(super) fn space(s: &str) -> ParseResult<&str> {
-    let s_ = s.trim_start();
-    if s_.len() < s.len() {
-        Ok(s_)
-    } else if s.is_empty() {
-        Err(TOO_SHORT)
-    } else {
-        Err(INVALID)
-    }
-}
-
 /// Consumes any number (including zero) of colon or spaces.
 pub(crate) fn colon_or_space(s: &str) -> ParseResult<&str> {
     Ok(s.trim_start_matches(|c: char| c == ':' || c.is_whitespace()))
@@ -284,127 +264,10 @@ where
     Ok((s, if negative { -seconds } else { seconds }))
 }
 
-/// Same as `timezone_offset` but also allows for RFC 2822 legacy timezones.
-/// May return `None` which indicates an insufficient offset data (i.e. `-0000`).
-/// See [RFC 2822 Section 4.3].
-///
-/// [RFC 2822 Section 4.3]: https://tools.ietf.org/html/rfc2822#section-4.3
-pub(super) fn timezone_offset_2822(s: &str) -> ParseResult<(&str, i32)> {
-    // tries to parse legacy time zone names
-    let upto = s.as_bytes().iter().position(|&c| !c.is_ascii_alphabetic()).unwrap_or(s.len());
-    if upto > 0 {
-        let name = &s.as_bytes()[..upto];
-        let s = &s[upto..];
-        let offset_hours = |o| Ok((s, o * 3600));
-        // RFC 2822 requires support for some named North America timezones, a small subset of all
-        // named timezones.
-        if name.eq_ignore_ascii_case(b"gmt")
-            || name.eq_ignore_ascii_case(b"ut")
-            || name.eq_ignore_ascii_case(b"z")
-        {
-            return offset_hours(0);
-        } else if name.eq_ignore_ascii_case(b"edt") {
-            return offset_hours(-4);
-        } else if name.eq_ignore_ascii_case(b"est") || name.eq_ignore_ascii_case(b"cdt") {
-            return offset_hours(-5);
-        } else if name.eq_ignore_ascii_case(b"cst") || name.eq_ignore_ascii_case(b"mdt") {
-            return offset_hours(-6);
-        } else if name.eq_ignore_ascii_case(b"mst") || name.eq_ignore_ascii_case(b"pdt") {
-            return offset_hours(-7);
-        } else if name.eq_ignore_ascii_case(b"pst") {
-            return offset_hours(-8);
-        } else if name.len() == 1 {
-            if let b'a'..=b'i' | b'k'..=b'y' | b'A'..=b'I' | b'K'..=b'Y' = name[0] {
-                // recommended by RFC 2822: consume but treat it as -0000
-                return Ok((s, 0));
-            }
-        }
-        Err(INVALID)
-    } else {
-        timezone_offset(s, |s| Ok(s), false, false, false)
-    }
-}
-
-/// Tries to consume an RFC2822 comment including preceding ` `.
-///
-/// Returns the remaining string after the closing parenthesis.
-pub(super) fn comment_2822(s: &str) -> ParseResult<(&str, ())> {
-    use CommentState::*;
-
-    let s = s.trim_start();
-
-    let mut state = Start;
-    for (i, c) in s.bytes().enumerate() {
-        state = match (state, c) {
-            (Start, b'(') => Next(1),
-            (Next(1), b')') => return Ok((&s[i + 1..], ())),
-            (Next(depth), b'\\') => Escape(depth),
-            (Next(depth), b'(') => Next(depth + 1),
-            (Next(depth), b')') => Next(depth - 1),
-            (Next(depth), _) | (Escape(depth), _) => Next(depth),
-            _ => return Err(INVALID),
-        };
-    }
-
-    Err(TOO_SHORT)
-}
-
-enum CommentState {
-    Start,
-    Next(usize),
-    Escape(usize),
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{
-        comment_2822, nanosecond, nanosecond_fixed, short_or_long_month0, short_or_long_weekday,
-        timezone_offset_2822,
-    };
+    use super::{nanosecond, nanosecond_fixed, short_or_long_month0, short_or_long_weekday};
     use crate::extensions::chrono::Weekday;
-    use crate::extensions::chrono::format::{INVALID, TOO_SHORT};
-
-    #[test]
-    fn test_rfc2822_comments() {
-        let testdata = [
-            ("", Err(TOO_SHORT)),
-            (" ", Err(TOO_SHORT)),
-            ("x", Err(INVALID)),
-            ("(", Err(TOO_SHORT)),
-            ("()", Ok("")),
-            (" \r\n\t()", Ok("")),
-            ("() ", Ok(" ")),
-            ("()z", Ok("z")),
-            ("(x)", Ok("")),
-            ("(())", Ok("")),
-            ("((()))", Ok("")),
-            ("(x(x(x)x)x)", Ok("")),
-            ("( x ( x ( x ) x ) x )", Ok("")),
-            (r"(\)", Err(TOO_SHORT)),
-            (r"(\()", Ok("")),
-            (r"(\))", Ok("")),
-            (r"(\\)", Ok("")),
-            ("(()())", Ok("")),
-            ("( x ( x ) x ( x ) x )", Ok("")),
-        ];
-
-        for (test_in, expected) in testdata.iter() {
-            let actual = comment_2822(test_in).map(|(s, _)| s);
-            assert_eq!(
-                *expected, actual,
-                "{test_in:?} expected to produce {expected:?}, but produced {actual:?}."
-            );
-        }
-    }
-
-    #[test]
-    fn test_timezone_offset_2822() {
-        assert_eq!(timezone_offset_2822("cSt").unwrap(), ("", -21600));
-        assert_eq!(timezone_offset_2822("pSt").unwrap(), ("", -28800));
-        assert_eq!(timezone_offset_2822("mSt").unwrap(), ("", -25200));
-        assert_eq!(timezone_offset_2822("-1551").unwrap(), ("", -57060));
-        assert_eq!(timezone_offset_2822("Gp"), Err(INVALID));
-    }
 
     #[test]
     fn test_short_or_long_month0() {

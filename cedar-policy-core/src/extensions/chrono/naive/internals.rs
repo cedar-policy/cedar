@@ -1,7 +1,8 @@
 // This file is `src/naive/internals.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
-// Modified by Cedar Contributors: code behind chrono's Cargo features (not enabled in Cedar) removed.
+// Modified by Cedar Contributors: code behind chrono's Cargo features (not enabled in Cedar)
+//   removed; code not used by Cedar removed.
 //! Internal helper types for working with dates.
 
 use core::fmt;
@@ -273,72 +274,11 @@ impl Mdf {
         mdf >> 9
     }
 
-    /// Replaces the month of this `Mdf`, keeping the day and flags.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if `month > 12`.
-    #[inline]
-    pub(super) const fn with_month(&self, month: u32) -> Option<Mdf> {
-        if month > 12 {
-            return None;
-        }
-
-        let Mdf(mdf) = *self;
-        Some(Mdf((mdf & 0b1_1111_1111) | (month << 9)))
-    }
-
     /// Returns the day of this `Mdf`.
     #[inline]
     pub(super) const fn day(&self) -> u32 {
         let Mdf(mdf) = *self;
         (mdf >> 4) & 0b1_1111
-    }
-
-    /// Replaces the day of this `Mdf`, keeping the month and flags.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if `day > 31`.
-    #[inline]
-    pub(super) const fn with_day(&self, day: u32) -> Option<Mdf> {
-        if day > 31 {
-            return None;
-        }
-
-        let Mdf(mdf) = *self;
-        Some(Mdf((mdf & !0b1_1111_0000) | (day << 4)))
-    }
-
-    /// Replaces the flags of this `Mdf`, keeping the month and day.
-    #[inline]
-    pub(super) const fn with_flags(&self, YearFlags(flags): YearFlags) -> Mdf {
-        let Mdf(mdf) = *self;
-        Mdf((mdf & !0b1111) | flags as u32)
-    }
-
-    /// Returns the ordinal that corresponds to this `Mdf`.
-    ///
-    /// This does a table lookup to calculate the corresponding ordinal. It will return an error if
-    /// the `Mdl` turns out not to be a valid date.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if `month == 0` or `day == 0`, or if a the given day does not exist in the
-    /// given month.
-    #[inline]
-    pub(super) const fn ordinal(&self) -> Option<u32> {
-        let mdl = self.0 >> 3;
-        match MDL_TO_OL[mdl as usize] {
-            XX => None,
-            v => Some((mdl - v as u8 as u32) >> 1),
-        }
-    }
-
-    /// Returns the year flags of this `Mdf`.
-    #[inline]
-    pub(super) const fn year_flags(&self) -> YearFlags {
-        YearFlags((self.0 & 0b1111) as u8)
     }
 
     /// Returns the ordinal that corresponds to this `Mdf`, encoded as a value including year flags.
@@ -531,56 +471,6 @@ mod tests {
                     }
                 }
             }
-        }
-    }
-
-    #[test]
-    fn test_mdf_with_fields() {
-        fn check(flags: YearFlags, month: u32, day: u32) {
-            let mdf = Mdf::new(month, day, flags).unwrap();
-
-            for month in 0u32..=16 {
-                let mdf = match mdf.with_month(month) {
-                    Some(mdf) => mdf,
-                    None if month > 12 => continue,
-                    None => panic!("failed to create Mdf with month {month}"),
-                };
-
-                if mdf.valid() {
-                    assert_eq!(mdf.month(), month);
-                    assert_eq!(mdf.day(), day);
-                }
-            }
-
-            for day in 0u32..=1024 {
-                let mdf = match mdf.with_day(day) {
-                    Some(mdf) => mdf,
-                    None if day > 31 => continue,
-                    None => panic!("failed to create Mdf with month {month}"),
-                };
-
-                if mdf.valid() {
-                    assert_eq!(mdf.month(), month);
-                    assert_eq!(mdf.day(), day);
-                }
-            }
-        }
-
-        for &flags in NONLEAP_FLAGS.iter() {
-            check(flags, 1, 1);
-            check(flags, 1, 31);
-            check(flags, 2, 1);
-            check(flags, 2, 28);
-            check(flags, 2, 29);
-            check(flags, 12, 31);
-        }
-        for &flags in LEAP_FLAGS.iter() {
-            check(flags, 1, 1);
-            check(flags, 1, 31);
-            check(flags, 2, 1);
-            check(flags, 2, 29);
-            check(flags, 2, 30);
-            check(flags, 12, 31);
         }
     }
 

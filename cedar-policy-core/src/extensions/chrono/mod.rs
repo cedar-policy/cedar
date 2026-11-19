@@ -3,7 +3,8 @@
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: moved from `src/lib.rs`; `crate::` paths rewritten to
 //   `crate::extensions::chrono::`; doc examples marked `ignore`; other changes marked with `Cedar:`
-//   comments; code behind chrono's Cargo features (not enabled in Cedar) removed.
+//   comments; code behind chrono's Cargo features (not enabled in Cedar) removed; code not used by
+//   Cedar removed.
 //! # Chrono: Date and Time for Rust
 //!
 //! Chrono aims to provide all functionality needed to do correct operations on dates and times in
@@ -539,69 +540,31 @@
 mod time_delta;
 pub use time_delta::TimeDelta;
 
-/// Alias of [`TimeDelta`].
-type Duration = TimeDelta;
-
 use core::fmt;
-
-/// A convenience module appropriate for glob imports (`use chrono::prelude::*;`).
-mod prelude {
-    #[allow(deprecated)]
-    pub(super) use crate::extensions::chrono::Date;
-    pub(super) use crate::extensions::chrono::SubsecRound;
-    pub(super) use crate::extensions::chrono::{DateTime, SecondsFormat};
-    pub(super) use crate::extensions::chrono::{Datelike, Month, Timelike, Weekday};
-    pub(super) use crate::extensions::chrono::{FixedOffset, Utc};
-    pub(super) use crate::extensions::chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-    pub(super) use crate::extensions::chrono::{Offset, TimeZone};
-}
-
-mod date;
-#[allow(deprecated)]
-use date::Date;
-#[doc(no_inline)]
-#[allow(deprecated)]
-use date::{MAX_DATE, MIN_DATE};
 
 mod datetime;
 pub use datetime::DateTime;
-#[allow(deprecated)]
-#[doc(no_inline)]
-use datetime::{MAX_DATETIME, MIN_DATETIME};
 
 mod format;
 pub use format::ParseError;
-use format::{ParseResult, SecondsFormat};
 
 mod naive;
-#[doc(inline)]
-use naive::Days;
 pub use naive::{NaiveDate, NaiveDateTime, NaiveTime};
-use naive::{IsoWeek, NaiveWeek};
+use naive::{IsoWeek};
 
 mod offset;
-#[doc(hidden)]
-use offset::LocalResult;
 use offset::MappedLocalTime;
 #[doc(inline)]
-use offset::{FixedOffset, Offset, TimeZone};
+use offset::{FixedOffset, TimeZone};
 pub use offset::Utc;
-
-mod round;
-use round::{DurationRound, RoundingError, SubsecRound};
 
 mod weekday;
 #[doc(no_inline)]
 use weekday::ParseWeekdayError;
 use weekday::Weekday;
 
-mod weekday_set;
-use weekday_set::WeekdaySet;
-
 mod month;
-#[doc(no_inline)]
-use month::ParseMonthError;
-use month::{Month, Months};
+use month::{Months};
 
 mod traits;
 use traits::{Datelike, Timelike};
@@ -651,7 +614,3 @@ pub(crate) const fn expect<T: Copy>(opt: Option<T>, msg: &str) -> T {
     }
 }
 
-#[cfg(test)]
-mod tests {
-
-}
