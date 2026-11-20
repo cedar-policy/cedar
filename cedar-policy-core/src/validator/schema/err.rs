@@ -274,8 +274,8 @@ pub enum SchemaError {
     #[diagnostic(transparent)]
     EnumEntityInHierarchy(#[from] schema_errors::EnumEntityInHierarchyError),
 
-    /// An entity type declared `external` has an enum entity type as an
-    /// ancestor, which is not allowed.
+    /// Former restriction on enum ancestors of external entity types.
+    /// Retained for API compatibility; schema validation no longer emits it.
     #[error(transparent)]
     #[diagnostic(transparent)]
     ExternalWithEnumAncestor(#[from] schema_errors::ExternalWithEnumAncestorError),
@@ -1040,10 +1040,8 @@ pub mod schema_errors {
         impl_diagnostic_from_method_on_field!(parent_type, loc);
     }
 
-    /// An entity type declared `external` (RFC 116) has an enum entity type
-    /// among its ancestors. Validating an entity of the external type would
-    /// have to check that each such ancestor is one of the allowed values,
-    /// which the declaration does not say.
+    /// Former restriction on enum ancestors of external entity types.
+    /// Retained for API compatibility; schema validation no longer emits it.
     //
     // CAUTION: this type is publicly exported in `cedar-policy`.
     // Don't make fields `pub`, don't make breaking changes, and use caution

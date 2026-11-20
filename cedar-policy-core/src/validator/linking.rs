@@ -33,13 +33,14 @@
 //! Each input is inverted on the way in and the result is inverted on the way
 //! out.
 
-use crate::ast::{EntityType, EntityUID};
+use crate::ast::{Eid, EntityType, EntityUID};
 use crate::extensions::Extensions;
 use crate::validator::{
     IncompleteSchemaError, SchemaError, ValidatorActionId, ValidatorEntityType,
     ValidatorEntityTypeKind, ValidatorSchema,
 };
 use miette::Diagnostic;
+use nonempty::NonEmpty;
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -70,6 +71,9 @@ pub enum LinkError {
     /// An external entity type links to an enumerated entity type.
     #[error("external entity type `{0}` links to an enumerated entity type")]
     ExternalIsEnum(EntityType),
+    /// Two definitions of an enumerated entity type have different values.
+    #[error("enumerated entity type `{0}` has different values in different schemas")]
+    EnumValuesMismatch(EntityType),
     /// Linking would add ancestors to a defined entity type.
     #[error("linking would add ancestors to defined entity type `{0}`")]
     DefinedEntityAncestorsChanged(EntityType),
@@ -379,20 +383,35 @@ fn is_external_entity(entry: &ValidatorEntityType) -> bool {
 /// Link one entity type, as Lean's `PartialEntitySchemaEntry.link` does.
 fn link_entity_type(
     ety: &EntityType,
-    p: (ValidatorEntityType, HashSet<EntityType>),
-    c: (ValidatorEntityType, HashSet<EntityType>),
+    current_ety: (ValidatorEntityType, HashSet<EntityType>),
+    incoming_ety: (ValidatorEntityType, HashSet<EntityType>),
 ) -> Result<(ValidatorEntityType, HashSet<EntityType>), LinkError> {
-    let (p_entry, p_ancestors) = p;
-    let (c_entry, c_ancestors) = c;
-    match (is_external_entity(&p_entry), is_external_entity(&c_entry)) {
+    let (mut curr_entry, curr_ancestors) = current_ety;
+    let (inc_entry, inc_ancestors) = incoming_ety;
+    if let (
+        ValidatorEntityTypeKind::Enum(curr_enum_values),
+        ValidatorEntityTypeKind::Enum(inc_enum_values),
+    ) = (&mut curr_entry.kind, &inc_entry.kind)
+    {
+        if !enum_values_equal(curr_enum_values, inc_enum_values) {
+            return Err(LinkError::EnumValuesMismatch(ety.clone()));
+        }
+        // Canonicalize the merged definition without losing non-emptiness.
+        curr_enum_values.sort();
+        return Ok((curr_entry, curr_ancestors));
+    }
+    match (
+        is_external_entity(&curr_entry),
+        is_external_entity(&inc_entry),
+    ) {
         (false, false) => Err(LinkError::DuplicateEntityType(ety.clone())),
         (true, true) => {
-            let mut ancestors = p_ancestors;
-            ancestors.extend(c_ancestors);
-            Ok((p_entry, ancestors))
+            let mut ancestors = curr_ancestors;
+            ancestors.extend(inc_ancestors);
+            Ok((curr_entry, ancestors))
         }
-        (true, false) => resolve_external_entity(ety, &p_ancestors, c_entry, c_ancestors),
-        (false, true) => resolve_external_entity(ety, &c_ancestors, p_entry, p_ancestors),
+        (true, false) => resolve_external_entity(ety, &curr_ancestors, inc_entry, inc_ancestors),
+        (false, true) => resolve_external_entity(ety, &inc_ancestors, curr_entry, curr_ancestors),
     }
 }
 
@@ -405,13 +424,18 @@ fn resolve_external_entity(
     defined_ancestors: HashSet<EntityType>,
 ) -> Result<(ValidatorEntityType, HashSet<EntityType>), LinkError> {
     if matches!(defined.kind, ValidatorEntityTypeKind::Enum(_)) {
-        return Err(LinkError::ExternalIsEnum(ety.clone()));
-    }
-    if parents.is_subset(&defined_ancestors) {
+        Err(LinkError::ExternalIsEnum(ety.clone()))
+    } else if parents.is_subset(&defined_ancestors) {
         Ok((defined, defined_ancestors))
     } else {
         Err(LinkError::DefinedEntityAncestorsChanged(ety.clone()))
     }
+}
+
+/// Compare enum values as a set. The source order of an enum declaration is
+/// not part of its meaning.
+fn enum_values_equal(left: &NonEmpty<Eid>, right: &NonEmpty<Eid>) -> bool {
+    left.iter().collect::<HashSet<_>>() == right.iter().collect::<HashSet<_>>()
 }
 
 /// How many declared parents each defined entity type has.
@@ -761,6 +785,42 @@ mod test {
         );
     }
 
+    #[test]
+    fn equal_enum_definitions_link() {
+        let mut first = enumerated("A");
+        let mut second = enumerated("A");
+        if let ValidatorEntityTypeKind::Enum(values) = &mut first.kind {
+            *values = nonempty::nonempty![crate::ast::Eid::new("x"), crate::ast::Eid::new("y")];
+        }
+        if let ValidatorEntityTypeKind::Enum(values) = &mut second.kind {
+            *values = nonempty::nonempty![crate::ast::Eid::new("y"), crate::ast::Eid::new("x")];
+        }
+        assert_matches!(
+            link_entity_type(&ety("A"), (first, set(&[])), (second, set(&[]))),
+            Ok((entry, _)) => assert!(matches!(entry.kind, ValidatorEntityTypeKind::Enum(_)))
+        );
+    }
+
+    #[test]
+    fn different_enum_definitions_are_refused_end_to_end() {
+        let first = ValidatorEntityType::new_enum(
+            ety("A"),
+            [],
+            nonempty::nonempty![crate::ast::Eid::new("x")],
+            None,
+        );
+        let second = ValidatorEntityType::new_enum(
+            ety("A"),
+            [],
+            nonempty::nonempty![crate::ast::Eid::new("y")],
+            None,
+        );
+        assert_matches!(
+            link_entity_type(&ety("A"), (first, set(&[])), (second, set(&[]))),
+            Err(LinkError::EnumValuesMismatch(_))
+        );
+    }
+
     // ----- link_action and link_in -----
 
     #[test]
@@ -1058,9 +1118,24 @@ mod test {
         assert_matches!(
             link_all(&[
                 "external entity E;\nentity A { e: E };",
-                "entity E enum [\"x\"];"
+                "entity E enum [\"x\"];",
             ]),
             Err(LinkError::ExternalIsEnum(_))
+        );
+    }
+
+    #[test]
+    fn equal_enum_definitions_with_different_order_link() {
+        let first = "entity E enum [\"x\", \"y\"];";
+        let second = "entity E enum [\"y\", \"x\"];";
+        assert_eq!(linked(&[first, second]), linked(&[second, first]));
+    }
+
+    #[test]
+    fn different_enum_definitions_are_refused() {
+        assert_matches!(
+            link_all(&["entity E enum [\"x\"];", "entity E enum [\"y\"];",]),
+            Err(LinkError::EnumValuesMismatch(_))
         );
     }
 
