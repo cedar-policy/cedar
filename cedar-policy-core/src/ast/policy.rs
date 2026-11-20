@@ -357,7 +357,7 @@ impl Template {
     pub fn link_static_policy(p: StaticPolicy) -> (Arc<Template>, Policy) {
         let body: TemplateBody = p.into();
         // INVARIANT (slot cache correctness):
-        // StaticPolicy by invariant (inline policy correctness)
+        // StaticPolicy by invariant (static policy correctness)
         // can have no slots, so it is safe to make `slots` the empty vec
         let t = Arc::new(Self {
             body,
@@ -654,7 +654,7 @@ impl Policy {
     }
 
     /// Get the mapping from SlotIds to EntityUIDs for this policy. (This will
-    /// be empty for inline policies.)
+    /// be empty for static policies.)
     pub fn env(&self) -> &SlotEnv {
         &self.values
     }
@@ -695,7 +695,7 @@ impl Policy {
         self.template.loc()
     }
 
-    /// Returns true if this policy is an inline policy
+    /// Returns true if this policy is a static policy
     pub fn is_static(&self) -> bool {
         self.link.is_none()
     }
