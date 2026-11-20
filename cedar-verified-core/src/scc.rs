@@ -830,6 +830,53 @@ proof fn lemma_done(g: Seq<Vec<usize>>, st: State)
     }
 }
 
+/// Frame `k` is suspended at its edge `fi[k]`, whose target is the node of
+/// frame `k + 1`, entered from `fs[k + 1]`.
+spec fn frozen(g: Seq<Vec<usize>>, fs: Seq<State>, fv: Seq<usize>, fi: Seq<usize>, fl: Seq<usize>, k: int) -> bool {
+    let v = fv[k] as int;
+    let i = fi[k] as int;
+    &&& loop_inv(g, fs[k], fs[k + 1], v, fl[k] as int, i)
+    &&& i < g[v]@.len()
+    &&& g[v]@[i] == fv[k + 1]
+    &&& fs[k + 1].index@[fv[k + 1] as int] == NONE
+}
+
+/// The number of edges left in the top frame.
+spec fn sc_rem(g: Seq<Vec<usize>>, fv: Seq<usize>, fi: Seq<usize>) -> int {
+    if fv.len() > 0 {
+        g[fv[fv.len() - 1] as int]@.len() - fi[fv.len() - 1]
+    } else {
+        0
+    }
+}
+
+/// Frozen facts of frames below `m` depend only on entries `<= m` of `fs`
+/// and `fv` and entries `< m` of `fi` and `fl`.
+proof fn lemma_frozen_keep(
+    g: Seq<Vec<usize>>,
+    fs1: Seq<State>,
+    fv1: Seq<usize>,
+    fi1: Seq<usize>,
+    fl1: Seq<usize>,
+    fs2: Seq<State>,
+    fv2: Seq<usize>,
+    fi2: Seq<usize>,
+    fl2: Seq<usize>,
+    m: int,
+)
+    requires
+        forall|k: int| 0 <= k < m ==> #[trigger] frozen(g, fs1, fv1, fi1, fl1, k),
+        forall|k: int| 0 <= k <= m ==> fs2[k] == fs1[k] && fv2[k] == fv1[k],
+        forall|k: int| 0 <= k < m ==> fi2[k] == fi1[k] && fl2[k] == fl1[k],
+    ensures
+        forall|k: int| 0 <= k < m ==> #[trigger] frozen(g, fs2, fv2, fi2, fl2, k),
+{
+    assert forall|k: int| 0 <= k < m implies #[trigger] frozen(g, fs2, fv2, fi2, fl2, k) by {
+        assert(frozen(g, fs1, fv1, fi1, fl1, k));
+        assert(fs2[k] == fs1[k] && fs2[k + 1] == fs1[k + 1] && fv2[k] == fv1[k] && fv2[k + 1] == fv1[k + 1]);
+    }
+}
+
 } // verus!
 
 #[cfg_attr(verus_keep_ghost, verus_spec(r =>
@@ -870,80 +917,59 @@ fn filled_false(n: usize) -> Vec<bool> {
     r
 }
 
-#[cfg_attr(verus_keep_ghost, verus_spec(low =>
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    with Ghost(g): Ghost<Seq<Vec<usize>>>
     requires
-        inv(g@, *old(st)),
+        inv(g, *old(st)),
         (v as int) < g.len(),
         old(st).index@[v as int] == NONE,
-        forall|i: int| 0 <= i < old(st).stack.len() ==> reach(g@, #[trigger] old(st).stack@[i] as int, v as int),
+        forall|i: int| 0 <= i < old(st).stack.len() ==> reach(g, #[trigger] old(st).stack@[i] as int, v as int),
     ensures
-        inv(g@, *final(st)),
-        sc_post(g@, *old(st), *final(st), v as int, low as int),
-    decreases g.len() - old(st).next
+        inv(g, *final(st)),
+        loop_inv(g, *old(st), *final(st), v as int, r as int, 0),
+        r == old(st).next,
+        final(st).next == old(st).next + 1,
 ))]
-fn strongconnect(g: &Vec<Vec<usize>>, st: &mut State, v: usize) -> usize {
+fn enter_node(st: &mut State, v: usize) -> usize {
     proof_decl! {
         let ghost s0 = *st;
     }
     proof! {
-        lemma_next_lt(g@, s0, v as int);
+        lemma_next_lt(g, s0, v as int);
     }
-    let base = st.stack.len();
     let idx = st.next;
     st.index[v] = idx;
     st.next = idx + 1;
     st.stack.push(v);
     st.on_stack[v] = true;
     proof! {
-        lemma_push(g@, s0, *st, v as int);
+        lemma_push(g, s0, *st, v as int);
     }
-    let mut low = idx;
-    let mut i: usize = 0;
-    #[cfg_attr(verus_keep_ghost, verus_spec(
-        invariant
-            s0 == *old(st),
-            idx == s0.next,
-            base == s0.stack.len(),
-            (v as int) < g.len(),
-            inv(g@, *st),
-            st.next > idx,
-            loop_inv(g@, s0, *st, v as int, low as int, i as int),
-            i <= g[v as int].len(),
-        decreases g[v as int].len() - i
-    ))]
-    while i < g[v].len() {
-        let w = g[v][i];
-        proof! {
-            lemma_edge_at(g@, v as int, i as int);
+    idx
+}
+
+/// Finishes the frame of `v`, entered from `s0` with stack length `base`:
+/// pops its component if `v` is a root.
+#[cfg_attr(verus_keep_ghost, verus_spec(
+    with Ghost(g): Ghost<Seq<Vec<usize>>>, Ghost(s0): Ghost<State>
+    requires
+        inv(g, s0),
+        inv(g, *old(st)),
+        (v as int) < g.len(),
+        base == s0.stack.len(),
+        loop_inv(g, s0, *old(st), v as int, low as int, g[v as int]@.len() as int),
+    ensures
+        inv(g, *final(st)),
+        sc_post(g, s0, *final(st), v as int, low as int),
+        final(st).next == old(st).next,
+))]
+fn leave_node(st: &mut State, v: usize, low: usize, base: usize) {
+    proof! {
+        assert(st.index@[v as int] == s0.next) by {
+            reveal(loop_inv);
         }
-        if st.index[w] == NONE {
-            proof_decl! {
-                let ghost s1 = *st;
-            }
-            proof! {
-                lemma_ctx_child(g@, s0, s1, v as int, low as int, i as int);
-            }
-            let lw = strongconnect(g, st, w);
-            proof! {
-                lemma_after_child(g@, s0, s1, *st, v as int, low as int, lw as int, i as int);
-            }
-            if lw < low {
-                low = lw;
-            }
-        } else {
-            proof! {
-                lemma_visited(g@, s0, *st, v as int, low as int, i as int);
-            }
-            if st.on_stack[w] {
-                let iw = st.index[w];
-                if iw < low {
-                    low = iw;
-                }
-            }
-        }
-        i += 1;
     }
-    if low == idx {
+    if low == st.index[v] {
         let c = st.ncomp;
         proof_decl! {
             let ghost sb = *st;
@@ -952,12 +978,12 @@ fn strongconnect(g: &Vec<Vec<usize>>, st: &mut State, v: usize) -> usize {
             assert(st.stack.len() > base) by {
                 reveal(loop_inv);
             }
-            lemma_pop_init(g@, sb, c);
+            lemma_pop_init(g, sb, c);
         }
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant
-                inv(g@, sb),
-                pop_inv(g@, sb, *st, c),
+                inv(g, sb),
+                pop_inv(g, sb, *st, c),
                 base == s0.stack.len(),
                 base <= st.stack.len(),
                 st.ncomp == c,
@@ -974,23 +1000,161 @@ fn strongconnect(g: &Vec<Vec<usize>>, st: &mut State, v: usize) -> usize {
             st.on_stack[x] = false;
             st.comp[x] = c;
             proof! {
-                lemma_pop_step(g@, sb, s1, *st, c, x);
+                lemma_pop_step(g, sb, s1, *st, c, x);
             }
         }
         proof! {
-            assert(pop_inv(g@, sb, *st, c));
+            assert(pop_inv(g, sb, *st, c));
         }
         st.ncomp = c + 1;
         proof! {
-            assert(pop_inv(g@, sb, *st, c));
-            lemma_pop_done(g@, s0, sb, *st, v as int);
+            assert(pop_inv(g, sb, *st, c));
+            lemma_pop_done(g, s0, sb, *st, v as int);
         }
     } else {
         proof! {
-            lemma_no_pop(g@, s0, *st, v as int, low as int);
+            lemma_no_pop(g, s0, *st, v as int, low as int);
         }
     }
-    low
+}
+
+/// Tarjan's search from `v`, with an explicit stack of frames: frame `k`
+/// has node `fv[k]`, next edge `fi[k]`, low-link `fl[k]` and entry stack
+/// length `fb[k]`.
+#[cfg_attr(verus_keep_ghost, verus_spec(ret =>
+    requires
+        inv(g@, *old(st)),
+        (v as int) < g.len(),
+        old(st).index@[v as int] == NONE,
+        forall|i: int| 0 <= i < old(st).stack.len() ==> reach(g@, #[trigger] old(st).stack@[i] as int, v as int),
+    ensures
+        inv(g@, *final(st)),
+        sc_post(g@, *old(st), *final(st), v as int, ret as int),
+))]
+fn strongconnect(g: &Vec<Vec<usize>>, st: &mut State, v: usize) -> usize {
+    proof_decl! {
+        let ghost s0 = *st;
+    }
+    let mut fv: Vec<usize> = Vec::new();
+    let mut fi: Vec<usize> = Vec::new();
+    let mut fl: Vec<usize> = Vec::new();
+    let mut fb: Vec<usize> = Vec::new();
+    let b0 = st.stack.len();
+    proof_with!(Ghost(g@));
+    let idx = enter_node(st, v);
+    fv.push(v);
+    fi.push(0);
+    fl.push(idx);
+    fb.push(b0);
+    proof_decl! {
+        let ghost mut fs: Seq<State> = seq![s0];
+    }
+    let mut ret: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            s0 == *old(st),
+            (v as int) < g.len(),
+            inv(g@, *st),
+            fi.len() == fv.len(),
+            fl.len() == fv.len(),
+            fb.len() == fv.len(),
+            fs.len() == fv.len(),
+            fv.len() > 0 ==> fs[0] == s0 && fv@[0] == v,
+            forall|k: int| 0 <= k < fv.len() ==> inv(g@, #[trigger] fs[k]),
+            forall|k: int| 0 <= k < fv.len() ==> (#[trigger] fv@[k] as int) < g.len()
+                && fi@[k] <= g@[fv@[k] as int]@.len() && fb@[k] == fs[k].stack.len(),
+            fv.len() > 0 ==> loop_inv(g@, fs[fv.len() - 1], *st, fv@[fv.len() - 1] as int,
+                fl@[fv.len() - 1] as int, fi@[fv.len() - 1] as int),
+            forall|k: int| 0 <= k < fv.len() - 1 ==> #[trigger] frozen(g@, fs, fv@, fi@, fl@, k),
+            fv.len() == 0 ==> sc_post(g@, s0, *st, v as int, ret as int),
+        decreases g.len() - st.next, fv.len(), sc_rem(g@, fv@, fi@)
+    ))]
+    while fv.len() > 0 {
+        proof_decl! {
+            let ghost fs1 = fs;
+            let ghost fv1 = fv@;
+            let ghost fi1 = fi@;
+            let ghost fl1 = fl@;
+        }
+        let t = fv.len() - 1;
+        let u = fv[t];
+        let i = fi[t];
+        let low = fl[t];
+        if i < g[u].len() {
+            let w = g[u][i];
+            proof! {
+                lemma_edge_at(g@, u as int, i as int);
+            }
+            if st.index[w] == NONE {
+                proof_decl! {
+                    let ghost s1 = *st;
+                }
+                proof! {
+                    lemma_ctx_child(g@, fs[t as int], s1, u as int, low as int, i as int);
+                }
+                let b = st.stack.len();
+                proof_with!(Ghost(g@));
+                let iw = enter_node(st, w);
+                fv.push(w);
+                fi.push(0);
+                fl.push(iw);
+                fb.push(b);
+                proof! {
+                    fs = fs.push(s1);
+                    lemma_frozen_keep(g@, fs1, fv1, fi1, fl1, fs, fv@, fi@, fl@, t as int);
+                    assert(frozen(g@, fs, fv@, fi@, fl@, t as int));
+                }
+            } else {
+                proof! {
+                    lemma_visited(g@, fs[t as int], *st, u as int, low as int, i as int);
+                }
+                let mut nl = low;
+                if st.on_stack[w] {
+                    let iw = st.index[w];
+                    if iw < low {
+                        nl = iw;
+                    }
+                }
+                fi[t] = i + 1;
+                fl[t] = nl;
+                proof! {
+                    lemma_frozen_keep(g@, fs1, fv1, fi1, fl1, fs, fv@, fi@, fl@, t as int);
+                }
+            }
+        } else {
+            let b = fb[t];
+            proof_with!(Ghost(g@), Ghost(fs[t as int]));
+            leave_node(st, u, low, b);
+            fv.pop();
+            fi.pop();
+            fl.pop();
+            fb.pop();
+            proof! {
+                fs = fs.drop_last();
+            }
+            if t > 0 {
+                let p = t - 1;
+                let ip = fi[p];
+                let lp = fl[p];
+                proof! {
+                    assert(frozen(g@, fs1, fv1, fi1, fl1, p as int));
+                    assert(ip == fi1[p as int]);
+                    assert(ip < g@[fv1[p as int] as int]@.len() && g@[fv1[p as int] as int]@.len() == g@[fv1[p as int] as int].len());
+                    lemma_after_child(g@, fs[p as int], fs1[t as int], *st, fv1[p as int] as int, lp as int, low as int, ip as int);
+                }
+                fi[p] = ip + 1;
+                if low < lp {
+                    fl[p] = low;
+                }
+                proof! {
+                    lemma_frozen_keep(g@, fs1, fv1, fi1, fl1, fs, fv@, fi@, fl@, p as int);
+                }
+            } else {
+                ret = low;
+            }
+        }
+    }
+    ret
 }
 
 /// The components of `g`, with P1-P3.
@@ -1147,5 +1311,21 @@ mod tests {
         let s = sccs(&g);
         assert_eq!(s.members.len(), 2);
         assert!(s.comp[1] < s.comp[0]);
+    }
+
+    #[test]
+    fn deep_chain_small_stack() {
+        let n = 100_000;
+        let h = std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                let mut g: Vec<Vec<usize>> = (1..n).map(|i| vec![i]).collect();
+                g.push(vec![]);
+                let s = sccs(&g);
+                assert_eq!(s.members.len(), n);
+                assert!(s.comp[n - 1] < s.comp[0]);
+            })
+            .unwrap();
+        h.join().unwrap();
     }
 }

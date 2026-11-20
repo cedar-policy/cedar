@@ -1258,10 +1258,6 @@ mod tests {
 
     /// A parent chain deeper than the thread's stack used to overflow it
     #[test]
-    #[cfg_attr(
-        feature = "verified-core",
-        ignore = "the verified TC has no stacker; deep chains can overflow the stack"
-    )]
     fn deep_chain_does_not_overflow_stack() {
         let n = 200;
         std::thread::Builder::new()
