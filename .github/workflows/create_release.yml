@@ -30,7 +30,7 @@ on:
                 required: false
                 type: boolean
                 default: true
-                description: "Mark the core release as latest. Uncheck for a patch to an older minor."
+                description: "Mark the core release as latest. Uncheck for a patch to an older minor, or the latest release stays as it was."
             force:
                 required: false
                 type: boolean
@@ -46,15 +46,8 @@ jobs:
         outputs:
             sha: ${{ steps.head.outputs.sha }}
             tags: ${{ steps.inputs.outputs.tags }}
+            previous_latest: ${{ steps.latest.outputs.tag }}
         steps:
-            - name: Validate release branch input format
-              run: |
-                  if [[ ! "$RELEASE_BRANCH" =~ ^release/[0-9]+\.[0-9]+\.x$ ]]; then
-                      echo "Invalid release_branch: '$RELEASE_BRANCH'. Expected format: release/<major>.<minor>.x" >&2
-                      exit 1
-                  fi
-              env:
-                  RELEASE_BRANCH: ${{ inputs.release_branch }}
             # Check that this workflow was triggered from the 'main' branch.
             - name: Validate branch
               if: github.ref != 'refs/heads/main'
@@ -67,8 +60,10 @@ jobs:
                   SEMVER_PATTERN="^[0-9]+\.[0-9]+\.[0-9]+$"
                   errors=()
                   tags=()
-                  if [[ ! "$RELEASE_BRANCH" =~ ^release/ ]]; then
-                      errors+=("release_branch must start with 'release/', got '$RELEASE_BRANCH'.")
+                  # release/<major>.<minor>.x, or a symcc snapshot branch release/cedar-policy-symcc-0.<minor>.x
+                  BRANCH_PATTERN="^release/([0-9]+\.[0-9]+|cedar-policy-symcc-0\.[0-9]+)\.x$"
+                  if [[ ! "$RELEASE_BRANCH" =~ $BRANCH_PATTERN ]]; then
+                      errors+=("release_branch must match $BRANCH_PATTERN, got '$RELEASE_BRANCH'.")
                   fi
                   if [[ -z "$CORE_VERSION$SYMCC_VERSION$CLI_VERSION" ]]; then
                       errors+=("At least one of core_version, symcc_version and cli_version is required.")
@@ -99,33 +94,25 @@ jobs:
                   SYMCC_VERSION: ${{ inputs.symcc_version }}
                   CLI_VERSION: ${{ inputs.cli_version }}
                   MAKE_LATEST: ${{ inputs.make_latest }}
-            - name: Checkout release branch
-              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-              with:
-                  ref: ${{ inputs.release_branch }}
+            # The release branch is not checked out: only its Cargo.toml files are needed, and
+            # they are fetched at the recorded commit, so no code from the branch is on disk.
             # Every later job uses this commit, so the tags all land on one commit even if the
             # branch moves while the run waits for approval.
-            - name: Validate release branch format
-              run: |
-                  if [[ ! "$RELEASE_BRANCH" =~ ^release/[0-9]+\.[0-9]+\.x$ ]]; then
-                      echo "::error::Invalid release_branch '$RELEASE_BRANCH'. Expected format: release/<major>.<minor>.x"
-                      exit 1
-                  fi
-              env:
-                  RELEASE_BRANCH: ${{ inputs.release_branch }}
-
             - name: Record release branch head
               id: head
               run: |
-                  SHA=$(git rev-parse HEAD)
+                  if ! SHA=$(gh api "repos/$GITHUB_REPOSITORY/branches/$RELEASE_BRANCH" --jq .commit.sha); then
+                      echo "::error::Branch '$RELEASE_BRANCH' not found."
+                      exit 1
+                  fi
                   echo "::notice::Tagging $RELEASE_BRANCH at $SHA"
                   echo "sha=$SHA" >> "$GITHUB_OUTPUT"
               env:
+                  GH_TOKEN: ${{ github.token }}
                   RELEASE_BRANCH: ${{ inputs.release_branch }}
-            # Main is checked out into a subdirectory for the latest scripts and the changelogs,
-            # which are maintained on 'main' only (release branches have stubs). The sparse
-            # checkout keeps main's Cargo.toml files out, so the version checks below can only
-            # read the release branch.
+            # Main is checked out for the latest scripts and the changelogs, which are maintained
+            # on 'main' only (release branches have stubs). The sparse checkout keeps main's
+            # Cargo.toml files out.
             - name: Checkout main (for scripts and changelogs)
               uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
               with:
@@ -140,12 +127,26 @@ jobs:
               uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
               with:
                   python-version: ">=3.11" # needs tomllib, in stdlib from 3.11
+            # check-crate-version.py reads <crate>/Cargo.toml and, for an inherited version, the
+            # workspace Cargo.toml in the parent directory.
             - name: Validate versions against Cargo.toml on the release branch
               run: |
-                  if [[ -n "$CORE_VERSION" ]]; then python3 __main/.github/scripts/check-crate-version.py cedar-policy-core "$CORE_VERSION"; fi
-                  if [[ -n "$SYMCC_VERSION" ]]; then python3 __main/.github/scripts/check-crate-version.py cedar-policy-symcc "$SYMCC_VERSION"; fi
-                  if [[ -n "$CLI_VERSION" ]]; then python3 __main/.github/scripts/check-crate-version.py cedar-policy-cli "$CLI_VERSION"; fi
+                  DIR="$RUNNER_TEMP/release-manifests"
+                  fetch() {
+                      mkdir -p "$(dirname "$DIR/$1")"
+                      gh api -H "Accept: application/vnd.github.raw+json" "repos/$GITHUB_REPOSITORY/contents/$1?ref=$SHA" > "$DIR/$1"
+                  }
+                  fetch Cargo.toml
+                  check() {
+                      fetch "$1/Cargo.toml"
+                      (cd "$DIR" && python3 "$GITHUB_WORKSPACE/__main/.github/scripts/check-crate-version.py" "$1" "$2")
+                  }
+                  if [[ -n "$CORE_VERSION" ]]; then check cedar-policy-core "$CORE_VERSION"; fi
+                  if [[ -n "$SYMCC_VERSION" ]]; then check cedar-policy-symcc "$SYMCC_VERSION"; fi
+                  if [[ -n "$CLI_VERSION" ]]; then check cedar-policy-cli "$CLI_VERSION"; fi
               env:
+                  GH_TOKEN: ${{ github.token }}
+                  SHA: ${{ steps.head.outputs.sha }}
                   CORE_VERSION: ${{ inputs.core_version }}
                   SYMCC_VERSION: ${{ inputs.symcc_version }}
                   CLI_VERSION: ${{ inputs.cli_version }}
@@ -170,10 +171,22 @@ jobs:
                   GH_TOKEN: ${{ github.token }}
                   SHA: ${{ steps.head.outputs.sha }}
                   TAGS: ${{ steps.inputs.outputs.tags }}
+            # Recorded before any tag exists, so that the CLI release that cargo-dist creates
+            # cannot have replaced it yet. See "Set the latest release" below.
+            - name: Record the current latest release
+              id: latest
+              run: |
+                  TAG=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+                  echo "Current latest release: ${TAG:-none}"
+                  echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+              env:
+                  GH_TOKEN: ${{ github.token }}
+            # A symcc section may have no entries: symcc gets a patch release with no changes of
+            # its own when it is bumped for a core dependency change (e.g. 0.8.1, 0.5.3).
             - name: Check changelog sections on main
               run: |
                   if [[ -n "$CORE_VERSION" ]]; then python3 __main/.github/scripts/release-tags.py release-notes __main/cedar-policy/CHANGELOG.md "$CORE_VERSION" "" > /dev/null; fi
-                  if [[ -n "$SYMCC_VERSION" ]]; then python3 __main/.github/scripts/release-tags.py release-notes __main/cedar-policy-symcc/CHANGELOG.md "$SYMCC_VERSION" "" > /dev/null; fi
+                  if [[ -n "$SYMCC_VERSION" ]]; then python3 __main/.github/scripts/release-tags.py release-notes __main/cedar-policy-symcc/CHANGELOG.md "$SYMCC_VERSION" "" --allow-empty > /dev/null; fi
                   echo "Changelog sections found."
               env:
                   CORE_VERSION: ${{ inputs.core_version }}
@@ -229,12 +242,12 @@ jobs:
             - name: Create core and symcc releases
               run: |
                   create_release() {
-                      local tag="$1" changelog="$2" version="$3" intro="$4" latest="$5"
+                      local tag="$1" changelog="$2" version="$3" intro="$4" latest="$5" allow_empty="${6:-}"
                       if gh release view "$tag" > /dev/null 2>&1; then
                           echo "::notice::A release for $tag already exists; nothing to do for it."
                           return
                       fi
-                      python3 .github/scripts/release-tags.py release-notes "$changelog" "$version" "$intro" > "$RUNNER_TEMP/notes-$tag.md"
+                      python3 .github/scripts/release-tags.py release-notes "$changelog" "$version" "$intro" $allow_empty > "$RUNNER_TEMP/notes-$tag.md"
                       gh release create "$tag" --verify-tag --title "$tag" --notes-file "$RUNNER_TEMP/notes-$tag.md" --latest="$latest"
                       echo "Created release $tag (latest: $latest)"
                   }
@@ -244,15 +257,16 @@ jobs:
                   fi
                   if [[ -n "$SYMCC_VERSION" ]]; then
                       create_release "cedar-policy-symcc-v$SYMCC_VERSION" cedar-policy-symcc/CHANGELOG.md "$SYMCC_VERSION" \
-                          "Release $SYMCC_VERSION of cedar-policy-symcc, available on crates.io" false
+                          "Release $SYMCC_VERSION of cedar-policy-symcc, available on crates.io" false --allow-empty
                   fi
               env:
                   GH_TOKEN: ${{ github.token }}
                   CORE_VERSION: ${{ inputs.core_version }}
                   SYMCC_VERSION: ${{ inputs.symcc_version }}
                   MAKE_LATEST: ${{ inputs.make_latest }}
-            # cargo-dist creates the CLI release as latest, which would replace the core release
-            # as latest. Waiting for it lets the next step mark the core release as latest again.
+            # cargo-dist creates the CLI release without --latest, so GitHub marks it latest when
+            # its version is the highest (it has the same version as core and is created later).
+            # Waiting for it lets the next step set the latest release afterwards.
             - name: Wait for the CLI release
               if: inputs.cli_version != ''
               run: |
@@ -274,21 +288,37 @@ jobs:
                   URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
                   echo "Watching $URL"
                   if ! gh run watch "$RUN_ID" --exit-status --interval 60 > /dev/null; then
-                      echo "::error::The CLI release run for $TAG failed: $URL"
+                      echo "::error::The CLI release run for $TAG failed: $URL. The latest release was not checked; re-run this job after fixing the CLI release."
                       exit 1
                   fi
                   echo "::notice::The CLI release run for $TAG succeeded: $URL"
               env:
                   GH_TOKEN: ${{ github.token }}
                   CLI_VERSION: ${{ inputs.cli_version }}
-            - name: Mark the core release as latest
-              if: inputs.core_version != '' && inputs.make_latest
+            # The core release when make_latest is set, otherwise whatever was latest before this run.
+            - name: Set the latest release
               run: |
-                  gh release edit "v$CORE_VERSION" --latest
-                  echo "::notice::v$CORE_VERSION is the latest release."
+                  if [[ -n "$CORE_VERSION" && "$MAKE_LATEST" == "true" ]]; then
+                      TARGET="v$CORE_VERSION"
+                  else
+                      TARGET="$PREVIOUS_LATEST"
+                  fi
+                  if [[ -z "$TARGET" ]]; then
+                      echo "::notice::There was no latest release before this run and make_latest does not apply; leaving it to GitHub."
+                      exit 0
+                  fi
+                  CURRENT=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+                  if [[ "$CURRENT" == "$TARGET" ]]; then
+                      echo "::notice::$TARGET is already the latest release."
+                      exit 0
+                  fi
+                  gh release edit "$TARGET" --latest
+                  echo "::notice::Marked $TARGET as the latest release (it was $CURRENT)."
               env:
                   GH_TOKEN: ${{ github.token }}
                   CORE_VERSION: ${{ inputs.core_version }}
+                  MAKE_LATEST: ${{ inputs.make_latest }}
+                  PREVIOUS_LATEST: ${{ needs.validate.outputs.previous_latest }}
             - name: Summary
               if: always()
               run: |

@@ -5,7 +5,7 @@ Usage:
     release-tags.py check-ci <sha> [--force]
     release-tags.py check-tags <sha> <tag>...
     release-tags.py create-tags <sha> <tag>...
-    release-tags.py release-notes <changelog> <version> <intro>
+    release-tags.py release-notes <changelog> <version> <intro> [--allow-empty]
 
 check-ci       Finds the merged PR that produced <sha> and checks that all check runs and
                commit statuses on that PR's head commit succeeded (or were skipped or neutral).
@@ -15,7 +15,9 @@ check-tags     Fails if any <tag> exists on a commit other than <sha>.
 create-tags    Creates each missing <tag> on <sha> as a lightweight tag. A tag that already
                exists on <sha> is left alone. Fails if a tag exists on another commit.
 release-notes  Prints <intro>, a blank line, then the body of the `## [<version>]` section of
-               <changelog>. Fails if there is no such section or it has no entries.
+               <changelog>. Fails if there is no such section. Also fails if the section has
+               no entries (only the language version line), unless --allow-empty is given, in
+               which case it warns.
 
 The GitHub commands use $GITHUB_REPOSITORY, $GITHUB_API_URL and the token in $GH_TOKEN.
 """
@@ -57,6 +59,8 @@ def api(method, path, body=None):
             return e.code, json.loads(raw)
         except json.JSONDecodeError:
             return e.code, None
+    except (urllib.error.URLError, TimeoutError) as e:
+        fail(f"GitHub API {method} {path} failed: {e}. Nothing after this point was done; re-run the job.")
 
 
 def api_ok(method, path, body=None):
@@ -82,14 +86,12 @@ def tag_commit(tag):
 
 def check_ci(sha, force):
     pulls = api_ok("GET", f"/repos/{repo()}/commits/{sha}/pulls")
+    # Squash merges and merge commits both record the commit they created in merge_commit_sha.
+    # A PR that only contains <sha> as an intermediate commit did not produce it, so its CI
+    # does not count.
     merged = [p for p in pulls if p.get("merged_at") and p.get("merge_commit_sha") == sha]
     if not merged:
-        merged = [p for p in pulls if p.get("merged_at")]
-    if not merged:
-        report(
-            [f"no merged pull request found for {sha}, so there is no CI run to check (was it pushed directly?)"],
-            force,
-        )
+        report([f"no merged pull request produced {sha}, so there is no CI run to check"], force)
         return
     pr = merged[0]
     head = pr["head"]["sha"]
@@ -164,7 +166,7 @@ def create_tags(sha, tags):
         print(f"Created tag {tag} on {sha}")
 
 
-def release_notes(changelog, version, intro):
+def release_notes(changelog, version, intro, allow_empty):
     path = Path(changelog)
     if not path.exists():
         fail(f"{changelog} not found")
@@ -179,7 +181,9 @@ def release_notes(changelog, version, intro):
     # A section that only has the language version line has no entries.
     entries = re.sub(r"^Cedar Language Version:.*$", "", body, flags=re.MULTILINE).strip()
     if not entries:
-        fail(f"the section for {version} in {changelog} is empty; add the changelog entries on main first")
+        if not allow_empty:
+            fail(f"the section for {version} in {changelog} is empty; add the changelog entries on main first")
+        print(f"::warning::the section for {version} in {changelog} has no entries", file=sys.stderr)
     print(f"{intro}\n\n{body}")
 
 
@@ -194,8 +198,8 @@ def main():
         check_tags(rest[0], rest[1:])
     elif cmd == "create-tags" and len(rest) >= 2:
         create_tags(rest[0], rest[1:])
-    elif cmd == "release-notes" and len(rest) == 3:
-        release_notes(*rest)
+    elif cmd == "release-notes" and len(rest) in (3, 4) and (len(rest) == 3 or rest[3] == "--allow-empty"):
+        release_notes(*rest[:3], allow_empty=len(rest) == 4)
     else:
         fail(f"invalid arguments: {' '.join(args)}\n{__doc__}")
 
