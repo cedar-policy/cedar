@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - Coming soon
+
+Cedar Language Version: 4.7
+
+### Changed
+
+- Improved symbolic compilation performance:
+  - Less work is done on trivial transitivity constraints (#2703).
+  - `Term`/`TermType` comparisons short-circuit for pointer-identical values (#2595).
+  - The footprint no longer includes literal terms (#2708) and only includes the left operands of `in` (#2709).
+- Set literals are now encoded with `set.union` of singletons instead of nested `set.insert` (#2717).
+
 ## [0.9.0] - 2026-11-16
 
 Cedar Language Version: 4.7
