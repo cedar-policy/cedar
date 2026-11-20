@@ -27,6 +27,11 @@ Cedar Language Version: TBD
   would have been reported as a warning, and results in a policy that never applies (#2715).
 - Added calls to `stacker` to guard against stack overflows when computing the transitive closure of a deep entity hierarchy (#2718).
 
+### Fixed
+
+- Schema errors listing undefined types now use a deterministic order, including the type
+  selected for the help message and source location (#833).
+
 ## [4.15.0] - 2026-11-16
 
 Cedar Language Version: 4.7
