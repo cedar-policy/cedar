@@ -31,6 +31,7 @@ mod optional_attributes;
 #[cfg(feature = "partial-validate")]
 mod partial;
 mod policy;
+mod pruning;
 mod strict;
 mod tags;
 mod type_annotation;

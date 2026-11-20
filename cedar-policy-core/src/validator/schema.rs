@@ -1138,7 +1138,7 @@ impl ValidatorSchema {
     /// `lhs in rhs` cannot possibly evaluate to `true` for entities of these
     /// types.
     /// Lean counterpart: <https://github.com/cedar-policy/cedar-spec/blob/7e231a68b0e0eb1b8ce1362e81de4568671a668a/cedar-lean/Cedar/Validation/Types.lean#L205>
-    fn descendent_of(&self, lhs_ety: &EntityType, rhs_ety: &EntityType) -> bool {
+    pub(crate) fn descendent_of(&self, lhs_ety: &EntityType, rhs_ety: &EntityType) -> bool {
         self.get_entity_types_in(rhs_ety).contains(&lhs_ety)
             || self.maybe_action_descendent_of(lhs_ety, rhs_ety)
     }
