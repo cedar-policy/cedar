@@ -50,6 +50,7 @@ pub fn satisfied_policies(
             ress.iter().map(|res| res.term.clone()),
         ),
         footprint: Footprint::flatten(ress.into_iter().map(|res| res.footprint)),
+        value_footprint: Footprint::empty(),
     })
 }
 
@@ -59,5 +60,6 @@ pub fn is_authorized(policies: &PolicySet, env: &SymEnv) -> Result<CompileResult
     Ok(CompileResult {
         term: and(permits.term, not(forbids.term)),
         footprint: permits.footprint.chain(forbids.footprint),
+        value_footprint: Footprint::empty(),
     })
 }
