@@ -183,7 +183,7 @@ use super::{Fixed, InternalInternal, Item, Numeric, Pad};
 /// [`DateTime`]: crate::extensions::chrono::DateTime
 /// [`format::parse()`]: crate::extensions::chrono::format::parse()
 #[derive(Clone, Debug)]
-pub struct StrftimeItems<'a> {
+pub(crate) struct StrftimeItems<'a> {
     /// Remaining portion of the string.
     remainder: &'a str,
     /// If the current specifier is composed of multiple formatting items (e.g. `%+`),
@@ -200,7 +200,7 @@ impl<'a> StrftimeItems<'a> {
     /// While iterating [`Item::Error`] will be returned if the format string contains an invalid
     /// or unrecognized formatting specifier.
     #[must_use]
-    pub const fn new(s: &'a str) -> StrftimeItems<'a> {
+    pub(crate) const fn new(s: &'a str) -> StrftimeItems<'a> {
         StrftimeItems {
             remainder: s,
             queue: &[],

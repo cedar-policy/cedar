@@ -32,7 +32,7 @@ impl FixedOffset {
     ///
     /// Returns `None` on the out-of-bound `secs`.
     #[must_use]
-    pub const fn east_opt(secs: i32) -> Option<FixedOffset> {
+    pub(crate) const fn east_opt(secs: i32) -> Option<FixedOffset> {
         if -86_400 < secs && secs < 86_400 {
             Some(FixedOffset {
                 local_minus_utc: secs,

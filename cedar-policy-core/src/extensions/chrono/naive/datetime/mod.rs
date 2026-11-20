@@ -38,7 +38,7 @@ impl NaiveDateTime {
     /// Equivalent to [`date.and_time(time)`](crate::extensions::chrono::NaiveDate::and_time)
     /// and many other helper constructors on `NaiveDate`.
     #[inline]
-    pub const fn new(date: NaiveDate, time: NaiveTime) -> NaiveDateTime {
+    pub(crate) const fn new(date: NaiveDate, time: NaiveTime) -> NaiveDateTime {
         NaiveDateTime { date, time }
     }
 
@@ -53,13 +53,13 @@ impl NaiveDateTime {
 
     /// Retrieves a date component.
     #[inline]
-    pub const fn date(&self) -> NaiveDate {
+    pub(crate) const fn date(&self) -> NaiveDate {
         self.date
     }
 
     /// Retrieves a time component.
     #[inline]
-    pub const fn time(&self) -> NaiveTime {
+    pub(crate) const fn time(&self) -> NaiveTime {
         self.time
     }
 
@@ -74,7 +74,7 @@ impl NaiveDateTime {
     ///
     /// Returns `None` if the resulting date would be out of range.
     #[must_use]
-    pub const fn checked_add_signed(self, rhs: TimeDelta) -> Option<NaiveDateTime> {
+    pub(crate) const fn checked_add_signed(self, rhs: TimeDelta) -> Option<NaiveDateTime> {
         let (time, remainder) = self.time.overflowing_add_signed(rhs);
         let remainder = try_opt!(TimeDelta::try_seconds(remainder));
         let date = try_opt!(self.date.checked_add_signed(remainder));
@@ -84,10 +84,10 @@ impl NaiveDateTime {
     /// Adds given `FixedOffset` to the current datetime.
     /// Returns `None` if the result would be outside the valid range for [`NaiveDateTime`].
     ///
-    /// This method is similar to [`checked_add_signed`](crate::extensions::chrono::NaiveDateTime::checked_add_signed), but preserves
+    /// This method is similar to `checked_add_signed`, but preserves
     /// leap seconds.
     #[must_use]
-    pub const fn checked_add_offset(self, rhs: FixedOffset) -> Option<NaiveDateTime> {
+    pub(crate) const fn checked_add_offset(self, rhs: FixedOffset) -> Option<NaiveDateTime> {
         let (time, days) = self.time.overflowing_add_offset(rhs);
         let date = match days {
             -1 => try_opt!(self.date.pred_opt()),
@@ -100,9 +100,9 @@ impl NaiveDateTime {
     /// Subtracts given `FixedOffset` from the current datetime.
     /// Returns `None` if the result would be outside the valid range for [`NaiveDateTime`].
     ///
-    /// This method is similar to [`checked_sub_signed`](crate::extensions::chrono::NaiveDateTime::checked_sub_signed), but preserves
+    /// This method is similar to `checked_sub_signed`, but preserves
     /// leap seconds.
-    pub const fn checked_sub_offset(self, rhs: FixedOffset) -> Option<NaiveDateTime> {
+    pub(crate) const fn checked_sub_offset(self, rhs: FixedOffset) -> Option<NaiveDateTime> {
         let (time, days) = self.time.overflowing_sub_offset(rhs);
         let date = match days {
             -1 => try_opt!(self.date.pred_opt()),
@@ -139,7 +139,7 @@ impl NaiveDateTime {
     ///
     /// Returns `None` if the resulting date would be out of range.
     #[must_use]
-    pub const fn checked_sub_signed(self, rhs: TimeDelta) -> Option<NaiveDateTime> {
+    pub(crate) const fn checked_sub_signed(self, rhs: TimeDelta) -> Option<NaiveDateTime> {
         let (time, remainder) = self.time.overflowing_sub_signed(rhs);
         let remainder = try_opt!(TimeDelta::try_seconds(remainder));
         let date = try_opt!(self.date.checked_sub_signed(remainder));
@@ -155,7 +155,7 @@ impl NaiveDateTime {
     /// in which case the assumption becomes that
     /// **there are exactly one (or two) leap second(s) ever**.
     #[must_use]
-    pub const fn signed_duration_since(self, rhs: NaiveDateTime) -> TimeDelta {
+    pub(crate) const fn signed_duration_since(self, rhs: NaiveDateTime) -> TimeDelta {
         expect(
             self.date
                 .signed_duration_since(rhs.date)
@@ -166,7 +166,7 @@ impl NaiveDateTime {
 
     /// Converts the `NaiveDateTime` into the timezone-aware `DateTime<Utc>`.
     #[must_use]
-    pub const fn and_utc(&self) -> DateTime<Utc> {
+    pub(crate) const fn and_utc(&self) -> DateTime<Utc> {
         DateTime::from_naive_utc_and_offset(*self, Utc)
     }
 }
@@ -285,7 +285,7 @@ impl Timelike for NaiveDateTime {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDateTime::checked_add_signed`] to get an `Option` instead.
+/// Consider using `NaiveDateTime::checked_add_signed` to get an `Option` instead.
 impl Add<TimeDelta> for NaiveDateTime {
     type Output = NaiveDateTime;
 
@@ -306,7 +306,7 @@ impl Add<TimeDelta> for NaiveDateTime {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDateTime::checked_add_signed`] to get an `Option` instead.
+/// Consider using `NaiveDateTime::checked_add_signed` to get an `Option` instead.
 impl Add<Duration> for NaiveDateTime {
     type Output = NaiveDateTime;
 
@@ -329,7 +329,7 @@ impl Add<Duration> for NaiveDateTime {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDateTime::checked_add_signed`] to get an `Option` instead.
+/// Consider using `NaiveDateTime::checked_add_signed` to get an `Option` instead.
 impl AddAssign<Duration> for NaiveDateTime {
     #[inline]
     #[track_caller]
@@ -349,7 +349,7 @@ impl AddAssign<Duration> for NaiveDateTime {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDateTime::checked_sub_signed`] to get an `Option` instead.
+/// Consider using `NaiveDateTime::checked_sub_signed` to get an `Option` instead.
 impl Sub<TimeDelta> for NaiveDateTime {
     type Output = NaiveDateTime;
 
@@ -370,7 +370,7 @@ impl Sub<TimeDelta> for NaiveDateTime {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDateTime::checked_sub_signed`] to get an `Option` instead.
+/// Consider using `NaiveDateTime::checked_sub_signed` to get an `Option` instead.
 impl Sub<Duration> for NaiveDateTime {
     type Output = NaiveDateTime;
 
@@ -395,7 +395,7 @@ impl Sub<Duration> for NaiveDateTime {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDateTime::checked_sub_signed`] to get an `Option` instead.
+/// Consider using `NaiveDateTime::checked_sub_signed` to get an `Option` instead.
 impl SubAssign<TimeDelta> for NaiveDateTime {
     #[inline]
     #[track_caller]
@@ -475,7 +475,7 @@ impl str::FromStr for NaiveDateTime {
 ///
 /// Note that while this may look like the UNIX epoch, it is missing the
 /// time zone. The actual UNIX epoch cannot be expressed by this type,
-/// however it is available as [`DateTime::UNIX_EPOCH`].
+/// however it is available as `DateTime::UNIX_EPOCH`.
 impl Default for NaiveDateTime {
     fn default() -> Self {
         DateTime::UNIX_EPOCH.naive_local()

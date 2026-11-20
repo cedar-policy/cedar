@@ -19,7 +19,7 @@ use core::fmt;
 /// `Weekday` of the last day in the preceding year.
 #[allow(unreachable_pub)] // public as an alias for benchmarks only
 #[derive(PartialEq, Eq, Copy, Clone, Hash)]
-pub struct YearFlags(pub(super) u8);
+pub(super) struct YearFlags(pub(super) u8);
 
 // Weekday of the last day in the preceding year.
 // Allows for quick day of week calculation from the 1-based ordinal.
@@ -73,7 +73,7 @@ impl YearFlags {
     #[doc(hidden)] // for benchmarks only
     #[inline]
     #[must_use]
-    pub const fn from_year(year: i32) -> YearFlags {
+    pub(super) const fn from_year(year: i32) -> YearFlags {
         let year = year.rem_euclid(400);
         YearFlags::from_year_mod_400(year)
     }

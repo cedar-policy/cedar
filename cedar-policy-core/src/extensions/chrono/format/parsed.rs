@@ -61,49 +61,49 @@ use crate::extensions::chrono::{DateTime, Datelike, TimeDelta, Timelike, Weekday
 /// [RFC 2822 date and time format]: https://tools.ietf.org/html/rfc2822#section-3.3
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
-pub struct Parsed {
+pub(crate) struct Parsed {
     #[doc(hidden)]
-    pub year: Option<i32>,
+    pub(super) year: Option<i32>,
     #[doc(hidden)]
-    pub year_div_100: Option<i32>,
+    year_div_100: Option<i32>,
     #[doc(hidden)]
-    pub year_mod_100: Option<i32>,
+    year_mod_100: Option<i32>,
     #[doc(hidden)]
-    pub isoyear: Option<i32>,
+    isoyear: Option<i32>,
     #[doc(hidden)]
-    pub isoyear_div_100: Option<i32>,
+    isoyear_div_100: Option<i32>,
     #[doc(hidden)]
-    pub isoyear_mod_100: Option<i32>,
+    isoyear_mod_100: Option<i32>,
     #[doc(hidden)]
-    pub quarter: Option<u32>,
+    quarter: Option<u32>,
     #[doc(hidden)]
-    pub month: Option<u32>,
+    pub(super) month: Option<u32>,
     #[doc(hidden)]
-    pub week_from_sun: Option<u32>,
+    week_from_sun: Option<u32>,
     #[doc(hidden)]
-    pub week_from_mon: Option<u32>,
+    week_from_mon: Option<u32>,
     #[doc(hidden)]
-    pub isoweek: Option<u32>,
+    isoweek: Option<u32>,
     #[doc(hidden)]
-    pub weekday: Option<Weekday>,
+    pub(super) weekday: Option<Weekday>,
     #[doc(hidden)]
-    pub ordinal: Option<u32>,
+    ordinal: Option<u32>,
     #[doc(hidden)]
-    pub day: Option<u32>,
+    pub(super) day: Option<u32>,
     #[doc(hidden)]
-    pub hour_div_12: Option<u32>,
+    pub(super) hour_div_12: Option<u32>,
     #[doc(hidden)]
-    pub hour_mod_12: Option<u32>,
+    pub(super) hour_mod_12: Option<u32>,
     #[doc(hidden)]
-    pub minute: Option<u32>,
+    pub(super) minute: Option<u32>,
     #[doc(hidden)]
-    pub second: Option<u32>,
+    pub(super) second: Option<u32>,
     #[doc(hidden)]
-    pub nanosecond: Option<u32>,
+    pub(super) nanosecond: Option<u32>,
     #[doc(hidden)]
-    pub timestamp: Option<i64>,
+    pub(super) timestamp: Option<i64>,
     #[doc(hidden)]
-    pub offset: Option<i32>,
+    pub(super) offset: Option<i32>,
     #[doc(hidden)]
     _dummy: (),
 }
@@ -124,7 +124,7 @@ fn set_if_consistent<T: PartialEq>(old: &mut Option<T>, new: T) -> ParseResult<(
 impl Parsed {
     /// Returns the initial value of parsed parts.
     #[must_use]
-    pub fn new() -> Parsed {
+    pub(crate) fn new() -> Parsed {
         Parsed::default()
     }
 
@@ -139,7 +139,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_year(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_year(&mut self, value: i64) -> ParseResult<()> {
         set_if_consistent(
             &mut self.year,
             i32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
@@ -154,7 +154,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_year_div_100(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_year_div_100(&mut self, value: i64) -> ParseResult<()> {
         if !(0..=i32::MAX as i64).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -176,7 +176,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_year_mod_100(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_year_mod_100(&mut self, value: i64) -> ParseResult<()> {
         if !(0..100).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -197,7 +197,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_isoyear(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_isoyear(&mut self, value: i64) -> ParseResult<()> {
         set_if_consistent(
             &mut self.isoyear,
             i32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
@@ -222,7 +222,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_isoyear_mod_100(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_isoyear_mod_100(&mut self, value: i64) -> ParseResult<()> {
         if !(0..100).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -239,7 +239,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_quarter(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_quarter(&mut self, value: i64) -> ParseResult<()> {
         if !(1..=4).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -254,7 +254,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_month(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_month(&mut self, value: i64) -> ParseResult<()> {
         if !(1..=12).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -271,7 +271,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_week_from_sun(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_week_from_sun(&mut self, value: i64) -> ParseResult<()> {
         if !(0..=53).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -289,7 +289,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_week_from_mon(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_week_from_mon(&mut self, value: i64) -> ParseResult<()> {
         if !(0..=53).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -306,7 +306,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_isoweek(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_isoweek(&mut self, value: i64) -> ParseResult<()> {
         if !(1..=53).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -319,7 +319,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_weekday(&mut self, value: Weekday) -> ParseResult<()> {
+    pub(super) fn set_weekday(&mut self, value: Weekday) -> ParseResult<()> {
         set_if_consistent(&mut self.weekday, value)
     }
 
@@ -331,7 +331,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_ordinal(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_ordinal(&mut self, value: i64) -> ParseResult<()> {
         if !(1..=366).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -346,7 +346,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_day(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_day(&mut self, value: i64) -> ParseResult<()> {
         if !(1..=31).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -361,7 +361,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_ampm(&mut self, value: bool) -> ParseResult<()> {
+    pub(super) fn set_ampm(&mut self, value: bool) -> ParseResult<()> {
         set_if_consistent(&mut self.hour_div_12, value as u32)
     }
 
@@ -377,7 +377,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_hour12(&mut self, mut value: i64) -> ParseResult<()> {
+    pub(super) fn set_hour12(&mut self, mut value: i64) -> ParseResult<()> {
         if !(1..=12).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -397,7 +397,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` one of the fields was already set to a different value.
     #[inline]
-    pub fn set_hour(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_hour(&mut self, value: i64) -> ParseResult<()> {
         let (hour_div_12, hour_mod_12) = match value {
             hour @ 0..=11 => (0, hour as u32),
             hour @ 12..=23 => (1, hour as u32 - 12),
@@ -415,7 +415,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_minute(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_minute(&mut self, value: i64) -> ParseResult<()> {
         if !(0..=59).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -432,7 +432,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_second(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_second(&mut self, value: i64) -> ParseResult<()> {
         if !(0..=60).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -449,7 +449,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_nanosecond(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_nanosecond(&mut self, value: i64) -> ParseResult<()> {
         if !(0..=999_999_999).contains(&value) {
             return Err(OUT_OF_RANGE);
         }
@@ -465,7 +465,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_timestamp(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_timestamp(&mut self, value: i64) -> ParseResult<()> {
         set_if_consistent(&mut self.timestamp, value)
     }
 
@@ -479,7 +479,7 @@ impl Parsed {
     ///
     /// Returns `IMPOSSIBLE` if this field was already set to a different value.
     #[inline]
-    pub fn set_offset(&mut self, value: i64) -> ParseResult<()> {
+    pub(super) fn set_offset(&mut self, value: i64) -> ParseResult<()> {
         set_if_consistent(
             &mut self.offset,
             i32::try_from(value).map_err(|_| OUT_OF_RANGE)?,
@@ -509,7 +509,7 @@ impl Parsed {
     ///   - if any of the date fields of `Parsed` are set to a value beyond their acceptable range.
     ///   - if the value would be outside the range of a [`NaiveDate`].
     ///   - if the date does not exist.
-    pub fn to_naive_date(&self) -> ParseResult<NaiveDate> {
+    pub(crate) fn to_naive_date(&self) -> ParseResult<NaiveDate> {
         fn resolve_year(
             y: Option<i32>,
             q: Option<i32>,
@@ -719,7 +719,7 @@ impl Parsed {
     ///   their acceptable range.
     /// - `NOT_ENOUGH` if an hour field is missing, if AM/PM is missing in a 12-hour clock,
     ///   if minutes are missing, or if seconds are missing while the nanosecond field is present.
-    pub fn to_naive_time(&self) -> ParseResult<NaiveTime> {
+    pub(crate) fn to_naive_time(&self) -> ParseResult<NaiveTime> {
         let hour_div_12 = match self.hour_div_12 {
             Some(v @ 0..=1) => v,
             Some(_) => return Err(OUT_OF_RANGE),
@@ -773,7 +773,7 @@ impl Parsed {
     ///     range.
     ///   - if the value would be outside the range of a [`NaiveDateTime`].
     ///   - if the date does not exist.
-    pub fn to_naive_datetime_with_offset(&self, offset: i32) -> ParseResult<NaiveDateTime> {
+    pub(crate) fn to_naive_datetime_with_offset(&self, offset: i32) -> ParseResult<NaiveDateTime> {
         let date = self.to_naive_date();
         let time = self.to_naive_time();
         if let (Ok(date), Ok(time)) = (date, time) {
@@ -866,7 +866,7 @@ impl Parsed {
     ///     range.
     ///   - if the value would be outside the range of a [`NaiveDateTime`] or [`FixedOffset`].
     ///   - if the date does not exist.
-    pub fn to_datetime(&self) -> ParseResult<DateTime<FixedOffset>> {
+    pub(crate) fn to_datetime(&self) -> ParseResult<DateTime<FixedOffset>> {
         // If there is no explicit offset, consider a timestamp value as indication of a UTC value.
         let offset = match (self.offset, self.timestamp) {
             (Some(off), _) => off,

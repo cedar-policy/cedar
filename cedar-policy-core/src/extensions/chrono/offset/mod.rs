@@ -31,10 +31,10 @@ use crate::extensions::chrono::naive::NaiveDateTime;
 #[allow(deprecated)]
 use crate::extensions::chrono::DateTime;
 
-pub(crate) mod fixed;
-pub use self::fixed::FixedOffset;
+mod fixed;
+pub(super) use self::fixed::FixedOffset;
 
-pub(crate) mod utc;
+mod utc;
 pub use self::utc::Utc;
 
 /// The result of mapping a local time to a concrete instant in a given time zone.
@@ -54,10 +54,10 @@ pub use self::utc::Utc;
 /// the `MappedLocalTime` type to help deal with the result correctly.
 ///
 /// The type of `T` is usually a [`DateTime`] but may also be only an offset.
-pub type MappedLocalTime<T> = LocalResult<T>;
+pub(super) type MappedLocalTime<T> = LocalResult<T>;
 #[derive(Clone, PartialEq, Debug, Copy, Eq, Hash)]
 /// Old name of [`MappedLocalTime`]. See that type for more documentation.
-pub enum LocalResult<T> {
+pub(super) enum LocalResult<T> {
     /// The local time maps to a single unique result.
     Single(T),
 
@@ -78,7 +78,7 @@ impl<T> MappedLocalTime<T> {
     ///
     /// Returns `MappedLocalTime::None` if the function returns `None`.
     #[must_use]
-    pub(crate) fn and_then<U, F: FnMut(T) -> Option<U>>(self, mut f: F) -> MappedLocalTime<U> {
+    fn and_then<U, F: FnMut(T) -> Option<U>>(self, mut f: F) -> MappedLocalTime<U> {
         match self {
             MappedLocalTime::None => MappedLocalTime::None,
             MappedLocalTime::Single(v) => match f(v) {
@@ -96,7 +96,7 @@ impl<T> MappedLocalTime<T> {
 impl<T: fmt::Debug> MappedLocalTime<T> {}
 
 /// The offset from the local time to UTC.
-pub trait Offset: Sized + Clone + fmt::Debug {
+pub(super) trait Offset: Sized + Clone + fmt::Debug {
     /// Returns the fixed offset from UTC to the local time stored.
     fn fix(&self) -> FixedOffset;
 }

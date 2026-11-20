@@ -191,7 +191,7 @@ pub(super) fn short_or_long_weekday(s: &str) -> ParseResult<(&str, Weekday)> {
 }
 
 /// Consumes any number (including zero) of colon or spaces.
-pub(crate) fn colon_or_space(s: &str) -> ParseResult<&str> {
+pub(super) fn colon_or_space(s: &str) -> ParseResult<&str> {
     Ok(s.trim_start_matches(|c: char| c == ':' || c.is_whitespace()))
 }
 
@@ -209,7 +209,7 @@ pub(crate) fn colon_or_space(s: &str) -> ParseResult<&str> {
 /// This is part of [RFC 3339 & ISO 8601].
 ///
 /// [RFC 3339 & ISO 8601]: https://en.wikipedia.org/w/index.php?title=ISO_8601&oldid=1114309368#Time_offsets_from_UTC
-pub(crate) fn timezone_offset<F>(
+pub(super) fn timezone_offset<F>(
     mut s: &str,
     mut consume_colon: F,
     allow_zulu: bool,

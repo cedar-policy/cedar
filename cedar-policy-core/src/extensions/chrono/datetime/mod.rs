@@ -59,7 +59,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// using [`from_timestamp`](DateTime::from_timestamp).
     #[inline]
     #[must_use]
-    pub const fn timestamp(&self) -> i64 {
+    pub(super) const fn timestamp(&self) -> i64 {
         let gregorian_day = self.datetime.date().num_days_from_ce() as i64;
         let seconds_from_midnight = self.datetime.time().num_seconds_from_midnight() as i64;
         (gregorian_day - UNIX_EPOCH_DAY) * 86_400 + seconds_from_midnight
@@ -78,7 +78,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// In event of a leap second this may exceed 999.
     #[inline]
     #[must_use]
-    pub const fn timestamp_subsec_millis(&self) -> u32 {
+    const fn timestamp_subsec_millis(&self) -> u32 {
         self.timestamp_subsec_nanos() / 1_000_000
     }
 
@@ -87,7 +87,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// In event of a leap second this may exceed 999,999,999.
     #[inline]
     #[must_use]
-    pub const fn timestamp_subsec_nanos(&self) -> u32 {
+    const fn timestamp_subsec_nanos(&self) -> u32 {
         self.datetime.time().nanosecond()
     }
 
@@ -101,7 +101,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// Retrieves an associated time zone.
     #[inline]
     #[must_use]
-    pub fn timezone(&self) -> Tz {
+    pub(super) fn timezone(&self) -> Tz {
         TimeZone::from_offset(&self.offset)
     }
 
@@ -114,34 +114,18 @@ impl<Tz: TimeZone> DateTime<Tz> {
         tz.from_utc_datetime(&self.datetime)
     }
 
-    /// Adds given `TimeDelta` to the current date and time.
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if the resulting date would be out of range.
-    #[inline]
-    #[must_use]
-    pub fn checked_add_signed(self, rhs: TimeDelta) -> Option<DateTime<Tz>> {
-        let datetime = self.datetime.checked_add_signed(rhs)?;
-        let tz = self.timezone();
-        Some(tz.from_utc_datetime(&datetime))
-    }
-
     /// Subtracts another `DateTime` from the current date and time.
     /// This does not overflow or underflow at all.
     #[inline]
     #[must_use]
-    pub fn signed_duration_since<Tz2: TimeZone>(
-        self,
-        rhs: impl Borrow<DateTime<Tz2>>,
-    ) -> TimeDelta {
+    fn signed_duration_since<Tz2: TimeZone>(self, rhs: impl Borrow<DateTime<Tz2>>) -> TimeDelta {
         self.datetime.signed_duration_since(rhs.borrow().datetime)
     }
 
     /// Returns a view to the naive UTC datetime.
     #[inline]
     #[must_use]
-    pub const fn naive_utc(&self) -> NaiveDateTime {
+    pub(super) const fn naive_utc(&self) -> NaiveDateTime {
         self.datetime
     }
 
@@ -154,7 +138,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// representable range of a [`NaiveDateTime`].
     #[inline]
     #[must_use]
-    pub fn naive_local(&self) -> NaiveDateTime {
+    pub(super) fn naive_local(&self) -> NaiveDateTime {
         self.datetime
             .checked_add_offset(self.offset.fix())
             .expect("Local time out of range for `NaiveDateTime`")
@@ -167,7 +151,7 @@ impl<Tz: TimeZone> DateTime<Tz> {
     /// outside chrono.
     #[inline]
     #[must_use]
-    pub(crate) fn overflowing_naive_local(&self) -> NaiveDateTime {
+    fn overflowing_naive_local(&self) -> NaiveDateTime {
         self.datetime.overflowing_add_offset(self.offset.fix())
     }
 }
@@ -190,7 +174,7 @@ impl DateTime<Utc> {
     /// otherwise returns `Some(DateTime {...})`.
     #[inline]
     #[must_use]
-    pub const fn from_timestamp_secs(secs: i64) -> Option<Self> {
+    pub(super) const fn from_timestamp_secs(secs: i64) -> Option<Self> {
         Self::from_timestamp(secs, 0)
     }
 
@@ -214,7 +198,7 @@ impl DateTime<Utc> {
     /// invalid nanosecond, otherwise returns `Some(DateTime {...})`.
     #[inline]
     #[must_use]
-    pub const fn from_timestamp(secs: i64, nsecs: u32) -> Option<Self> {
+    const fn from_timestamp(secs: i64, nsecs: u32) -> Option<Self> {
         let days = secs.div_euclid(86_400) + UNIX_EPOCH_DAY;
         let secs = secs.rem_euclid(86_400);
         if days < i32::MIN as i64 || days > i32::MAX as i64 {
@@ -229,7 +213,7 @@ impl DateTime<Utc> {
     }
 
     /// The Unix Epoch, 1970-01-01 00:00:00 UTC.
-    pub const UNIX_EPOCH: Self = expect(NaiveDate::from_ymd_opt(1970, 1, 1), "")
+    pub(crate) const UNIX_EPOCH: Self = expect(NaiveDate::from_ymd_opt(1970, 1, 1), "")
         .and_time(NaiveTime::MIN)
         .and_utc();
 }
@@ -284,7 +268,6 @@ impl<Tz: TimeZone, Tz2: TimeZone> PartialOrd<DateTime<Tz2>> for DateTime<Tz> {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`DateTime<Tz>::checked_add_signed`] to get an `Option` instead.
 impl<Tz: TimeZone> AddAssign<TimeDelta> for DateTime<Tz> {
     #[inline]
     #[track_caller]
@@ -368,4 +351,4 @@ impl str::FromStr for DateTime<Utc> {
 /// except for 1700, 1800 and 1900                                       -3 +
 ///                                                                  --------
 ///                                                                  719163
-pub(crate) const UNIX_EPOCH_DAY: i64 = 719_163;
+const UNIX_EPOCH_DAY: i64 = 719_163;

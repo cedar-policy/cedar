@@ -24,7 +24,7 @@ use crate::extensions::chrono::try_opt;
 /// The number of nanoseconds in a millisecond.
 const NANOS_PER_MILLI: i32 = 1_000_000;
 /// The number of nanoseconds in seconds.
-pub(crate) const NANOS_PER_SEC: i32 = 1_000_000_000;
+const NANOS_PER_SEC: i32 = 1_000_000_000;
 /// The number of milliseconds per second.
 const MILLIS_PER_SEC: i64 = 1000;
 /// The number of (non-leap) seconds in days.
@@ -46,13 +46,13 @@ pub struct TimeDelta {
 }
 
 /// The minimum possible `TimeDelta`: `-i64::MAX` milliseconds.
-pub(crate) const MIN: TimeDelta = TimeDelta {
+const MIN: TimeDelta = TimeDelta {
     secs: -i64::MAX / MILLIS_PER_SEC - 1,
     nanos: NANOS_PER_SEC + (-i64::MAX % MILLIS_PER_SEC) as i32 * NANOS_PER_MILLI,
 };
 
 /// The maximum possible `TimeDelta`: `i64::MAX` milliseconds.
-pub(crate) const MAX: TimeDelta = TimeDelta {
+const MAX: TimeDelta = TimeDelta {
     secs: i64::MAX / MILLIS_PER_SEC,
     nanos: (i64::MAX % MILLIS_PER_SEC) as i32 * NANOS_PER_MILLI,
 };
@@ -63,7 +63,7 @@ impl TimeDelta {
     /// # Errors
     ///
     /// Returns `None` when the duration is out of bounds, or if `nanos` ≥ 1,000,000,000.
-    pub const fn new(secs: i64, nanos: u32) -> Option<TimeDelta> {
+    pub(crate) const fn new(secs: i64, nanos: u32) -> Option<TimeDelta> {
         if secs < MIN.secs
             || secs > MAX.secs
             || nanos >= 1_000_000_000
@@ -87,7 +87,7 @@ impl TimeDelta {
     ///
     /// Returns `None` when the `TimeDelta` would be out of bounds.
     #[inline]
-    pub const fn try_days(days: i64) -> Option<TimeDelta> {
+    pub(super) const fn try_days(days: i64) -> Option<TimeDelta> {
         TimeDelta::try_seconds(try_opt!(days.checked_mul(SECS_PER_DAY)))
     }
 
@@ -99,18 +99,18 @@ impl TimeDelta {
     /// `-i64::MAX / 1_000` (in this context, this is the same as `i64::MIN / 1_000` due to
     /// rounding).
     #[inline]
-    pub const fn try_seconds(seconds: i64) -> Option<TimeDelta> {
+    pub(super) const fn try_seconds(seconds: i64) -> Option<TimeDelta> {
         TimeDelta::new(seconds, 0)
     }
 
     /// Returns the total number of whole days in the `TimeDelta`.
     #[inline]
-    pub const fn num_days(&self) -> i64 {
+    pub(super) const fn num_days(&self) -> i64 {
         self.num_seconds() / SECS_PER_DAY
     }
 
     /// Returns the total number of whole seconds in the `TimeDelta`.
-    pub const fn num_seconds(&self) -> i64 {
+    pub(super) const fn num_seconds(&self) -> i64 {
         // If secs is negative, nanos should be subtracted from the duration.
         if self.secs < 0 && self.nanos > 0 {
             self.secs + 1
@@ -120,7 +120,7 @@ impl TimeDelta {
     }
 
     /// Returns the total number of whole milliseconds in the `TimeDelta`.
-    pub const fn num_milliseconds(&self) -> i64 {
+    pub(crate) const fn num_milliseconds(&self) -> i64 {
         // A proper TimeDelta will not overflow, because MIN and MAX are defined such
         // that the range is within the bounds of an i64, from -i64::MAX through to
         // +i64::MAX inclusive. Notably, i64::MIN is excluded from this range.
@@ -134,7 +134,7 @@ impl TimeDelta {
     /// This is the number of nanoseconds such that
     /// `subsec_nanos() + num_seconds() * 1_000_000_000` is the total number of
     /// nanoseconds in the `TimeDelta`.
-    pub const fn subsec_nanos(&self) -> i32 {
+    pub(super) const fn subsec_nanos(&self) -> i32 {
         if self.secs < 0 && self.nanos > 0 {
             self.nanos - NANOS_PER_SEC
         } else {
@@ -144,7 +144,7 @@ impl TimeDelta {
 
     /// Add two `TimeDelta`s, returning `None` if overflow occurred.
     #[must_use]
-    pub const fn checked_add(&self, rhs: &TimeDelta) -> Option<TimeDelta> {
+    pub(super) const fn checked_add(&self, rhs: &TimeDelta) -> Option<TimeDelta> {
         // No overflow checks here because we stay comfortably within the range of an `i64`.
         // Range checks happen in `TimeDelta::new`.
         let mut secs = self.secs + rhs.secs;
@@ -158,7 +158,7 @@ impl TimeDelta {
 
     /// A `TimeDelta` where the stored seconds and nanoseconds are equal to zero.
     #[inline]
-    pub const fn zero() -> TimeDelta {
+    pub(super) const fn zero() -> TimeDelta {
         TimeDelta { secs: 0, nanos: 0 }
     }
 
@@ -166,7 +166,7 @@ impl TimeDelta {
     ///
     /// This function errors when original duration is larger than the maximum
     /// value supported for this type.
-    pub const fn from_std(duration: Duration) -> Result<TimeDelta, OutOfRangeError> {
+    pub(super) const fn from_std(duration: Duration) -> Result<TimeDelta, OutOfRangeError> {
         // We need to check secs as u64 before coercing to i64
         if duration.as_secs() > MAX.secs as u64 {
             return Err(OutOfRangeError(()));
@@ -178,7 +178,7 @@ impl TimeDelta {
     }
 
     /// This duplicates `Neg::neg` because trait methods can't be const yet.
-    pub(crate) const fn neg(self) -> TimeDelta {
+    pub(super) const fn neg(self) -> TimeDelta {
         let (secs_diff, nanos) = match self.nanos {
             0 => (0, 0),
             nanos => (1, NANOS_PER_SEC - nanos),
@@ -236,7 +236,7 @@ impl core::iter::Sum<TimeDelta> for TimeDelta {
 /// *seconds*, while this module supports signed range of up to
 /// `i64::MAX` of *milliseconds*.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OutOfRangeError(());
+pub(super) struct OutOfRangeError(());
 
 #[cfg(test)]
 mod tests {

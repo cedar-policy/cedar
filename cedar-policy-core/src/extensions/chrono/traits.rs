@@ -16,7 +16,7 @@ use crate::extensions::chrono::{IsoWeek, Weekday};
 /// [`month`]: Datelike::month
 /// [`day`]: Datelike::day
 /// [`weekday`]: Datelike::weekday
-pub trait Datelike: Sized {
+pub(super) trait Datelike: Sized {
     /// Returns the year number in the [calendar date](crate::extensions::chrono::NaiveDate#calendar-date).
     fn year(&self) -> i32;
 
@@ -65,7 +65,7 @@ pub trait Datelike: Sized {
 }
 
 /// The common set of methods for time component.
-pub trait Timelike: Sized {
+pub(super) trait Timelike: Sized {
     /// Returns the hour number from 0 to 23.
     fn hour(&self) -> u32;
 

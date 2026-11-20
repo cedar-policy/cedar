@@ -10,20 +10,14 @@
 //! (e.g. [`TimeZone`](crate::extensions::chrono::offset::TimeZone)),
 //! but can be also used for the simpler date and time handling.
 
-use core::hash::Hash;
-
-pub(crate) mod date;
-pub(crate) mod datetime;
+mod date;
+mod datetime;
 mod internals;
-pub(crate) mod isoweek;
-pub(crate) mod time;
+mod isoweek;
+mod time;
 
 pub use self::date::NaiveDate;
 #[allow(deprecated)]
 pub use self::datetime::NaiveDateTime;
-pub use self::isoweek::IsoWeek;
-pub use self::time::NaiveTime;
-
-/// A duration in calendar days.
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, PartialOrd, Ord)]
-pub struct Days(pub(crate) u64);
+pub(super) use self::isoweek::IsoWeek;
+pub(crate) use self::time::NaiveTime;

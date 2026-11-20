@@ -21,7 +21,7 @@ use super::internals::YearFlags;
 /// One can retrieve this type from the existing [`Datelike`](crate::extensions::chrono::traits::Datelike) types
 /// via the [`Datelike::iso_week`](crate::extensions::chrono::traits::Datelike::iso_week) method.
 #[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Hash)]
-pub struct IsoWeek {
+pub(crate) struct IsoWeek {
     // Note that this allows for larger year range than `NaiveDate`.
     // This is crucial because we have an edge case for the first and last week supported,
     // which year number might not match the calendar year number.
@@ -58,7 +58,7 @@ impl IsoWeek {
 
     /// Returns the year number for this ISO week.
     #[inline]
-    pub const fn year(&self) -> i32 {
+    pub(crate) const fn year(&self) -> i32 {
         self.ywf >> 10
     }
 
@@ -66,7 +66,7 @@ impl IsoWeek {
     ///
     /// The return value ranges from 1 to 53. (The last week of year differs by years.)
     #[inline]
-    pub const fn week(&self) -> u32 {
+    pub(crate) const fn week(&self) -> u32 {
         ((self.ywf >> 4) & 0x3f) as u32
     }
 }

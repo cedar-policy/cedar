@@ -158,7 +158,7 @@ mod tests;
 /// Since Chrono alone cannot determine any existence of leap seconds,
 /// **there is absolutely no guarantee that the leap second read has actually happened**.
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
-pub struct NaiveTime {
+pub(crate) struct NaiveTime {
     secs: u32,
     frac: u32,
 }
@@ -174,7 +174,7 @@ impl NaiveTime {
     /// Returns `None` on invalid hour, minute and/or second.
     #[inline]
     #[must_use]
-    pub const fn from_hms_opt(hour: u32, min: u32, sec: u32) -> Option<NaiveTime> {
+    pub(crate) const fn from_hms_opt(hour: u32, min: u32, sec: u32) -> Option<NaiveTime> {
         NaiveTime::from_hms_nano_opt(hour, min, sec, 0)
     }
 
@@ -188,7 +188,7 @@ impl NaiveTime {
     /// Returns `None` on invalid hour, minute, second and/or millisecond.
     #[inline]
     #[must_use]
-    pub const fn from_hms_milli_opt(
+    pub(crate) const fn from_hms_milli_opt(
         hour: u32,
         min: u32,
         sec: u32,
@@ -208,7 +208,12 @@ impl NaiveTime {
     /// Returns `None` on invalid hour, minute, second and/or nanosecond.
     #[inline]
     #[must_use]
-    pub const fn from_hms_nano_opt(hour: u32, min: u32, sec: u32, nano: u32) -> Option<NaiveTime> {
+    pub(crate) const fn from_hms_nano_opt(
+        hour: u32,
+        min: u32,
+        sec: u32,
+        nano: u32,
+    ) -> Option<NaiveTime> {
         if (hour >= 24 || min >= 60 || sec >= 60)
             || (nano >= 1_000_000_000 && sec != 59)
             || nano >= 2_000_000_000
@@ -229,7 +234,10 @@ impl NaiveTime {
     /// Returns `None` on invalid number of seconds and/or nanosecond.
     #[inline]
     #[must_use]
-    pub const fn from_num_seconds_from_midnight_opt(secs: u32, nano: u32) -> Option<NaiveTime> {
+    pub(crate) const fn from_num_seconds_from_midnight_opt(
+        secs: u32,
+        nano: u32,
+    ) -> Option<NaiveTime> {
         if secs >= 86_400 || nano >= 2_000_000_000 || (nano >= 1_000_000_000 && secs % 60 != 59) {
             return None;
         }
@@ -239,7 +247,7 @@ impl NaiveTime {
     /// Adds given `TimeDelta` to the current time, and also returns the number of *seconds*
     /// in the integral number of days ignored from the addition.
     #[must_use]
-    pub const fn overflowing_add_signed(&self, rhs: TimeDelta) -> (NaiveTime, i64) {
+    pub(super) const fn overflowing_add_signed(&self, rhs: TimeDelta) -> (NaiveTime, i64) {
         let mut secs = self.secs as i64;
         let mut frac = self.frac as i32;
         let secs_to_add = rhs.num_seconds();
@@ -293,7 +301,7 @@ impl NaiveTime {
     /// in the integral number of days ignored from the subtraction.
     #[inline]
     #[must_use]
-    pub const fn overflowing_sub_signed(&self, rhs: TimeDelta) -> (NaiveTime, i64) {
+    pub(super) const fn overflowing_sub_signed(&self, rhs: TimeDelta) -> (NaiveTime, i64) {
         let (time, rhs) = self.overflowing_add_signed(rhs.neg());
         (time, -rhs) // safe to negate, rhs is within +/- (2^63 / 1000)
     }
@@ -308,7 +316,7 @@ impl NaiveTime {
     /// in which case the assumption becomes that
     /// **there are exactly one (or two) leap second(s) ever**.
     #[must_use]
-    pub const fn signed_duration_since(self, rhs: NaiveTime) -> TimeDelta {
+    pub(super) const fn signed_duration_since(self, rhs: NaiveTime) -> TimeDelta {
         //     |    |    :leap|    |    |    |    |    |    |    :leap|    |
         //     |    |    :    |    |    |    |    |    |    |    :    |    |
         // ----+----+-----*---+----+----+----+----+----+----+-------*-+----+----
@@ -377,7 +385,7 @@ impl NaiveTime {
     }
 
     /// Returns a triple of the hour, minute and second numbers.
-    pub(crate) fn hms(&self) -> (u32, u32, u32) {
+    fn hms(&self) -> (u32, u32, u32) {
         let sec = self.secs % 60;
         let mins = self.secs / 60;
         let min = mins % 60;
@@ -401,7 +409,7 @@ impl NaiveTime {
     }
 
     /// The earliest possible `NaiveTime`
-    pub const MIN: Self = Self { secs: 0, frac: 0 };
+    pub(crate) const MIN: Self = Self { secs: 0, frac: 0 };
 }
 
 impl Timelike for NaiveTime {

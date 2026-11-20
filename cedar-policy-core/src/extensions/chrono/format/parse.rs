@@ -62,7 +62,7 @@ fn set_weekday_with_number_from_monday(p: &mut Parsed, v: i64) -> ParseResult<()
 ///   so one can prepend any number of whitespace then any number of zeroes before numbers.
 ///
 /// - (Still) obeying the intrinsic parsing width. This allows, for example, parsing `HHMMSS`.
-pub fn parse<'a, I, B>(parsed: &mut Parsed, s: &str, items: I) -> ParseResult<()>
+pub(crate) fn parse<'a, I, B>(parsed: &mut Parsed, s: &str, items: I) -> ParseResult<()>
 where
     I: Iterator<Item = B>,
     B: Borrow<Item<'a>>,
@@ -88,7 +88,7 @@ where
 ///   so one can prepend any number of zeroes before numbers.
 ///
 /// - (Still) obeying the intrinsic parsing width. This allows, for example, parsing `HHMMSS`.
-pub fn parse_and_remainder<'a, 'b, I, B>(
+pub(crate) fn parse_and_remainder<'a, 'b, I, B>(
     parsed: &mut Parsed,
     s: &'b str,
     items: I,

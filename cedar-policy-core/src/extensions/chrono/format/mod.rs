@@ -31,18 +31,18 @@ mod parsed;
 
 // due to the size of parsing routines, they are in separate modules.
 mod parse;
-pub(crate) mod scan;
+mod scan;
 
-pub mod strftime;
+mod strftime;
 
-pub(crate) use formatting::write_hundreds;
-pub use parse::{parse, parse_and_remainder};
-pub use parsed::Parsed;
-pub use strftime::StrftimeItems;
+pub(super) use formatting::write_hundreds;
+pub(super) use parse::{parse, parse_and_remainder};
+pub(super) use parsed::Parsed;
+pub(super) use strftime::StrftimeItems;
 
 /// Padding characters for numeric items.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub enum Pad {
+pub(super) enum Pad {
     /// No padding.
     None,
     /// Zero (`0`) padding.
@@ -66,7 +66,7 @@ pub enum Pad {
 /// parsed with the same formatting items.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum Numeric {
+pub(super) enum Numeric {
     /// Full Gregorian year (FW=4, PW=∞).
     /// May accept years before 1 BCE or after 9999 CE, given an initial sign (+/-).
     Year,
@@ -120,7 +120,7 @@ pub enum Numeric {
 /// Otherwise noted, they print in the specified cases but parse case-insensitively.
 #[non_exhaustive]
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum Fixed {
+pub(super) enum Fixed {
     /// Abbreviated month names.
     ///
     /// Prints a three-letter-long name in the title case, reads the same name in any case.
@@ -192,7 +192,7 @@ pub enum Fixed {
 
 /// An opaque type representing fixed-format item types for internal uses only.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InternalFixed {
+struct InternalFixed {
     val: InternalInternal,
 }
 
@@ -216,7 +216,7 @@ enum InternalInternal {
 
 /// A single formatting item. This is used for both formatting and parsing.
 #[derive(Clone, PartialEq, Eq, Debug, Hash)]
-pub enum Item<'a> {
+pub(crate) enum Item<'a> {
     /// A literally printed and parsed text.
     Literal(&'a str),
     /// Whitespace. Prints literally but reads zero or more whitespace.
@@ -256,17 +256,12 @@ impl Item<'_> {}
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub struct ParseError(ParseErrorKind);
 
-impl ParseError {
-    /// The category of parse error
-    pub const fn kind(&self) -> ParseErrorKind {
-        self.0
-    }
-}
+impl ParseError {}
 
 /// The category of parse error
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
-pub enum ParseErrorKind {
+enum ParseErrorKind {
     /// Given field is out of permitted range.
     OutOfRange,
 
@@ -301,7 +296,7 @@ pub enum ParseErrorKind {
 }
 
 /// Same as `Result<T, ParseError>`.
-pub type ParseResult<T> = Result<T, ParseError>;
+pub(super) type ParseResult<T> = Result<T, ParseError>;
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -328,12 +323,12 @@ impl Error for ParseError {
 }
 
 // to be used in this module and submodules
-pub(crate) const OUT_OF_RANGE: ParseError = ParseError(ParseErrorKind::OutOfRange);
+const OUT_OF_RANGE: ParseError = ParseError(ParseErrorKind::OutOfRange);
 const IMPOSSIBLE: ParseError = ParseError(ParseErrorKind::Impossible);
 const NOT_ENOUGH: ParseError = ParseError(ParseErrorKind::NotEnough);
 const INVALID: ParseError = ParseError(ParseErrorKind::Invalid);
 const TOO_SHORT: ParseError = ParseError(ParseErrorKind::TooShort);
-pub(crate) const TOO_LONG: ParseError = ParseError(ParseErrorKind::TooLong);
+const TOO_LONG: ParseError = ParseError(ParseErrorKind::TooLong);
 const BAD_FORMAT: ParseError = ParseError(ParseErrorKind::BadFormat);
 
 // this implementation is here only because we need some private code from `scan`

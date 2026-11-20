@@ -28,7 +28,7 @@ use super::internals::{Mdf, YearFlags};
 use crate::extensions::chrono::format::{
     parse, write_hundreds, ParseResult, Parsed, StrftimeItems,
 };
-use crate::extensions::chrono::naive::{Days, IsoWeek, NaiveDateTime, NaiveTime};
+use crate::extensions::chrono::naive::{IsoWeek, NaiveDateTime, NaiveTime};
 use crate::extensions::chrono::{expect, try_opt};
 use crate::extensions::chrono::{Datelike, TimeDelta, Weekday};
 
@@ -133,7 +133,7 @@ impl NaiveDate {
     /// - The value for `month` or `day` is invalid.
     /// - `year` is out of range for `NaiveDate`.
     #[must_use]
-    pub const fn from_ymd_opt(year: i32, month: u32, day: u32) -> Option<NaiveDate> {
+    pub(crate) const fn from_ymd_opt(year: i32, month: u32, day: u32) -> Option<NaiveDate> {
         let flags = YearFlags::from_year(year);
 
         if let Some(mdf) = Mdf::new(month, day, flags) {
@@ -153,7 +153,7 @@ impl NaiveDate {
     /// - The value for `ordinal` is invalid (for example: `0`, `400`).
     /// - `year` is out of range for `NaiveDate`.
     #[must_use]
-    pub const fn from_yo_opt(year: i32, ordinal: u32) -> Option<NaiveDate> {
+    pub(crate) const fn from_yo_opt(year: i32, ordinal: u32) -> Option<NaiveDate> {
         let flags = YearFlags::from_year(year);
         NaiveDate::from_ordinal_and_flags(year, ordinal, flags)
     }
@@ -169,7 +169,11 @@ impl NaiveDate {
     /// - The value for `week` is invalid (for example: `0`, `60`).
     /// - If the resulting date is out of range for `NaiveDate`.
     #[must_use]
-    pub const fn from_isoywd_opt(year: i32, week: u32, weekday: Weekday) -> Option<NaiveDate> {
+    pub(crate) const fn from_isoywd_opt(
+        year: i32,
+        week: u32,
+        weekday: Weekday,
+    ) -> Option<NaiveDate> {
         let flags = YearFlags::from_year(year);
         let nweeks = flags.nisoweeks();
         if week == 0 || week > nweeks {
@@ -204,7 +208,7 @@ impl NaiveDate {
     ///
     /// Returns `None` if the date is out of range.
     #[must_use]
-    pub const fn from_num_days_from_ce_opt(days: i32) -> Option<NaiveDate> {
+    pub(crate) const fn from_num_days_from_ce_opt(days: i32) -> Option<NaiveDate> {
         let days = try_opt!(days.checked_add(365)); // make December 31, 1 BCE equal to day 0
         let year_div_400 = days.div_euclid(146_097);
         let cycle = days.rem_euclid(146_097);
@@ -222,26 +226,9 @@ impl NaiveDate {
         parsed.to_naive_date()
     }
 
-    /// Add a duration in [`Days`] to the date
-    ///
-    /// # Errors
-    ///
-    /// Returns `None` if the resulting date would be out of range.
-    #[must_use]
-    pub const fn checked_add_days(self, days: Days) -> Option<Self> {
-        match days.0 <= i32::MAX as u64 {
-            true => self.add_days(days.0 as i32),
-            false => None,
-        }
-    }
-
     /// Add a duration of `i32` days to the date.
-    pub(crate) const fn add_days(self, days: i32) -> Option<Self> {
+    const fn add_days(self, days: i32) -> Option<Self> {
         // Fast path if the result is within the same year.
-        // Also `DateTime::checked_(add|sub)_days` relies on this path, because if the value remains
-        // within the year it doesn't do a check if the year is in range.
-        // This way `DateTime:checked_(add|sub)_days(Days::new(0))` can be a no-op on dates were the
-        // local datetime is beyond `NaiveDate::{MIN, MAX}.
         const ORDINAL_MASK: i32 = 0b1_1111_1111_0000;
         if let Some(ordinal) = ((self.yof() & ORDINAL_MASK) >> 4).checked_add(days) {
             if ordinal > 0 && ordinal <= (365 + self.leap_year() as i32) {
@@ -265,7 +252,7 @@ impl NaiveDate {
     /// Makes a new `NaiveDateTime` from the current date and given `NaiveTime`.
     #[inline]
     #[must_use]
-    pub const fn and_time(&self, time: NaiveTime) -> NaiveDateTime {
+    pub(crate) const fn and_time(&self, time: NaiveTime) -> NaiveDateTime {
         NaiveDateTime::new(*self, time)
     }
 
@@ -296,7 +283,7 @@ impl NaiveDate {
     /// Returns `None` when `self` is the last representable date.
     #[inline]
     #[must_use]
-    pub const fn succ_opt(&self) -> Option<NaiveDate> {
+    pub(super) const fn succ_opt(&self) -> Option<NaiveDate> {
         let new_ol = (self.yof() & OL_MASK) + (1 << 4);
         match new_ol <= MAX_OL {
             true => Some(NaiveDate::from_yof(self.yof() & !OL_MASK | new_ol)),
@@ -311,7 +298,7 @@ impl NaiveDate {
     /// Returns `None` when `self` is the first representable date.
     #[inline]
     #[must_use]
-    pub const fn pred_opt(&self) -> Option<NaiveDate> {
+    pub(super) const fn pred_opt(&self) -> Option<NaiveDate> {
         let new_shifted_ordinal = (self.yof() & ORDINAL_MASK) - (1 << 4);
         match new_shifted_ordinal > 0 {
             true => Some(NaiveDate::from_yof(
@@ -327,7 +314,7 @@ impl NaiveDate {
     ///
     /// Returns `None` if the resulting date would be out of range.
     #[must_use]
-    pub const fn checked_add_signed(self, rhs: TimeDelta) -> Option<NaiveDate> {
+    pub(super) const fn checked_add_signed(self, rhs: TimeDelta) -> Option<NaiveDate> {
         let days = rhs.num_days();
         if days < i32::MIN as i64 || days > i32::MAX as i64 {
             return None;
@@ -341,7 +328,7 @@ impl NaiveDate {
     ///
     /// Returns `None` if the resulting date would be out of range.
     #[must_use]
-    pub const fn checked_sub_signed(self, rhs: TimeDelta) -> Option<NaiveDate> {
+    pub(super) const fn checked_sub_signed(self, rhs: TimeDelta) -> Option<NaiveDate> {
         let days = -rhs.num_days();
         if days < i32::MIN as i64 || days > i32::MAX as i64 {
             return None;
@@ -355,7 +342,7 @@ impl NaiveDate {
     /// This does not overflow or underflow at all,
     /// as all possible output fits in the range of `TimeDelta`.
     #[must_use]
-    pub const fn signed_duration_since(self, rhs: Self) -> TimeDelta {
+    pub(super) const fn signed_duration_since(self, rhs: Self) -> TimeDelta {
         let year1 = self.year();
         let year2 = rhs.year();
         let (year1_div_400, year1_mod_400) = div_mod_floor(year1, 400);
@@ -369,7 +356,7 @@ impl NaiveDate {
     }
 
     /// Returns `true` if this is a leap year.
-    pub const fn leap_year(&self) -> bool {
+    const fn leap_year(&self) -> bool {
         self.yof() & (0b1000) == 0
     }
 
@@ -401,7 +388,7 @@ impl NaiveDate {
     /// Returns the day of week.
     // This duplicates `Datelike::weekday()`, because trait methods can't be const yet.
     #[inline]
-    pub(super) const fn weekday(&self) -> Weekday {
+    const fn weekday(&self) -> Weekday {
         match (((self.yof() & ORDINAL_MASK) >> 4) + (self.yof() & WEEKDAY_FLAGS_MASK)) % 7 {
             0 => Weekday::Mon,
             1 => Weekday::Tue,
@@ -459,10 +446,10 @@ impl NaiveDate {
     }
 
     /// One day before the minimum possible `NaiveDate` (December 31, 262145 BCE).
-    pub(crate) const BEFORE_MIN: NaiveDate =
+    pub(super) const BEFORE_MIN: NaiveDate =
         NaiveDate::from_yof(((MIN_YEAR - 1) << 13) | (366 << 4) | 0o07 /* FE */);
     /// One day after the maximum possible `NaiveDate` (January 1, 262143 CE).
-    pub(crate) const AFTER_MAX: NaiveDate =
+    pub(super) const AFTER_MAX: NaiveDate =
         NaiveDate::from_yof(((MAX_YEAR + 1) << 13) | (1 << 4) | 0o17 /* F */);
 }
 
@@ -536,7 +523,7 @@ impl Datelike for NaiveDate {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDate::checked_add_signed`] to get an `Option` instead.
+/// Consider using `NaiveDate::checked_add_signed` to get an `Option` instead.
 impl Add<TimeDelta> for NaiveDate {
     type Output = NaiveDate;
 
@@ -556,7 +543,7 @@ impl Add<TimeDelta> for NaiveDate {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDate::checked_add_signed`] to get an `Option` instead.
+/// Consider using `NaiveDate::checked_add_signed` to get an `Option` instead.
 impl AddAssign<TimeDelta> for NaiveDate {
     #[inline]
     #[track_caller]
@@ -574,7 +561,7 @@ impl AddAssign<TimeDelta> for NaiveDate {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDate::checked_sub_signed`] to get an `Option` instead.
+/// Consider using `NaiveDate::checked_sub_signed` to get an `Option` instead.
 impl Sub<TimeDelta> for NaiveDate {
     type Output = NaiveDate;
 
@@ -595,7 +582,7 @@ impl Sub<TimeDelta> for NaiveDate {
 /// # Panics
 ///
 /// Panics if the resulting date would be out of range.
-/// Consider using [`NaiveDate::checked_sub_signed`] to get an `Option` instead.
+/// Consider using `NaiveDate::checked_sub_signed` to get an `Option` instead.
 impl SubAssign<TimeDelta> for NaiveDate {
     #[inline]
     #[track_caller]
@@ -658,11 +645,11 @@ const fn div_mod_floor(val: i32, div: i32) -> (i32, i32) {
 
 /// MAX_YEAR is one year less than the type is capable of representing. Internally we may sometimes
 /// use the headroom.
-pub(super) const MAX_YEAR: i32 = (i32::MAX >> 13) - 1;
+const MAX_YEAR: i32 = (i32::MAX >> 13) - 1;
 
 /// MIN_YEAR is one year more than the type is capable of representing. Internally we may sometimes
 /// use the headroom.
-pub(super) const MIN_YEAR: i32 = (i32::MIN >> 13) + 1;
+const MIN_YEAR: i32 = (i32::MIN >> 13) + 1;
 
 const ORDINAL_MASK: i32 = 0b1_1111_1111_0000;
 

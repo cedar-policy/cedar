@@ -22,7 +22,7 @@
 //! * Date types are limited to about +/- 262,000 years from the common epoch.
 //! * Time types are limited to nanosecond accuracy.
 //! * Leap seconds can be represented, but Chrono does not fully support them.
-//!   See [Leap Second Handling](NaiveTime#leap-second-handling).
+//!   See "Leap Second Handling" in the `NaiveTime` documentation.
 
 // Cedar: chrono's crate-level attributes (`doc(html_root_url)`, `warn(unreachable_pub)`,
 // `cfg_attr(.., no_std)`, `cfg_attr(docsrs, feature(doc_cfg))`) are removed because they are only
@@ -43,12 +43,8 @@
     reason = "vendored chrono code is kept close to upstream"
 )]
 
-// Cedar: `pub` removed from chrono's top-level modules, re-exports, and the `Duration` alias.
-// Only the items used by `cedar-policy-core`'s `datetime` extension and by `cedar-policy-symcc`
-// (`DateTime`, `NaiveDate`, `NaiveDateTime`, `NaiveTime`, `ParseError`, `TimeDelta`, `Utc`) are
-// re-exported.
 mod time_delta;
-pub use time_delta::TimeDelta;
+pub(super) use time_delta::TimeDelta;
 
 mod datetime;
 pub use datetime::DateTime;
@@ -58,7 +54,8 @@ pub use format::ParseError;
 
 mod naive;
 use naive::IsoWeek;
-pub use naive::{NaiveDate, NaiveDateTime, NaiveTime};
+pub(super) use naive::NaiveTime;
+pub use naive::{NaiveDate, NaiveDateTime};
 
 mod offset;
 #[doc(inline)]
@@ -82,10 +79,10 @@ macro_rules! try_opt {
         }
     };
 }
-pub(crate) use try_opt;
+use try_opt;
 
 /// Workaround because `.expect()` is not (yet) available in const context.
-pub(crate) const fn expect<T: Copy>(opt: Option<T>, msg: &str) -> T {
+const fn expect<T: Copy>(opt: Option<T>, msg: &str) -> T {
     match opt {
         Some(val) => val,
         None => panic!("{}", msg),

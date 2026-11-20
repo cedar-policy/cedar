@@ -11,7 +11,7 @@
 /// (This is why this type does *not* implement `PartialOrd` or `Ord` traits.)
 /// One should prefer `*_from_monday` or `*_from_sunday` methods to get the correct result.
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
-pub enum Weekday {
+pub(super) enum Weekday {
     /// Monday.
     Mon = 0,
     /// Tuesday.
@@ -35,12 +35,12 @@ impl Weekday {
     /// --------------------------- | ----- | ----- | ----- | ----- | ----- | ----- | -----
     /// `w.num_days_from_monday()`: | 0     | 1     | 2     | 3     | 4     | 5     | 6
     #[inline]
-    pub const fn num_days_from_monday(&self) -> u32 {
+    pub(super) const fn num_days_from_monday(&self) -> u32 {
         self.days_since(Weekday::Mon)
     }
 
     /// The number of days since the given day.
-    pub const fn days_since(&self, other: Weekday) -> u32 {
+    pub(super) const fn days_since(&self, other: Weekday) -> u32 {
         let lhs = *self as u32;
         let rhs = other as u32;
         if lhs < rhs {
