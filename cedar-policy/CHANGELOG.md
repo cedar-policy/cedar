@@ -23,7 +23,8 @@ Cedar Language Version: TBD
 
 - The validator now rejects a template-linked policy whose slot is filled with an entity of an enumerated entity type
   but an eid that is not one of the declared choices, as it already does for the equivalent static policy. Such a link
-  would have been reported as a warning, and results in a policy that never applies. (*)
+  would have been reported as a warning, and results in a policy that never applies (#2715).
+- Added calls to `stacker` to guard against stack overflows when computing the transitive closure of a deep entity hierarchy (#2718).
 
 ## [4.15.0] - 2026-11-16
 
