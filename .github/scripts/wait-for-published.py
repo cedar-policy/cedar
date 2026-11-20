@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""Usage: wait-for-published.py (crates|npm) <name>=<version>... [--timeout SECONDS] [--interval SECONDS]
+"""Usage: wait-for-published.py (crates|npm) <name>=<version>... [--initial-delay SECONDS] [--interval SECONDS] [--timeout SECONDS]
 
 Polls the crates.io API (`crates`) or the npm registry (`npm`) until every
 <name>=<version> is published, or until the timeout expires.
+The first poll happens after the initial delay, since a just-published
+version usually takes a little while to show up.
 Fails, listing every package that is still missing, if the timeout expires.
 A yanked crate version counts as missing.
 
@@ -71,12 +73,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("registry", choices=["crates", "npm"])
     parser.add_argument("packages", nargs="+", type=parse_package, metavar="name=version")
-    parser.add_argument("--timeout", type=int, default=600, help="seconds to wait in total (default: 600)")
-    parser.add_argument("--interval", type=int, default=15, help="seconds between polls (default: 15)")
+    parser.add_argument(
+        "--initial-delay", type=int, default=60, help="seconds to wait before the first poll (default: 60)"
+    )
+    parser.add_argument("--interval", type=int, default=30, help="seconds between polls (default: 30)")
+    parser.add_argument(
+        "--timeout", type=int, default=600, help="seconds to wait in total, including the initial delay (default: 600)"
+    )
     args = parser.parse_args()
 
     status = crate_status if args.registry == "crates" else npm_status
     deadline = time.monotonic() + args.timeout
+    if args.initial_delay > 0:
+        print(f"Waiting {args.initial_delay}s before the first poll")
+        time.sleep(args.initial_delay)
     pending = dict.fromkeys(args.packages, "not checked")
     while True:
         for name, version in list(pending):

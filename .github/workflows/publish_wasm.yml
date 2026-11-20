@@ -181,7 +181,7 @@ jobs:
                   path: __main
             # The script only uses the standard library, so the runner's python3 is enough.
             - name: Wait for the package on npm
-              run: python3 __main/.github/scripts/wait-for-published.py npm "@cedar-policy/cedar-wasm=${TAG_NAME#v}" --timeout 600
+              run: python3 __main/.github/scripts/wait-for-published.py npm "@cedar-policy/cedar-wasm=${TAG_NAME#v}" --initial-delay 60 --interval 30 --timeout 600
               env:
                   TAG_NAME: ${{ inputs.tag }}
             - name: Set up Node.js

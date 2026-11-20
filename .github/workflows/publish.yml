@@ -359,7 +359,7 @@ jobs:
                           crates=("cedar-policy-core=$CORE_VERSION" "cedar-policy-formatter=$CORE_VERSION" "cedar-policy=$CORE_VERSION" "cedar-policy-symcc=$SYMCC_VERSION" "cedar-policy-cli=$CLI_VERSION")
                           ;;
                   esac
-                  python3 __main/.github/scripts/wait-for-published.py crates "${crates[@]}" --timeout 600
+                  python3 __main/.github/scripts/wait-for-published.py crates "${crates[@]}" --initial-delay 60 --interval 30 --timeout 600
               env:
                   TARGET: ${{ inputs.target }}
                   CORE_VERSION: ${{ inputs.core_version }}
