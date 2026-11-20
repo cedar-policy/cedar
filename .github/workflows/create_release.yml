@@ -1,0 +1,292 @@
+# Note: This workflow can only be run from the 'main' branch to
+# ensure that the latest version of this workflow is used.
+# The tags are created on the head of the `release_branch` input.
+#
+# Creates the release tags on one commit, then the GitHub releases for the core and symcc tags.
+# The CLI tag gets no release from this workflow: pushing it triggers
+# cedar-policy-cli-release.yml (cargo-dist), which creates the CLI release with its binaries
+# and fails if a release for the tag already exists.
+name: Create release tags and GitHub releases
+on:
+    workflow_dispatch:
+        inputs:
+            release_branch:
+                required: true
+                type: string
+                description: "Branch to tag, at its current head (e.g. release/4.15.x)."
+            core_version:
+                required: false
+                type: string
+                description: "Core version to tag as v<version> (e.g. 4.15.0). Leave empty if core is not released."
+            symcc_version:
+                required: false
+                type: string
+                description: "symcc version to tag as cedar-policy-symcc-v<version> (e.g. 0.9.0). Leave empty if symcc is not released."
+            cli_version:
+                required: false
+                type: string
+                description: "CLI version to tag as cedar-policy-cli-v<version> (e.g. 4.15.0). Leave empty if the CLI is not released."
+            make_latest:
+                required: false
+                type: boolean
+                default: true
+                description: "Mark the core release as latest. Uncheck for a patch to an older minor."
+            force:
+                required: false
+                type: boolean
+                default: false
+                description: "Continue even if CI on the release branch head is not green."
+# Declare default permissions as read only.
+permissions: read-all
+jobs:
+    # Checks everything that can be checked before anything is created, so that a bad input
+    # fails before the approval and without leaving partial state.
+    validate:
+        runs-on: ubuntu-latest
+        outputs:
+            sha: ${{ steps.head.outputs.sha }}
+            tags: ${{ steps.inputs.outputs.tags }}
+        steps:
+            # Check that this workflow was triggered from the 'main' branch.
+            - name: Validate branch
+              if: github.ref != 'refs/heads/main'
+              uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+              with:
+                  script: core.setFailed('This workflow must be triggered from the "main" branch.')
+            - name: Validate inputs
+              id: inputs
+              run: |
+                  SEMVER_PATTERN="^[0-9]+\.[0-9]+\.[0-9]+$"
+                  errors=()
+                  tags=()
+                  if [[ ! "$RELEASE_BRANCH" =~ ^release/ ]]; then
+                      errors+=("release_branch must start with 'release/', got '$RELEASE_BRANCH'.")
+                  fi
+                  if [[ -z "$CORE_VERSION$SYMCC_VERSION$CLI_VERSION" ]]; then
+                      errors+=("At least one of core_version, symcc_version and cli_version is required.")
+                  fi
+                  if [[ -n "$CORE_VERSION" ]]; then
+                      if [[ "$CORE_VERSION" =~ $SEMVER_PATTERN ]]; then tags+=("v$CORE_VERSION"); else errors+=("core_version must match $SEMVER_PATTERN"); fi
+                  fi
+                  # Note the explicit 0, as in publish.yml: the process will need changing once symcc is stable.
+                  if [[ -n "$SYMCC_VERSION" ]]; then
+                      if [[ "$SYMCC_VERSION" =~ ^0\.[0-9]+\.[0-9]+$ ]]; then tags+=("cedar-policy-symcc-v$SYMCC_VERSION"); else errors+=("symcc_version must match ^0\.[0-9]+\.[0-9]+$"); fi
+                  fi
+                  if [[ -n "$CLI_VERSION" ]]; then
+                      if [[ "$CLI_VERSION" =~ $SEMVER_PATTERN ]]; then tags+=("cedar-policy-cli-v$CLI_VERSION"); else errors+=("cli_version must match $SEMVER_PATTERN"); fi
+                  fi
+                  if [[ "$MAKE_LATEST" == "true" && -z "$CORE_VERSION" ]]; then
+                      echo "::notice::make_latest only applies to the core release, and core_version is empty."
+                  fi
+                  if [[ ${#errors[@]} -gt 0 ]]; then
+                      for err in "${errors[@]}"; do
+                          echo "::error::$err"
+                      done
+                      exit 1
+                  fi
+                  echo "tags=${tags[*]}" >> "$GITHUB_OUTPUT"
+              env:
+                  RELEASE_BRANCH: ${{ inputs.release_branch }}
+                  CORE_VERSION: ${{ inputs.core_version }}
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+                  CLI_VERSION: ${{ inputs.cli_version }}
+                  MAKE_LATEST: ${{ inputs.make_latest }}
+            - name: Checkout release branch
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: ${{ inputs.release_branch }}
+            # Every later job uses this commit, so the tags all land on one commit even if the
+            # branch moves while the run waits for approval.
+            - name: Record release branch head
+              id: head
+              run: |
+                  SHA=$(git rev-parse HEAD)
+                  echo "::notice::Tagging $RELEASE_BRANCH at $SHA"
+                  echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+              env:
+                  RELEASE_BRANCH: ${{ inputs.release_branch }}
+            # Main is checked out into a subdirectory for the latest scripts and the changelogs,
+            # which are maintained on 'main' only (release branches have stubs). The sparse
+            # checkout keeps main's Cargo.toml files out, so the version checks below can only
+            # read the release branch.
+            - name: Checkout main (for scripts and changelogs)
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: main
+                  path: __main
+                  sparse-checkout-cone-mode: false
+                  sparse-checkout: |
+                      .github/scripts/
+                      cedar-policy/CHANGELOG.md
+                      cedar-policy-symcc/CHANGELOG.md
+            - name: Set up Python
+              uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+              with:
+                  python-version: ">=3.11" # needs tomllib, in stdlib from 3.11
+            - name: Validate versions against Cargo.toml on the release branch
+              run: |
+                  if [[ -n "$CORE_VERSION" ]]; then python3 __main/.github/scripts/check-crate-version.py cedar-policy-core "$CORE_VERSION"; fi
+                  if [[ -n "$SYMCC_VERSION" ]]; then python3 __main/.github/scripts/check-crate-version.py cedar-policy-symcc "$SYMCC_VERSION"; fi
+                  if [[ -n "$CLI_VERSION" ]]; then python3 __main/.github/scripts/check-crate-version.py cedar-policy-cli "$CLI_VERSION"; fi
+              env:
+                  CORE_VERSION: ${{ inputs.core_version }}
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+                  CLI_VERSION: ${{ inputs.cli_version }}
+            # CI only runs on pull requests, so this checks the head commit of the PR that was
+            # merged to produce the release branch head.
+            - name: Check CI on the release branch head
+              run: |
+                  if [[ "$FORCE" == "true" ]]; then
+                      python3 __main/.github/scripts/release-tags.py check-ci "$SHA" --force
+                  else
+                      python3 __main/.github/scripts/release-tags.py check-ci "$SHA"
+                  fi
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  SHA: ${{ steps.head.outputs.sha }}
+                  FORCE: ${{ inputs.force }}
+            - name: Check existing tags
+              run: |
+                  read -ra tags <<< "$TAGS"
+                  python3 __main/.github/scripts/release-tags.py check-tags "$SHA" "${tags[@]}"
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  SHA: ${{ steps.head.outputs.sha }}
+                  TAGS: ${{ steps.inputs.outputs.tags }}
+            - name: Check changelog sections on main
+              run: |
+                  if [[ -n "$CORE_VERSION" ]]; then python3 __main/.github/scripts/release-tags.py release-notes __main/cedar-policy/CHANGELOG.md "$CORE_VERSION" "" > /dev/null; fi
+                  if [[ -n "$SYMCC_VERSION" ]]; then python3 __main/.github/scripts/release-tags.py release-notes __main/cedar-policy-symcc/CHANGELOG.md "$SYMCC_VERSION" "" > /dev/null; fi
+                  echo "Changelog sections found."
+              env:
+                  CORE_VERSION: ${{ inputs.core_version }}
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+    create-tags:
+        needs: [validate]
+        runs-on: ubuntu-latest
+        environment: release # See https://github.com/cedar-policy/cedar/settings/environments
+        steps:
+            - name: Checkout main (for scripts)
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: main
+                  sparse-checkout: .github/scripts
+                  path: __main
+            # Tags pushed with GITHUB_TOKEN do not trigger other workflows. The CLI tag must
+            # trigger cedar-policy-cli-release.yml and the core tag mirror_release_tags.yml, so
+            # the tags are created with a token for the cedar-policy-automation GitHub App
+            # (also used by mirror_release_tags.yml), limited to this repo and to contents.
+            - name: Generate GitHub App token
+              id: app-token
+              uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+              with:
+                  app-id: ${{ vars.APP_ID }}
+                  private-key: ${{ secrets.APP_PRIVATE_KEY }}
+                  repositories: ${{ github.event.repository.name }}
+                  permission-contents: write
+            - name: Create tags
+              run: |
+                  read -ra tags <<< "$TAGS"
+                  python3 __main/.github/scripts/release-tags.py create-tags "$SHA" "${tags[@]}"
+              env:
+                  GH_TOKEN: ${{ steps.app-token.outputs.token }}
+                  SHA: ${{ needs.validate.outputs.sha }}
+                  TAGS: ${{ needs.validate.outputs.tags }}
+    create-releases:
+        needs: [validate, create-tags]
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write # Create and edit releases
+            actions: read # Find and watch the CLI release run
+        steps:
+            - name: Checkout main (for scripts and changelogs)
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: main
+                  sparse-checkout-cone-mode: false
+                  sparse-checkout: |
+                      .github/scripts/
+                      cedar-policy/CHANGELOG.md
+                      cedar-policy-symcc/CHANGELOG.md
+            # An existing release is left as is, so a re-run does not overwrite edited notes.
+            - name: Create core and symcc releases
+              run: |
+                  create_release() {
+                      local tag="$1" changelog="$2" version="$3" intro="$4" latest="$5"
+                      if gh release view "$tag" > /dev/null 2>&1; then
+                          echo "::notice::A release for $tag already exists; nothing to do for it."
+                          return
+                      fi
+                      python3 .github/scripts/release-tags.py release-notes "$changelog" "$version" "$intro" > "$RUNNER_TEMP/notes-$tag.md"
+                      gh release create "$tag" --verify-tag --title "$tag" --notes-file "$RUNNER_TEMP/notes-$tag.md" --latest="$latest"
+                      echo "Created release $tag (latest: $latest)"
+                  }
+                  if [[ -n "$CORE_VERSION" ]]; then
+                      create_release "v$CORE_VERSION" cedar-policy/CHANGELOG.md "$CORE_VERSION" \
+                          "Release $CORE_VERSION, available on crates.io" "$MAKE_LATEST"
+                  fi
+                  if [[ -n "$SYMCC_VERSION" ]]; then
+                      create_release "cedar-policy-symcc-v$SYMCC_VERSION" cedar-policy-symcc/CHANGELOG.md "$SYMCC_VERSION" \
+                          "Release $SYMCC_VERSION of cedar-policy-symcc, available on crates.io" false
+                  fi
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  CORE_VERSION: ${{ inputs.core_version }}
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+                  MAKE_LATEST: ${{ inputs.make_latest }}
+            # cargo-dist creates the CLI release as latest, which would replace the core release
+            # as latest. Waiting for it lets the next step mark the core release as latest again.
+            - name: Wait for the CLI release
+              if: inputs.cli_version != ''
+              run: |
+                  TAG="cedar-policy-cli-v$CLI_VERSION"
+                  if gh release view "$TAG" > /dev/null 2>&1; then
+                      echo "::notice::A release for $TAG already exists; not waiting for cedar-policy-cli-release.yml."
+                      exit 0
+                  fi
+                  RUN_ID=""
+                  for _ in $(seq 20); do
+                      RUN_ID=$(gh run list --workflow cedar-policy-cli-release.yml --event push --branch "$TAG" --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+                      [[ -n "$RUN_ID" ]] && break
+                      sleep 30
+                  done
+                  if [[ -z "$RUN_ID" ]]; then
+                      echo "::error::No cedar-policy-cli-release.yml run found for $TAG after 10 minutes. Check that the tag push triggered it."
+                      exit 1
+                  fi
+                  URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RUN_ID"
+                  echo "Watching $URL"
+                  if ! gh run watch "$RUN_ID" --exit-status --interval 60 > /dev/null; then
+                      echo "::error::The CLI release run for $TAG failed: $URL"
+                      exit 1
+                  fi
+                  echo "::notice::The CLI release run for $TAG succeeded: $URL"
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  CLI_VERSION: ${{ inputs.cli_version }}
+            - name: Mark the core release as latest
+              if: inputs.core_version != '' && inputs.make_latest
+              run: |
+                  gh release edit "v$CORE_VERSION" --latest
+                  echo "::notice::v$CORE_VERSION is the latest release."
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  CORE_VERSION: ${{ inputs.core_version }}
+            - name: Summary
+              if: always()
+              run: |
+                  {
+                      echo "### Release tags on \`$RELEASE_BRANCH\` at \`$SHA\`"
+                      for tag in $TAGS; do
+                          if gh release view "$tag" > /dev/null 2>&1; then
+                              echo "- \`$tag\`: release $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$tag"
+                          else
+                              echo "- \`$tag\`: tag only, no release"
+                          fi
+                      done
+                  } | tee -a "$GITHUB_STEP_SUMMARY"
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  RELEASE_BRANCH: ${{ inputs.release_branch }}
+                  SHA: ${{ needs.validate.outputs.sha }}
+                  TAGS: ${{ needs.validate.outputs.tags }}
