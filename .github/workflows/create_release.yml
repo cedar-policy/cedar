@@ -47,6 +47,14 @@ jobs:
             sha: ${{ steps.head.outputs.sha }}
             tags: ${{ steps.inputs.outputs.tags }}
         steps:
+            - name: Validate release branch input format
+              run: |
+                  if [[ ! "$RELEASE_BRANCH" =~ ^release/[0-9]+\.[0-9]+\.x$ ]]; then
+                      echo "Invalid release_branch: '$RELEASE_BRANCH'. Expected format: release/<major>.<minor>.x" >&2
+                      exit 1
+                  fi
+              env:
+                  RELEASE_BRANCH: ${{ inputs.release_branch }}
             # Check that this workflow was triggered from the 'main' branch.
             - name: Validate branch
               if: github.ref != 'refs/heads/main'
@@ -97,6 +105,15 @@ jobs:
                   ref: ${{ inputs.release_branch }}
             # Every later job uses this commit, so the tags all land on one commit even if the
             # branch moves while the run waits for approval.
+            - name: Validate release branch format
+              run: |
+                  if [[ ! "$RELEASE_BRANCH" =~ ^release/[0-9]+\.[0-9]+\.x$ ]]; then
+                      echo "::error::Invalid release_branch '$RELEASE_BRANCH'. Expected format: release/<major>.<minor>.x"
+                      exit 1
+                  fi
+              env:
+                  RELEASE_BRANCH: ${{ inputs.release_branch }}
+
             - name: Record release branch head
               id: head
               run: |
