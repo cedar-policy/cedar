@@ -17,7 +17,6 @@ mod isoweek;
 mod time;
 
 pub use self::date::NaiveDate;
-#[allow(deprecated)]
 pub use self::datetime::NaiveDateTime;
 pub(super) use self::isoweek::IsoWeek;
 pub(crate) use self::time::NaiveTime;

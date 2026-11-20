@@ -17,7 +17,6 @@ use core::fmt;
 /// The `YearFlags` stores this information into 4 bits `LWWW`. `L` is the leap year flag, with `1`
 /// for the common year (this simplifies validating an ordinal in `NaiveDate`). `WWW` is a non-zero
 /// `Weekday` of the last day in the preceding year.
-#[allow(unreachable_pub)] // public as an alias for benchmarks only
 #[derive(PartialEq, Eq, Copy, Clone, Hash)]
 pub(super) struct YearFlags(pub(super) u8);
 
@@ -69,8 +68,6 @@ const YEAR_TO_FLAGS: &[YearFlags; 400] = &[
 ];
 
 impl YearFlags {
-    #[allow(unreachable_pub)] // public as an alias for benchmarks only
-    #[doc(hidden)] // for benchmarks only
     #[inline]
     #[must_use]
     pub(super) const fn from_year(year: i32) -> YearFlags {

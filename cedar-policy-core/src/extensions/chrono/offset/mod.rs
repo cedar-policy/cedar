@@ -18,7 +18,7 @@
 //! 4. Constructing `DateTime<Tz>` objects from various offsets
 //!
 //! 1 is used for constructors. 2 is used for the `with_timezone` method of date and time types.
-//! 3 is used for other methods, e.g. `year()` or `format()`, and provided by an associated type
+//! 3 is used for other methods, e.g. `year()`, and provided by an associated type
 //! which implements `Offset` (which then passed to `TimeZone` for actual implementations).
 //! Technically speaking `TimeZone` has a total knowledge about given timescale,
 //! but `Offset` is used as a cache to avoid the repeated conversion
@@ -28,7 +28,6 @@
 use core::fmt;
 
 use crate::extensions::chrono::naive::NaiveDateTime;
-#[allow(deprecated)]
 use crate::extensions::chrono::DateTime;
 
 mod fixed;
@@ -92,8 +91,6 @@ impl<T> MappedLocalTime<T> {
         }
     }
 }
-
-impl<T: fmt::Debug> MappedLocalTime<T> {}
 
 /// The offset from the local time to UTC.
 pub(super) trait Offset: Sized + Clone + fmt::Debug {

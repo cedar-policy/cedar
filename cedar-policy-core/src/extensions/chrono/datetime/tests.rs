@@ -191,7 +191,3 @@ fn test_datetime_is_send_and_copy() {
     // `DateTime` is `Send + Copy` if the offset is.
     _assert_send_copy::<DateTime<Tz>>();
 }
-
-// Some targets, such as `wasm32-wasi`, have a problematic definition of `SystemTime`, such as an
-// `i32` (year 2035 problem), or an `u64` (no values before `UNIX-EPOCH`).
-// See https://github.com/rust-lang/rust/issues/44394.

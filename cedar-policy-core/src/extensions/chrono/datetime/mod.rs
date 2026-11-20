@@ -321,16 +321,6 @@ impl<Tz: TimeZone> fmt::Debug for DateTime<Tz> {
     }
 }
 
-// `fmt::Debug` is hand implemented for the `rkyv::Archive` variant of `DateTime` because
-// deriving a trait recursively does not propagate trait defined associated types with their own
-// constraints:
-// In our case `<<Tz as offset::TimeZone>::Offset as Archive>::Archived`
-// cannot be formatted using `{:?}` because it doesn't implement `Debug`.
-// See below for further discussion:
-// * https://github.com/rust-lang/rust/issues/26925
-// * https://github.com/rkyv/rkyv/issues/333
-// * https://github.com/dtolnay/syn/issues/370
-
 /// Accepts a relaxed form of RFC3339.
 /// A space or a 'T' are accepted as the separator between the date and time
 /// parts.

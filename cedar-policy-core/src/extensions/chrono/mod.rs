@@ -33,16 +33,14 @@
     clippy::nursery,
     clippy::pedantic,
     clippy::restriction,
-    reason = "vendored chrono code is kept as close to upstream as possible"
-)]
-#![allow(
     rust_2018_idioms,
-    missing_debug_implementations,
     private_interfaces,
     private_bounds,
-    reason = "vendored chrono code is kept close to upstream"
+    reason = "vendored chrono code is kept as close to upstream as possible"
 )]
 
+// Cedar: item visibility is narrowed. Only what `cedar-policy-symcc` uses is `pub`; core's
+// `datetime` extension uses the `pub(super)` re-exports below.
 mod time_delta;
 pub(super) use time_delta::TimeDelta;
 
@@ -58,7 +56,6 @@ pub(super) use naive::NaiveTime;
 pub use naive::{NaiveDate, NaiveDateTime};
 
 mod offset;
-#[doc(inline)]
 use offset::FixedOffset;
 pub use offset::Utc;
 

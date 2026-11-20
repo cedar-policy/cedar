@@ -250,13 +250,9 @@ const fn internal_fixed(val: InternalInternal) -> Item<'static> {
     Item::Fixed(Fixed::Internal(InternalFixed { val }))
 }
 
-impl Item<'_> {}
-
 /// An error from the `parse` function.
 #[derive(Debug, Clone, PartialEq, Eq, Copy, Hash)]
 pub struct ParseError(ParseErrorKind);
-
-impl ParseError {}
 
 /// The category of parse error
 #[allow(clippy::manual_non_exhaustive)]
@@ -316,7 +312,6 @@ impl fmt::Display for ParseError {
 // Cedar: implemented unconditionally (upstream: `#[cfg(any(feature = "core-error", feature = "std"))]`)
 // because `cedar-policy-symcc` wraps `ParseError` in a `thiserror` `#[source]`.
 impl Error for ParseError {
-    #[allow(deprecated)]
     fn description(&self) -> &str {
         "parser error, see to_string() for details"
     }
