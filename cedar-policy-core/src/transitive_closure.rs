@@ -25,6 +25,11 @@ mod err;
 pub use err::*;
 use itertools::Itertools;
 
+/// Remaining stack below which the recursive traversals switch to a new segment
+const STACK_RED_ZONE: usize = 64 * 1024;
+/// Size of the stack segments allocated when growing the stack
+const STACK_SEGMENT_SIZE: usize = 1024 * 1024;
+
 /// Trait used to generalize transitive closure computation. This trait should
 /// be implemented for types representing a node in the hierarchy (e.g., the
 /// entity hierarchy) where we need to compute the transitive closure of the
@@ -245,17 +250,19 @@ fn cyclic_tc_internal<K, V>(
             let mut maybe_forward_edge = true;
             if !order_visited.contains_key(parent_id) {
                 maybe_forward_edge = false;
-                cyclic_tc_internal(
-                    parent_id,
-                    nodes,
-                    order_visited,
-                    root,
-                    vstack,
-                    cstack,
-                    component,
-                    comp_succ,
-                    comp_elts,
-                );
+                stacker::maybe_grow(STACK_RED_ZONE, STACK_SEGMENT_SIZE, || {
+                    cyclic_tc_internal(
+                        parent_id,
+                        nodes,
+                        order_visited,
+                        root,
+                        vstack,
+                        cstack,
+                        component,
+                        comp_succ,
+                        comp_elts,
+                    )
+                });
             }
             match component.get(parent_id) {
                 None => {
@@ -377,7 +384,9 @@ where
     };
     for ancestor_id in out_edges {
         if seen.insert(ancestor_id.clone()) {
-            add_ancestors(&ancestor_id, nodes, seen);
+            stacker::maybe_grow(STACK_RED_ZONE, STACK_SEGMENT_SIZE, || {
+                add_ancestors(&ancestor_id, nodes, seen)
+            });
         }
         // Only skip reading out_edges if we already explored this exact
         // ancestor in a previous iteration of this loop.
@@ -1171,6 +1180,40 @@ mod tests {
                 (fresh.uid().clone(), fresh)
             })
             .collect()
+    }
+
+    fn chain(n: usize) -> HashMap<EntityUID, Entity> {
+        (0..=n)
+            .map(|i| {
+                let uid = EntityUID::with_eid(&i.to_string());
+                let mut e = Entity::with_uid(uid.clone());
+                if i < n {
+                    e.add_parent(EntityUID::with_eid(&(i + 1).to_string()));
+                }
+                (uid, e)
+            })
+            .collect()
+    }
+
+    /// A parent chain deeper than the thread's stack used to overflow it
+    #[test]
+    fn deep_chain_does_not_overflow_stack() {
+        let n = 200;
+        std::thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || {
+                let mut entities = chain(n);
+                compute_tc(&mut entities, true).unwrap();
+                assert_eq!(entities[&EntityUID::with_eid("0")].ancestors().count(), n);
+
+                let mut entities = chain(n);
+                let all = entities.keys().cloned().collect();
+                repair_tc(&all, &mut entities, true).unwrap();
+                assert_eq!(entities[&EntityUID::with_eid("0")].ancestors().count(), n);
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     /// Use `cyclic_tc` as a test oracle: verify that `cyclic_tc` produces
