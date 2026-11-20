@@ -1459,6 +1459,42 @@ mod tests {
         }
     }
 
+    /// The verified `repair_tc`, which indexes only the nodes to fix and the
+    /// targets of their rows, agrees with a repair on the whole graph: all
+    /// nodes fixed, and one or two nodes reset in the closure.
+    #[cfg(feature = "verified-core")]
+    #[test]
+    fn verified_repair_restricted_matches_full() {
+        for (name, base) in dag_test_graphs().iter().chain(&cyclic_test_graphs()) {
+            let mut closure = fresh_copy(base);
+            cyclic_tc(&mut closure);
+            let keys: Vec<&EntityUID> = base.keys().collect();
+            let mut inputs = vec![(fresh_copy(base), base.keys().cloned().collect())];
+            for (i, a) in keys.iter().enumerate() {
+                for b in &keys[i..] {
+                    let mut input = closure.clone();
+                    input.get_mut(*a).unwrap().reset_edges();
+                    input.get_mut(*b).unwrap().reset_edges();
+                    inputs.push((input, HashSet::from([(*a).clone(), (*b).clone()])));
+                }
+            }
+            for (input, fix) in inputs {
+                for enforce_dag in [true, false] {
+                    let mut restricted = input.clone();
+                    let mut full = input.clone();
+                    let res = verified::repair_tc(&fix, &mut restricted, enforce_dag);
+                    let res_full = verified::repair_full(&fix, &mut full, enforce_dag);
+                    assert_eq!(res, res_full, "'{name}', fix {fix:?}");
+                    assert_eq!(
+                        snapshot(&restricted),
+                        snapshot(&full),
+                        "'{name}', fix {fix:?}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn self_loop_with_grandchild() {
         let mut a = Entity::with_uid(EntityUID::with_eid("A"));

@@ -21,10 +21,11 @@
 //! every target is a node (`< g.len()`). The specifications are in
 //! [`graph`]; the theorem of [`transitive_closure`] states that its result
 //! has an edge from `u` to `v` iff `g` has a path of length at least 1 from
-//! `u` to `v`. [`repair_closure`] computes the same closure in place, from a
-//! graph whose rows outside a given set are already closed, when the graph
-//! has no cycle. [`first_self_loop`] is the DAG check on the result: on the
-//! closure, it reports a node iff the graph has a cycle.
+//! `u` to `v` and no edge from `u` to `v`, and that it returns the first node
+//! on a cycle, if any. [`repair_closure`] computes the closure in place
+//! (edges of `g` included), from a graph whose rows outside a given set are
+//! already closed, when the graph has no cycle, and returns the first node
+//! of the set whose row contains itself, which implies a cycle.
 //!
 //! The Verus annotations are `cfg_attr(verus_keep_ghost, …)` attributes and
 //! `proof!` blocks; without Verus they are erased, so Cargo sees plain Rust.
@@ -65,5 +66,4 @@ pub mod graph;
 pub mod scc;
 pub mod tc;
 
-pub use dag::first_self_loop;
 pub use tc::{repair_closure, transitive_closure};

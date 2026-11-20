@@ -123,6 +123,10 @@ harness = false
 name = "from_ast"
 harness = false
 
+[[bench]]
+name = "transitive_closure"
+harness = false
+
 [package.metadata.docs.rs]
 features = ["experimental"]
 rustdoc-args = ["--cfg", "docsrs"]

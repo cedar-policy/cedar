@@ -903,7 +903,7 @@ pub(crate) fn filled(n: usize, x: usize) -> Vec<usize> {
         r.len() == n,
         forall|i: int| 0 <= i < n ==> !r@[i],
 ))]
-fn filled_false(n: usize) -> Vec<bool> {
+pub(crate) fn filled_false(n: usize) -> Vec<bool> {
     let mut r: Vec<bool> = Vec::with_capacity(n);
     #[cfg_attr(verus_keep_ghost, verus_spec(
         invariant
