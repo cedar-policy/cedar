@@ -25,12 +25,14 @@ use crate::entities::json::{
 };
 use crate::expr_builder::{ExprBuilder, ExprBuilderInfallibleBuild};
 use crate::extensions::{ExtStyles, Extensions};
-use crate::jsonvalue::JsonValueWithNoDuplicateKeys;
 use crate::parser::{cst, err::ParseErrors, Loc, Node};
 use crate::FromNormalizedStr;
 use itertools::Itertools;
 use nonempty::NonEmpty;
-use serde::{de::Visitor, Deserialize, Serialize};
+use serde::de::{
+    value::MapAccessDeserializer, DeserializeSeed, IntoDeserializer, MapAccess, Visitor,
+};
+use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use smol_str::{SmolStr, ToSmolStr};
 use std::collections::{btree_map, BTreeMap, HashMap};
@@ -73,37 +75,72 @@ impl<'de> Deserialize<'de> for Expr {
             where
                 A: serde::de::MapAccess<'de>,
             {
-                let (k, v): (SmolStr, JsonValueWithNoDuplicateKeys) = match map.next_entry()? {
-                    None => {
-                        return Err(serde::de::Error::custom(
-                            "empty map is not a valid expression",
-                        ))
-                    }
-                    Some((k, v)) => (k, v),
+                // Get the key for the first map entry to determine if it's a known extension function call.
+                // At the same time, this function gives us a view of the map containing just this key and
+                // its value (i.e., `{ k: v }`) so that we can parse without copying the whole JSON object.
+                let Some((k, obj)) = FirstEntryMap::new(&mut map)? else {
+                    return Err(serde::de::Error::custom(
+                        "empty map is not a valid expression",
+                    ));
                 };
-                match map.next_key()? {
-                    None => (),
-                    Some(k2) => {
-                        let k2: SmolStr = k2;
-                        return Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")));
-                    }
-                };
-                if ExtStyles::is_known_extension_func_str(&k) {
+
+                let expr = if ExtStyles::is_known_extension_func_str(&k) {
                     // `k` is the name of an extension function or method. We assume that
                     // no such keys are valid keys for `ExprNoExt`, so we must parse as an
                     // `ExtFuncCall`.
-                    let obj = serde_json::json!({ k: v });
-                    let extfunccall =
-                        serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
-                    Ok(Expr::ExtFuncCall(extfunccall))
+                    Expr::ExtFuncCall(ExtFuncCall::deserialize(MapAccessDeserializer::new(obj))?)
                 } else {
                     // not a valid extension function or method, so we expect it
                     // to work for `ExprNoExt`.
-                    let obj = serde_json::json!({ k: v });
-                    let exprnoext =
-                        serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
-                    Ok(Expr::ExprNoExt(exprnoext))
+                    Expr::ExprNoExt(ExprNoExt::deserialize(MapAccessDeserializer::new(obj))?)
+                };
+                // Check for any other keys against `map` (`obj` would report
+                // no further keys since it only exposed the first entry)
+                match map.next_key()? {
+                    None => Ok(expr),
+                    Some(k2) => {
+                        let k2: SmolStr = k2;
+                        Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")))
+                    }
                 }
+            }
+        }
+
+        /// A view into a map exposing only the first entry.
+        struct FirstEntryMap<'a, A> {
+            key: Option<SmolStr>,
+            map: &'a mut A,
+        }
+        impl<'a, A> FirstEntryMap<'a, A> {
+            /// Construct a view into `map` exposing only its first entry, and
+            /// return that entry's key with it.
+            fn new<'de>(map: &'a mut A) -> Result<Option<(SmolStr, Self)>, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let k: Option<SmolStr> = map.next_key()?;
+                Ok(k.map(|k| {
+                    let key = Some(k.clone());
+                    (k, Self { key, map })
+                }))
+            }
+        }
+        impl<'de, A: MapAccess<'de>> MapAccess<'de> for FirstEntryMap<'_, A> {
+            type Error = A::Error;
+            fn next_key_seed<K: DeserializeSeed<'de>>(
+                &mut self,
+                seed: K,
+            ) -> Result<Option<K::Value>, A::Error> {
+                self.key
+                    .take()
+                    .map(|k| seed.deserialize(k.as_str().into_deserializer()))
+                    .transpose()
+            }
+            fn next_value_seed<V: DeserializeSeed<'de>>(
+                &mut self,
+                seed: V,
+            ) -> Result<V::Value, A::Error> {
+                self.map.next_value_seed(seed)
             }
         }
 
