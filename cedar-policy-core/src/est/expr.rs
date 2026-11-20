@@ -96,10 +96,9 @@ impl<'de> Deserialize<'de> for Expr {
                 };
                 // Check for any other keys against `map` (`obj` would report
                 // no further keys since it only exposed the first entry)
-                match map.next_key()? {
+                match map.next_key::<SmolStr>()? {
                     None => Ok(expr),
                     Some(k2) => {
-                        let k2: SmolStr = k2;
                         Err(serde::de::Error::custom(format!("JSON object representing an `Expr` should have only one key, but found two keys: `{k}` and `{k2}`")))
                     }
                 }
