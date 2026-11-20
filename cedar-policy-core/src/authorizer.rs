@@ -34,10 +34,12 @@ extern crate tsify;
 
 mod err;
 mod partial_response;
+mod scope;
 pub use err::{AuthorizationError, ConcretizationError, ReauthorizationError};
 
 pub use partial_response::ErrorState;
 pub use partial_response::PartialResponse;
+use scope::RequestScope;
 
 /// Authorizer
 #[derive(Clone)] // `Debug` implemented manually below
@@ -74,7 +76,93 @@ impl Authorizer {
     /// The language spec and formal model give a precise definition of how this is
     /// computed.
     pub fn is_authorized(&self, q: Request, pset: &PolicySet, entities: &Entities) -> Response {
-        self.is_authorized_core(q, pset, entities).concretize()
+        let eval = Evaluator::new(q.clone(), entities, self.extensions);
+        match self.is_authorized_concrete(&eval, &q, pset, entities) {
+            Some(response) => response,
+            // Some policy evaluated to a residual. `PartialResponse` defines
+            // the response in that case, so evaluate the whole request again
+            // on that path.
+            None => self
+                .is_authorized_core_internal(&eval, q, pset)
+                .concretize(),
+        }
+    }
+
+    /// Compute the [`Response`] for the request `q` without building a
+    /// [`PartialResponse`]: only the satisfied policies and the evaluation
+    /// errors are recorded, and nothing is recorded for a policy that
+    /// evaluates to `false`. `eval` must be an evaluator for `q` and
+    /// `entities`.
+    ///
+    /// Returns `None` if any policy evaluates to a residual. Otherwise the
+    /// result is equal to concretizing the [`PartialResponse`] for the same
+    /// request. In particular, the errors are in the order of
+    /// [`PolicySet::policies`], which is the order in which
+    /// [`Authorizer::is_authorized_core`] collects them.
+    ///
+    /// A policy whose scope `q` cannot match evaluates to `false` without an
+    /// error. When the principal, action and resource of `q` are concrete,
+    /// such a policy is recognized from its scope constraints and is not
+    /// evaluated. When `entities` also resolves the principal and the action,
+    /// only the candidates that the action index of `pset` yields for the
+    /// action are visited at all.
+    fn is_authorized_concrete(
+        &self,
+        eval: &Evaluator<'_>,
+        q: &Request,
+        pset: &PolicySet,
+        entities: &Entities,
+    ) -> Option<Response> {
+        let scope = RequestScope::new(q, entities);
+        let policies = match scope.as_ref().and_then(RequestScope::action_if_resolved) {
+            Some((action, action_entity)) => {
+                Either::Left(pset.action_index().candidates(action, action_entity))
+            }
+            None => Either::Right(pset.policies()),
+        };
+        let mut satisfied_permits = vec![];
+        let mut satisfied_forbids = vec![];
+        let mut errors = vec![];
+
+        for p in policies {
+            if scope.as_ref().is_some_and(|scope| scope.excludes(p)) {
+                continue;
+            }
+            match eval.partial_evaluate(p) {
+                Ok(Either::Left(true)) => match p.effect() {
+                    Effect::Permit => satisfied_permits.push(p.id()),
+                    Effect::Forbid => satisfied_forbids.push(p.id()),
+                },
+                Ok(Either::Left(false)) => {}
+                Ok(Either::Right(_)) => return None,
+                Err(error) => {
+                    errors.push(AuthorizationError::PolicyEvaluationError {
+                        id: p.id().clone(),
+                        error,
+                    });
+                    match self.error_handling {
+                        // the erroring policy is not satisfied
+                        ErrorHandling::Skip => {}
+                    }
+                }
+            }
+        }
+
+        // A satisfied forbid overrides every permit, and then the forbids are
+        // the reason for the decision. With no satisfied policy the request
+        // is denied for no reason.
+        let (decision, reason) = if !satisfied_forbids.is_empty() {
+            (Decision::Deny, satisfied_forbids)
+        } else if satisfied_permits.is_empty() {
+            (Decision::Deny, vec![])
+        } else {
+            (Decision::Allow, satisfied_permits)
+        };
+        Some(Response::new(
+            decision,
+            reason.into_iter().cloned().collect(),
+            errors,
+        ))
     }
 
     /// Returns an authorization response for `q` with respect to the given `Slice`.
@@ -705,4 +793,473 @@ pub enum Decision {
     /// that no decision could be safely reached; for example, errors parsing
     /// the policies.
     Deny,
+}
+
+/// Tests that [`Authorizer::is_authorized`] returns exactly the [`Response`]
+/// that concretizing the [`PartialResponse`] for the same request returns.
+#[cfg(test)]
+mod differential_tests {
+    use super::*;
+    use crate::entities::{EntityJsonParser, NoEntitiesSchema, TCComputation};
+    use crate::parser;
+    use cool_asserts::assert_matches;
+    use std::collections::HashMap;
+
+    /// Policies with every kind of scope constraint, each matching some of
+    /// the requests of [`requests`] and not others; forbids; policies whose
+    /// `when` clause errors; and three templates.
+    const POLICIES: &str = r#"
+        permit(principal, action, resource);
+        permit(principal == User::"alice", action, resource);
+        permit(principal == User::"bob", action, resource);
+        permit(principal in Group::"admins", action, resource);
+        permit(principal in Group::"staff", action, resource);
+        permit(principal in User::"ghost", action, resource);
+        permit(principal is User, action, resource);
+        permit(principal is Service, action, resource);
+        permit(principal is User in Group::"admins", action, resource);
+        permit(principal is Service in Group::"admins", action, resource);
+        permit(principal, action == Action::"view", resource);
+        permit(principal, action == Action::"edit", resource);
+        permit(principal, action in [Action::"view", Action::"edit"], resource);
+        permit(principal, action in [Action::"readOnly"], resource);
+        permit(principal, action in Action::"readOnly", resource);
+        permit(principal, action in [], resource);
+        permit(principal, action == Action::"absent", resource);
+        permit(principal, action in [Action::"absent"], resource);
+        permit(principal, action, resource == Doc::"d1");
+        permit(principal, action, resource in Folder::"f1");
+        permit(principal, action, resource in Folder::"f2");
+        permit(principal, action, resource is Doc);
+        permit(principal, action, resource is Doc in Folder::"f2");
+        permit(principal == User::"alice", action == Action::"view", resource == Doc::"d1");
+        permit(principal == User::"alice", action == Action::"edit", resource == Doc::"d2")
+            when { context.missing };
+        forbid(principal, action == Action::"delete", resource);
+        forbid(principal == User::"mallory", action, resource);
+        forbid(principal, action, resource) when { resource.locked };
+        forbid(principal, action == Action::"edit", resource) unless { context.mfa };
+        permit(principal, action, resource is Folder) when { context.missing == 1 };
+        permit(principal == User::"bob", action, resource) when { 1 + "a" == 2 };
+        permit(principal, action == Action::"edit", resource) when { principal.level > 3 };
+        permit(principal == ?principal, action, resource in ?resource);
+        forbid(principal in ?principal, action == Action::"edit", resource == ?resource);
+        permit(principal == ?principal, action in [Action::"readOnly"], resource)
+            when { resource.locked };
+    "#;
+
+    /// `User::"ghost"`, `Action::"absent"` and `Doc::"absent"` are used in
+    /// requests but are not in the store. `Action::"view"` is in
+    /// `Action::"readOnly"`.
+    const ENTITIES: &str = r#"[
+        {"uid": {"type": "User", "id": "alice"}, "attrs": {"level": 5},
+         "parents": [{"type": "Group", "id": "admins"}]},
+        {"uid": {"type": "User", "id": "bob"}, "attrs": {"level": 1},
+         "parents": [{"type": "Group", "id": "staff"}]},
+        {"uid": {"type": "User", "id": "mallory"}, "attrs": {}, "parents": []},
+        {"uid": {"type": "Service", "id": "svc"}, "attrs": {},
+         "parents": [{"type": "Group", "id": "admins"}]},
+        {"uid": {"type": "Group", "id": "admins"}, "attrs": {},
+         "parents": [{"type": "Group", "id": "staff"}]},
+        {"uid": {"type": "Group", "id": "staff"}, "attrs": {}, "parents": []},
+        {"uid": {"type": "Doc", "id": "d1"}, "attrs": {"locked": false},
+         "parents": [{"type": "Folder", "id": "f1"}]},
+        {"uid": {"type": "Doc", "id": "d2"}, "attrs": {"locked": true},
+         "parents": [{"type": "Folder", "id": "f2"}]},
+        {"uid": {"type": "Doc", "id": "d3"}, "attrs": {}, "parents": []},
+        {"uid": {"type": "Folder", "id": "f1"}, "attrs": {"locked": false},
+         "parents": [{"type": "Folder", "id": "f2"}]},
+        {"uid": {"type": "Folder", "id": "f2"}, "attrs": {"locked": false}, "parents": []},
+        {"uid": {"type": "Action", "id": "view"}, "attrs": {},
+         "parents": [{"type": "Action", "id": "readOnly"}]},
+        {"uid": {"type": "Action", "id": "edit"}, "attrs": {}, "parents": []},
+        {"uid": {"type": "Action", "id": "delete"}, "attrs": {}, "parents": []},
+        {"uid": {"type": "Action", "id": "readOnly"}, "attrs": {}, "parents": []}
+    ]"#;
+
+    pub(super) fn uid(ty: &str, eid: &str) -> EntityUID {
+        EntityUID::with_eid_and_type(ty, eid).expect("valid entity type")
+    }
+
+    /// The policies of [`POLICIES`], with each of the three templates linked
+    /// four times, to different principals and resources.
+    pub(super) fn policy_set() -> PolicySet {
+        let mut pset = parser::parse_policyset(POLICIES).expect("policies parse");
+        let templates: Vec<(PolicyID, Vec<SlotId>)> = pset
+            .templates()
+            .map(|t| (t.id().clone(), t.slots().map(|slot| slot.id).collect()))
+            .collect();
+        assert_eq!(templates.len(), 3);
+        let bindings = [
+            (uid("User", "alice"), uid("Folder", "f2")),
+            (uid("User", "bob"), uid("Folder", "f1")),
+            (uid("Group", "staff"), uid("Doc", "d1")),
+            (uid("Group", "admins"), uid("Doc", "d3")),
+        ];
+        for (t, (id, slots)) in templates.iter().enumerate() {
+            for (l, (principal, resource)) in bindings.iter().enumerate() {
+                let values: HashMap<SlotId, EntityUID> = slots
+                    .iter()
+                    .map(|slot| {
+                        if slot.is_principal() {
+                            (*slot, principal.clone())
+                        } else {
+                            (*slot, resource.clone())
+                        }
+                    })
+                    .collect();
+                pset.link(
+                    id.clone(),
+                    PolicyID::from_string(format!("link-{t}-{l}")),
+                    values,
+                )
+                .expect("linking succeeds");
+            }
+        }
+        pset
+    }
+
+    pub(super) fn entities() -> Entities {
+        EntityJsonParser::new(
+            None::<&NoEntitiesSchema>,
+            Extensions::all_available(),
+            TCComputation::ComputeNow,
+        )
+        .from_json_str(ENTITIES)
+        .expect("entities parse")
+    }
+
+    /// Every combination of six principals, five actions, six resources and
+    /// three contexts.
+    pub(super) fn requests() -> Vec<Request> {
+        let principals = [
+            uid("User", "alice"),
+            uid("User", "bob"),
+            uid("User", "mallory"),
+            uid("User", "ghost"),
+            uid("Service", "svc"),
+            uid("Group", "admins"),
+        ];
+        let actions = [
+            uid("Action", "view"),
+            uid("Action", "edit"),
+            uid("Action", "delete"),
+            uid("Action", "readOnly"),
+            uid("Action", "absent"),
+        ];
+        let resources = [
+            uid("Doc", "d1"),
+            uid("Doc", "d2"),
+            uid("Doc", "d3"),
+            uid("Doc", "absent"),
+            uid("Folder", "f1"),
+            uid("Folder", "f2"),
+        ];
+        let contexts = [r#"{"mfa": true}"#, r#"{"mfa": false}"#, "{}"];
+        let mut requests = vec![];
+        for principal in &principals {
+            for action in &actions {
+                for resource in &resources {
+                    for context in contexts {
+                        requests.push(
+                            Request::new(
+                                (principal.clone(), None),
+                                (action.clone(), None),
+                                (resource.clone(), None),
+                                Context::from_json_str(context).expect("context parses"),
+                                None::<&RequestSchemaAllPass>,
+                                Extensions::all_available(),
+                            )
+                            .expect("request is valid"),
+                        );
+                    }
+                }
+            }
+        }
+        requests
+    }
+
+    /// Assert that `is_authorized` returns what concretizing the
+    /// `PartialResponse` returns for `q`, and return that response.
+    #[track_caller]
+    fn assert_agrees(q: &Request, pset: &PolicySet, entities: &Entities) -> Response {
+        let a = Authorizer::new();
+        let direct = a.is_authorized(q.clone(), pset, entities);
+        let reference = a.is_authorized_core(q.clone(), pset, entities).concretize();
+        assert_eq!(direct, reference, "responses differ for {q}");
+        direct
+    }
+
+    #[test]
+    fn agrees_with_partial_response() {
+        let pset = policy_set();
+        let entities = entities();
+        let (mut allows, mut forbidden, mut with_errors) = (0, 0, 0);
+        let mut most_errors = 0;
+        for q in requests() {
+            let response = assert_agrees(&q, &pset, &entities);
+            match response.decision {
+                Decision::Allow => allows += 1,
+                Decision::Deny => {
+                    assert!(
+                        !response.diagnostics.reason.is_empty(),
+                        "the first policy permits every request, so only a forbid denies {q}"
+                    );
+                    forbidden += 1;
+                }
+            }
+            with_errors += usize::from(!response.diagnostics.errors.is_empty());
+            most_errors = most_errors.max(response.diagnostics.errors.len());
+        }
+        // the requests exercise each kind of response
+        assert!(allows > 0 && forbidden > 0 && with_errors > 0);
+        assert!(
+            most_errors >= 3,
+            "some request has several erroring policies"
+        );
+    }
+
+    #[test]
+    fn agrees_when_no_policy_is_satisfied() {
+        let pset = parser::parse_policyset(
+            r#"
+            permit(principal == User::"alice", action == Action::"view", resource);
+            permit(principal, action, resource) when { context.missing };
+            forbid(principal, action, resource) when { resource.locked };
+        "#,
+        )
+        .expect("policies parse");
+        let entities = entities();
+        let mut default_denies = 0;
+        for q in requests() {
+            let response = assert_agrees(&q, &pset, &entities);
+            default_denies += usize::from(
+                response.decision == Decision::Deny && response.diagnostics.reason.is_empty(),
+            );
+        }
+        assert!(default_denies > 0);
+
+        let q = requests().swap_remove(0);
+        let response = assert_agrees(&q, &PolicySet::new(), &entities);
+        assert_eq!(response.decision, Decision::Deny);
+    }
+
+    #[test]
+    fn errors_are_in_policy_order() {
+        let pset = parser::parse_policyset(
+            r#"
+            permit(principal, action, resource) when { context.a };
+            forbid(principal, action, resource) when { context.b };
+            permit(principal, action, resource);
+            forbid(principal, action, resource) when { context.c };
+            permit(principal, action, resource) when { context.d };
+        "#,
+        )
+        .expect("policies parse");
+        let q = requests().swap_remove(0);
+        let response = assert_agrees(&q, &pset, &entities());
+        assert_eq!(response.decision, Decision::Allow);
+        assert_matches!(
+            response.diagnostics.errors.as_slice(),
+            [
+                AuthorizationError::PolicyEvaluationError { id: id0, .. },
+                AuthorizationError::PolicyEvaluationError { id: id1, .. },
+                AuthorizationError::PolicyEvaluationError { id: id3, .. },
+                AuthorizationError::PolicyEvaluationError { id: id4, .. },
+            ] => {
+                assert_eq!(id0, &PolicyID::from_string("policy0"));
+                assert_eq!(id1, &PolicyID::from_string("policy1"));
+                assert_eq!(id3, &PolicyID::from_string("policy3"));
+                assert_eq!(id4, &PolicyID::from_string("policy4"));
+            }
+        );
+    }
+
+    /// After each method that changes a policy set, the response follows the
+    /// change. A clone taken before the changes still answers for the earlier
+    /// policies, and a clone taken after them for the later ones.
+    #[test]
+    fn agrees_after_policy_set_changes() {
+        let entities = entities();
+        let requests = requests();
+        let view = requests.first().expect("requests is not empty");
+        assert_eq!(view.action().uid(), Some(&uid("Action", "view")));
+        let decision = |pset: &PolicySet| -> Decision {
+            for q in requests.iter().step_by(5) {
+                assert_agrees(q, pset, &entities);
+            }
+            assert_agrees(view, pset, &entities).decision
+        };
+        let id = |id: &str| PolicyID::from_string(id);
+        let forbid_view = |id: PolicyID| {
+            parser::parse_policy(
+                Some(id),
+                r#"forbid(principal, action == Action::"view", resource);"#,
+            )
+            .expect("policy parses")
+        };
+
+        let mut pset = policy_set();
+        assert_eq!(decision(&pset), Decision::Allow);
+        let original = pset.clone();
+
+        pset.add_static(forbid_view(id("forbid-view")))
+            .expect("fresh policy id");
+        assert_eq!(decision(&pset), Decision::Deny);
+        pset.remove_static(&id("forbid-view"))
+            .expect("policy is in the set");
+        assert_eq!(decision(&pset), Decision::Allow);
+
+        pset.add(forbid_view(id("forbid-view")).into())
+            .expect("fresh policy id");
+        assert_eq!(decision(&pset), Decision::Deny);
+        pset.remove_static(&id("forbid-view"))
+            .expect("policy is in the set");
+
+        pset.add_template(
+            parser::parse_policy_or_template(
+                Some(id("forbid-template")),
+                r#"forbid(principal == ?principal, action in [Action::"readOnly"], resource);"#,
+            )
+            .expect("template parses"),
+        )
+        .expect("fresh template id");
+        assert_eq!(decision(&pset), Decision::Allow);
+        pset.link(
+            id("forbid-template"),
+            id("forbid-link"),
+            HashMap::from([(SlotId::principal(), uid("User", "alice"))]),
+        )
+        .expect("linking succeeds");
+        assert_eq!(decision(&pset), Decision::Deny);
+        pset.unlink(&id("forbid-link")).expect("link is in the set");
+        assert_eq!(decision(&pset), Decision::Allow);
+        pset.remove_template(&id("forbid-template"))
+            .expect("template has no links");
+        assert_eq!(decision(&pset), Decision::Allow);
+
+        let other =
+            PolicySet::try_from_iter([forbid_view(id("forbid-view")).into()]).expect("one policy");
+        pset.merge_policyset(&other, false)
+            .expect("no policy id in common");
+        assert_eq!(decision(&pset), Decision::Deny);
+
+        assert_eq!(decision(&original), Decision::Allow);
+        assert_eq!(decision(&pset.clone()), Decision::Deny);
+    }
+
+    /// A policy that failed to parse is evaluated, and reports its error,
+    /// whatever the request. A policy with an action constraint that failed
+    /// to parse reports its error unless its principal constraint is `false`.
+    #[cfg(feature = "tolerant-ast")]
+    #[test]
+    fn agrees_on_policies_that_failed_to_parse() {
+        let id = |id: &str| PolicyID::from_string(id);
+        let mut pset = policy_set();
+        pset.add_template(Template::error(id("unparsable"), None))
+            .expect("fresh template id");
+        pset.add_template(Template::new(
+            id("bad-action"),
+            None,
+            Annotations::new(),
+            Effect::Permit,
+            PrincipalConstraint::is_eq(Arc::new(uid("User", "bob"))),
+            ActionConstraint::ErrorConstraint,
+            ResourceConstraint::any(),
+            None,
+        ))
+        .expect("fresh template id");
+        for template in ["unparsable", "bad-action"] {
+            pset.link(
+                id(template),
+                id(&format!("{template}-link")),
+                HashMap::new(),
+            )
+            .expect("no slots to bind");
+        }
+
+        let entities = entities();
+        let errors_of = |principal: &str| -> usize {
+            let mut errors = 0;
+            for q in requests() {
+                if q.principal().uid() == Some(&uid("User", principal)) {
+                    let response = assert_agrees(&q, &pset, &entities);
+                    errors += response
+                        .diagnostics
+                        .errors
+                        .iter()
+                        .filter(|AuthorizationError::PolicyEvaluationError { id, .. }| {
+                            id.to_string().ends_with("-link")
+                        })
+                        .count();
+                }
+            }
+            errors
+        };
+        // 90 requests per principal: both policies error for bob, and only
+        // the unparsable one errors for alice
+        assert_eq!(errors_of("bob"), 180);
+        assert_eq!(errors_of("alice"), 90);
+    }
+
+    /// A policy that evaluates to a residual sends the whole request to the
+    /// `PartialResponse` path. That path reports the errors of residual
+    /// policies in the iteration order of a `HashMap`, which changes from one
+    /// call to the next, so this test compares the errors in policy ID order.
+    #[cfg(feature = "partial-eval")]
+    #[test]
+    fn agrees_on_residuals() {
+        #[track_caller]
+        fn assert_agrees_in_any_error_order(q: &Request, pset: &PolicySet, entities: &Entities) {
+            let sorted = |mut response: Response| {
+                response.diagnostics.errors.sort_by_key(
+                    |AuthorizationError::PolicyEvaluationError { id, .. }| id.to_string(),
+                );
+                response
+            };
+            let a = Authorizer::new();
+            let direct = a.is_authorized(q.clone(), pset, entities);
+            let reference = a.is_authorized_core(q.clone(), pset, entities).concretize();
+            assert_eq!(
+                sorted(direct),
+                sorted(reference),
+                "responses differ for {q}"
+            );
+        }
+
+        let pset = policy_set();
+        let concrete = entities();
+        let partial = entities().partial();
+        let unknown_context = Context::from_expr(
+            RestrictedExpr::record([(
+                "mfa".into(),
+                RestrictedExpr::unknown(Unknown::new_untyped("mfa")),
+            )])
+            .expect("no duplicate keys")
+            .as_borrowed(),
+            Extensions::all_available(),
+        )
+        .expect("context is a record");
+        for q in requests().into_iter().step_by(7) {
+            // an entity that a partial store does not have is unknown
+            assert_agrees_in_any_error_order(&q, &pset, &partial);
+            // unknown context attribute
+            let q_context = Request::new_unchecked(
+                q.principal().clone(),
+                q.action().clone(),
+                q.resource().clone(),
+                Some(unknown_context.clone()),
+            );
+            assert_agrees_in_any_error_order(&q_context, &pset, &concrete);
+            assert_agrees_in_any_error_order(&q_context, &pset, &partial);
+            // unknown principal and unknown context
+            let q_unknown = Request::new_unchecked(
+                EntityUIDEntry::unknown(),
+                q.action().clone(),
+                q.resource().clone(),
+                None,
+            );
+            assert_agrees_in_any_error_order(&q_unknown, &pset, &concrete);
+        }
+    }
 }

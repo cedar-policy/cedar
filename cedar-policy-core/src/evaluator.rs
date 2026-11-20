@@ -1254,6 +1254,14 @@ pub(crate) fn stack_size_check() -> Result<()> {
     Ok(())
 }
 
+/// Is there enough stack left for [`stack_size_check`] to succeed after
+/// `margin` more bytes of it are in use?
+pub(crate) fn stack_has_margin(margin: usize) -> bool {
+    // As in `stack_size_check`, assume there's enough space if we cannot
+    // determine it with `remaining_stack`
+    stacker::remaining_stack().is_none_or(|remaining| remaining >= REQUIRED_STACK_SPACE + margin)
+}
+
 #[expect(clippy::panic, clippy::cognitive_complexity, reason = "Unit Test Code")]
 #[cfg(test)]
 pub(crate) mod test {
