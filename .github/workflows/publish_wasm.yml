@@ -165,3 +165,49 @@ jobs:
               working-directory: ./cedar-wasm/pkg/
               env:
                   NPM_TAG: ${{ needs.compute-values.outputs.npm_tag }}
+
+    # After a successful publish, check that the package is on npm, that it installs, and that the
+    # installed module loads and reports the published version. This job uses no environment, so
+    # re-running it needs no approval.
+    verify-npm:
+        needs: [publish-npm]
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout main (for scripts)
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: main
+                  sparse-checkout: .github/scripts
+                  path: __main
+            # The script only uses the standard library, so the runner's python3 is enough.
+            - name: Wait for the package on npm
+              run: python3 __main/.github/scripts/wait-for-published.py npm "@cedar-policy/cedar-wasm=${TAG_NAME#v}" --timeout 600
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
+            - name: Set up Node.js
+              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+              with:
+                  node-version: "26" # Node 26 LTS, bundles npm 11
+                  registry-url: "https://registry.npmjs.org"
+            # The root export targets bundlers and cannot be loaded by plain node, so this loads the
+            # `nodejs` export and calls `getCedarSDKVersion()`, which returns the Cargo workspace version.
+            - name: Install the package and check its version
+              run: |
+                  export VERSION="${TAG_NAME#v}"
+                  DIR="$RUNNER_TEMP/verify-cedar-wasm"
+                  mkdir -p "$DIR"
+                  cd "$DIR"
+                  npm init -y > /dev/null
+                  npm install --ignore-scripts "@cedar-policy/cedar-wasm@$VERSION"
+                  node -e '
+                      const expected = process.env.VERSION;
+                      const wasm = require("@cedar-policy/cedar-wasm/nodejs");
+                      const actual = wasm.getCedarSDKVersion();
+                      console.log(`getCedarSDKVersion(): ${actual}`);
+                      if (actual !== expected) {
+                          console.log(`::error::@cedar-policy/cedar-wasm@${expected} reports SDK version ${actual}.`);
+                          process.exit(1);
+                      }
+                  '
+              env:
+                  TAG_NAME: ${{ inputs.tag }}
