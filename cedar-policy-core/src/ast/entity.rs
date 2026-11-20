@@ -686,6 +686,19 @@ impl Entity {
                 == (other.ancestors().collect::<HashSet<_>>())
     }
 
+    /// Test if two `Entity` objects declare the same entity: the same UID,
+    /// attributes, attribute values, tags and _direct_ parents.
+    ///
+    /// Unlike [`Entity::deep_eq`], ancestors added by computing the transitive
+    /// closure are not compared, so an entity as given is equal to itself after
+    /// the closure of its hierarchy was computed.
+    pub(crate) fn declared_eq(&self, other: &Self) -> bool {
+        self.uid == other.uid
+            && self.attrs == other.attrs
+            && self.tags == other.tags
+            && self.parents == other.parents
+    }
+
     /// Mark the given `UID` as an indirect ancestor of this `Entity`
     ///
     /// The given `UID` will not be added as an indirecty ancestor if
