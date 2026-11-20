@@ -16,7 +16,7 @@ Cedar Language Version: 4.7
 - Improved symbolic compilation performance:
   - Less work is done on trivial transitivity constraints (#2703).
   - `Term`/`TermType` comparisons short-circuit for pointer-identical values (#2595).
-  - The footprint no longer includes literal terms (#2708) and only includes the left operands of `in` (#2709).
+  - Terms with a constant value no longer contribute to the footprint (#2708) and the footprint only includes the left operands of `in` (#2709), allowing for substantially fewer transitivity and acyclicity constraints on some queries.
 - Set literals are now encoded with `set.union` of singletons instead of nested `set.insert` (#2717).
 
 ## [0.9.0] - 2026-11-16
