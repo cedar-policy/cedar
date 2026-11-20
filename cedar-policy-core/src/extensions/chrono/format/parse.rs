@@ -6,8 +6,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! Date and time parsing routines.
 
@@ -49,7 +49,7 @@ fn set_weekday_with_number_from_monday(p: &mut Parsed, v: i64) -> ParseResult<()
 /// Tries to parse given string into `parsed` with given formatting items.
 /// Returns `Ok` when the entire string has been parsed (otherwise `parsed` should not be used).
 /// There should be no trailing string after parsing;
-/// use a stray [`Item::Space`](./enum.Item.html#variant.Space) to trim whitespaces.
+/// use a stray [`Item::Space`](crate::extensions::chrono::format::Item::Space) to trim whitespaces.
 ///
 /// This particular date and time parser is:
 ///
@@ -58,7 +58,7 @@ fn set_weekday_with_number_from_monday(p: &mut Parsed, v: i64) -> ParseResult<()
 ///   it equally accepts `Apr`, but prefers the longer prefix in this case.
 ///
 /// - Padding-agnostic (for numeric items).
-///   The [`Pad`](./enum.Pad.html) field is completely ignored,
+///   The [`Pad`](crate::extensions::chrono::format::Pad) field is completely ignored,
 ///   so one can prepend any number of whitespace then any number of zeroes before numbers.
 ///
 /// - (Still) obeying the intrinsic parsing width. This allows, for example, parsing `HHMMSS`.
@@ -84,7 +84,7 @@ where
 ///   it equally accepts `Apr`, but prefers the longer prefix in this case.
 ///
 /// - Padding-agnostic (for numeric items).
-///   The [`Pad`](./enum.Pad.html) field is completely ignored,
+///   The [`Pad`](crate::extensions::chrono::format::Pad) field is completely ignored,
 ///   so one can prepend any number of zeroes before numbers.
 ///
 /// - (Still) obeying the intrinsic parsing width. This allows, for example, parsing `HHMMSS`.
@@ -328,15 +328,6 @@ where
 /// Accepts a relaxed form of RFC3339.
 /// A space or a 'T' are accepted as the separator between the date and time
 /// parts. Additional spaces are allowed between each component.
-///
-/// All of these examples are equivalent:
-/// ```ignore
-/// # use chrono::{DateTime, offset::FixedOffset};
-/// "2012-12-12T12:12:12Z".parse::<DateTime<FixedOffset>>()?;
-/// "2012-12-12 12:12:12Z".parse::<DateTime<FixedOffset>>()?;
-/// "2012-  12-12T12:  12:12Z".parse::<DateTime<FixedOffset>>()?;
-/// # Ok::<(), chrono::ParseError>(())
-/// ```
 impl str::FromStr for DateTime<FixedOffset> {
     type Err = ParseError;
 

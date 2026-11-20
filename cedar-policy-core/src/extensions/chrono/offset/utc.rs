@@ -5,8 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! The UTC (Coordinated Universal Time) time zone.
 
@@ -18,20 +18,9 @@ use crate::extensions::chrono::naive::NaiveDateTime;
 /// The UTC time zone. This is the most efficient time zone when you don't need the local time.
 /// It is also used as an offset (which is also a dummy type).
 ///
-/// Using the [`TimeZone`](./trait.TimeZone.html) methods
+/// Using the `TimeZone` methods
 /// on the UTC struct is the preferred way to construct `DateTime<Utc>`
 /// instances.
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{DateTime, TimeZone, Utc};
-///
-/// let dt = DateTime::from_timestamp(61, 0).unwrap();
-///
-/// assert_eq!(Utc.timestamp_opt(61, 0).unwrap(), dt);
-/// assert_eq!(Utc.with_ymd_and_hms(1970, 1, 1, 0, 1, 1).unwrap(), dt);
-/// ```
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Utc;
 

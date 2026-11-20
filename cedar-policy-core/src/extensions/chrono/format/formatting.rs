@@ -5,8 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! Date and time formatting routines.
 

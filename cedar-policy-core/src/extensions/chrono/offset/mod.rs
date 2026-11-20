@@ -5,8 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! The time zone, which calculates offsets from the local time to UTC.
 //!
@@ -45,26 +45,6 @@ pub use self::utc::Utc;
 /// * An ambiguous result when the clock is turned backwards during a transition due to for example
 ///   DST.
 /// * No result when the clock is turned forwards during a transition due to for example DST.
-///
-/// <div class="warning">
-///
-/// In wasm, when using [`Local`], only the [`LocalResult::Single`] variant is returned.
-/// Specifically:
-///
-/// * When the clock is turned backwards, where `Ambiguous(earliest, latest)` would be expected,
-///   `Single(earliest)` is returned instead.
-/// * When the clock is turned forwards, where `None` would be expected, `Single(t)` is returned,
-///   with `t` being the requested local time represented as though there is no transition on that
-///   day (i.e. still "summer time")
-///
-/// This is caused because of limitations in the JavaScript
-/// [`Date`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date)
-/// API, which always parses a local time as a single, valid time - even for an
-/// input which describes a nonexistent or ambiguous time.
-///
-/// See further discussion and workarounds in <https://github.com/chronotope/chrono/issues/1701>.
-///
-/// </div>
 ///
 /// When the clock is turned backwards it creates a _fold_ in local time, during which the local
 /// time is _ambiguous_. When the clock is turned forwards it creates a _gap_ in local time, during
@@ -156,6 +136,3 @@ pub trait TimeZone: Sized + Clone {
         DateTime::from_naive_utc_and_offset(*utc, self.offset_from_utc_datetime(utc))
     }
 }
-
-#[cfg(test)]
-mod tests {}

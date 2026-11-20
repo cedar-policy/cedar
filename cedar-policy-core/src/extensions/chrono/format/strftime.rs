@@ -5,8 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 /*!
 `strftime`/`strptime`-inspired date and time formatting syntax.
@@ -174,15 +174,11 @@ use super::{Fixed, InternalInternal, Item, Numeric, Pad};
 /// See the [`format::strftime` module](crate::extensions::chrono::format::strftime) for supported formatting
 /// specifiers.
 ///
-/// `StrftimeItems` is used in combination with more low-level methods such as [`format::parse()`]
-/// or [`format_with_items`].
+/// `StrftimeItems` is used in combination with more low-level methods such as [`format::parse()`].
 ///
-/// If formatting or parsing date and time values is not performance-critical, the methods
-/// [`parse_from_str`] and [`format`] on types such as [`DateTime`](crate::extensions::chrono::DateTime) are easier to
-/// use.
+/// If parsing date and time values is not performance-critical, the [`parse_from_str`] methods
+/// on types such as [`DateTime`](crate::extensions::chrono::DateTime) are easier to use.
 ///
-/// [`format`]: crate::extensions::chrono::DateTime::format
-/// [`format_with_items`]: crate::extensions::chrono::DateTime::format
 /// [`parse_from_str`]: crate::extensions::chrono::DateTime::parse_from_str
 /// [`DateTime`]: crate::extensions::chrono::DateTime
 /// [`format::parse()`]: crate::extensions::chrono::format::parse()
@@ -203,23 +199,6 @@ impl<'a> StrftimeItems<'a> {
     ///
     /// While iterating [`Item::Error`] will be returned if the format string contains an invalid
     /// or unrecognized formatting specifier.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::format::*;
-    ///
-    /// let strftime_parser = StrftimeItems::new("%F"); // %F: year-month-day (ISO 8601)
-    ///
-    /// const ISO8601_YMD_ITEMS: &[Item<'static>] = &[
-    ///     Item::Numeric(Numeric::Year, Pad::Zero),
-    ///     Item::Literal("-"),
-    ///     Item::Numeric(Numeric::Month, Pad::Zero),
-    ///     Item::Literal("-"),
-    ///     Item::Numeric(Numeric::Day, Pad::Zero),
-    /// ];
-    /// assert!(strftime_parser.eq(ISO8601_YMD_ITEMS.iter().cloned()));
-    /// ```
     #[must_use]
     pub const fn new(s: &'a str) -> StrftimeItems<'a> {
         StrftimeItems {

@@ -2,8 +2,7 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; other changes marked with `Cedar:` comments; code not used by Cedar
-//   removed.
+//   examples removed; other changes marked with `Cedar:` comments; code not used by Cedar removed.
 use crate::extensions::chrono::{IsoWeek, Weekday};
 
 /// The common set of methods for date component.
@@ -13,29 +12,12 @@ use crate::extensions::chrono::{IsoWeek, Weekday};
 ///
 /// The `with_*` methods can change the date.
 ///
-/// # Warning
-///
-/// The `with_*` methods can be convenient to change a single component of a date, but they must be
-/// used with some care. Examples to watch out for:
-///
-/// - [`with_year`] changes the year component of a year-month-day value. Don't use this method if
-///   you want the ordinal to stay the same after changing the year, of if you want the week and
-///   weekday values to stay the same.
-/// - Don't combine two `with_*` methods to change two components of the date. For example to
-///   change both the year and month components of a date. This could fail because an intermediate
-///   value does not exist, while the final date would be valid.
-///
-/// For more complex changes to a date, it is best to use the methods on [`NaiveDate`] to create a
-/// new value instead of altering an existing date.
-///
 /// [`year`]: Datelike::year
 /// [`month`]: Datelike::month
 /// [`day`]: Datelike::day
 /// [`weekday`]: Datelike::weekday
-/// [`with_year`]: Datelike::with_year
-/// [`NaiveDate`]: crate::extensions::chrono::NaiveDate
 pub trait Datelike: Sized {
-    /// Returns the year number in the [calendar date](./naive/struct.NaiveDate.html#calendar-date).
+    /// Returns the year number in the [calendar date](crate::extensions::chrono::NaiveDate#calendar-date).
     fn year(&self) -> i32;
 
     /// Returns the quarter number starting from 1.
@@ -95,6 +77,6 @@ pub trait Timelike: Sized {
 
     /// Returns the number of nanoseconds since the whole non-leap second.
     /// The range from 1,000,000,000 to 1,999,999,999 represents
-    /// the [leap second](./naive/struct.NaiveTime.html#leap-second-handling).
+    /// the [leap second](crate::extensions::chrono::NaiveTime#leap-second-handling).
     fn nanosecond(&self) -> u32;
 }

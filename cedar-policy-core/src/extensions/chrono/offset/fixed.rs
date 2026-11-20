@@ -5,24 +5,22 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! The time zone which has a fixed offset from UTC.
 
 use core::fmt;
-use core::str::FromStr;
 
 use super::{MappedLocalTime, Offset, TimeZone};
-use crate::extensions::chrono::format::{scan, ParseError, OUT_OF_RANGE};
 use crate::extensions::chrono::naive::NaiveDateTime;
 
 /// The time zone with fixed offset, from UTC-23:59:59 to UTC+23:59:59.
 ///
-/// Using the [`TimeZone`](./trait.TimeZone.html) methods
+/// Using the [`TimeZone`](crate::extensions::chrono::offset::TimeZone) methods
 /// on a `FixedOffset` struct is the preferred way to construct
-/// `DateTime<FixedOffset>` instances. See the [`east_opt`](#method.east_opt) and
-/// [`west_opt`](#method.west_opt) methods for examples.
+/// `DateTime<FixedOffset>` instances. See the [`east_opt`](crate::extensions::chrono::offset::FixedOffset::east_opt)
+/// method.
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub struct FixedOffset {
     local_minus_utc: i32,
@@ -33,18 +31,6 @@ impl FixedOffset {
     /// The negative `secs` means the Western Hemisphere.
     ///
     /// Returns `None` on the out-of-bound `secs`.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// # #[cfg(feature = "alloc")] {
-    /// use chrono::{FixedOffset, TimeZone};
-    /// let hour = 3600;
-    /// let datetime =
-    ///     FixedOffset::east_opt(5 * hour).unwrap().with_ymd_and_hms(2016, 11, 08, 0, 0, 0).unwrap();
-    /// assert_eq!(&datetime.to_rfc3339(), "2016-11-08T00:00:00+05:00")
-    /// # }
-    /// ```
     #[must_use]
     pub const fn east_opt(secs: i32) -> Option<FixedOffset> {
         if -86_400 < secs && secs < 86_400 {
@@ -60,15 +46,6 @@ impl FixedOffset {
     #[inline]
     pub const fn local_minus_utc(&self) -> i32 {
         self.local_minus_utc
-    }
-}
-
-/// Parsing a `str` into a `FixedOffset` uses the format [`%z`](crate::extensions::chrono::format::strftime).
-impl FromStr for FixedOffset {
-    type Err = ParseError;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (_, offset) = scan::timezone_offset(s, scan::colon_or_space, false, false, true)?;
-        Self::east_opt(offset).ok_or(OUT_OF_RANGE)
     }
 }
 
@@ -111,22 +88,5 @@ impl fmt::Debug for FixedOffset {
         } else {
             write!(f, "{sign}{hour:02}:{min:02}:{sec:02}")
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::FixedOffset;
-
-    use std::str::FromStr;
-
-    #[test]
-    fn test_parse_offset() {
-        let offset = FixedOffset::from_str("-0500").unwrap();
-        assert_eq!(offset.local_minus_utc, -5 * 3600);
-        let offset = FixedOffset::from_str("-08:00").unwrap();
-        assert_eq!(offset.local_minus_utc, -8 * 3600);
-        let offset = FixedOffset::from_str("+06:30").unwrap();
-        assert_eq!(offset.local_minus_utc, (6 * 3600) + 1800);
     }
 }

@@ -5,38 +5,21 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; other changes marked with `Cedar:` comments; code behind chrono's
-//   Cargo features (not enabled in Cedar) removed; code not used by Cedar removed.
+//   examples removed; other changes marked with `Cedar:` comments; code behind chrono's Cargo
+//   features (not enabled in Cedar) removed; code not used by Cedar removed.
 
-//! Formatting (and parsing) utilities for date and time.
+//! Parsing utilities for date and time.
 //!
 //! This module provides the common types and routines to implement,
-//! for example, [`DateTime::format`](../struct.DateTime.html#method.format) or
-//! [`DateTime::parse_from_str`](../struct.DateTime.html#method.parse_from_str) methods.
+//! for example, the [`DateTime::parse_from_str`](crate::extensions::chrono::DateTime::parse_from_str) method.
 //! For most cases you should use these high-level interfaces.
 //!
-//! Internally the formatting and parsing shares the same abstract **formatting items**,
+//! Internally the parsing uses abstract **formatting items**,
 //! which are just an [`Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html) of
-//! the [`Item`](./enum.Item.html) type.
+//! the [`Item`](crate::extensions::chrono::format::Item) type.
 //! They are generated from more readable **format strings**;
 //! currently Chrono supports a built-in syntax closely resembling
-//! C's `strftime` format. The available options can be found [here](./strftime/index.html).
-//!
-//! # Example
-//! ```ignore
-//! # #[cfg(feature = "alloc")] {
-//! use chrono::{NaiveDateTime, TimeZone, Utc};
-//!
-//! let date_time = Utc.with_ymd_and_hms(2020, 11, 10, 0, 1, 32).unwrap();
-//!
-//! let formatted = format!("{}", date_time.format("%Y-%m-%d %H:%M:%S"));
-//! assert_eq!(formatted, "2020-11-10 00:01:32");
-//!
-//! let parsed = NaiveDateTime::parse_from_str(&formatted, "%Y-%m-%d %H:%M:%S")?.and_utc();
-//! assert_eq!(parsed, date_time);
-//! # }
-//! # Ok::<(), chrono::ParseError>(())
-//! ```
+//! C's `strftime` format. The available options can be found [here](crate::extensions::chrono::format::strftime).
 
 use core::fmt;
 // Cedar: always use `std::error::Error`; upstream gates it on chrono's `std` feature, and Cedar
@@ -72,7 +55,7 @@ pub enum Pad {
 /// They have associated formatting width (FW) and parsing width (PW).
 ///
 /// The **formatting width** is the minimal width to be formatted.
-/// If the number is too short, and the padding is not [`Pad::None`](./enum.Pad.html#variant.None),
+/// If the number is too short, and the padding is not [`Pad::None`](crate::extensions::chrono::format::Pad::None),
 /// then it is left-padded.
 /// If the number is too long or (in some cases) negative, it is printed as is.
 ///
@@ -124,7 +107,7 @@ pub enum Numeric {
     Second,
     /// The number of nanoseconds since the last whole second (FW=PW=9).
     /// Note that this is *not* left-aligned;
-    /// see also [`Fixed::Nanosecond`](./enum.Fixed.html#variant.Nanosecond).
+    /// see also [`Fixed::Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond).
     Nanosecond,
     /// The number of non-leap seconds since the midnight UTC on January 1, 1970 (FW=1, PW=∞).
     /// For formatting, it assumes UTC upon the absence of time zone offset.
@@ -164,13 +147,13 @@ pub enum Fixed {
     UpperAmPm,
     /// An optional dot plus one or more digits for left-aligned nanoseconds.
     /// May print nothing, 3, 6 or 9 digits according to the available accuracy.
-    /// See also [`Numeric::Nanosecond`](./enum.Numeric.html#variant.Nanosecond).
+    /// See also [`Numeric::Nanosecond`](crate::extensions::chrono::format::Numeric::Nanosecond).
     Nanosecond,
-    /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 3.
+    /// Same as [`Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond) but the accuracy is fixed to 3.
     Nanosecond3,
-    /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 6.
+    /// Same as [`Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond) but the accuracy is fixed to 6.
     Nanosecond6,
-    /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 9.
+    /// Same as [`Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond) but the accuracy is fixed to 9.
     Nanosecond9,
     /// Timezone name.
     ///
@@ -180,21 +163,21 @@ pub enum Fixed {
     ///
     /// In the parser, the colon can be omitted and/or surrounded with any amount of whitespace.
     /// The offset is limited from `-24:00` to `+24:00`,
-    /// which is the same as [`FixedOffset`](../offset/struct.FixedOffset.html)'s range.
+    /// which is the same as [`FixedOffset`](crate::extensions::chrono::offset::FixedOffset)'s range.
     TimezoneOffsetColon,
     /// Offset from the local time to UTC with seconds (`+09:00:00` or `-04:00:00` or `+00:00:00`).
     ///
     /// In the parser, the colon can be omitted and/or surrounded with any amount of whitespace.
     /// The offset is limited from `-24:00:00` to `+24:00:00`,
-    /// which is the same as [`FixedOffset`](../offset/struct.FixedOffset.html)'s range.
+    /// which is the same as [`FixedOffset`](crate::extensions::chrono::offset::FixedOffset)'s range.
     TimezoneOffsetDoubleColon,
     /// Offset from the local time to UTC without minutes (`+09` or `-04` or `+00`).
     ///
     /// In the parser, the colon can be omitted and/or surrounded with any amount of whitespace.
     /// The offset is limited from `-24` to `+24`,
-    /// which is the same as [`FixedOffset`](../offset/struct.FixedOffset.html)'s range.
+    /// which is the same as [`FixedOffset`](crate::extensions::chrono::offset::FixedOffset)'s range.
     TimezoneOffsetTripleColon,
-    /// Same as [`TimezoneOffsetColon`](#variant.TimezoneOffsetColon) but prints no colon.
+    /// Same as [`TimezoneOffsetColon`](crate::extensions::chrono::format::Fixed::TimezoneOffsetColon) but prints no colon.
     /// Parsing allows an optional colon.
     TimezoneOffset,
     /// RFC 3339 & ISO 8601 date and time syntax.
@@ -215,8 +198,7 @@ pub struct InternalFixed {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum InternalInternal {
-    /// Same as [`TimezoneOffsetColonZ`](#variant.TimezoneOffsetColonZ), but
-    /// allows missing minutes (per [ISO 8601][iso8601]).
+    /// A time zone offset that allows missing minutes (per [ISO 8601][iso8601]).
     ///
     /// # Panics
     ///
@@ -224,11 +206,11 @@ enum InternalInternal {
     ///
     /// [iso8601]: https://en.wikipedia.org/wiki/ISO_8601#Time_offsets_from_UTC
     TimezoneOffsetPermissive,
-    /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 3 and there is no leading dot.
+    /// Same as [`Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond) but the accuracy is fixed to 3 and there is no leading dot.
     Nanosecond3NoDot,
-    /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 6 and there is no leading dot.
+    /// Same as [`Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond) but the accuracy is fixed to 6 and there is no leading dot.
     Nanosecond6NoDot,
-    /// Same as [`Nanosecond`](#variant.Nanosecond) but the accuracy is fixed to 9 and there is no leading dot.
+    /// Same as [`Nanosecond`](crate::extensions::chrono::format::Fixed::Nanosecond) but the accuracy is fixed to 9 and there is no leading dot.
     Nanosecond9NoDot,
 }
 

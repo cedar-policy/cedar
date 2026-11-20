@@ -5,8 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! ISO 8601 time without timezone.
 
@@ -69,24 +69,6 @@ mod tests;
 ///
 /// All methods accepting fractional seconds will accept such values.
 ///
-/// ```ignore
-/// use chrono::{NaiveDate, NaiveTime};
-///
-/// let t = NaiveTime::from_hms_milli_opt(8, 59, 59, 1_000).unwrap();
-///
-/// let dt1 = NaiveDate::from_ymd_opt(2015, 7, 1)
-///     .unwrap()
-///     .and_hms_micro_opt(8, 59, 59, 1_000_000)
-///     .unwrap();
-///
-/// let dt2 = NaiveDate::from_ymd_opt(2015, 6, 30)
-///     .unwrap()
-///     .and_hms_nano_opt(23, 59, 59, 1_000_000_000)
-///     .unwrap()
-///     .and_utc();
-/// # let _ = (t, dt1, dt2);
-/// ```
-///
 /// Note that the leap second can happen anytime given an appropriate time zone;
 /// 2015-07-01 01:23:60 would be a proper leap second if UTC+01:24 had existed.
 /// Practically speaking, though, by the time of the first leap second on 1972-06-30,
@@ -99,7 +81,7 @@ mod tests;
 /// We will also use some intuitive concise notations for the explanation.
 ///
 /// `Time + TimeDelta`
-/// (short for [`NaiveTime::overflowing_add_signed`](#method.overflowing_add_signed)):
+/// (short for [`NaiveTime::overflowing_add_signed`](crate::extensions::chrono::NaiveTime::overflowing_add_signed)):
 ///
 /// - `03:00:00 + 1s = 03:00:01`.
 /// - `03:00:59 + 60s = 03:01:59`.
@@ -112,7 +94,7 @@ mod tests;
 /// - `03:00:60.1 + 0.8s = 03:00:60.9`.
 ///
 /// `Time - TimeDelta`
-/// (short for [`NaiveTime::overflowing_sub_signed`](#method.overflowing_sub_signed)):
+/// (short for [`NaiveTime::overflowing_sub_signed`](crate::extensions::chrono::NaiveTime::overflowing_sub_signed)):
 ///
 /// - `03:00:00 - 1s = 02:59:59`.
 /// - `03:01:00 - 1s = 03:00:59`.
@@ -123,7 +105,7 @@ mod tests;
 /// - `03:00:60.7 - 0.9s = 03:00:59.8`.
 ///
 /// `Time - Time`
-/// (short for [`NaiveTime::signed_duration_since`](#method.signed_duration_since)):
+/// (short for [`NaiveTime::signed_duration_since`](crate::extensions::chrono::NaiveTime::signed_duration_since)):
 ///
 /// - `04:00:00 - 03:00:00 = 3600s`.
 /// - `03:01:00 - 03:00:00 = 60s`.
@@ -164,17 +146,6 @@ mod tests;
 /// The leap second in the human-readable representation
 /// will be represented as the second part being 60, as required by ISO 8601.
 ///
-/// ```ignore
-/// use chrono::NaiveDate;
-///
-/// let dt = NaiveDate::from_ymd_opt(2015, 6, 30)
-///     .unwrap()
-///     .and_hms_milli_opt(23, 59, 59, 1_000)
-///     .unwrap()
-///     .and_utc();
-/// assert_eq!(format!("{:?}", dt), "2015-06-30T23:59:60Z");
-/// ```
-///
 /// There are hypothetical leap seconds not on the minute boundary nevertheless supported by Chrono.
 /// They are allowed for the sake of completeness and consistency; there were several "exotic" time
 /// zone offsets with fractional minutes prior to UTC after all.
@@ -182,27 +153,7 @@ mod tests;
 /// non-leap second.
 ///
 /// A `NaiveTime` with a leap second that is not on a minute boundary can only be created from a
-/// [`DateTime`](crate::extensions::chrono::DateTime) with fractional minutes as offset, or using
-/// [`Timelike::with_nanosecond()`].
-///
-/// ```ignore
-/// use chrono::{FixedOffset, NaiveDate, TimeZone};
-///
-/// let paramaribo_pre1945 = FixedOffset::east_opt(-13236).unwrap(); // -03:40:36
-/// let leap_sec_2015 =
-///     NaiveDate::from_ymd_opt(2015, 6, 30).unwrap().and_hms_milli_opt(23, 59, 59, 1_000).unwrap();
-/// let dt1 = paramaribo_pre1945.from_utc_datetime(&leap_sec_2015);
-/// assert_eq!(format!("{:?}", dt1), "2015-06-30T20:19:24-03:40:36");
-/// assert_eq!(format!("{:?}", dt1.time()), "20:19:24");
-///
-/// let next_sec = NaiveDate::from_ymd_opt(2015, 7, 1).unwrap().and_hms_opt(0, 0, 0).unwrap();
-/// let dt2 = paramaribo_pre1945.from_utc_datetime(&next_sec);
-/// assert_eq!(format!("{:?}", dt2), "2015-06-30T20:19:24-03:40:36");
-/// assert_eq!(format!("{:?}", dt2.time()), "20:19:24");
-///
-/// assert!(dt1.time() != dt2.time());
-/// assert!(dt1.time().to_string() == dt2.time().to_string());
-/// ```
+/// [`DateTime`](crate::extensions::chrono::DateTime) with fractional minutes as offset.
 ///
 /// Since Chrono alone cannot determine any existence of leap seconds,
 /// **there is absolutely no guarantee that the leap second read has actually happened**.
@@ -216,25 +167,11 @@ impl NaiveTime {
     /// Makes a new `NaiveTime` from hour, minute and second.
     ///
     /// The millisecond part is allowed to exceed 1,000,000,000 in order to represent a
-    /// [leap second](#leap-second-handling), but only when `sec == 59`.
+    /// [leap second](crate::extensions::chrono::NaiveTime#leap-second-handling), but only when `sec == 59`.
     ///
     /// # Errors
     ///
     /// Returns `None` on invalid hour, minute and/or second.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveTime;
-    ///
-    /// let from_hms_opt = NaiveTime::from_hms_opt;
-    ///
-    /// assert!(from_hms_opt(0, 0, 0).is_some());
-    /// assert!(from_hms_opt(23, 59, 59).is_some());
-    /// assert!(from_hms_opt(24, 0, 0).is_none());
-    /// assert!(from_hms_opt(23, 60, 0).is_none());
-    /// assert!(from_hms_opt(23, 59, 60).is_none());
-    /// ```
     #[inline]
     #[must_use]
     pub const fn from_hms_opt(hour: u32, min: u32, sec: u32) -> Option<NaiveTime> {
@@ -244,27 +181,11 @@ impl NaiveTime {
     /// Makes a new `NaiveTime` from hour, minute, second and millisecond.
     ///
     /// The millisecond part is allowed to exceed 1,000,000,000 in order to represent a
-    /// [leap second](#leap-second-handling), but only when `sec == 59`.
+    /// [leap second](crate::extensions::chrono::NaiveTime#leap-second-handling), but only when `sec == 59`.
     ///
     /// # Errors
     ///
     /// Returns `None` on invalid hour, minute, second and/or millisecond.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveTime;
-    ///
-    /// let from_hmsm_opt = NaiveTime::from_hms_milli_opt;
-    ///
-    /// assert!(from_hmsm_opt(0, 0, 0, 0).is_some());
-    /// assert!(from_hmsm_opt(23, 59, 59, 999).is_some());
-    /// assert!(from_hmsm_opt(23, 59, 59, 1_999).is_some()); // a leap second after 23:59:59
-    /// assert!(from_hmsm_opt(24, 0, 0, 0).is_none());
-    /// assert!(from_hmsm_opt(23, 60, 0, 0).is_none());
-    /// assert!(from_hmsm_opt(23, 59, 60, 0).is_none());
-    /// assert!(from_hmsm_opt(23, 59, 59, 2_000).is_none());
-    /// ```
     #[inline]
     #[must_use]
     pub const fn from_hms_milli_opt(
@@ -280,27 +201,11 @@ impl NaiveTime {
     /// Makes a new `NaiveTime` from hour, minute, second and nanosecond.
     ///
     /// The nanosecond part is allowed to exceed 1,000,000,000 in order to represent a
-    /// [leap second](#leap-second-handling), but only when `sec == 59`.
+    /// [leap second](crate::extensions::chrono::NaiveTime#leap-second-handling), but only when `sec == 59`.
     ///
     /// # Errors
     ///
     /// Returns `None` on invalid hour, minute, second and/or nanosecond.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveTime;
-    ///
-    /// let from_hmsn_opt = NaiveTime::from_hms_nano_opt;
-    ///
-    /// assert!(from_hmsn_opt(0, 0, 0, 0).is_some());
-    /// assert!(from_hmsn_opt(23, 59, 59, 999_999_999).is_some());
-    /// assert!(from_hmsn_opt(23, 59, 59, 1_999_999_999).is_some()); // a leap second after 23:59:59
-    /// assert!(from_hmsn_opt(24, 0, 0, 0).is_none());
-    /// assert!(from_hmsn_opt(23, 60, 0, 0).is_none());
-    /// assert!(from_hmsn_opt(23, 59, 60, 0).is_none());
-    /// assert!(from_hmsn_opt(23, 59, 59, 2_000_000_000).is_none());
-    /// ```
     #[inline]
     #[must_use]
     pub const fn from_hms_nano_opt(hour: u32, min: u32, sec: u32, nano: u32) -> Option<NaiveTime> {
@@ -317,25 +222,11 @@ impl NaiveTime {
     /// Makes a new `NaiveTime` from the number of seconds since midnight and nanosecond.
     ///
     /// The nanosecond part is allowed to exceed 1,000,000,000 in order to represent a
-    /// [leap second](#leap-second-handling), but only when `secs % 60 == 59`.
+    /// [leap second](crate::extensions::chrono::NaiveTime#leap-second-handling), but only when `secs % 60 == 59`.
     ///
     /// # Errors
     ///
     /// Returns `None` on invalid number of seconds and/or nanosecond.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::NaiveTime;
-    ///
-    /// let from_nsecs_opt = NaiveTime::from_num_seconds_from_midnight_opt;
-    ///
-    /// assert!(from_nsecs_opt(0, 0).is_some());
-    /// assert!(from_nsecs_opt(86399, 999_999_999).is_some());
-    /// assert!(from_nsecs_opt(86399, 1_999_999_999).is_some()); // a leap second after 23:59:59
-    /// assert!(from_nsecs_opt(86_400, 0).is_none());
-    /// assert!(from_nsecs_opt(86399, 2_000_000_000).is_none());
-    /// ```
     #[inline]
     #[must_use]
     pub const fn from_num_seconds_from_midnight_opt(secs: u32, nano: u32) -> Option<NaiveTime> {
@@ -347,27 +238,6 @@ impl NaiveTime {
 
     /// Adds given `TimeDelta` to the current time, and also returns the number of *seconds*
     /// in the integral number of days ignored from the addition.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, TimeDelta};
-    ///
-    /// let from_hms = |h, m, s| NaiveTime::from_hms_opt(h, m, s).unwrap();
-    ///
-    /// assert_eq!(
-    ///     from_hms(3, 4, 5).overflowing_add_signed(TimeDelta::try_hours(11).unwrap()),
-    ///     (from_hms(14, 4, 5), 0)
-    /// );
-    /// assert_eq!(
-    ///     from_hms(3, 4, 5).overflowing_add_signed(TimeDelta::try_hours(23).unwrap()),
-    ///     (from_hms(2, 4, 5), 86_400)
-    /// );
-    /// assert_eq!(
-    ///     from_hms(3, 4, 5).overflowing_add_signed(TimeDelta::try_hours(-7).unwrap()),
-    ///     (from_hms(20, 4, 5), -86_400)
-    /// );
-    /// ```
     #[must_use]
     pub const fn overflowing_add_signed(&self, rhs: TimeDelta) -> (NaiveTime, i64) {
         let mut secs = self.secs as i64;
@@ -421,27 +291,6 @@ impl NaiveTime {
 
     /// Subtracts given `TimeDelta` from the current time, and also returns the number of *seconds*
     /// in the integral number of days ignored from the subtraction.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, TimeDelta};
-    ///
-    /// let from_hms = |h, m, s| NaiveTime::from_hms_opt(h, m, s).unwrap();
-    ///
-    /// assert_eq!(
-    ///     from_hms(3, 4, 5).overflowing_sub_signed(TimeDelta::try_hours(2).unwrap()),
-    ///     (from_hms(1, 4, 5), 0)
-    /// );
-    /// assert_eq!(
-    ///     from_hms(3, 4, 5).overflowing_sub_signed(TimeDelta::try_hours(17).unwrap()),
-    ///     (from_hms(10, 4, 5), 86_400)
-    /// );
-    /// assert_eq!(
-    ///     from_hms(3, 4, 5).overflowing_sub_signed(TimeDelta::try_hours(-22).unwrap()),
-    ///     (from_hms(1, 4, 5), -86_400)
-    /// );
-    /// ```
     #[inline]
     #[must_use]
     pub const fn overflowing_sub_signed(&self, rhs: TimeDelta) -> (NaiveTime, i64) {
@@ -453,69 +302,11 @@ impl NaiveTime {
     /// Returns a `TimeDelta` within +/- 1 day.
     /// This does not overflow or underflow at all.
     ///
-    /// As a part of Chrono's [leap second handling](#leap-second-handling),
+    /// As a part of Chrono's [leap second handling](crate::extensions::chrono::NaiveTime#leap-second-handling),
     /// the subtraction assumes that **there is no leap second ever**,
     /// except when any of the `NaiveTime`s themselves represents a leap second
     /// in which case the assumption becomes that
     /// **there are exactly one (or two) leap second(s) ever**.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, TimeDelta};
-    ///
-    /// let from_hmsm = |h, m, s, milli| NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap();
-    /// let since = NaiveTime::signed_duration_since;
-    ///
-    /// assert_eq!(since(from_hmsm(3, 5, 7, 900), from_hmsm(3, 5, 7, 900)), TimeDelta::zero());
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(3, 5, 7, 875)),
-    ///     TimeDelta::try_milliseconds(25).unwrap()
-    /// );
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(3, 5, 6, 925)),
-    ///     TimeDelta::try_milliseconds(975).unwrap()
-    /// );
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(3, 5, 0, 900)),
-    ///     TimeDelta::try_seconds(7).unwrap()
-    /// );
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(3, 0, 7, 900)),
-    ///     TimeDelta::try_seconds(5 * 60).unwrap()
-    /// );
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(0, 5, 7, 900)),
-    ///     TimeDelta::try_seconds(3 * 3600).unwrap()
-    /// );
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(4, 5, 7, 900)),
-    ///     TimeDelta::try_seconds(-3600).unwrap()
-    /// );
-    /// assert_eq!(
-    ///     since(from_hmsm(3, 5, 7, 900), from_hmsm(2, 4, 6, 800)),
-    ///     TimeDelta::try_seconds(3600 + 60 + 1).unwrap() + TimeDelta::try_milliseconds(100).unwrap()
-    /// );
-    /// ```
-    ///
-    /// Leap seconds are handled, but the subtraction assumes that
-    /// there were no other leap seconds happened.
-    ///
-    /// ```ignore
-    /// # use chrono::{TimeDelta, NaiveTime};
-    /// # let from_hmsm = |h, m, s, milli| { NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap() };
-    /// # let since = NaiveTime::signed_duration_since;
-    /// assert_eq!(since(from_hmsm(3, 0, 59, 1_000), from_hmsm(3, 0, 59, 0)),
-    ///            TimeDelta::try_seconds(1).unwrap());
-    /// assert_eq!(since(from_hmsm(3, 0, 59, 1_500), from_hmsm(3, 0, 59, 0)),
-    ///            TimeDelta::try_milliseconds(1500).unwrap());
-    /// assert_eq!(since(from_hmsm(3, 0, 59, 1_000), from_hmsm(3, 0, 0, 0)),
-    ///            TimeDelta::try_seconds(60).unwrap());
-    /// assert_eq!(since(from_hmsm(3, 0, 0, 0), from_hmsm(2, 59, 59, 1_000)),
-    ///            TimeDelta::try_seconds(1).unwrap());
-    /// assert_eq!(since(from_hmsm(3, 0, 59, 1_000), from_hmsm(2, 59, 59, 1_000)),
-    ///            TimeDelta::try_seconds(61).unwrap());
-    /// ```
     #[must_use]
     pub const fn signed_duration_since(self, rhs: NaiveTime) -> TimeDelta {
         //     |    |    :leap|    |    |    |    |    |    |    :leap|    |
@@ -551,7 +342,7 @@ impl NaiveTime {
     /// added to a date as a result of the offset (either `-1`, `0`, or `1` because the offset is
     /// always less than 24h).
     ///
-    /// This method is similar to [`overflowing_add_signed`](#method.overflowing_add_signed), but
+    /// This method is similar to [`overflowing_add_signed`](crate::extensions::chrono::NaiveTime::overflowing_add_signed), but
     /// preserves leap seconds.
     pub(super) const fn overflowing_add_offset(&self, offset: FixedOffset) -> (NaiveTime, i32) {
         let secs = self.secs as i32 + offset.local_minus_utc();
@@ -570,7 +361,7 @@ impl NaiveTime {
     /// should be added to a date as a result of the offset (either `-1`, `0`, or `1` because the
     /// offset is always less than 24h).
     ///
-    /// This method is similar to [`overflowing_sub_signed`](#method.overflowing_sub_signed), but
+    /// This method is similar to [`overflowing_sub_signed`](crate::extensions::chrono::NaiveTime::overflowing_sub_signed), but
     /// preserves leap seconds.
     pub(super) const fn overflowing_sub_offset(&self, offset: FixedOffset) -> (NaiveTime, i32) {
         let secs = self.secs as i32 - offset.local_minus_utc();
@@ -615,58 +406,18 @@ impl NaiveTime {
 
 impl Timelike for NaiveTime {
     /// Returns the hour number from 0 to 23.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, Timelike};
-    ///
-    /// assert_eq!(NaiveTime::from_hms_opt(0, 0, 0).unwrap().hour(), 0);
-    /// assert_eq!(NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap().hour(), 23);
-    /// ```
     #[inline]
     fn hour(&self) -> u32 {
         self.hms().0
     }
 
     /// Returns the minute number from 0 to 59.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, Timelike};
-    ///
-    /// assert_eq!(NaiveTime::from_hms_opt(0, 0, 0).unwrap().minute(), 0);
-    /// assert_eq!(NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap().minute(), 56);
-    /// ```
     #[inline]
     fn minute(&self) -> u32 {
         self.hms().1
     }
 
     /// Returns the second number from 0 to 59.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, Timelike};
-    ///
-    /// assert_eq!(NaiveTime::from_hms_opt(0, 0, 0).unwrap().second(), 0);
-    /// assert_eq!(NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap().second(), 4);
-    /// ```
-    ///
-    /// This method never returns 60 even when it is a leap second.
-    /// ([Why?](#leap-second-handling))
-    /// Use the proper [formatting method](#method.format) to get a human-readable representation.
-    ///
-    /// ```ignore
-    /// # #[cfg(feature = "alloc")] {
-    /// # use chrono::{NaiveTime, Timelike};
-    /// let leap = NaiveTime::from_hms_milli_opt(23, 59, 59, 1_000).unwrap();
-    /// assert_eq!(leap.second(), 59);
-    /// assert_eq!(leap.format("%H:%M:%S").to_string(), "23:59:60");
-    /// # }
-    /// ```
     #[inline]
     fn second(&self) -> u32 {
         self.hms().2
@@ -674,32 +425,7 @@ impl Timelike for NaiveTime {
 
     /// Returns the number of nanoseconds since the whole non-leap second.
     /// The range from 1,000,000,000 to 1,999,999,999 represents
-    /// the [leap second](#leap-second-handling).
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// use chrono::{NaiveTime, Timelike};
-    ///
-    /// assert_eq!(NaiveTime::from_hms_opt(0, 0, 0).unwrap().nanosecond(), 0);
-    /// assert_eq!(
-    ///     NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap().nanosecond(),
-    ///     12_345_678
-    /// );
-    /// ```
-    ///
-    /// Leap seconds may have seemingly out-of-range return values.
-    /// You can reduce the range with `time.nanosecond() % 1_000_000_000`, or
-    /// use the proper [formatting method](#method.format) to get a human-readable representation.
-    ///
-    /// ```ignore
-    /// # #[cfg(feature = "alloc")] {
-    /// # use chrono::{NaiveTime, Timelike};
-    /// let leap = NaiveTime::from_hms_milli_opt(23, 59, 59, 1_000).unwrap();
-    /// assert_eq!(leap.nanosecond(), 1_000_000_000);
-    /// assert_eq!(leap.format("%H:%M:%S%.9f").to_string(), "23:59:60.000000000");
-    /// # }
-    /// ```
+    /// the [leap second](crate::extensions::chrono::NaiveTime#leap-second-handling).
     #[inline]
     fn nanosecond(&self) -> u32 {
         self.frac
@@ -714,65 +440,6 @@ impl Timelike for NaiveTime {
 /// As a part of Chrono's [leap second handling], the addition assumes that **there is no leap
 /// second ever**, except when the `NaiveTime` itself represents a leap second in which case the
 /// assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{NaiveTime, TimeDelta};
-///
-/// let from_hmsm = |h, m, s, milli| NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap();
-///
-/// assert_eq!(from_hmsm(3, 5, 7, 0) + TimeDelta::zero(), from_hmsm(3, 5, 7, 0));
-/// assert_eq!(from_hmsm(3, 5, 7, 0) + TimeDelta::try_seconds(1).unwrap(), from_hmsm(3, 5, 8, 0));
-/// assert_eq!(from_hmsm(3, 5, 7, 0) + TimeDelta::try_seconds(-1).unwrap(), from_hmsm(3, 5, 6, 0));
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 0) + TimeDelta::try_seconds(60 + 4).unwrap(),
-///     from_hmsm(3, 6, 11, 0)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 0) + TimeDelta::try_seconds(7 * 60 * 60 - 6 * 60).unwrap(),
-///     from_hmsm(9, 59, 7, 0)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 0) + TimeDelta::try_milliseconds(80).unwrap(),
-///     from_hmsm(3, 5, 7, 80)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 950) + TimeDelta::try_milliseconds(280).unwrap(),
-///     from_hmsm(3, 5, 8, 230)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 950) + TimeDelta::try_milliseconds(-980).unwrap(),
-///     from_hmsm(3, 5, 6, 970)
-/// );
-/// ```
-///
-/// The addition wraps around.
-///
-/// ```ignore
-/// # use chrono::{TimeDelta, NaiveTime};
-/// # let from_hmsm = |h, m, s, milli| { NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap() };
-/// assert_eq!(from_hmsm(3, 5, 7, 0) + TimeDelta::try_seconds(22*60*60).unwrap(), from_hmsm(1, 5, 7, 0));
-/// assert_eq!(from_hmsm(3, 5, 7, 0) + TimeDelta::try_seconds(-8*60*60).unwrap(), from_hmsm(19, 5, 7, 0));
-/// assert_eq!(from_hmsm(3, 5, 7, 0) + TimeDelta::try_days(800).unwrap(), from_hmsm(3, 5, 7, 0));
-/// ```
-///
-/// Leap seconds are handled, but the addition assumes that it is the only leap second happened.
-///
-/// ```ignore
-/// # use chrono::{TimeDelta, NaiveTime};
-/// # let from_hmsm = |h, m, s, milli| { NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap() };
-/// let leap = from_hmsm(3, 5, 59, 1_300);
-/// assert_eq!(leap + TimeDelta::zero(), from_hmsm(3, 5, 59, 1_300));
-/// assert_eq!(leap + TimeDelta::try_milliseconds(-500).unwrap(), from_hmsm(3, 5, 59, 800));
-/// assert_eq!(leap + TimeDelta::try_milliseconds(500).unwrap(), from_hmsm(3, 5, 59, 1_800));
-/// assert_eq!(leap + TimeDelta::try_milliseconds(800).unwrap(), from_hmsm(3, 6, 0, 100));
-/// assert_eq!(leap + TimeDelta::try_seconds(10).unwrap(), from_hmsm(3, 6, 9, 300));
-/// assert_eq!(leap + TimeDelta::try_seconds(-10).unwrap(), from_hmsm(3, 5, 50, 300));
-/// assert_eq!(leap + TimeDelta::try_days(1).unwrap(), from_hmsm(3, 5, 59, 300));
-/// ```
-///
-/// [leap second handling]: crate::extensions::chrono::NaiveTime#leap-second-handling
 impl Add<TimeDelta> for NaiveTime {
     type Output = NaiveTime;
 
@@ -811,19 +478,6 @@ impl AddAssign<Duration> for NaiveTime {
     }
 }
 
-/// Add `FixedOffset` to `NaiveTime`.
-///
-/// This wraps around and never overflows or underflows.
-/// In particular the addition ignores integral number of days.
-impl Add<FixedOffset> for NaiveTime {
-    type Output = NaiveTime;
-
-    #[inline]
-    fn add(self, rhs: FixedOffset) -> NaiveTime {
-        self.overflowing_add_offset(rhs).0
-    }
-}
-
 /// Subtract `TimeDelta` from `NaiveTime`.
 ///
 /// This wraps around and never overflows or underflows.
@@ -833,57 +487,6 @@ impl Add<FixedOffset> for NaiveTime {
 /// As a part of Chrono's [leap second handling], the subtraction assumes that **there is no leap
 /// second ever**, except when the `NaiveTime` itself represents a leap second in which case the
 /// assumption becomes that **there is exactly a single leap second ever**.
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::{NaiveTime, TimeDelta};
-///
-/// let from_hmsm = |h, m, s, milli| NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap();
-///
-/// assert_eq!(from_hmsm(3, 5, 7, 0) - TimeDelta::zero(), from_hmsm(3, 5, 7, 0));
-/// assert_eq!(from_hmsm(3, 5, 7, 0) - TimeDelta::try_seconds(1).unwrap(), from_hmsm(3, 5, 6, 0));
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 0) - TimeDelta::try_seconds(60 + 5).unwrap(),
-///     from_hmsm(3, 4, 2, 0)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 0) - TimeDelta::try_seconds(2 * 60 * 60 + 6 * 60).unwrap(),
-///     from_hmsm(0, 59, 7, 0)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 0) - TimeDelta::try_milliseconds(80).unwrap(),
-///     from_hmsm(3, 5, 6, 920)
-/// );
-/// assert_eq!(
-///     from_hmsm(3, 5, 7, 950) - TimeDelta::try_milliseconds(280).unwrap(),
-///     from_hmsm(3, 5, 7, 670)
-/// );
-/// ```
-///
-/// The subtraction wraps around.
-///
-/// ```ignore
-/// # use chrono::{TimeDelta, NaiveTime};
-/// # let from_hmsm = |h, m, s, milli| { NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap() };
-/// assert_eq!(from_hmsm(3, 5, 7, 0) - TimeDelta::try_seconds(8*60*60).unwrap(), from_hmsm(19, 5, 7, 0));
-/// assert_eq!(from_hmsm(3, 5, 7, 0) - TimeDelta::try_days(800).unwrap(), from_hmsm(3, 5, 7, 0));
-/// ```
-///
-/// Leap seconds are handled, but the subtraction assumes that it is the only leap second happened.
-///
-/// ```ignore
-/// # use chrono::{TimeDelta, NaiveTime};
-/// # let from_hmsm = |h, m, s, milli| { NaiveTime::from_hms_milli_opt(h, m, s, milli).unwrap() };
-/// let leap = from_hmsm(3, 5, 59, 1_300);
-/// assert_eq!(leap - TimeDelta::zero(), from_hmsm(3, 5, 59, 1_300));
-/// assert_eq!(leap - TimeDelta::try_milliseconds(200).unwrap(), from_hmsm(3, 5, 59, 1_100));
-/// assert_eq!(leap - TimeDelta::try_milliseconds(500).unwrap(), from_hmsm(3, 5, 59, 800));
-/// assert_eq!(leap - TimeDelta::try_seconds(60).unwrap(), from_hmsm(3, 5, 0, 300));
-/// assert_eq!(leap - TimeDelta::try_days(1).unwrap(), from_hmsm(3, 6, 0, 300));
-/// ```
-///
-/// [leap second handling]: crate::extensions::chrono::NaiveTime#leap-second-handling
 impl Sub<TimeDelta> for NaiveTime {
     type Output = NaiveTime;
 
@@ -922,21 +525,8 @@ impl SubAssign<Duration> for NaiveTime {
     }
 }
 
-/// Subtract `FixedOffset` from `NaiveTime`.
-///
-/// This wraps around and never overflows or underflows.
-/// In particular the subtraction ignores integral number of days.
-impl Sub<FixedOffset> for NaiveTime {
-    type Output = NaiveTime;
-
-    #[inline]
-    fn sub(self, rhs: FixedOffset) -> NaiveTime {
-        self.overflowing_sub_offset(rhs).0
-    }
-}
-
-/// The `Debug` output of the naive time `t` is the same as
-/// [`t.format("%H:%M:%S%.f")`](crate::extensions::chrono::format::strftime).
+/// The `Debug` output of the naive time `t` uses the format
+/// `%H:%M:%S%.f`.
 ///
 /// The string printed can be readily parsed via the `parse` method on `str`.
 ///
@@ -945,36 +535,6 @@ impl Sub<FixedOffset> for NaiveTime {
 /// This doesn't matter in practice, since such leap seconds never happened.
 /// (By the time of the first leap second on 1972-06-30,
 /// every time zone offset around the world has standardized to the 5-minute alignment.)
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::NaiveTime;
-///
-/// assert_eq!(format!("{:?}", NaiveTime::from_hms_opt(23, 56, 4).unwrap()), "23:56:04");
-/// assert_eq!(
-///     format!("{:?}", NaiveTime::from_hms_milli_opt(23, 56, 4, 12).unwrap()),
-///     "23:56:04.012"
-/// );
-/// assert_eq!(
-///     format!("{:?}", NaiveTime::from_hms_micro_opt(23, 56, 4, 1234).unwrap()),
-///     "23:56:04.001234"
-/// );
-/// assert_eq!(
-///     format!("{:?}", NaiveTime::from_hms_nano_opt(23, 56, 4, 123456).unwrap()),
-///     "23:56:04.000123456"
-/// );
-/// ```
-///
-/// Leap seconds may also be used.
-///
-/// ```ignore
-/// # use chrono::NaiveTime;
-/// assert_eq!(
-///     format!("{:?}", NaiveTime::from_hms_milli_opt(6, 59, 59, 1_500).unwrap()),
-///     "06:59:60.500"
-/// );
-/// ```
 impl fmt::Debug for NaiveTime {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let (hour, min, sec) = self.hms();
@@ -1003,8 +563,8 @@ impl fmt::Debug for NaiveTime {
     }
 }
 
-/// The `Display` output of the naive time `t` is the same as
-/// [`t.format("%H:%M:%S%.f")`](crate::extensions::chrono::format::strftime).
+/// The `Display` output of the naive time `t` uses the format
+/// `%H:%M:%S%.f`.
 ///
 /// The string printed can be readily parsed via the `parse` method on `str`.
 ///
@@ -1013,36 +573,6 @@ impl fmt::Debug for NaiveTime {
 /// This doesn't matter in practice, since such leap seconds never happened.
 /// (By the time of the first leap second on 1972-06-30,
 /// every time zone offset around the world has standardized to the 5-minute alignment.)
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::NaiveTime;
-///
-/// assert_eq!(format!("{}", NaiveTime::from_hms_opt(23, 56, 4).unwrap()), "23:56:04");
-/// assert_eq!(
-///     format!("{}", NaiveTime::from_hms_milli_opt(23, 56, 4, 12).unwrap()),
-///     "23:56:04.012"
-/// );
-/// assert_eq!(
-///     format!("{}", NaiveTime::from_hms_micro_opt(23, 56, 4, 1234).unwrap()),
-///     "23:56:04.001234"
-/// );
-/// assert_eq!(
-///     format!("{}", NaiveTime::from_hms_nano_opt(23, 56, 4, 123456).unwrap()),
-///     "23:56:04.000123456"
-/// );
-/// ```
-///
-/// Leap seconds may also be used.
-///
-/// ```ignore
-/// # use chrono::NaiveTime;
-/// assert_eq!(
-///     format!("{}", NaiveTime::from_hms_milli_opt(6, 59, 59, 1_500).unwrap()),
-///     "06:59:60.500"
-/// );
-/// ```
 impl fmt::Display for NaiveTime {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self, f)
@@ -1050,28 +580,7 @@ impl fmt::Display for NaiveTime {
 }
 
 /// Parsing a `str` into a `NaiveTime` uses the same format,
-/// [`%H:%M:%S%.f`](crate::extensions::chrono::format::strftime), as in `Debug` and `Display`.
-///
-/// # Example
-///
-/// ```ignore
-/// use chrono::NaiveTime;
-///
-/// let t = NaiveTime::from_hms_opt(23, 56, 4).unwrap();
-/// assert_eq!("23:56:04".parse::<NaiveTime>(), Ok(t));
-///
-/// let t = NaiveTime::from_hms_nano_opt(23, 56, 4, 12_345_678).unwrap();
-/// assert_eq!("23:56:4.012345678".parse::<NaiveTime>(), Ok(t));
-///
-/// let t = NaiveTime::from_hms_nano_opt(23, 59, 59, 1_234_567_890).unwrap(); // leap second
-/// assert_eq!("23:59:60.23456789".parse::<NaiveTime>(), Ok(t));
-///
-/// // Seconds are optional
-/// let t = NaiveTime::from_hms_opt(23, 56, 0).unwrap();
-/// assert_eq!("23:56".parse::<NaiveTime>(), Ok(t));
-///
-/// assert!("foo".parse::<NaiveTime>().is_err());
-/// ```
+/// `%H:%M:%S%.f`, as in `Debug` and `Display`.
 impl str::FromStr for NaiveTime {
     type Err = ParseError;
 

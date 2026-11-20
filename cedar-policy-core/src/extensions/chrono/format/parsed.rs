@@ -5,8 +5,8 @@
 // Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
 // Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
 // Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
-//   examples marked `ignore`; code behind chrono's Cargo features (not enabled in Cedar) removed;
-//   code not used by Cedar removed.
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
 
 //! A collection of parsed date and time items.
 //! They can be constructed incrementally while being checked for consistency.
@@ -59,78 +59,6 @@ use crate::extensions::chrono::{DateTime, Datelike, TimeDelta, Timelike, Weekday
 /// ```
 ///
 /// [RFC 2822 date and time format]: https://tools.ietf.org/html/rfc2822#section-3.3
-///
-/// # Example
-///
-/// Let's see how `Parsed` correctly detects the second RFC 2822 string from before is inconsistent.
-///
-/// ```ignore
-/// # #[cfg(feature = "alloc")] {
-/// use chrono::format::{ParseErrorKind, Parsed};
-/// use chrono::Weekday;
-///
-/// let mut parsed = Parsed::new();
-/// parsed.set_weekday(Weekday::Wed)?;
-/// parsed.set_day(31)?;
-/// parsed.set_month(12)?;
-/// parsed.set_year(2014)?;
-/// parsed.set_hour(4)?;
-/// parsed.set_minute(26)?;
-/// parsed.set_second(40)?;
-/// parsed.set_offset(0)?;
-/// let dt = parsed.to_datetime()?;
-/// assert_eq!(dt.to_rfc2822(), "Wed, 31 Dec 2014 04:26:40 +0000");
-///
-/// let mut parsed = Parsed::new();
-/// parsed.set_weekday(Weekday::Thu)?; // changed to the wrong day
-/// parsed.set_day(31)?;
-/// parsed.set_month(12)?;
-/// parsed.set_year(2014)?;
-/// parsed.set_hour(4)?;
-/// parsed.set_minute(26)?;
-/// parsed.set_second(40)?;
-/// parsed.set_offset(0)?;
-/// let result = parsed.to_datetime();
-///
-/// assert!(result.is_err());
-/// if let Err(error) = result {
-///     assert_eq!(error.kind(), ParseErrorKind::Impossible);
-/// }
-/// # }
-/// # Ok::<(), chrono::ParseError>(())
-/// ```
-///
-/// The same using chrono's built-in parser for RFC 2822 (the [RFC2822 formatting item]) and
-/// [`format::parse()`] showing how to inspect a field on failure.
-///
-/// [RFC2822 formatting item]: crate::extensions::chrono::format::Fixed::RFC2822
-/// [`format::parse()`]: crate::extensions::chrono::format::parse()
-///
-/// ```ignore
-/// # #[cfg(feature = "alloc")] {
-/// use chrono::format::{parse, Fixed, Item, Parsed};
-/// use chrono::Weekday;
-///
-/// let rfc_2822 = [Item::Fixed(Fixed::RFC2822)];
-///
-/// let mut parsed = Parsed::new();
-/// parse(&mut parsed, "Wed, 31 Dec 2014 04:26:40 +0000", rfc_2822.iter())?;
-/// let dt = parsed.to_datetime()?;
-///
-/// assert_eq!(dt.to_rfc2822(), "Wed, 31 Dec 2014 04:26:40 +0000");
-///
-/// let mut parsed = Parsed::new();
-/// parse(&mut parsed, "Thu, 31 Dec 2014 04:26:40 +0000", rfc_2822.iter())?;
-/// let result = parsed.to_datetime();
-///
-/// assert!(result.is_err());
-/// if result.is_err() {
-///     // What is the weekday?
-///     assert_eq!(parsed.weekday(), Some(Weekday::Thu));
-/// }
-/// # }
-/// # Ok::<(), chrono::ParseError>(())
-/// ```
 #[allow(clippy::manual_non_exhaustive)]
 #[derive(Clone, PartialEq, Eq, Debug, Default, Hash)]
 pub struct Parsed {
