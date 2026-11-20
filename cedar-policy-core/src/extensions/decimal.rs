@@ -415,84 +415,84 @@ mod tests {
 
         // valid decimal strings
         assert_decimal_valid(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("1.0")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("1.0")"#).expect("parsing error")),
         );
         assert_decimal_valid(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("-1.0")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("-1.0")"#).expect("parsing error")),
         );
         assert_decimal_valid(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("123.456")"#).expect("parsing error"),
             ),
         );
         assert_decimal_valid(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("0.1234")"#).expect("parsing error"),
             ),
         );
         assert_decimal_valid(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("-0.0123")"#).expect("parsing error"),
             ),
         );
         assert_decimal_valid(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("55.1")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("55.1")"#).expect("parsing error")),
         );
-        assert_decimal_valid(eval.interpret_inline_policy(
+        assert_decimal_valid(eval.interpret_static_policy(
             &parse_expr(r#"decimal("-922337203685477.5808")"#).expect("parsing error"),
         ));
 
         // weird, but ok
         assert_decimal_valid(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("00.000")"#).expect("parsing error"),
             ),
         );
 
         // invalid decimal strings
         assert_decimal_err(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("1234")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("1234")"#).expect("parsing error")),
         );
         assert_decimal_err(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("1.0.")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("1.0.")"#).expect("parsing error")),
         );
         assert_decimal_err(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("1.")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("1.")"#).expect("parsing error")),
         );
         assert_decimal_err(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal(".1")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal(".1")"#).expect("parsing error")),
         );
         assert_decimal_err(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("1.a")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("1.a")"#).expect("parsing error")),
         );
         assert_decimal_err(
-            eval.interpret_inline_policy(&parse_expr(r#"decimal("-.")"#).expect("parsing error")),
+            eval.interpret_static_policy(&parse_expr(r#"decimal("-.")"#).expect("parsing error")),
         );
 
         // overflows
-        assert_decimal_err(eval.interpret_inline_policy(
+        assert_decimal_err(eval.interpret_static_policy(
             &parse_expr(r#"decimal("1000000000000000.0")"#).expect("parsing error"),
         ));
-        assert_decimal_err(eval.interpret_inline_policy(
+        assert_decimal_err(eval.interpret_static_policy(
             &parse_expr(r#"decimal("922337203685477.5808")"#).expect("parsing error"),
         ));
-        assert_decimal_err(eval.interpret_inline_policy(
+        assert_decimal_err(eval.interpret_static_policy(
             &parse_expr(r#"decimal("-922337203685477.5809")"#).expect("parsing error"),
         ));
-        assert_decimal_err(eval.interpret_inline_policy(
+        assert_decimal_err(eval.interpret_static_policy(
             &parse_expr(r#"decimal("-922337203685478.0")"#).expect("parsing error"),
         ));
 
         // too many digits after the decimal point
         assert_decimal_err(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("0.12345")"#).expect("parsing error"),
             ),
         );
 
         // still an error, even if the extra digits are 0
         assert_decimal_err(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("0.00000")"#).expect("parsing error"),
             ),
         );
@@ -519,49 +519,49 @@ mod tests {
 
         // a, b, c are all equal
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(a.clone(), a.clone())),
+            eval.interpret_static_policy(&Expr::is_eq(a.clone(), a.clone())),
             Ok(Value::from(true))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(a.clone(), b.clone())),
+            eval.interpret_static_policy(&Expr::is_eq(a.clone(), b.clone())),
             Ok(Value::from(true))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(b.clone(), c.clone())),
+            eval.interpret_static_policy(&Expr::is_eq(b.clone(), c.clone())),
             Ok(Value::from(true))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(c, a.clone())),
+            eval.interpret_static_policy(&Expr::is_eq(c, a.clone())),
             Ok(Value::from(true))
         );
 
         // d, e are distinct
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(b, d.clone())),
+            eval.interpret_static_policy(&Expr::is_eq(b, d.clone())),
             Ok(Value::from(false))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(a.clone(), e.clone())),
+            eval.interpret_static_policy(&Expr::is_eq(a.clone(), e.clone())),
             Ok(Value::from(false))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(d, e)),
+            eval.interpret_static_policy(&Expr::is_eq(d, e)),
             Ok(Value::from(false))
         );
 
         // f (0.0) and g (-0.0) are equal
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(f, g)),
+            eval.interpret_static_policy(&Expr::is_eq(f, g)),
             Ok(Value::from(true))
         );
 
         // other types are not equal
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(a.clone(), Expr::val("123.0"))),
+            eval.interpret_static_policy(&Expr::is_eq(a.clone(), Expr::val("123.0"))),
             Ok(Value::from(false))
         );
         assert_eq!(
-            eval.interpret_inline_policy(&Expr::is_eq(a, Expr::val(1))),
+            eval.interpret_static_policy(&Expr::is_eq(a, Expr::val(1))),
             Ok(Value::from(false))
         );
     }
@@ -575,7 +575,7 @@ mod tests {
 
         for ((l, r), res) in tests {
             assert_eq!(
-                eval.interpret_inline_policy(&Expr::call_extension_fn(
+                eval.interpret_static_policy(&Expr::call_extension_fn(
                     Name::parse_unqualified_name(op).expect("should be a valid identifier"),
                     vec![l, r]
                 )),
@@ -641,7 +641,7 @@ mod tests {
         let eval = Evaluator::new(request, &entities, &exts);
 
         assert_matches!(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("1.23") < decimal("1.24")"#).expect("parsing error")
             ),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
@@ -654,7 +654,7 @@ mod tests {
             }
         );
         assert_matches!(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("-1.23").lessThan("1.23")"#).expect("parsing error")
             ),
             Err(EvaluationError::TypeError(evaluation_errors::TypeError { expected, actual, advice, .. })) => {
@@ -670,14 +670,14 @@ mod tests {
         parse_expr(r#"lessThan(decimal("-1.23"), decimal("1.23"))"#).expect_err("should fail");
 
         assert_eq!(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("-0.23") != decimal("0.23")"#).expect("parsing error")
             ),
             Ok(true.into())
         );
 
         assert_eq!(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("-0.0001").lessThan(decimal("0.0"))"#)
                     .expect("parsing error")
             ),
@@ -685,7 +685,7 @@ mod tests {
         );
 
         assert_eq!(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("-0.0023").lessThan(decimal("-0.23"))"#)
                     .expect("parsing error")
             ),
@@ -693,7 +693,7 @@ mod tests {
         );
 
         assert_eq!(
-            eval.interpret_inline_policy(
+            eval.interpret_static_policy(
                 &parse_expr(r#"decimal("-1.0000").lessThan(decimal("-0.9999"))"#)
                     .expect("parsing error")
             ),

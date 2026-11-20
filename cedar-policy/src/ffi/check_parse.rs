@@ -82,6 +82,22 @@ pub fn check_parse_policy_set_json_str(json: &str) -> Result<String, serde_json:
     serde_json::to_string(&ans)
 }
 
+/// Check whether a policy set successfully parses, from a string of JSON.
+///
+/// Unlike passing a JavaScript object, JSON syntax errors are reported with
+/// their line and column. Input and output are as for
+/// [`check_parse_policy_set_json_str()`].
+///
+/// # Errors
+///
+/// Throws if the input cannot be parsed as JSON or deserialized as
+/// [`PolicySet`], or if the answer cannot be serialized.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParsePolicySetJsonStr")]
+pub fn check_parse_policy_set_json_str_wasm(json: &str) -> Result<String, JsError> {
+    Ok(check_parse_policy_set_json_str(json)?)
+}
+
 /// Check whether a schema successfully parses.
 ///
 /// # Errors
@@ -127,6 +143,22 @@ pub fn check_parse_schema_json(
 pub fn check_parse_schema_json_str(json: &str) -> Result<String, serde_json::Error> {
     let ans = check_parse_schema(serde_json::from_str(json)?);
     serde_json::to_string(&ans)
+}
+
+/// Check whether a schema successfully parses, from a string of JSON.
+///
+/// Unlike passing a JavaScript object, JSON syntax errors are reported with
+/// their line and column. Input and output are as for
+/// [`check_parse_schema_json_str()`].
+///
+/// # Errors
+///
+/// Throws if the input cannot be parsed as JSON or deserialized as
+/// [`Schema`], or if the answer cannot be serialized.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParseSchemaJsonStr")]
+pub fn check_parse_schema_json_str_wasm(json: &str) -> Result<String, JsError> {
+    Ok(check_parse_schema_json_str(json)?)
 }
 
 /// Check whether a set of scope variables successfully parses.
@@ -254,6 +286,22 @@ pub fn check_parse_entities_json_str(json: &str) -> Result<String, serde_json::E
     serde_json::to_string(&ans)
 }
 
+/// Check whether a set of entities successfully parses, from a string of JSON.
+///
+/// Unlike passing a JavaScript object, JSON syntax errors are reported with
+/// their line and column. Input and output are as for
+/// [`check_parse_entities_json_str()`].
+///
+/// # Errors
+///
+/// Throws if the input cannot be parsed as JSON or deserialized as
+/// [`EntitiesParsingCall`], or if the answer cannot be serialized.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParseEntitiesJsonStr")]
+pub fn check_parse_entities_json_str_wasm(json: &str) -> Result<String, JsError> {
+    Ok(check_parse_entities_json_str(json)?)
+}
+
 /// Check whether a context successfully parses.
 ///
 /// # Errors
@@ -332,6 +380,22 @@ pub fn check_parse_context_json(
 pub fn check_parse_context_json_str(json: &str) -> Result<String, serde_json::Error> {
     let ans = check_parse_context(serde_json::from_str(json)?);
     serde_json::to_string(&ans)
+}
+
+/// Check whether a context successfully parses, from a string of JSON.
+///
+/// Unlike passing a JavaScript object, JSON syntax errors are reported with
+/// their line and column. Input and output are as for
+/// [`check_parse_context_json_str()`].
+///
+/// # Errors
+///
+/// Throws if the input cannot be parsed as JSON or deserialized as
+/// [`ContextParsingCall`], or if the answer cannot be serialized.
+#[cfg(feature = "wasm")]
+#[wasm_bindgen(js_name = "checkParseContextJsonStr")]
+pub fn check_parse_context_json_str_wasm(json: &str) -> Result<String, JsError> {
+    Ok(check_parse_context_json_str(json)?)
 }
 
 /// Result struct for syntax validation
@@ -431,6 +495,42 @@ mod test {
             parse_result,
             CheckParseAnswer::Failure { errors } => errors
         )
+    }
+
+    /// The string entry points exported to WASM (#1317) give the same answers
+    /// as the `_json_str` functions they wrap.
+    #[cfg(feature = "wasm")]
+    #[test]
+    fn wasm_json_str_entry_points() {
+        let policies = r#"{"staticPolicies": "permit(principal, action, resource);"}"#;
+        assert_eq!(
+            check_parse_policy_set_json_str_wasm(policies).unwrap(),
+            check_parse_policy_set_json_str(policies).unwrap()
+        );
+        let bad_policies = r#"{"staticPolicies": "permit(2pac, action, resource);"}"#;
+        let answer: CheckParseAnswer =
+            serde_json::from_str(&check_parse_policy_set_json_str_wasm(bad_policies).unwrap())
+                .unwrap();
+        assert_check_parse_is_err(&answer);
+
+        let schema = r#"{"": {"entityTypes": {"User": {}}, "actions": {}}}"#;
+        let answer: CheckParseAnswer =
+            serde_json::from_str(&check_parse_schema_json_str_wasm(schema).unwrap()).unwrap();
+        assert_check_parse_is_ok(&answer);
+        let cedar_schema = r#""entity User;""#;
+        let answer: CheckParseAnswer =
+            serde_json::from_str(&check_parse_schema_json_str_wasm(cedar_schema).unwrap()).unwrap();
+        assert_check_parse_is_ok(&answer);
+
+        let entities = r#"{"entities": [{"uid": {"type": "User", "id": "alice"}, "attrs": {}, "parents": []}]}"#;
+        let answer: CheckParseAnswer =
+            serde_json::from_str(&check_parse_entities_json_str_wasm(entities).unwrap()).unwrap();
+        assert_check_parse_is_ok(&answer);
+
+        let context = r#"{"context": {"ip": {"__extn": {"fn": "ip", "arg": "10.0.0.1"}}}}"#;
+        let answer: CheckParseAnswer =
+            serde_json::from_str(&check_parse_context_json_str_wasm(context).unwrap()).unwrap();
+        assert_check_parse_is_ok(&answer);
     }
 
     #[test]

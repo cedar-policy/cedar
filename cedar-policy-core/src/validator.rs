@@ -741,7 +741,7 @@ mod incomplete_schema {
 #[cfg(test)]
 #[expect(clippy::cognitive_complexity, reason = "unit test code")]
 mod enumerated_entity_types {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, sync::Arc};
 
     use crate::{
         ast::{Eid, EntityUID, ExprBuilder, PolicyID, PolicySet, SlotId, Template},
@@ -757,7 +757,7 @@ mod enumerated_entity_types {
         typecheck::test::test_utils::get_loc,
         types::{EntityLUB, Type},
         validation_errors::AttributeAccess,
-        ValidationError, ValidationWarning, Validator, ValidatorSchema,
+        ValidationError, ValidationMode, ValidationWarning, Validator, ValidatorSchema,
     };
 
     #[track_caller]
@@ -795,14 +795,13 @@ mod enumerated_entity_types {
         let schema = schema();
         let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"foo" };"#).unwrap();
         let validator = Validator::new(schema);
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert!(errors.collect_vec().is_empty());
     }
 
     #[test]
-    fn link() {
+    fn link_not_enum_invalid() {
         let schema = schema();
         let template = parse_policy_or_template(
             None,
@@ -810,7 +809,7 @@ mod enumerated_entity_types {
         )
         .unwrap();
         let policy = Template::link(
-            std::sync::Arc::new(template),
+            Arc::new(template),
             PolicyID::from_string("test"),
             HashMap::from_iter([(SlotId::principal(), r#"Other::"foo""#.parse().unwrap())]),
         )
@@ -818,7 +817,7 @@ mod enumerated_entity_types {
         let mut policy_set = PolicySet::new();
         let _ = policy_set.add(policy);
         let validator = Validator::new(schema);
-        let result = validator.validate(&policy_set, crate::validator::ValidationMode::Strict);
+        let result = validator.validate(&policy_set, ValidationMode::Strict);
 
         assert!(result.validation_errors().collect_vec().is_empty());
         assert_matches!(
@@ -828,12 +827,51 @@ mod enumerated_entity_types {
     }
 
     #[test]
+    fn link_valid_enum() {
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal == ?principal, action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let policy = Template::link(
+            Arc::new(template),
+            PolicyID::from_string("test"),
+            HashMap::from_iter([(SlotId::principal(), r#"Foo::"foo""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut policy_set = PolicySet::new();
+        policy_set.add(policy).unwrap();
+        let result = Validator::new(schema()).validate(&policy_set, ValidationMode::Strict);
+        assert!(result.validation_passed());
+    }
+
+    #[test]
+    fn link_invalid_enum() {
+        let template = parse_policy_or_template(
+            None,
+            r#"permit(principal == ?principal, action == Action::"a", resource);"#,
+        )
+        .unwrap();
+        let policy = Template::link(
+            Arc::new(template),
+            PolicyID::from_string("test"),
+            HashMap::from_iter([(SlotId::principal(), r#"Foo::"fo""#.parse().unwrap())]),
+        )
+        .unwrap();
+        let mut policy_set = PolicySet::new();
+        policy_set.add(policy).unwrap();
+        let result = Validator::new(schema()).validate(&policy_set, ValidationMode::Strict);
+        assert_matches!(&result.validation_errors().collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
+            assert_eq!(err.err.uid, EntityUID::with_eid_and_type("Foo", "fo").unwrap());
+        });
+    }
+
+    #[test]
     fn basic_invalid() {
         let schema = schema();
         let template = parse_policy_or_template(None, r#"permit(principal, action == Action::"a", resource) when { principal == Foo::"fo" };"#).unwrap();
         let validator = Validator::new(schema.clone());
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
             assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
@@ -846,8 +884,7 @@ mod enumerated_entity_types {
         )
         .unwrap();
         let validator = Validator::new(schema.clone());
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
             assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
@@ -860,8 +897,7 @@ mod enumerated_entity_types {
         )
         .unwrap();
         let validator = Validator::new(schema.clone());
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
             assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
@@ -876,8 +912,7 @@ mod enumerated_entity_types {
         )
         .unwrap();
         let validator = Validator::new(schema.clone());
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
             assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
@@ -892,8 +927,7 @@ mod enumerated_entity_types {
         )
         .unwrap();
         let validator = Validator::new(schema.clone());
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
             assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
@@ -908,8 +942,7 @@ mod enumerated_entity_types {
         )
         .unwrap();
         let validator = Validator::new(schema);
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_matches!(&errors.collect_vec(), [ValidationError::InvalidEnumEntity(err)] => {
             assert_eq!(err.err.choices, nonempty![Eid::new("foo")]);
@@ -923,8 +956,7 @@ mod enumerated_entity_types {
         let src = r#"permit(principal, action == Action::"a", resource) when { principal.foo == "foo" };"#;
         let template = parse_policy_or_template(None, src).unwrap();
         let validator = Validator::new(schema);
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_eq!(
             errors.collect_vec(),
@@ -947,8 +979,7 @@ mod enumerated_entity_types {
         let src = r#"permit(principal, action == Action::"a", resource) when { principal in Bar::"bar" };"#;
         let template = parse_policy_or_template(None, src).unwrap();
         let validator = Validator::new(schema);
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert_eq!(
             warnings.collect_vec(),
             [ValidationWarning::impossible_policy(
@@ -965,8 +996,7 @@ mod enumerated_entity_types {
         let src = r#"permit(principal, action == Action::"a", resource) when { principal.getTag("foo") == "foo" };"#;
         let template = parse_policy_or_template(None, src).unwrap();
         let validator = Validator::new(schema);
-        let (errors, warnings) =
-            validator.validate_policy(&template, crate::validator::ValidationMode::Strict);
+        let (errors, warnings) = validator.validate_policy(&template, ValidationMode::Strict);
         assert!(warnings.collect_vec().is_empty());
         assert_eq!(
             errors.collect_vec(),

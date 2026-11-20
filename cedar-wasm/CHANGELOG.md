@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `checkParsePolicySetJsonStr`, `checkParseSchemaJsonStr`, `checkParseEntitiesJsonStr` and `checkParseContextJsonStr` bindings, which take JSON strings as input and report the location of errors in the JSON syntax. (#1317)
+
 ## 4.15.0
 
 ## 4.14.1

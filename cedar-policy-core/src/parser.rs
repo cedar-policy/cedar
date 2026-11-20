@@ -27,7 +27,7 @@ mod fmt;
 pub use fmt::join_with_conjunction;
 /// Source location struct
 mod loc;
-pub use loc::Loc;
+pub use loc::{Loc, SourceText};
 /// Metadata wrapper for CST Nodes
 mod node;
 pub use node::Node;
@@ -479,17 +479,17 @@ mod tests {
         "#;
         let errs = parse_policyset(src).expect_err("expected parsing to fail");
         let unrecognized_tokens = vec![
-            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
-            ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`"),
+            ("or", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`", Some("use `||` for logical OR")),
+            ("if", "expected `!=`, `&&`, `(`, `*`, `+`, `-`, `.`, `::`, `<`, `<=`, `==`, `>`, `>=`, `[`, `||`, `}`, `has`, `in`, `is`, or `like`", None),
         ];
-        for (token, label) in unrecognized_tokens {
-            expect_some_error_matches(
-                src,
-                &errs,
-                &ExpectedErrorMessageBuilder::error(&format!("unexpected token `{token}`"))
-                    .exactly_one_underline_with_label(token, label)
-                    .build(),
-            );
+        for (token, label, help) in unrecognized_tokens {
+            let message = format!("unexpected token `{token}`");
+            let mut expected = ExpectedErrorMessageBuilder::error(&message)
+                .exactly_one_underline_with_label(token, label);
+            if let Some(help) = help {
+                expected = expected.help(help);
+            }
+            expect_some_error_matches(src, &errs, &expected.build());
         }
         expect_n_errors(src, &errs, 2);
         assert!(errs.iter().all(|err| matches!(err, ParseError::ToCST(_))));
@@ -542,25 +542,25 @@ mod tests {
         // bools
         let src = "false";
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..5, Arc::from(src))));
 
         let src = "true && true";
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..12, Arc::from(src))));
 
         let src = "!true || false && !true";
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..23, Arc::from(src))));
 
         let src = "!!!!true";
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(0..8, Arc::from(src))));
 
@@ -571,7 +571,7 @@ mod tests {
             -200
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(600));
         assert_eq!(val.source_loc(), Some(&Loc::new(9..81, Arc::from(src))));
     }
@@ -593,7 +593,7 @@ mod tests {
 
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..80, Arc::from(src))));
         // because "10..80" is hard to read, we also assert that the correct portion of `src` is indicated
@@ -612,7 +612,7 @@ mod tests {
 
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..76, Arc::from(src))));
         assert_eq!(
@@ -630,7 +630,7 @@ mod tests {
 
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..77, Arc::from(src))));
         assert_eq!(
@@ -648,7 +648,7 @@ mod tests {
 
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(10..82, Arc::from(src))));
         assert_eq!(
@@ -677,7 +677,7 @@ mod tests {
 
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(false));
         assert_eq!(val.source_loc(), Some(&Loc::new(14..28, Arc::from(src))));
         // because "14..28" is hard to read, we also assert that the correct portion of `src` is indicated
@@ -689,7 +689,7 @@ mod tests {
 
         "#;
         let expr = parse_expr(src).unwrap();
-        let val = evaluator.interpret_inline_policy(&expr).unwrap();
+        let val = evaluator.interpret_static_policy(&expr).unwrap();
         assert_eq!(val, Value::from(true));
         assert_eq!(val.source_loc(), Some(&Loc::new(14..30, Arc::from(src))));
         assert_eq!(
@@ -712,7 +712,7 @@ mod tests {
         let evaluator = eval::Evaluator::new(request, &entities, exts);
 
         let expr = parse_expr(src).unwrap();
-        assert_matches!(evaluator.interpret_inline_policy(&expr), Err(e) => {
+        assert_matches!(evaluator.interpret_static_policy(&expr), Err(e) => {
             expect_err(
                 src,
                 &miette::Report::new(e),

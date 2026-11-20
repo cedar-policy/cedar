@@ -105,24 +105,40 @@ impl Validator {
         })
     }
 
-    /// Generate `UnrecognizedEntityType` error for
-    /// every entity type in the slot environment that is not in the schema
+    /// Generate `UnrecognizedEntityType` error for every entity type in the
+    /// slot environment that is not in the schema, and `InvalidEnumEntity`
+    /// error for every entity in the slot environment that has an enumerated
+    /// entity type but an eid that is not one of the declared choices.
     pub(crate) fn validate_entity_types_in_slots<'a>(
         &'a self,
         policy_id: &'a PolicyID,
         slots: &'a SlotEnv,
     ) -> impl Iterator<Item = ValidationError> + 'a {
-        slots
-            .values()
-            .filter(|euid| !self.schema.is_known_entity_type(euid.entity_type()))
-            .map(|euid| {
-                ValidationError::unrecognized_entity_type(
+        slots.values().filter_map(move |euid| {
+            let entity_type = euid.entity_type();
+            if !self.schema.is_known_entity_type(entity_type) {
+                return Some(ValidationError::unrecognized_entity_type(
                     None,
                     policy_id.clone(),
-                    euid.entity_type().to_string(),
-                    get_suggested_entity_type(euid.entity_type(), &self.schema),
-                )
-            })
+                    entity_type.to_string(),
+                    get_suggested_entity_type(entity_type, &self.schema),
+                ));
+            }
+            if let Some(ValidatorEntityType {
+                kind: ValidatorEntityTypeKind::Enum(choices),
+                ..
+            }) = self.schema.get_entity_type(entity_type)
+            {
+                if let Err(err) = is_valid_enumerated_entity(choices, euid) {
+                    return Some(ValidationError::invalid_enum_entity(
+                        None,
+                        policy_id.clone(),
+                        err,
+                    ));
+                }
+            }
+            None
+        })
     }
 
     fn check_if_in_fixes_principal(

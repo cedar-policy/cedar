@@ -31,7 +31,7 @@ lalrpop_mod!(
 );
 
 use super::*;
-use std::sync::{Arc, LazyLock};
+use std::sync::LazyLock;
 
 /// This helper function calls a generated parser, collects errors that could be
 /// generated multiple ways, and returns a single Result where the error type is
@@ -41,7 +41,7 @@ fn parse_collect_errors<'a, P, T>(
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
-        &Arc<str>,
+        &SourceText,
         bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
@@ -50,22 +50,22 @@ fn parse_collect_errors<'a, P, T>(
 ) -> Result<T, err::ParseErrors> {
     // We don't need to copy the source if we won't keep it
     let shared_src = if keep_src {
-        Arc::from(text)
+        SourceText::from(text)
     } else {
-        Arc::from("")
+        SourceText::from("")
     };
     let mut errs = Vec::new();
     let result = parse(parser, &mut errs, &shared_src, keep_src, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::clone(&shared_src)))
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, shared_src.clone()))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e, Arc::clone(&shared_src)).into(),
+                err::ToCSTError::from_raw_parse_err(e, shared_src.clone()).into(),
                 errors,
             ));
         }
@@ -85,24 +85,25 @@ fn parse_collect_errors_tolerant<'a, P, T>(
     parse: impl FnOnce(
         &P,
         &mut Vec<err::RawErrorRecovery<'a>>,
-        &Arc<str>,
+        &SourceText,
         bool,
         &'a str,
     ) -> Result<T, err::RawParseError<'a>>,
     text: &'a str,
 ) -> Result<T, err::ParseErrors> {
     let mut errs = Vec::new();
-    let result = parse(parser, &mut errs, &Arc::from(text), true, text);
+    let src = SourceText::from(text);
+    let result = parse(parser, &mut errs, &src, true, text);
 
     let errors = errs
         .into_iter()
-        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, Arc::from(text)))
+        .map(|rc| err::ToCSTError::from_raw_err_recovery(rc, src.clone()))
         .map(Into::into);
     let parsed = match result {
         Ok(parsed) => parsed,
         Err(e) => {
             return Err(err::ParseErrors::new(
-                err::ToCSTError::from_raw_parse_err(e, Arc::from(text)).into(),
+                err::ToCSTError::from_raw_parse_err(e, src.clone()).into(),
                 errors,
             ));
         }
@@ -1068,7 +1069,7 @@ mod tests {
             permit(principal:p,action:a,resource:r)when{w}unless{u}advice{"doit"};
             "#;
         let policies = POLICIES_PARSER
-            .parse(&mut Vec::new(), &Arc::from(src), false, src)
+            .parse(&mut Vec::new(), &SourceText::from(src), false, src)
             .expect("parser error")
             .node
             .expect("no data");
@@ -1467,6 +1468,66 @@ mod tests {
                 .exactly_one_underline("")
                 .build(),
         );
+    }
+
+    #[rstest::rstest]
+    #[case::and_lower("and", "use `&&` for logical AND")]
+    #[case::and_upper("AND", "use `&&` for logical AND")]
+    #[case::and_mixed("aNd", "use `&&` for logical AND")]
+    #[case::single_ampersand("&", "use `&&` for logical AND")]
+    #[case::or_lower("or", "use `||` for logical OR")]
+    #[case::or_upper("OR", "use `||` for logical OR")]
+    #[case::or_mixed("oR", "use `||` for logical OR")]
+    #[case::single_pipe("|", "use `||` for logical OR")]
+    fn logical_operator_hints(#[case] operator: &str, #[case] help: &str) {
+        use miette::Diagnostic;
+
+        let src = format!("true {operator} false");
+        let policy = format!("permit(principal, action, resource) when {{ {src} }};");
+        for errors in [
+            assert_parse_fails(parse_expr, &src),
+            assert_parse_fails(parse_policies, &policy),
+        ] {
+            assert_eq!(errors.len(), 1, "{src}");
+            assert_eq!(
+                errors.help().map(|h| h.to_string()).as_deref(),
+                Some(help),
+                "{src}"
+            );
+        }
+    }
+
+    #[test]
+    fn logical_operator_hints_preserve_identifiers() {
+        use miette::Diagnostic;
+
+        for src in [
+            "context.AND",
+            "context.OR",
+            "principal has and",
+            "principal is OR",
+            r#"AND::"user""#,
+            r#"{"or": true, and: false}"#,
+            r#""AND | &""#,
+            "true // OR &",
+        ] {
+            assert_parse_succeeds(parse_expr, src);
+        }
+        assert_parse_succeeds(
+            parse_policy,
+            r#"@AND("x") permit(principal is OR, action, resource) when {
+                context.AND && resource has OR && AND::"x" == Foo::OR::"x"
+            };"#,
+        );
+        for src in [
+            "permit(principal AND, action, resource);",
+            "permit(principal, action OR, resource);",
+            "permit(principal, action, resource) when { true candy false };",
+            "permit(principal, action, resource) when { true ORacle false };",
+        ] {
+            let errors = assert_parse_fails(parse_policy, src);
+            assert!(errors.iter().all(|error| error.help().is_none()), "{src}");
+        }
     }
 
     #[test]

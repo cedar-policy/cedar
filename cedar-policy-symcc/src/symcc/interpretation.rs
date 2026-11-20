@@ -18,6 +18,7 @@
 //! can SymRequest/SymEntities be interpreted with
 //! an Interpretation.
 
+use super::arc_ord::ArcOrd;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 
@@ -112,11 +113,11 @@ impl Term {
             Term::Prim(..) | Term::None(..) => self.clone(),
             Term::Var(var) => interp.interpret_var(var),
             // `t: &Arc<Term>` is borrowed from `self`, not a temporary.
-            Term::Some(t) => Term::Some(Arc::new(t.interpret_memoized(interp, cache))),
+            Term::Some(t) => Term::Some(ArcOrd::new(t.interpret_memoized(interp, cache))),
 
             // Each `t` yielded by `elts.iter()` borrows from `self`'s `Arc<BTreeSet<Term>>`
             Term::Set { elts, elts_ty } => Term::Set {
-                elts: Arc::new(
+                elts: ArcOrd::new(
                     elts.iter()
                         .map(|t| t.interpret_memoized(interp, cache))
                         .collect(),
@@ -125,7 +126,7 @@ impl Term {
             },
 
             // Each value `v` borrows from `self`'s `Arc<BTreeMap<Attr, Term>>`
-            Term::Record(rec) => Term::Record(Arc::new(
+            Term::Record(rec) => Term::Record(ArcOrd::new(
                 rec.iter()
                     .map(|(k, v)| (k.clone(), v.interpret_memoized(interp, cache)))
                     .collect(),
@@ -161,7 +162,7 @@ impl Term {
                 }
 
                 (Op::Uuf(uuf), [arg]) => factory::app(
-                    UnaryFunction::Udf(Arc::new(interp.interpret_fun(uuf))),
+                    UnaryFunction::Udf(ArcOrd::new(interp.interpret_fun(uuf))),
                     arg.interpret_memoized(interp, cache),
                 ),
 
@@ -337,7 +338,7 @@ impl Term {
                     );
                     Term::App {
                         op: op.clone(),
-                        args: Arc::new(
+                        args: ArcOrd::new(
                             // `t` borrows from `self`'s `args`, not a temporary.
                             args.iter()
                                 .map(|t| t.interpret_memoized(interp, cache))
@@ -368,7 +369,7 @@ impl UnaryFunction {
     pub fn interpret(&self, interp: &Interpretation<'_>) -> UnaryFunction {
         match self {
             UnaryFunction::Udf(..) => self.clone(),
-            UnaryFunction::Uuf(uuf) => UnaryFunction::Udf(Arc::new(interp.interpret_fun(uuf))),
+            UnaryFunction::Uuf(uuf) => UnaryFunction::Udf(ArcOrd::new(interp.interpret_fun(uuf))),
         }
     }
 }
@@ -502,7 +503,7 @@ mod interpret_test {
         let term_interp = term.interpret(interp);
         assert_eq!(
             term_interp,
-            Term::Some(Arc::new(Term::Prim(TermPrim::Bool(res)))),
+            Term::Some(ArcOrd::new(Term::Prim(TermPrim::Bool(res)))),
             "{str}"
         );
         // Check idempotency
@@ -643,7 +644,7 @@ mod interpret_test {
         fn bv_app_without_folding(op: Op, t1: &Term, t2: &Term, ret_ty: TermType) -> Term {
             Term::App {
                 op,
-                args: Arc::new(vec![t1.clone(), t2.clone()]),
+                args: ArcOrd::new(vec![t1.clone(), t2.clone()]),
                 ret_ty,
             }
         }

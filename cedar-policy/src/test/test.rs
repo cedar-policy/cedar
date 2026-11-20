@@ -6839,6 +6839,120 @@ mod issue_2504 {
     }
 }
 
+mod issue_2698 {
+    //! With a schema, `Entities::add_entities_from_json_*` also add the schema's
+    //! `Action` entities, unlike `Entities::add_entities`. If the store already
+    //! holds an entity with the same uid as one of them, the two must be
+    //! identical.
+    use super::*;
+    use cool_asserts::assert_matches;
+    use entities::err::EntitiesError;
+
+    const USERS: &str = r#"[{"uid": {"type": "User", "id": "alice"}, "attrs": {}, "parents": []}]"#;
+
+    fn schema_v1() -> Schema {
+        r"
+            entity User;
+            action read;
+            action view in [read] appliesTo { principal: User, resource: User };
+        "
+        .parse()
+        .expect("should be a valid schema")
+    }
+
+    /// Like `schema_v1`, but `view` has one more parent
+    fn schema_v2() -> Schema {
+        r"
+            entity User;
+            action read;
+            action audit;
+            action view in [read, audit] appliesTo { principal: User, resource: User };
+        "
+        .parse()
+        .expect("should be a valid schema")
+    }
+
+    /// Add `USERS` to `store` with each of the three `add_entities_from_json_*`
+    /// functions
+    fn add_users_from_json(
+        store: &Entities,
+        schema: &Schema,
+    ) -> [Result<Entities, EntitiesError>; 3] {
+        let value: serde_json::Value = serde_json::from_str(USERS).expect("should be valid JSON");
+        [
+            store
+                .clone()
+                .add_entities_from_json_str(USERS, Some(schema)),
+            store
+                .clone()
+                .add_entities_from_json_value(value, Some(schema)),
+            store
+                .clone()
+                .add_entities_from_json_file(USERS.as_bytes(), Some(schema)),
+        ]
+    }
+
+    fn sorted_uids(entities: &Entities) -> Vec<String> {
+        let mut uids: Vec<String> = entities.iter().map(|e| e.uid().to_string()).collect();
+        uids.sort();
+        uids
+    }
+
+    #[test]
+    fn json_variants_add_schema_actions() {
+        let read = EntityUid::from_str(r#"Action::"read""#).unwrap();
+        let view = EntityUid::from_str(r#"Action::"view""#).unwrap();
+        for result in add_users_from_json(&Entities::empty(), &schema_v1()) {
+            let entities = result.expect("adding the users should succeed");
+            assert_eq!(
+                sorted_uids(&entities),
+                [r#"Action::"read""#, r#"Action::"view""#, r#"User::"alice""#]
+            );
+            assert!(entities.is_ancestor_of(&read, &view));
+        }
+    }
+
+    #[test]
+    fn add_entities_does_not_add_schema_actions() {
+        let users = Entities::from_json_str(USERS, None).unwrap();
+        let entities = Entities::empty()
+            .add_entities(users, Some(&schema_v1()))
+            .unwrap();
+        assert_eq!(sorted_uids(&entities), [r#"User::"alice""#]);
+    }
+
+    #[test]
+    fn schema_actions_must_be_identical_to_stored_entities() {
+        // The store holds the actions of `schema_v1`.
+        let store = Entities::from_json_str("[]", Some(&schema_v1())).unwrap();
+
+        // Identical actions do not cause an error.
+        for result in add_users_from_json(&store, &schema_v1()) {
+            let entities = result.expect("adding the users should succeed");
+            assert_eq!(
+                sorted_uids(&entities),
+                [r#"Action::"read""#, r#"Action::"view""#, r#"User::"alice""#]
+            );
+        }
+
+        // In `schema_v2`, `view` has one more parent, so it is not identical to
+        // the stored `view`.
+        for result in add_users_from_json(&store, &schema_v2()) {
+            assert_matches!(result, Err(EntitiesError::Duplicate(e)) => {
+                assert_eq!(e.to_string(), r#"duplicate entity entry `Action::"view"`"#);
+            });
+        }
+
+        // `add_entities` does not add the schema's actions, so it succeeds.
+        let users = Entities::from_json_str(USERS, None).unwrap();
+        let entities = store.add_entities(users, Some(&schema_v2())).unwrap();
+        assert_eq!(
+            sorted_uids(&entities),
+            [r#"Action::"read""#, r#"Action::"view""#, r#"User::"alice""#]
+        );
+    }
+}
+
 mod decimal_ip_constructors {
     use cool_asserts::assert_matches;
 
