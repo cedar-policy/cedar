@@ -21,6 +21,12 @@ Cedar Language Version: TBD
 - The `datetime` extension no longer depends on the unmaintained `chrono` crate. The parts of `chrono` 0.4.45
   that Cedar uses are now vendored in `cedar-policy-core`. Datetime behavior is unchanged.
 
+### Fixed
+
+- The validator now rejects a template-linked policy whose slot is filled with an entity of an enumerated entity type
+  but an eid that is not one of the declared choices, as it already does for the equivalent static policy. Such a link
+  would have been reported as a warning, and results in a policy that never applies. (*)
+
 ## [4.15.0] - 2026-11-16
 
 Cedar Language Version: 4.7
@@ -36,6 +42,12 @@ Cedar Language Version: 4.7
   avoiding re-parsing ids (#2659).
 - The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
   becomes `principal.name` and `principal has "name"` becomes `principal has name` (#2118).
+- In the protobuf experimental feature, a protobuf `Schema` message has a new field `type_defs`, and `Type`
+  a new variant `type_ref` that represents a reference to a type definition: a shared record type is encoded
+  once as a type_def and referred to. Nested shared records now have an encoding linear in the schema size
+  instead of exponential. A type converted on its own, outside a `Schema` message, has no `type_defs` and is
+  still encoded as its expansion.
+  Previous encodings still decode, but readers older than this change can't decode a `type_ref`.
 
 ### Added
 

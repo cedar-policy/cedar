@@ -1,0 +1,15 @@
+[
+  {
+    "name": "alice can view a vacation photo",
+    "request": {
+      "principal": "User::\"alice\"",
+      "action": "Action::\"view\"",
+      "resource": "Photo::\"VacationPhoto94.jpg\"",
+      "context": {}
+    },
+    "entities": "entity.json",
+    "decision": "allow",
+    "reason": ["policy0"],
+    "num_errors": 0
+  }
+]
