@@ -445,6 +445,7 @@ name = "cedar-policy-core"
 version = "4.15.0"
 dependencies = [
  "arbitrary",
+ "cedar-verified-core",
  "chrono",
  "cool_asserts",
  "educe",
@@ -525,6 +526,10 @@ dependencies = [
  "tempfile",
  "walkdir",
 ]
+
+[[package]]
+name = "cedar-verified-core"
+version = "4.15.0"
 
 [[package]]
 name = "cedar-wasm"

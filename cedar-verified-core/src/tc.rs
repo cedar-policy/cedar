@@ -1,0 +1,1511 @@
+/*
+ * Copyright Cedar Contributors
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+//! The transitive closure.
+//!
+//! [`transitive_closure`] computes the components ([`crate::scc`]), then
+//! the successor components of each component, in increasing id order: by
+//! P1 an edge leaves component `c` only to a component `t < c`, whose
+//! successors are already known. Row `u` of the result lists the members of
+//! the successor components of `u`'s component.
+//!
+//! [`repair_closure`] is a port of `compute_tc_internal` and `add_ancestors`
+//! in `cedar-policy-core` (with cycle detection on), without `stacker`.
+
+#[cfg(verus_keep_ghost)]
+use crate::graph::*;
+#[cfg(verus_keep_ghost)]
+use crate::scc::sccs_ok;
+use crate::scc::{filled, sccs, Sccs, NONE};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+/// Some node of component `a` reaches some node of component `b`.
+spec fn creach(g: Seq<Vec<usize>>, comp: Seq<usize>, a: int, b: int) -> bool {
+    exists|x: int, y: int| 0 <= x < g.len() && 0 <= y < g.len() && comp[x] == a && comp[y] == b
+        && #[trigger] reach(g, x, y)
+}
+
+/// `succ[c2]`, for `c2 < c`, is the set of components that `c2` reaches.
+spec fn succ_ok(g: Seq<Vec<usize>>, s: Sccs, succ: Seq<Vec<usize>>, c: int) -> bool {
+    &&& c <= succ.len()
+    &&& forall|c2: int, k: int| 0 <= c2 < c && 0 <= k < succ[c2]@.len() ==>
+        (#[trigger] succ[c2]@[k] as int) < s.members.len()
+    &&& forall|c2: int, t: usize| 0 <= c2 < c && (t as int) < s.members.len() ==>
+        (#[trigger] succ[c2]@.contains(t) <==> creach(g, s.comp@, c2, t as int))
+}
+
+/// `mark[t] == c` iff `t` is in `cur`.
+spec fn sync(mark: Seq<usize>, cur: Seq<usize>, c: usize, ncomp: int) -> bool {
+    &&& mark.len() == ncomp
+    &&& ncomp <= usize::MAX
+    &&& forall|k: int| 0 <= k < cur.len() ==> (#[trigger] cur[k] as int) < ncomp
+    &&& forall|t: int| 0 <= t < ncomp ==> (#[trigger] mark[t] == c <==> cur.contains(t as usize))
+}
+
+/// Edge `j` of `x` has been processed for component `c`: its target
+/// component, and that component's successors when it is not `c`, are
+/// marked.
+spec fn edge_done(g: Seq<Vec<usize>>, s: Sccs, succ: Seq<Vec<usize>>, mark: Seq<usize>, c: usize, x: int, j: int) -> bool {
+    let t = s.comp@[g[x]@[j] as int] as int;
+    &&& mark[t] == c
+    &&& t != c ==> forall|k: int| 0 <= k < succ[t]@.len() ==> mark[#[trigger] succ[t]@[k] as int] == c
+}
+
+/// `mark` only gained marks `c` from `m0`.
+spec fn grows(m0: Seq<usize>, mark: Seq<usize>, c: usize) -> bool {
+    &&& mark.len() == m0.len()
+    &&& forall|t: int| 0 <= t < m0.len() ==> #[trigger] mark[t] == m0[t] || mark[t] == c
+}
+
+proof fn lemma_push_contains(s: Seq<usize>, x: usize, v: usize)
+    ensures
+        s.push(x).contains(v) <==> (s.contains(v) || v == x),
+{
+    if s.contains(v) {
+        let k = choose|k: int| 0 <= k < s.len() && s[k] == v;
+        assert(s.push(x)[k] == v);
+    }
+    if v == x {
+        assert(s.push(x)[s.len() as int] == v);
+    }
+    if s.push(x).contains(v) {
+        let k = choose|k: int| 0 <= k < s.push(x).len() && s.push(x)[k] == v;
+        if k < s.len() {
+            assert(s[k] == v);
+        }
+    }
+}
+
+proof fn lemma_sync_push(mark: Seq<usize>, cur: Seq<usize>, c: usize, ncomp: int, t: usize)
+    requires
+        sync(mark, cur, c, ncomp),
+        (t as int) < ncomp,
+        mark[t as int] != c,
+    ensures
+        sync(mark.update(t as int, c), cur.push(t), c, ncomp),
+{
+    assert forall|t2: int| 0 <= t2 < ncomp implies
+        (#[trigger] mark.update(t as int, c)[t2] == c <==> cur.push(t).contains(t2 as usize)) by {
+        lemma_push_contains(cur, t, t2 as usize);
+    }
+}
+
+/// Marks only grow, so processed edges stay processed.
+proof fn lemma_done_mono(g: Seq<Vec<usize>>, s: Sccs, succ: Seq<Vec<usize>>, m1: Seq<usize>, m2: Seq<usize>, c: usize, x: int, j: int)
+    requires
+        edge_done(g, s, succ, m1, c, x, j),
+        m2.len() == m1.len(),
+        0 <= s.comp@[g[x]@[j] as int] < m1.len(),
+        forall|t: int| 0 <= t < m1.len() && m1[t] == c ==> #[trigger] m2[t] == c,
+        s.comp@[g[x]@[j] as int] != c ==> forall|k: int| 0 <= k < succ[s.comp@[g[x]@[j] as int] as int]@.len() ==>
+            (#[trigger] succ[s.comp@[g[x]@[j] as int] as int]@[k] as int) < m1.len(),
+    ensures
+        edge_done(g, s, succ, m2, c, x, j),
+{
+    let t = s.comp@[g[x]@[j] as int] as int;
+    if t != c {
+        assert forall|k: int| 0 <= k < succ[t]@.len() implies m2[#[trigger] succ[t]@[k] as int] == c by {
+            assert(m1[succ[t]@[k] as int] == c);
+        }
+    }
+}
+
+/// An edge `u -> v` extends the components reached from `v`'s component to
+/// `u`'s component.
+proof fn lemma_creach_step(g: Seq<Vec<usize>>, s: Sccs, u: int, j: int, t2: int)
+    requires
+        wf(g),
+        sccs_ok(g, s),
+        0 <= u < g.len(),
+        0 <= j < g[u]@.len(),
+        creach(g, s.comp@, s.comp@[g[u]@[j] as int] as int, t2),
+    ensures
+        creach(g, s.comp@, s.comp@[u] as int, t2),
+{
+    let v = g[u]@[j] as int;
+    lemma_edge_at(g, u, j);
+    let (x, y) = choose|x: int, y: int| 0 <= x < g.len() && 0 <= y < g.len() && s.comp@[x] == s.comp@[v]
+        && s.comp@[y] == t2 && #[trigger] reach(g, x, y);
+    if x != v {
+        assert(s.comp@[v] == s.comp@[x]);
+        lemma_reach_trans(g, v, x, y);
+    }
+    lemma_reach_trans(g, u, v, y);
+}
+
+proof fn lemma_creach_edge(g: Seq<Vec<usize>>, s: Sccs, u: int, j: int)
+    requires
+        wf(g),
+        sccs_ok(g, s),
+        0 <= u < g.len(),
+        0 <= j < g[u]@.len(),
+    ensures
+        creach(g, s.comp@, s.comp@[u] as int, s.comp@[g[u]@[j] as int] as int),
+{
+    lemma_edge_at(g, u, j);
+    assert(reach(g, u, g[u]@[j] as int));
+}
+
+/// If every edge out of component `c` is processed, every component that
+/// `c` reaches is marked.
+proof fn lemma_complete_n(g: Seq<Vec<usize>>, s: Sccs, succ: Seq<Vec<usize>>, mark: Seq<usize>, c: usize, x: int, y: int, k: nat)
+    requires
+        wf(g),
+        sccs_ok(g, s),
+        succ_ok(g, s, succ, c as int),
+        mark.len() == s.members.len(),
+        0 <= x < g.len(),
+        s.comp@[x] == c,
+        forall|x2: int, j: int| 0 <= x2 < g.len() && s.comp@[x2] == c && 0 <= j < g[x2]@.len() ==>
+            #[trigger] edge_done(g, s, succ, mark, c, x2, j),
+        reach_n(g, x, y, k),
+    ensures
+        mark[s.comp@[y] as int] == c,
+    decreases k,
+{
+    lemma_reach_n_tgt(g, x, y, k);
+    if edge(g, x, y) {
+        let j = choose|j: int| 0 <= j < g[x]@.len() && g[x]@[j] == y as usize;
+        assert(edge_done(g, s, succ, mark, c, x, j));
+    } else {
+        let w = choose|w: int| #[trigger] edge(g, x, w) && reach_n(g, w, y, (k - 1) as nat);
+        let j = choose|j: int| 0 <= j < g[x]@.len() && g[x]@[j] == w as usize;
+        assert(edge_done(g, s, succ, mark, c, x, j));
+        let tw = s.comp@[w] as int;
+        assert(tw <= c);
+        if tw == c {
+            lemma_complete_n(g, s, succ, mark, c, w, y, (k - 1) as nat);
+        } else {
+            assert(reach(g, w, y));
+            assert(creach(g, s.comp@, tw, s.comp@[y] as int));
+            let ty = s.comp@[y];
+            assert(succ[tw]@.contains(ty));
+            let kk = choose|kk: int| 0 <= kk < succ[tw]@.len() && succ[tw]@[kk] == ty;
+            assert(mark[succ[tw]@[kk] as int] == c);
+        }
+    }
+}
+
+proof fn lemma_reach_n_tgt(g: Seq<Vec<usize>>, x: int, y: int, k: nat)
+    requires
+        reach_n(g, x, y, k),
+    ensures
+        0 <= y < g.len(),
+{
+    assert(reach(g, x, y));
+    lemma_reach_tgt_in_range(g, x, y);
+}
+
+/// Two components reach each other iff any of their nodes do.
+proof fn lemma_creach_reach(g: Seq<Vec<usize>>, s: Sccs, u: int, v: int)
+    requires
+        sccs_ok(g, s),
+        0 <= u < g.len(),
+        0 <= v < g.len(),
+    ensures
+        creach(g, s.comp@, s.comp@[u] as int, s.comp@[v] as int) <==> reach(g, u, v),
+{
+    if creach(g, s.comp@, s.comp@[u] as int, s.comp@[v] as int) {
+        let (x, y) = choose|x: int, y: int| 0 <= x < g.len() && 0 <= y < g.len() && s.comp@[x] == s.comp@[u]
+            && s.comp@[y] == s.comp@[v] && #[trigger] reach(g, x, y);
+        if x != u {
+            assert(s.comp@[u] == s.comp@[x]);
+            lemma_reach_trans(g, u, x, y);
+        }
+        if y != v {
+            assert(s.comp@[y] == s.comp@[v]);
+            lemma_reach_trans(g, u, y, v);
+        }
+    }
+}
+
+proof fn lemma_prefix_contains(s: Seq<usize>, k: int, a: usize)
+    requires
+        0 <= k < s.len(),
+    ensures
+        s.subrange(0, k + 1).contains(a) <==> (s.subrange(0, k).contains(a) || s[k] == a),
+{
+    assert(s.subrange(0, k + 1) =~= s.subrange(0, k).push(s[k]));
+    lemma_push_contains(s.subrange(0, k), s[k], a);
+}
+
+} // verus!
+
+/// The successor components of component `c`.
+#[cfg_attr(verus_keep_ghost, verus_spec(cur =>
+    requires
+        wf(g@),
+        sccs_ok(g@, *s),
+        (c as int) < s.members.len(),
+        succ.len() == c,
+        succ_ok(g@, *s, succ@, c as int),
+        old(mark).len() == s.members.len(),
+        forall|t: int| 0 <= t < s.members.len() ==> #[trigger] old(mark)@[t] != c,
+    ensures
+        grows(old(mark)@, final(mark)@, c),
+        forall|k: int| 0 <= k < cur.len() ==> (#[trigger] cur@[k] as int) < s.members.len(),
+        forall|t: usize| (t as int) < s.members.len() ==>
+            (#[trigger] cur@.contains(t) <==> creach(g@, s.comp@, c as int, t as int)),
+))]
+fn component_succ(
+    g: &Vec<Vec<usize>>,
+    s: &Sccs,
+    succ: &Vec<Vec<usize>>,
+    mark: &mut Vec<usize>,
+    c: usize,
+) -> Vec<usize> {
+    let ms = &s.members[c];
+    let mut cur: Vec<usize> = Vec::new();
+    proof_decl! {
+        let ghost ncomp = s.members.len() as int;
+        let ghost m0 = mark@;
+    }
+    proof! {
+        assert forall|t: int| 0 <= t < ncomp implies (#[trigger] mark@[t] == c <==> cur@.contains(t as usize)) by {}
+    }
+    let mut i: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            wf(g@),
+            sccs_ok(g@, *s),
+            succ_ok(g@, *s, succ@, c as int),
+            succ.len() == c,
+            (c as int) < ncomp,
+            ncomp == s.members.len(),
+            ms == s.members@[c as int],
+            m0 == old(mark)@,
+            i <= ms.len(),
+            grows(m0, mark@, c),
+            sync(mark@, cur@, c, ncomp),
+            forall|k: int| 0 <= k < cur.len() ==> creach(g@, s.comp@, c as int, #[trigger] cur@[k] as int),
+            forall|i2: int, j: int| 0 <= i2 < i && 0 <= j < g[ms@[i2] as int]@.len() ==>
+                #[trigger] edge_done(g@, *s, succ@, mark@, c, ms@[i2] as int, j),
+        decreases ms.len() - i
+    ))]
+    while i < ms.len() {
+        let u = ms[i];
+        let row = &g[u];
+        proof! {
+            assert((u as int) < g.len() && s.comp@[u as int] == c);
+        }
+        let mut j: usize = 0;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                wf(g@),
+                sccs_ok(g@, *s),
+                succ_ok(g@, *s, succ@, c as int),
+                succ.len() == c,
+                (c as int) < ncomp,
+                ncomp == s.members.len(),
+                ms == s.members@[c as int],
+                m0 == old(mark)@,
+                i < ms.len(),
+                u == ms@[i as int],
+                (u as int) < g.len(),
+                s.comp@[u as int] == c,
+                *row == g@[u as int],
+                j <= row.len(),
+                grows(m0, mark@, c),
+                sync(mark@, cur@, c, ncomp),
+                forall|k: int| 0 <= k < cur.len() ==> creach(g@, s.comp@, c as int, #[trigger] cur@[k] as int),
+                forall|i2: int, j2: int| 0 <= i2 < i && 0 <= j2 < g[ms@[i2] as int]@.len() ==>
+                    #[trigger] edge_done(g@, *s, succ@, mark@, c, ms@[i2] as int, j2),
+                forall|j2: int| 0 <= j2 < j ==> #[trigger] edge_done(g@, *s, succ@, mark@, c, u as int, j2),
+            decreases row.len() - j
+        ))]
+        while j < row.len() {
+            proof_decl! {
+                let ghost mj = mark@;
+            }
+            proof! {
+                lemma_edge_at(g@, u as int, j as int);
+                lemma_creach_edge(g@, *s, u as int, j as int);
+            }
+            let t = s.comp[row[j]];
+            if mark[t] != c {
+                proof! {
+                    lemma_sync_push(mark@, cur@, c, ncomp, t);
+                }
+                mark[t] = c;
+                cur.push(t);
+            }
+            if t != c {
+                let st = &succ[t];
+                proof! {
+                    assert((t as int) < c);
+                }
+                let mut k: usize = 0;
+                #[cfg_attr(verus_keep_ghost, verus_spec(
+                    invariant
+                        wf(g@),
+                        sccs_ok(g@, *s),
+                        succ_ok(g@, *s, succ@, c as int),
+                        (t as int) < c,
+                        (c as int) < ncomp,
+                        ncomp == s.members.len(),
+                        *st == succ@[t as int],
+                        k <= st.len(),
+                        (u as int) < g.len(),
+                        s.comp@[u as int] == c,
+                        j < g@[u as int]@.len(),
+                        t == s.comp@[g@[u as int]@[j as int] as int],
+                        grows(m0, mark@, c),
+                        sync(mark@, cur@, c, ncomp),
+                        mark@[t as int] == c,
+                        forall|q: int| 0 <= q < ncomp && mj[q] == c ==> #[trigger] mark@[q] == c,
+                        forall|k2: int| 0 <= k2 < cur.len() ==> creach(g@, s.comp@, c as int, #[trigger] cur@[k2] as int),
+                        forall|k2: int| 0 <= k2 < k ==> mark@[#[trigger] st@[k2] as int] == c,
+                    decreases st.len() - k
+                ))]
+                while k < st.len() {
+                    let t2 = st[k];
+                    proof! {
+                        assert(succ@[t as int]@[k as int] == t2);
+                        assert(succ@[t as int]@.contains(t2));
+                        assert(creach(g@, s.comp@, t as int, t2 as int));
+                        lemma_creach_step(g@, *s, u as int, j as int, t2 as int);
+                    }
+                    if mark[t2] != c {
+                        proof! {
+                            lemma_sync_push(mark@, cur@, c, ncomp, t2);
+                        }
+                        mark[t2] = c;
+                        cur.push(t2);
+                    }
+                    k += 1;
+                }
+            }
+            proof! {
+                assert(edge_done(g@, *s, succ@, mark@, c, u as int, j as int));
+                assert forall|i2: int, j2: int| 0 <= i2 < i && 0 <= j2 < g[ms@[i2] as int]@.len() implies
+                    #[trigger] edge_done(g@, *s, succ@, mark@, c, ms@[i2] as int, j2) by {
+                    lemma_edge_at(g@, ms@[i2] as int, j2);
+                    assert(edge_done(g@, *s, succ@, mj, c, ms@[i2] as int, j2));
+                    lemma_done_mono(g@, *s, succ@, mj, mark@, c, ms@[i2] as int, j2);
+                }
+                assert forall|j2: int| 0 <= j2 < j implies #[trigger] edge_done(g@, *s, succ@, mark@, c, u as int, j2) by {
+                    lemma_edge_at(g@, u as int, j2);
+                    assert(edge_done(g@, *s, succ@, mj, c, u as int, j2));
+                    lemma_done_mono(g@, *s, succ@, mj, mark@, c, u as int, j2);
+                }
+            }
+            j += 1;
+        }
+        i += 1;
+    }
+    proof! {
+        assert forall|x2: int, j: int| 0 <= x2 < g.len() && s.comp@[x2] == c && 0 <= j < g[x2]@.len() implies
+            #[trigger] edge_done(g@, *s, succ@, mark@, c, x2, j) by {
+            assert(s.members@[s.comp@[x2] as int]@.contains(x2 as usize));
+            let i2 = choose|i2: int| 0 <= i2 < ms.len() && ms@[i2] == x2 as usize;
+        }
+        assert forall|t: usize| (t as int) < ncomp implies
+            (#[trigger] cur@.contains(t) <==> creach(g@, s.comp@, c as int, t as int)) by {
+            assert(mark@[t as int] == c <==> cur@.contains(t));
+            if creach(g@, s.comp@, c as int, t as int) {
+                let (x, y) = choose|x: int, y: int| 0 <= x < g.len() && 0 <= y < g.len() && s.comp@[x] == c
+                    && s.comp@[y] == t as int && #[trigger] reach(g@, x, y);
+                let kk = choose|kk: nat| #[trigger] reach_n(g@, x, y, kk);
+                lemma_complete_n(g@, *s, succ@, mark@, c, x, y, kk);
+            }
+            if cur@.contains(t) {
+                let k = choose|k: int| 0 <= k < cur.len() && cur@[k] == t;
+                assert(creach(g@, s.comp@, c as int, cur@[k] as int));
+            }
+        }
+    }
+    cur
+}
+
+/// The members of the components in `cur`.
+#[cfg_attr(verus_keep_ghost, verus_spec(row =>
+    requires
+        sccs_ok(g@, *s),
+        forall|k: int| 0 <= k < cur.len() ==> (#[trigger] cur@[k] as int) < s.members.len(),
+    ensures
+        forall|k: int| 0 <= k < row.len() ==> (#[trigger] row@[k] as int) < g@.len(),
+        forall|v: int| 0 <= v < g@.len() ==> (#[trigger] row@.contains(v as usize) <==> cur@.contains(s.comp@[v])),
+))]
+fn component_row(g: &Vec<Vec<usize>>, s: &Sccs, cur: &Vec<usize>) -> Vec<usize> {
+    let _ = g;
+    let mut row: Vec<usize> = Vec::new();
+    let mut k: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            sccs_ok(g@, *s),
+            forall|k2: int| 0 <= k2 < cur.len() ==> (#[trigger] cur@[k2] as int) < s.members.len(),
+            k <= cur.len(),
+            forall|q: int| 0 <= q < row.len() ==> (#[trigger] row@[q] as int) < g@.len(),
+            forall|v: int| 0 <= v < g@.len() ==>
+                (#[trigger] row@.contains(v as usize) <==> cur@.subrange(0, k as int).contains(s.comp@[v])),
+        decreases cur.len() - k
+    ))]
+    while k < cur.len() {
+        let ms = &s.members[cur[k]];
+        let mut m: usize = 0;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                sccs_ok(g@, *s),
+                forall|k2: int| 0 <= k2 < cur.len() ==> (#[trigger] cur@[k2] as int) < s.members.len(),
+                k < cur.len(),
+                *ms == s.members@[cur@[k as int] as int],
+                m <= ms.len(),
+                forall|q: int| 0 <= q < row.len() ==> (#[trigger] row@[q] as int) < g@.len(),
+                forall|v: int| 0 <= v < g@.len() ==>
+                    (#[trigger] row@.contains(v as usize) <==> (cur@.subrange(0, k as int).contains(s.comp@[v])
+                        || (s.comp@[v] == cur@[k as int] && ms@.subrange(0, m as int).contains(v as usize)))),
+            decreases ms.len() - m
+        ))]
+        while m < ms.len() {
+            let x = ms[m];
+            proof! {
+                assert(ms@[m as int] == x);
+                assert((x as int) < g@.len() && s.comp@[x as int] == cur@[k as int]);
+                assert forall|v: int| 0 <= v < g@.len() implies
+                    (#[trigger] row@.push(x).contains(v as usize) <==> (cur@.subrange(0, k as int).contains(s.comp@[v])
+                        || (s.comp@[v] == cur@[k as int] && ms@.subrange(0, m as int + 1).contains(v as usize)))) by {
+                    lemma_push_contains(row@, x, v as usize);
+                    lemma_prefix_contains(ms@, m as int, v as usize);
+                }
+            }
+            row.push(x);
+            m += 1;
+        }
+        proof! {
+            assert(ms@.subrange(0, ms.len() as int) =~= ms@);
+            assert forall|v: int| 0 <= v < g@.len() implies
+                (#[trigger] row@.contains(v as usize) <==> cur@.subrange(0, k as int + 1).contains(s.comp@[v])) by {
+                lemma_prefix_contains(cur@, k as int, s.comp@[v]);
+                assert(s.members@[s.comp@[v] as int]@.contains(v as usize));
+            }
+        }
+        k += 1;
+    }
+    proof! {
+        assert(cur@.subrange(0, cur.len() as int) =~= cur@);
+    }
+    row
+}
+
+/// The transitive closure of `g`: row `u` of the result contains `v` iff
+/// `g` has a path of length at least 1 from `u` to `v`. In particular, row
+/// `u` contains `u` iff `u` is on a cycle.
+#[cfg_attr(verus_keep_ghost, verus_spec(r =>
+    requires
+        wf(g@),
+    ensures
+        r.len() == g.len(),
+        wf(r@),
+        forall|u: int, v: int| 0 <= u < g.len() && 0 <= v < g.len() ==>
+            (r[u]@.contains(v as usize) <==> reach(g@, u, v)),
+))]
+pub fn transitive_closure(g: &Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+    let n = g.len();
+    let s = sccs(g);
+    let ncomp = s.members.len();
+    let mut mark = filled(ncomp, NONE);
+    let mut succ: Vec<Vec<usize>> = Vec::with_capacity(ncomp);
+    let mut r: Vec<Vec<usize>> = Vec::with_capacity(n);
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            r.len() <= n,
+            forall|u: int| 0 <= u < r.len() ==> #[trigger] r@[u]@.len() == 0,
+        decreases n - r.len()
+    ))]
+    while r.len() < n {
+        r.push(Vec::new());
+    }
+    let mut c: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            wf(g@),
+            n == g.len(),
+            sccs_ok(g@, s),
+            ncomp == s.members.len(),
+            c <= ncomp,
+            succ.len() == c,
+            succ_ok(g@, s, succ@, c as int),
+            mark.len() == ncomp,
+            forall|t: int| 0 <= t < ncomp ==> #[trigger] mark@[t] == NONE || mark@[t] < c,
+            r.len() == n,
+            forall|u: int, q: int| 0 <= u < n && 0 <= q < r@[u]@.len() ==> (#[trigger] r@[u]@[q] as int) < n,
+            forall|u: int, v: int| 0 <= u < n && 0 <= v < n && s.comp@[u] < c ==>
+                (#[trigger] r@[u]@.contains(v as usize) <==> succ@[s.comp@[u] as int]@.contains(s.comp@[v])),
+        decreases ncomp - c
+    ))]
+    while c < ncomp {
+        proof_decl! {
+            let ghost mk0 = mark@;
+        }
+        let cur = component_succ(g, &s, &succ, &mut mark, c);
+        let row = component_row(g, &s, &cur);
+        proof_decl! {
+            let ghost succ0 = succ@;
+        }
+        succ.push(cur);
+        proof! {
+            assert(succ@[c as int] == cur);
+            assert forall|c2: int, k: int| 0 <= c2 < c + 1 && 0 <= k < succ@[c2]@.len() implies
+                (#[trigger] succ@[c2]@[k] as int) < ncomp by {
+                if c2 < c {
+                    assert(succ@[c2] == succ0[c2]);
+                }
+            }
+            assert forall|c2: int, t: usize| 0 <= c2 < c + 1 && (t as int) < ncomp implies
+                (#[trigger] succ@[c2]@.contains(t) <==> creach(g@, s.comp@, c2, t as int)) by {
+                if c2 < c {
+                    assert(succ@[c2] == succ0[c2]);
+                }
+            }
+            assert forall|t: int| 0 <= t < ncomp implies #[trigger] mark@[t] == NONE || mark@[t] < c + 1 by {
+                assert(mark@[t] == mk0[t] || mark@[t] == c);
+            }
+        }
+        let ms = &s.members[c];
+        let mut m: usize = 0;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant
+                n == g.len(),
+                sccs_ok(g@, s),
+                ncomp == s.members.len(),
+                c < ncomp,
+                succ.len() == c + 1,
+                *ms == s.members@[c as int],
+                m <= ms.len(),
+                forall|q: int| 0 <= q < row.len() ==> (#[trigger] row@[q] as int) < n,
+                forall|v: int| 0 <= v < n ==> (#[trigger] row@.contains(v as usize) <==> succ@[c as int]@.contains(s.comp@[v])),
+                r.len() == n,
+                forall|u: int, q: int| 0 <= u < n && 0 <= q < r@[u]@.len() ==> (#[trigger] r@[u]@[q] as int) < n,
+                forall|u: int, v: int| 0 <= u < n && 0 <= v < n
+                    && (s.comp@[u] < c || (s.comp@[u] == c && ms@.subrange(0, m as int).contains(u as usize))) ==>
+                    (#[trigger] r@[u]@.contains(v as usize) <==> succ@[s.comp@[u] as int]@.contains(s.comp@[v])),
+            decreases ms.len() - m
+        ))]
+        while m < ms.len() {
+            let u = ms[m];
+            proof_decl! {
+                let ghost r0 = r@;
+            }
+            proof! {
+                assert(ms@[m as int] == u);
+                assert((u as int) < n && s.comp@[u as int] == c);
+            }
+            r[u] = row.clone();
+            proof! {
+                assert(r@[u as int]@ == row@);
+                assert forall|u2: int, q: int| 0 <= u2 < n && 0 <= q < r@[u2]@.len() implies
+                    (#[trigger] r@[u2]@[q] as int) < n by {
+                    if u2 != u {
+                        assert(r@[u2] == r0[u2]);
+                    }
+                }
+                assert forall|u2: int, v: int| 0 <= u2 < n && 0 <= v < n
+                    && (s.comp@[u2] < c || (s.comp@[u2] == c && ms@.subrange(0, m as int + 1).contains(u2 as usize))) implies
+                    (#[trigger] r@[u2]@.contains(v as usize) <==> succ@[s.comp@[u2] as int]@.contains(s.comp@[v])) by {
+                    lemma_prefix_contains(ms@, m as int, u2 as usize);
+                    if u2 != u {
+                        assert(r@[u2] == r0[u2]);
+                    }
+                }
+            }
+            m += 1;
+        }
+        proof! {
+            assert forall|u: int, v: int| 0 <= u < n && 0 <= v < n && s.comp@[u] < c + 1 implies
+                (#[trigger] r@[u]@.contains(v as usize) <==> succ@[s.comp@[u] as int]@.contains(s.comp@[v])) by {
+                if s.comp@[u] == c {
+                    assert(ms@.subrange(0, ms.len() as int) =~= ms@);
+                    assert(s.members@[s.comp@[u] as int]@.contains(u as usize));
+                }
+            }
+        }
+        c += 1;
+    }
+    proof! {
+        assert forall|u: int, v: int| 0 <= u < g.len() && 0 <= v < g.len() implies
+            (r[u]@.contains(v as usize) <==> reach(g@, u, v)) by {
+            assert(r@[u]@.contains(v as usize) <==> succ@[s.comp@[u] as int]@.contains(s.comp@[v]));
+            assert(succ@[s.comp@[u] as int]@.contains(s.comp@[v]) <==> creach(g@, s.comp@, s.comp@[u] as int, s.comp@[v] as int));
+            lemma_creach_reach(g@, s, u, v);
+        }
+    }
+    r
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+
+/// Every edge of `g` is a path of `g0`.
+spec fn sound(g0: Seq<Vec<usize>>, g: Seq<Vec<usize>>) -> bool {
+    &&& g.len() == g0.len()
+    &&& forall|u: int, j: int| 0 <= u < g.len() && 0 <= j < g[u]@.len() ==>
+        (#[trigger] g[u]@[j] as int) < g.len() && reach(g0, u, g[u]@[j] as int)
+}
+
+/// Every row of `g1` is a prefix of the same row of `g2`.
+spec fn grown(g1: Seq<Vec<usize>>, g2: Seq<Vec<usize>>) -> bool {
+    &&& g2.len() == g1.len()
+    &&& forall|u: int| 0 <= u < g1.len() ==> g1[u]@.len() <= (#[trigger] g2[u])@.len()
+    &&& forall|u: int, j: int| 0 <= u < g1.len() && 0 <= j < g1[u]@.len() ==> #[trigger] g2[u]@[j] == g1[u]@[j]
+}
+
+/// Every seen node that is not closed is `x` or reaches `x`.
+spec fn pending(g0: Seq<Vec<usize>>, g: Seq<Vec<usize>>, seen: Seq<bool>, x: int) -> bool {
+    forall|u: int| 0 <= u < g.len() && seen[u] && !#[trigger] closed_at(g0, g, u) ==>
+        u == x || reach(g0, u, x)
+}
+
+/// Every seen node of `(g2, seen2)` that is not closed was already seen and
+/// not closed in `(g1, seen1)`.
+spec fn kept(g0: Seq<Vec<usize>>, g1: Seq<Vec<usize>>, seen1: Seq<bool>, g2: Seq<Vec<usize>>, seen2: Seq<bool>) -> bool {
+    forall|u: int| 0 <= u < g2.len() && seen2[u] && !#[trigger] closed_at(g0, g2, u) ==>
+        seen1[u] && !closed_at(g0, g1, u)
+}
+
+spec fn in_buf(buf: Seq<usize>, start: int, v: usize) -> bool {
+    exists|k: int| start <= k < buf.len() && #[trigger] buf[k] == v
+}
+
+spec fn count_seen(s: Seq<bool>, k: int) -> int
+    decreases k,
+{
+    if k <= 0 {
+        0
+    } else {
+        count_seen(s, k - 1) + if s[k - 1] { 1int } else { 0int }
+    }
+}
+
+proof fn lemma_count_seen_bound(s: Seq<bool>, k: int)
+    requires
+        0 <= k <= s.len(),
+    ensures
+        0 <= count_seen(s, k) <= k,
+    decreases k,
+{
+    if k > 0 {
+        lemma_count_seen_bound(s, k - 1);
+    }
+}
+
+proof fn lemma_count_seen_mono(s: Seq<bool>, t: Seq<bool>, k: int)
+    requires
+        0 <= k <= s.len(),
+        k <= t.len(),
+        forall|j: int| 0 <= j < k && #[trigger] s[j] ==> t[j],
+    ensures
+        count_seen(s, k) <= count_seen(t, k),
+    decreases k,
+{
+    if k > 0 {
+        lemma_count_seen_mono(s, t, k - 1);
+    }
+}
+
+proof fn lemma_count_seen_set(s: Seq<bool>, k: int, u: int)
+    requires
+        0 <= u < k <= s.len(),
+        !s[u],
+    ensures
+        count_seen(s.update(u, true), k) == count_seen(s, k) + 1,
+    decreases k,
+{
+    if k - 1 > u {
+        lemma_count_seen_set(s, k - 1, u);
+    } else {
+        lemma_count_seen_mono(s, s.update(u, true), u);
+        lemma_count_seen_mono(s.update(u, true), s, u);
+    }
+}
+
+proof fn lemma_grown_trans(g1: Seq<Vec<usize>>, g2: Seq<Vec<usize>>, g3: Seq<Vec<usize>>)
+    requires
+        grown(g1, g2),
+        grown(g2, g3),
+    ensures
+        grown(g1, g3),
+{
+    assert forall|u: int| 0 <= u < g1.len() implies g1[u]@.len() <= (#[trigger] g3[u])@.len() by {
+        assert(g1[u]@.len() <= g2[u]@.len());
+    }
+    assert forall|u: int, j: int| 0 <= u < g1.len() && 0 <= j < g1[u]@.len() implies
+        #[trigger] g3[u]@[j] == g1[u]@[j] by {
+        assert(g1[u]@.len() <= g2[u]@.len());
+        assert(g2[u]@[j] == g1[u]@[j]);
+        assert(g3[u]@[j] == g2[u]@[j]);
+    }
+}
+
+proof fn lemma_grown_contains(g1: Seq<Vec<usize>>, g2: Seq<Vec<usize>>, u: int, v: usize)
+    requires
+        grown(g1, g2),
+        0 <= u < g1.len(),
+        g1[u]@.contains(v),
+    ensures
+        g2[u]@.contains(v),
+{
+    let j = choose|j: int| 0 <= j < g1[u]@.len() && g1[u]@[j] == v;
+    assert(g1[u]@.len() <= g2[u]@.len());
+    assert(g2[u]@[j] == g1[u]@[j]);
+}
+
+proof fn lemma_closed_mono(g0: Seq<Vec<usize>>, g1: Seq<Vec<usize>>, g2: Seq<Vec<usize>>, u: int)
+    requires
+        sound(g0, g2),
+        grown(g1, g2),
+        0 <= u < g1.len(),
+        closed_at(g0, g1, u),
+    ensures
+        closed_at(g0, g2, u),
+{
+    assert forall|v: int| 0 <= v < g0.len() implies
+        (g2[u]@.contains(v as usize) <==> #[trigger] reach(g0, u, v)) by {
+        if g2[u]@.contains(v as usize) {
+            let j = choose|j: int| 0 <= j < g2[u]@.len() && g2[u]@[j] == v as usize;
+            assert(reach(g0, u, g2[u]@[j] as int));
+        }
+        if reach(g0, u, v) {
+            lemma_grown_contains(g1, g2, u, v as usize);
+        }
+    }
+}
+
+proof fn lemma_closed_same_row(g0: Seq<Vec<usize>>, h1: Seq<Vec<usize>>, h2: Seq<Vec<usize>>, u: int)
+    requires
+        h1[u]@ == h2[u]@,
+    ensures
+        closed_at(g0, h1, u) == closed_at(g0, h2, u),
+{
+}
+
+proof fn lemma_sound_init(g: Seq<Vec<usize>>)
+    requires
+        wf(g),
+    ensures
+        sound(g, g),
+        grown(g, g),
+{
+    assert forall|u: int, j: int| 0 <= u < g.len() && 0 <= j < g[u]@.len() implies
+        (#[trigger] g[u]@[j] as int) < g.len() && reach(g, u, g[u]@[j] as int) by {
+        lemma_edge_at(g, u, j);
+    }
+    assert forall|u: int| 0 <= u < g.len() implies g[u]@.len() <= (#[trigger] g[u])@.len() by {}
+}
+
+} // verus!
+
+/// Appends `row` to `buf`.
+#[cfg_attr(verus_keep_ghost, verus_spec(
+    ensures
+        final(buf)@ == old(buf)@ + row@,
+))]
+fn append_row(buf: &mut Vec<usize>, row: &Vec<usize>) {
+    proof_decl! {
+        let ghost b0 = buf@;
+    }
+    let mut m: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            m <= row.len(),
+            buf@ == b0 + row@.subrange(0, m as int),
+        decreases row.len() - m
+    ))]
+    while m < row.len() {
+        proof! {
+            assert(row@.subrange(0, m as int + 1) =~= row@.subrange(0, m as int).push(row@[m as int]));
+        }
+        buf.push(row[m]);
+        m += 1;
+    }
+    proof! {
+        assert(row@.subrange(0, row.len() as int) =~= row@);
+    }
+}
+
+/// Appends to `row` each element of `buf[start..]` that is not in `row`.
+/// `mark` is all false before and after.
+#[cfg_attr(verus_keep_ghost, verus_spec(
+    requires
+        start <= buf.len(),
+        forall|v: int| 0 <= v < old(mark).len() ==> !old(mark)@[v],
+        forall|k: int| 0 <= k < buf.len() ==> (#[trigger] buf@[k] as int) < old(mark).len(),
+        forall|q: int| 0 <= q < old(row).len() ==> (#[trigger] old(row)@[q] as int) < old(mark).len(),
+    ensures
+        final(mark).len() == old(mark).len(),
+        forall|v: int| 0 <= v < final(mark).len() ==> !final(mark)@[v],
+        old(row).len() <= final(row).len(),
+        forall|q: int| 0 <= q < old(row).len() ==> #[trigger] final(row)@[q] == old(row)@[q],
+        forall|q: int| 0 <= q < final(row).len() ==> (#[trigger] final(row)@[q] as int) < old(mark).len(),
+        forall|v: usize| #[trigger] final(row)@.contains(v) <==> (old(row)@.contains(v) || in_buf(buf@, start as int, v)),
+))]
+fn union_from(row: &mut Vec<usize>, buf: &Vec<usize>, start: usize, mark: &mut Vec<bool>) {
+    proof_decl! {
+        let ghost r0 = row@;
+        let ghost n = mark.len() as int;
+    }
+    let mut q: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            row@ == r0,
+            mark.len() == n,
+            q <= row.len(),
+            forall|qq: int| 0 <= qq < row.len() ==> (#[trigger] row@[qq] as int) < n,
+            forall|v: int| 0 <= v < n ==> (#[trigger] mark@[v] <==> row@.subrange(0, q as int).contains(v as usize)),
+        decreases row.len() - q
+    ))]
+    while q < row.len() {
+        proof! {
+            assert forall|v: int| 0 <= v < n implies
+                (#[trigger] mark@.update(row@[q as int] as int, true)[v] <==> row@.subrange(0, q as int + 1).contains(v as usize)) by {
+                lemma_prefix_contains(row@, q as int, v as usize);
+            }
+        }
+        mark[row[q]] = true;
+        q += 1;
+    }
+    proof! {
+        assert(row@.subrange(0, row.len() as int) =~= row@);
+    }
+    let mut k: usize = start;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            start <= k <= buf.len(),
+            mark.len() == n,
+            forall|kk: int| 0 <= kk < buf.len() ==> (#[trigger] buf@[kk] as int) < n,
+            r0.len() <= row.len(),
+            forall|qq: int| 0 <= qq < r0.len() ==> #[trigger] row@[qq] == r0[qq],
+            forall|qq: int| 0 <= qq < row.len() ==> (#[trigger] row@[qq] as int) < n,
+            forall|v: int| 0 <= v < n ==> (#[trigger] mark@[v] <==> row@.contains(v as usize)),
+            forall|v: usize| #[trigger] row@.contains(v) <==> (r0.contains(v) || in_buf(buf@.subrange(0, k as int), start as int, v)),
+        decreases buf.len() - k
+    ))]
+    while k < buf.len() {
+        let b = buf[k];
+        proof! {
+            assert forall|v: usize| #[trigger] in_buf(buf@.subrange(0, k as int + 1), start as int, v) <==>
+                (in_buf(buf@.subrange(0, k as int), start as int, v) || v == b) by {
+                if in_buf(buf@.subrange(0, k as int + 1), start as int, v) {
+                    let kk = choose|kk: int| start <= kk < k + 1 && #[trigger] buf@.subrange(0, k as int + 1)[kk] == v;
+                    if kk < k {
+                        assert(buf@.subrange(0, k as int)[kk] == v);
+                    }
+                }
+                if in_buf(buf@.subrange(0, k as int), start as int, v) {
+                    let kk = choose|kk: int| start <= kk < k && #[trigger] buf@.subrange(0, k as int)[kk] == v;
+                    assert(buf@.subrange(0, k as int + 1)[kk] == v);
+                }
+                if v == b {
+                    assert(buf@.subrange(0, k as int + 1)[k as int] == v);
+                }
+            }
+        }
+        if !mark[b] {
+            proof! {
+                assert forall|v: usize| #[trigger] row@.push(b).contains(v) <==> (row@.contains(v) || v == b) by {
+                    lemma_push_contains(row@, b, v);
+                }
+            }
+            mark[b] = true;
+            row.push(b);
+        } else {
+            proof! {
+                assert(row@.contains(b));
+            }
+        }
+        k += 1;
+    }
+    proof! {
+        assert(buf@.subrange(0, buf.len() as int) =~= buf@);
+    }
+    let mut q: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            mark.len() == n,
+            q <= row.len(),
+            forall|qq: int| 0 <= qq < row.len() ==> (#[trigger] row@[qq] as int) < n,
+            forall|v: int| 0 <= v < n && #[trigger] mark@[v] ==>
+                exists|p: int| q <= p < row.len() && row@[p] == v as usize,
+        decreases row.len() - q
+    ))]
+    while q < row.len() {
+        proof_decl! {
+            let ghost m0 = mark@;
+        }
+        mark[row[q]] = false;
+        proof! {
+            assert forall|v: int| 0 <= v < n && #[trigger] mark@[v] implies
+                exists|p: int| q + 1 <= p < row.len() && row@[p] == v as usize by {
+                assert(m0[v]);
+                let p = choose|p: int| q <= p < row.len() && row@[p] == v as usize;
+                assert(p != q);
+            }
+        }
+        q += 1;
+    }
+}
+
+/// The port of `add_ancestors` in `cedar-policy-core`: closes row `x` by
+/// visiting each target `a` of `x` that is not seen, then adding the row of
+/// each target to row `x`. `buf[start..]` collects the rows of the targets.
+#[cfg_attr(verus_keep_ghost, verus_spec(
+    with Ghost(g0): Ghost<Seq<Vec<usize>>>, Ghost(dag): Ghost<bool>
+    requires
+        sound(g0, old(g)@),
+        grown(g0, old(g)@),
+        (x as int) < old(g).len(),
+        old(seen).len() == old(g).len(),
+        old(mark).len() == old(g).len(),
+        forall|v: int| 0 <= v < old(mark).len() ==> !old(mark)@[v],
+        forall|k: int| 0 <= k < old(buf).len() ==> (#[trigger] old(buf)@[k] as int) < old(g).len(),
+        dag ==> !has_cycle(g0),
+        dag ==> pending(g0, old(g)@, old(seen)@, x as int),
+    ensures
+        sound(g0, final(g)@),
+        grown(old(g)@, final(g)@),
+        forall|u: int| 0 <= u < old(g).len() && #[trigger] final(g)@[u]@ != old(g)@[u]@ ==>
+            u == x || !old(seen)@[u],
+        final(seen).len() == old(seen).len(),
+        forall|u: int| 0 <= u < old(seen).len() && #[trigger] old(seen)@[u] ==> final(seen)@[u],
+        final(mark).len() == old(mark).len(),
+        forall|v: int| 0 <= v < final(mark).len() ==> !final(mark)@[v],
+        final(buf)@ == old(buf)@,
+        dag ==> closed_at(g0, final(g)@, x as int),
+        dag ==> kept(g0, old(g)@, old(seen)@, final(g)@, final(seen)@),
+    decreases old(seen).len() - count_seen(old(seen)@, old(seen).len() as int)
+))]
+fn add_ancestors(
+    g: &mut Vec<Vec<usize>>,
+    x: usize,
+    seen: &mut Vec<bool>,
+    buf: &mut Vec<usize>,
+    mark: &mut Vec<bool>,
+) {
+    proof_decl! {
+        let ghost g1 = g@;
+        let ghost seen1 = seen@;
+        let ghost buf1 = buf@;
+        let ghost n = g.len() as int;
+    }
+    let start = buf.len();
+    let len0 = g[x].len();
+    let mut j: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            n == g.len(),
+            n == g1.len(),
+            (x as int) < n,
+            len0 == g1[x as int]@.len(),
+            j <= len0,
+            sound(g0, g1),
+            grown(g0, g1),
+            sound(g0, g@),
+            grown(g1, g@),
+            grown(g0, g@),
+            forall|u: int| 0 <= u < n && #[trigger] g@[u]@ != g1[u]@ ==> u == x || !seen1[u],
+            seen.len() == n,
+            seen1 == old(seen)@,
+            seen1.len() == n,
+            forall|u: int| 0 <= u < n && #[trigger] seen1[u] ==> seen@[u],
+            mark.len() == n,
+            forall|v: int| 0 <= v < n ==> !mark@[v],
+            start == buf1.len(),
+            start <= buf.len(),
+            forall|k: int| 0 <= k < start ==> #[trigger] buf@[k] == buf1[k],
+            forall|k: int| 0 <= k < buf.len() ==> (#[trigger] buf@[k] as int) < n,
+            forall|k: int| start <= k < buf.len() ==> reach(g0, x as int, #[trigger] buf@[k] as int),
+            dag ==> !has_cycle(g0),
+            dag ==> pending(g0, g1, seen1, x as int),
+            dag ==> kept(g0, g1, seen1, g@, seen@),
+            dag ==> forall|j2: int, v: int| 0 <= j2 < j && 0 <= v < n && #[trigger] reach(g0, g1[x as int]@[j2] as int, v) ==>
+                in_buf(buf@, start as int, v as usize),
+        decreases len0 - j
+    ))]
+    while j < len0 {
+        proof! {
+            assert(g@[x as int]@[j as int] == g1[x as int]@[j as int]);
+        }
+        let a = g[x][j];
+        proof_decl! {
+            let ghost ga = g@;
+            let ghost sa = seen@;
+        }
+        proof! {
+            assert((a as int) < n && reach(g0, x as int, a as int));
+        }
+        if !seen[a] {
+            seen[a] = true;
+            proof! {
+                assert(seen@ == sa.update(a as int, true));
+                lemma_count_seen_bound(seen1, n);
+                lemma_count_seen_mono(seen1, sa, n);
+                lemma_count_seen_set(sa, n, a as int);
+                lemma_count_seen_bound(seen@, n);
+                if dag {
+                    assert forall|u: int| 0 <= u < n && seen@[u] && !#[trigger] closed_at(g0, ga, u) implies
+                        u == a || reach(g0, u, a as int) by {
+                        if u != a {
+                            assert(sa[u]);
+                            assert(seen1[u] && !closed_at(g0, g1, u));
+                            if u != x {
+                                lemma_reach_trans(g0, u, x as int, a as int);
+                            }
+                        }
+                    }
+                }
+            }
+            proof_with!(Ghost(g0), Ghost(dag));
+            add_ancestors(g, a, seen, buf, mark);
+            proof! {
+                lemma_grown_trans(g1, ga, g@);
+                lemma_grown_trans(g0, ga, g@);
+                assert forall|u: int| 0 <= u < n && #[trigger] seen1[u] implies seen@[u] by {
+                    assert(sa.update(a as int, true)[u]);
+                }
+                assert forall|u: int| 0 <= u < n && #[trigger] g@[u]@ != g1[u]@ implies u == x || !seen1[u] by {
+                    if ga[u]@ == g1[u]@ {
+                        assert(u == a || !(sa.update(a as int, true))[u]);
+                    }
+                }
+                if dag {
+                    assert forall|u: int| 0 <= u < n && seen@[u] && !#[trigger] closed_at(g0, g@, u) implies
+                        seen1[u] && !closed_at(g0, g1, u) by {
+                        assert(sa.update(a as int, true)[u] && !closed_at(g0, ga, u));
+                    }
+                }
+            }
+        } else {
+            proof! {
+                if dag && !closed_at(g0, g@, a as int) {
+                    assert(seen1[a as int] && !closed_at(g0, g1, a as int));
+                    if a == x {
+                        assert(reach(g0, x as int, x as int));
+                    } else {
+                        lemma_reach_trans(g0, a as int, x as int, a as int);
+                    }
+                    assert(has_cycle(g0));
+                }
+            }
+        }
+        proof_decl! {
+            let ghost gb = g@;
+            let ghost bb = buf@;
+        }
+        let ra = &g[a];
+        append_row(buf, ra);
+        proof! {
+            assert forall|k: int| start <= k < buf.len() implies reach(g0, x as int, #[trigger] buf@[k] as int) by {
+                if k >= bb.len() {
+                    let m = k - bb.len();
+                    assert(buf@[k] == gb[a as int]@[m]);
+                    lemma_reach_trans(g0, x as int, a as int, buf@[k] as int);
+                } else {
+                    assert(buf@[k] == bb[k]);
+                }
+            }
+            assert forall|k: int| 0 <= k < buf.len() implies (#[trigger] buf@[k] as int) < n by {
+                if k >= bb.len() {
+                    assert(buf@[k] == gb[a as int]@[k - bb.len()]);
+                } else {
+                    assert(buf@[k] == bb[k]);
+                }
+            }
+            assert forall|k: int| 0 <= k < start implies #[trigger] buf@[k] == buf1[k] by {
+                assert(buf@[k] == bb[k]);
+            }
+            if dag {
+                assert(closed_at(g0, gb, a as int));
+                assert forall|j2: int, v: int| 0 <= j2 < j + 1 && 0 <= v < n && #[trigger] reach(g0, g1[x as int]@[j2] as int, v) implies
+                    in_buf(buf@, start as int, v as usize) by {
+                    if j2 < j {
+                        assert(in_buf(bb, start as int, v as usize));
+                        let k = choose|k: int| start <= k < bb.len() && #[trigger] bb[k] == v as usize;
+                        assert(buf@[k] == bb[k]);
+                    } else {
+                        assert(g1[x as int]@[j2] == a);
+                        assert(gb[a as int]@.contains(v as usize));
+                        let m = choose|m: int| 0 <= m < gb[a as int]@.len() && gb[a as int]@[m] == v as usize;
+                        assert(buf@[bb.len() + m] == gb[a as int]@[m]);
+                    }
+                }
+            }
+        }
+        j += 1;
+    }
+    proof_decl! {
+        let ghost gl = g@;
+        let ghost bl = buf@;
+    }
+    let mut row: Vec<usize> = Vec::new();
+    std::mem::swap(&mut row, &mut g[x]);
+    proof! {
+        assert(row@ == gl[x as int]@);
+    }
+    union_from(&mut row, buf, start, mark);
+    g[x] = row;
+    buf.truncate(start);
+    proof! {
+        assert(buf@ =~= buf1);
+        let gf = g@;
+        assert forall|u: int| 0 <= u < n && u != x implies gf[u] == gl[u] by {}
+        assert forall|u: int, q: int| 0 <= u < gf.len() && 0 <= q < gf[u]@.len() implies
+            (#[trigger] gf[u]@[q] as int) < gf.len() && reach(g0, u, gf[u]@[q] as int) by {
+            if u == x {
+                let v = gf[u]@[q];
+                assert(gf[u]@.contains(v));
+                if in_buf(bl, start as int, v) {
+                    let k = choose|k: int| start <= k < bl.len() && #[trigger] bl[k] == v;
+                    assert(reach(g0, x as int, bl[k] as int));
+                } else {
+                    let p = choose|p: int| 0 <= p < gl[x as int]@.len() && gl[x as int]@[p] == v;
+                    assert(reach(g0, x as int, gl[x as int]@[p] as int));
+                }
+            } else {
+                assert(gf[u] == gl[u]);
+            }
+        }
+        assert(sound(g0, gf));
+        assert forall|u: int| 0 <= u < gl.len() implies gl[u]@.len() <= (#[trigger] gf[u])@.len() by {
+            if u != x {
+                assert(gf[u] == gl[u]);
+            }
+        }
+        assert forall|u: int, q: int| 0 <= u < gl.len() && 0 <= q < gl[u]@.len() implies
+            #[trigger] gf[u]@[q] == gl[u]@[q] by {
+            if u != x {
+                assert(gf[u] == gl[u]);
+            }
+        }
+        assert(grown(gl, gf));
+        lemma_grown_trans(g1, gl, gf);
+        assert forall|u: int| 0 <= u < n && #[trigger] gf[u]@ != g1[u]@ implies u == x || !seen1[u] by {
+            if u != x {
+                assert(gf[u] == gl[u]);
+            }
+        }
+        if dag {
+            assert forall|v: int| 0 <= v < n implies
+                (gf[x as int]@.contains(v as usize) <==> #[trigger] reach(g0, x as int, v)) by {
+                if reach(g0, x as int, v) {
+                    lemma_reach_first(g0, x as int, v);
+                    let w = choose|w: int| #[trigger] edge(g0, x as int, w) && (w == v || reach(g0, w, v));
+                    let i = choose|i: int| 0 <= i < g0[x as int]@.len() && g0[x as int]@[i] == w as usize;
+                    assert(g1[x as int]@[i] == g0[x as int]@[i]);
+                    assert(gl[x as int]@[i] == g1[x as int]@[i]);
+                    if w == v {
+                        assert(gl[x as int]@.contains(v as usize));
+                    } else {
+                        assert(reach(g0, g1[x as int]@[i] as int, v));
+                        assert(in_buf(bl, start as int, v as usize));
+                    }
+                }
+            }
+            assert forall|u: int| 0 <= u < n && seen@[u] && !#[trigger] closed_at(g0, gf, u) implies
+                seen1[u] && !closed_at(g0, g1, u) by {
+                if u != x {
+                    lemma_closed_same_row(g0, gf, gl, u);
+                }
+            }
+        }
+    }
+}
+
+/// Repairs the transitive closure of `g` at the nodes in `fix`, in place,
+/// by calling the port of `add_ancestors` on each node of `fix` in order.
+///
+/// Rows outside `fix` are unchanged (R1), and rows only grow, by appending
+/// (R2). Every edge of the result is a path of the input (R3), on every
+/// input. If the input has no cycle and every row outside `fix` is closed,
+/// the result is the transitive closure of the input (R4). On cyclic inputs
+/// the result may miss paths.
+#[cfg_attr(verus_keep_ghost, verus_spec(
+    requires
+        wf(old(g)@),
+        forall|i: int| 0 <= i < fix.len() ==> (#[trigger] fix@[i] as int) < old(g).len(),
+    ensures
+        final(g).len() == old(g).len(),
+        wf(final(g)@),
+        forall|u: int| 0 <= u < old(g).len() && !fix@.contains(u as usize) ==> #[trigger] final(g)@[u]@ == old(g)@[u]@,
+        forall|u: int, v: usize| 0 <= u < old(g).len() && #[trigger] old(g)@[u]@.contains(v) ==> final(g)@[u]@.contains(v),
+        forall|u: int| 0 <= u < old(g).len() ==> old(g)@[u]@.len() <= (#[trigger] final(g)@[u])@.len(),
+        forall|u: int, j: int| 0 <= u < old(g).len() && 0 <= j < old(g)@[u]@.len() ==>
+            #[trigger] final(g)@[u]@[j] == old(g)@[u]@[j],
+        forall|u: int, v: usize| 0 <= u < old(g).len() && #[trigger] final(g)@[u]@.contains(v) ==> reach(old(g)@, u, v as int),
+        (!has_cycle(old(g)@) && forall|u: int| 0 <= u < old(g).len() && !fix@.contains(u as usize) ==>
+            #[trigger] closed_at(old(g)@, old(g)@, u))
+        ==> forall|u: int| 0 <= u < old(g).len() ==> #[trigger] closed_at(old(g)@, final(g)@, u),
+))]
+pub fn repair_closure(g: &mut Vec<Vec<usize>>, fix: &Vec<usize>) {
+    let n = g.len();
+    let mut seen: Vec<bool> = Vec::with_capacity(n);
+    let mut mark: Vec<bool> = Vec::with_capacity(n);
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            seen.len() <= n,
+            mark.len() == seen.len(),
+            forall|u: int| 0 <= u < seen.len() ==> #[trigger] seen@[u],
+            forall|u: int| 0 <= u < mark.len() ==> !#[trigger] mark@[u],
+        decreases n - seen.len()
+    ))]
+    while seen.len() < n {
+        seen.push(true);
+        mark.push(false);
+    }
+    let mut i: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            n == g.len(),
+            i <= fix.len(),
+            seen.len() == n,
+            forall|i2: int| 0 <= i2 < fix.len() ==> (#[trigger] fix@[i2] as int) < n,
+            forall|u: int| 0 <= u < n ==> (#[trigger] seen@[u] <==> !fix@.subrange(0, i as int).contains(u as usize)),
+            mark.len() == n,
+            forall|v: int| 0 <= v < n ==> !mark@[v],
+        decreases fix.len() - i
+    ))]
+    while i < fix.len() {
+        proof! {
+            assert forall|u: int| 0 <= u < n implies
+                (#[trigger] seen@.update(fix@[i as int] as int, false)[u] <==> !fix@.subrange(0, i as int + 1).contains(u as usize)) by {
+                lemma_prefix_contains(fix@, i as int, u as usize);
+            }
+        }
+        seen[fix[i]] = false;
+        i += 1;
+    }
+    proof! {
+        assert(fix@.subrange(0, fix.len() as int) =~= fix@);
+    }
+    let mut buf: Vec<usize> = Vec::new();
+    proof_decl! {
+        let ghost g0 = g@;
+        let ghost dag = !has_cycle(g0) && forall|u: int| 0 <= u < g0.len() && !fix@.contains(u as usize) ==>
+            #[trigger] closed_at(g0, g0, u);
+    }
+    proof! {
+        lemma_sound_init(g0);
+    }
+    let mut i: usize = 0;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            n == g.len(),
+            n == g0.len(),
+            i <= fix.len(),
+            forall|i2: int| 0 <= i2 < fix.len() ==> (#[trigger] fix@[i2] as int) < n,
+            sound(g0, g@),
+            grown(g0, g@),
+            forall|u: int| 0 <= u < n && !fix@.contains(u as usize) ==> #[trigger] g@[u]@ == g0[u]@,
+            seen.len() == n,
+            forall|u: int| 0 <= u < n && !fix@.contains(u as usize) ==> #[trigger] seen@[u],
+            mark.len() == n,
+            forall|v: int| 0 <= v < n ==> !mark@[v],
+            buf.len() == 0,
+            dag ==> !has_cycle(g0),
+            dag ==> forall|u: int| 0 <= u < n && #[trigger] seen@[u] ==> closed_at(g0, g@, u),
+            dag ==> forall|i2: int| 0 <= i2 < i ==> closed_at(g0, g@, #[trigger] fix@[i2] as int),
+        decreases fix.len() - i
+    ))]
+    while i < fix.len() {
+        let x = fix[i];
+        proof_decl! {
+            let ghost gi = g@;
+            let ghost si = seen@;
+        }
+        proof_with!(Ghost(g0), Ghost(dag));
+        add_ancestors(g, x, &mut seen, &mut buf, &mut mark);
+        proof! {
+            lemma_grown_trans(g0, gi, g@);
+            assert(fix@[i as int] == x);
+            assert forall|u: int| 0 <= u < n && !fix@.contains(u as usize) implies #[trigger] g@[u]@ == g0[u]@ by {
+                assert(si[u]);
+                assert(u != x as int);
+            }
+            assert forall|u: int| 0 <= u < n && !fix@.contains(u as usize) implies #[trigger] seen@[u] by {
+                assert(si[u]);
+            }
+            if dag {
+                assert forall|u: int| 0 <= u < n && #[trigger] seen@[u] implies closed_at(g0, g@, u) by {
+                    if !closed_at(g0, g@, u) {
+                        assert(si[u] && !closed_at(g0, gi, u));
+                    }
+                }
+                assert forall|i2: int| 0 <= i2 < i + 1 implies closed_at(g0, g@, #[trigger] fix@[i2] as int) by {
+                    if i2 < i {
+                        lemma_closed_mono(g0, gi, g@, fix@[i2] as int);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    proof! {
+        assert forall|u: int, v: usize| 0 <= u < n && #[trigger] g0[u]@.contains(v) implies g@[u]@.contains(v) by {
+            lemma_grown_contains(g0, g@, u, v);
+        }
+        assert forall|u: int, v: usize| 0 <= u < n && #[trigger] g@[u]@.contains(v) implies reach(g0, u, v as int) by {
+            let q = choose|q: int| 0 <= q < g@[u]@.len() && g@[u]@[q] == v;
+            assert(reach(g0, u, g@[u]@[q] as int));
+        }
+        assert forall|u: int, j: int| 0 <= u < n && 0 <= j < g@[u]@.len() implies (#[trigger] g@[u]@[j] as int) < n by {}
+        if dag {
+            assert forall|u: int| 0 <= u < n implies #[trigger] closed_at(g0, g@, u) by {
+                if fix@.contains(u as usize) {
+                    let i2 = choose|i2: int| 0 <= i2 < fix.len() && fix@[i2] == u as usize;
+                    assert(closed_at(g0, g@, fix@[i2] as int));
+                } else {
+                    assert(seen@[u]);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Row `u`: the nodes reachable from `u` by a path of length at least 1.
+    fn bfs_closure(g: &[Vec<usize>]) -> Vec<Vec<usize>> {
+        (0..g.len())
+            .map(|u| {
+                let mut seen = vec![false; g.len()];
+                let mut todo: Vec<usize> = g[u].clone();
+                while let Some(x) = todo.pop() {
+                    if !seen[x] {
+                        seen[x] = true;
+                        todo.extend(g[x].iter().copied());
+                    }
+                }
+                (0..g.len()).filter(|&v| seen[v]).collect()
+            })
+            .collect()
+    }
+
+    fn check(g: Vec<Vec<usize>>) {
+        let mut r = transitive_closure(&g);
+        for row in &mut r {
+            row.sort_unstable();
+        }
+        assert_eq!(r, bfs_closure(&g), "graph {g:?}");
+    }
+
+    #[test]
+    fn small_graphs() {
+        check(vec![]);
+        check(vec![vec![]]);
+        check(vec![vec![0]]);
+        check(vec![vec![1], vec![2], vec![]]);
+        check(vec![vec![1], vec![2], vec![0]]);
+        check(vec![vec![1, 2], vec![3], vec![3], vec![]]);
+        check(vec![vec![1], vec![0, 2], vec![3], vec![2], vec![4]]);
+        check(vec![vec![1], vec![2], vec![1, 3], vec![]]);
+        // A -> B -> C -> E -> D -> A, D -> B, D -> F -> E
+        check(vec![
+            vec![1],
+            vec![2],
+            vec![4],
+            vec![0, 1, 5],
+            vec![3],
+            vec![4],
+        ]);
+        // Node 3 has an empty row (a dangling target).
+        check(vec![vec![1, 3], vec![2], vec![], vec![]]);
+    }
+
+    #[test]
+    fn all_graphs_on_4_nodes() {
+        let n = 4;
+        for bits in 0u32..(1 << (n * n)) {
+            let g: Vec<Vec<usize>> = (0..n)
+                .map(|u| (0..n).filter(|&v| bits & (1 << (u * n + v)) != 0).collect())
+                .collect();
+            check(g);
+        }
+    }
+
+    fn direct(n: usize, edges: &[(usize, usize)]) -> Vec<Vec<usize>> {
+        let mut g = vec![Vec::new(); n];
+        for &(u, v) in edges {
+            g[u].push(v);
+        }
+        g
+    }
+
+    fn sorted(mut g: Vec<Vec<usize>>) -> Vec<Vec<usize>> {
+        for row in &mut g {
+            row.sort_unstable();
+        }
+        g
+    }
+
+    /// The shapes of `repair_tc_test_cases` in `cedar-policy-core`, with
+    /// A = 0, B = 1, ...: close the initial graph, replace the rows of `fix`
+    /// with their direct edges (initial and new), and repair.
+    #[test]
+    fn repair_cases() {
+        type Case = (usize, Vec<(usize, usize)>, Vec<(usize, usize)>, Vec<usize>);
+        let cases: Vec<Case> = vec![
+            (4, vec![(0, 1), (1, 2)], vec![(3, 2)], vec![3]),
+            (4, vec![(0, 1), (1, 2), (2, 3)], vec![(0, 2)], vec![0]),
+            (
+                5,
+                vec![(0, 1), (0, 2), (1, 3), (2, 3)],
+                vec![(4, 1)],
+                vec![4],
+            ),
+            (5, vec![(0, 1), (1, 2)], vec![(3, 0), (4, 0)], vec![3, 4]),
+            (
+                6,
+                vec![(0, 1), (1, 2), (2, 3), (3, 4)],
+                vec![(5, 0)],
+                vec![5],
+            ),
+            (4, vec![(1, 3), (2, 3)], vec![(0, 1), (0, 2)], vec![0]),
+            (5, vec![(0, 1), (2, 3)], vec![(4, 1), (4, 3)], vec![4]),
+            (
+                5,
+                vec![(0, 1), (1, 2), (2, 3)],
+                vec![(1, 4), (4, 3)],
+                vec![0, 1, 4],
+            ),
+        ];
+        for (n, edges, new_edges, fix) in cases {
+            let all: Vec<_> = edges.iter().chain(new_edges.iter()).copied().collect();
+            let full = direct(n, &all);
+            let mut g = bfs_closure(&direct(n, &edges));
+            for &x in &fix {
+                g[x] = full[x].clone();
+            }
+            repair_closure(&mut g, &fix);
+            assert_eq!(sorted(g), bfs_closure(&full), "edges {all:?}, fix {fix:?}");
+        }
+    }
+
+    /// On a 3-cycle the repair terminates and adds only paths.
+    #[test]
+    fn repair_three_cycle() {
+        let g0 = vec![vec![1], vec![2], vec![0]];
+        let closure = bfs_closure(&g0);
+        let mut g = g0.clone();
+        repair_closure(&mut g, &vec![0, 1, 2]);
+        for (row, full) in g.iter().zip(&closure) {
+            assert!(row.iter().all(|v| full.contains(v)), "{g:?}");
+        }
+    }
+}

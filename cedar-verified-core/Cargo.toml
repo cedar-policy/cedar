@@ -1,0 +1,14 @@
+[package]
+name = "cedar-verified-core"
+edition.workspace = true
+rust-version.workspace = true
+version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Graph algorithms used by Cedar, verified with Verus"
+
+[lints.rust]
+# `verus_keep_ghost` is set by Verus, not by Cargo.
+unexpected_cfgs = { level = "allow" }
+unsafe_code = "forbid"

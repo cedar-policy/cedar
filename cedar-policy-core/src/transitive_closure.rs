@@ -23,11 +23,27 @@ use std::hash::Hash;
 
 mod err;
 pub use err::*;
+#[cfg(feature = "verified-core")]
+mod verified;
 use itertools::Itertools;
 
 /// Remaining stack below which the recursive traversals switch to a new segment
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 const STACK_RED_ZONE: usize = 64 * 1024;
 /// Size of the stack segments allocated when growing the stack
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 const STACK_SEGMENT_SIZE: usize = 1024 * 1024;
 
 /// Trait used to generalize transitive closure computation. This trait should
@@ -71,11 +87,16 @@ where
     // Always use the SCC-based algorithm which correctly handles cycles.
     // The single-pass algorithm is only correct for DAGs and produces
     // incomplete results when the graph contains cycles of length >= 3.
-    cyclic_tc(nodes);
-    if enforce_dag {
-        return enforce_dag_from_tc(nodes);
+    #[cfg(feature = "verified-core")]
+    return verified::compute_tc(nodes, enforce_dag);
+    #[cfg(not(feature = "verified-core"))]
+    {
+        cyclic_tc(nodes);
+        if enforce_dag {
+            return enforce_dag_from_tc(nodes);
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Given Graph as a map from keys with type `K` to implementations of `TCNode`
@@ -96,24 +117,29 @@ where
     K: Clone + Eq + Hash + Debug + Display,
     V: TCNode<K>,
 {
-    let seen: HashSet<K> = nodes
-        .keys()
-        .filter(|x| !nodes_to_fix.contains(x))
-        .cloned()
-        .collect();
+    #[cfg(feature = "verified-core")]
+    return verified::repair_tc(nodes_to_fix, nodes, enforce_dag);
+    #[cfg(not(feature = "verified-core"))]
+    {
+        let seen: HashSet<K> = nodes
+            .keys()
+            .filter(|x| !nodes_to_fix.contains(x))
+            .cloned()
+            .collect();
 
-    // If the caller does not want to check that the graph is a DAG,
-    // we assume that the graph is acyclic during the below call.
-    // This allows the below call to do a single scan of each node
-    // rather than two scans of each node.
-    compute_tc_internal::<K, V>(nodes_to_fix.iter().cloned(), nodes, seen, enforce_dag);
+        // If the caller does not want to check that the graph is a DAG,
+        // we assume that the graph is acyclic during the below call.
+        // This allows the below call to do a single scan of each node
+        // rather than two scans of each node.
+        compute_tc_internal::<K, V>(nodes_to_fix.iter().cloned(), nodes, seen, enforce_dag);
 
-    if enforce_dag {
-        // TC is correct by construction (same as compute_tc). Only need to
-        // check for self-loops, and only on nodes whose edges were modified.
-        return enforce_dag_from_tc_for(nodes_to_fix, nodes);
+        if enforce_dag {
+            // TC is correct by construction (same as compute_tc). Only need to
+            // check for self-loops, and only on nodes whose edges were modified.
+            return enforce_dag_from_tc_for(nodes_to_fix, nodes);
+        }
+        Ok(())
     }
-    Ok(())
 }
 
 /// Saturate the out-going edges of each node in `node_ids` to include
@@ -126,6 +152,13 @@ where
 /// the below code computes enough of the transtive closure to ensure that if one
 /// calls `enforce_dag_from_tc` on `nodes` after this function returns then it will
 /// correctly detect any cycles (simple or complex).
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 fn compute_tc_internal<K, V>(
     node_ids: impl Iterator<Item = K>,
     nodes: &mut HashMap<K, V>,
@@ -145,6 +178,13 @@ fn compute_tc_internal<K, V>(
     }
 }
 
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 fn cyclic_tc<K, V>(nodes: &mut HashMap<K, V>)
 where
     K: Clone + Eq + Hash + Debug,
@@ -207,6 +247,13 @@ where
     }
 }
 
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 #[expect(
     clippy::too_many_arguments,
     reason = "internal function in complex algorithm"
@@ -367,6 +414,13 @@ fn cyclic_tc_internal<K, V>(
 /// represented by `nodes` assuming that each node appearing in `seen` already satisfies
 /// this property. The process works by performing a depth-first search over the ancestors
 /// of `node_id` (and stopping if any ancestor is already in the `seen` set).
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 fn add_ancestors<K, V>(node_id: &K, nodes: &mut HashMap<K, V>, seen: &mut HashSet<K>)
 where
     K: Clone + Eq + Hash,
@@ -480,6 +534,13 @@ where
 /// Like [`enforce_dag_from_tc`] but only checks nodes in `nodes_to_check`.
 /// This is sound after `repair_tc` because only nodes whose edges were modified
 /// could have gained a self-loop.
+#[cfg_attr(
+    all(feature = "verified-core", not(test)),
+    expect(
+        dead_code,
+        reason = "replaced by the verified implementation under `verified-core`"
+    )
+)]
 fn enforce_dag_from_tc_for<K, V>(
     nodes_to_check: &HashSet<K>,
     entities: &HashMap<K, V>,
@@ -1197,6 +1258,10 @@ mod tests {
 
     /// A parent chain deeper than the thread's stack used to overflow it
     #[test]
+    #[cfg_attr(
+        feature = "verified-core",
+        ignore = "the verified TC has no stacker; deep chains can overflow the stack"
+    )]
     fn deep_chain_does_not_overflow_stack() {
         let n = 200;
         std::thread::Builder::new()
@@ -1274,6 +1339,127 @@ mod tests {
                 snap_compute, snap_cyclic,
                 "compute_tc(false) differs from cyclic_tc on '{name}'"
             );
+        }
+    }
+
+    /// The verified `compute_tc` agrees with `cyclic_tc`, and reports a cycle
+    /// exactly on the cyclic graphs.
+    #[cfg(feature = "verified-core")]
+    #[test]
+    fn verified_compute_tc_oracle() {
+        // A -> B -> C and A -> X, where X is not in the map
+        let mut a = Entity::with_uid(EntityUID::with_eid("A"));
+        a.add_parent(EntityUID::with_eid("B"));
+        a.add_parent(EntityUID::with_eid("X"));
+        let mut b = Entity::with_uid(EntityUID::with_eid("B"));
+        b.add_parent(EntityUID::with_eid("C"));
+        let c = Entity::with_uid(EntityUID::with_eid("C"));
+        let dangling = HashMap::from([
+            (a.uid().clone(), a),
+            (b.uid().clone(), b),
+            (c.uid().clone(), c),
+        ]);
+        let cases = dag_test_graphs()
+            .into_iter()
+            .map(|(name, g)| (name, g, false))
+            .chain(
+                cyclic_test_graphs()
+                    .into_iter()
+                    .map(|(name, g)| (name, g, true)),
+            )
+            .chain(std::iter::once(("dangling_parent", dangling, false)));
+        for (name, base, cyclic) in cases {
+            let mut via_verified = fresh_copy(&base);
+            verified::compute_tc(&mut via_verified, false)
+                .unwrap_or_else(|_| panic!("verified compute_tc failed on '{name}'"));
+            let mut via_cyclic = fresh_copy(&base);
+            cyclic_tc(&mut via_cyclic);
+            assert_eq!(
+                snapshot(&via_verified),
+                snapshot(&via_cyclic),
+                "TC mismatch on '{name}'"
+            );
+            let checked = fresh_copy(&base);
+            let res = verified::compute_tc(&mut checked.clone(), true);
+            assert_eq!(res.is_err(), cyclic, "cycle check on '{name}'");
+            // a clone keeps the iteration order, so both report the same node
+            let mut existing = checked;
+            cyclic_tc(&mut existing);
+            assert_eq!(
+                res,
+                enforce_dag_from_tc(&existing),
+                "cycle check on '{name}'"
+            );
+        }
+    }
+
+    /// The existing `repair_tc` path with cycle detection
+    #[cfg(feature = "verified-core")]
+    fn existing_repair_tc(
+        nodes_to_fix: &HashSet<EntityUID>,
+        nodes: &mut HashMap<EntityUID, Entity>,
+    ) -> Result<(), EntityUID> {
+        let seen = nodes
+            .keys()
+            .filter(|k| !nodes_to_fix.contains(k))
+            .cloned()
+            .collect();
+        compute_tc_internal(nodes_to_fix.iter().cloned(), nodes, seen, true);
+        enforce_dag_from_tc_for(nodes_to_fix, nodes)
+    }
+
+    /// The verified `repair_tc` agrees with the existing one on DAGs, and on
+    /// cyclic graphs reports a cycle and adds only edges of the closure.
+    #[cfg(feature = "verified-core")]
+    #[test]
+    fn verified_repair_tc_oracle() {
+        for (name, base) in &dag_test_graphs() {
+            let all: HashSet<EntityUID> = base.keys().cloned().collect();
+            let mut via_verified = fresh_copy(base);
+            let mut via_existing = fresh_copy(base);
+            assert!(verified::repair_tc(&all, &mut via_verified, true).is_ok());
+            assert!(existing_repair_tc(&all, &mut via_existing).is_ok());
+            assert_eq!(
+                snapshot(&via_verified),
+                snapshot(&via_existing),
+                "'{name}', all nodes"
+            );
+            for key in base.keys() {
+                let mut closure = fresh_copy(base);
+                cyclic_tc(&mut closure);
+                let mut via_verified = closure.clone();
+                via_verified.get_mut(key).unwrap().reset_edges();
+                let mut via_existing = via_verified.clone();
+                let fix = HashSet::from([key.clone()]);
+                assert!(verified::repair_tc(&fix, &mut via_verified, true).is_ok());
+                assert!(existing_repair_tc(&fix, &mut via_existing).is_ok());
+                assert_eq!(
+                    snapshot(&via_verified),
+                    snapshot(&via_existing),
+                    "'{name}', fix {key}"
+                );
+                assert_eq!(
+                    snapshot(&via_verified),
+                    snapshot(&closure),
+                    "'{name}', fix {key}"
+                );
+            }
+        }
+        for (name, base) in &cyclic_test_graphs() {
+            let all: HashSet<EntityUID> = base.keys().cloned().collect();
+            let mut via_verified = fresh_copy(base);
+            let mut via_existing = via_verified.clone();
+            let res = verified::repair_tc(&all, &mut via_verified, true);
+            assert!(matches!(res, Err(TcError::HasCycle(_))), "'{name}'");
+            assert_eq!(res, existing_repair_tc(&all, &mut via_existing), "'{name}'");
+            let mut closure = fresh_copy(base);
+            cyclic_tc(&mut closure);
+            let closure = snapshot(&closure);
+            for snap in [snapshot(&via_verified), snapshot(&via_existing)] {
+                for (k, edges) in &snap {
+                    assert!(edges.is_subset(&closure[k]), "'{name}', node {k}");
+                }
+            }
         }
     }
 
