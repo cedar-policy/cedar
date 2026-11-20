@@ -18,6 +18,7 @@ Cedar Language Version: TBD
 
 - Validating a large policy set with many errors is faster, as hashing a source location no longer hashes the
   whole policy text (#2598).
+- Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
 
 ### Fixed
 
