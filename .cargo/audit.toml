@@ -1,0 +1,6 @@
+[advisories]
+# RUSTSEC-2026-0543: chrono is unmaintained. Cedar does not depend on chrono; it uses a vendored copy
+# (cedar-policy-core/src/extensions/chrono). chrono appears in Cargo.lock only as an optional
+# dependency of serde_with that nothing enables, so it is not compiled. Remove this entry once
+# chrono no longer appears in Cargo.lock.
+ignore = ["RUSTSEC-2026-0543"]

@@ -204,6 +204,8 @@ Cedar does not claim compliance with any security standard. The project publishe
   * `cargo install cedar-policy-cli --locked` uses the Cargo.lock published with the crate. Without `--locked`, Cargo ignores it and picks the newest versions that Cedar's `Cargo.toml` files allow.
   * An application that depends on a Cedar crate never uses Cedar's Cargo.lock. Cargo picks versions that Cedar's `Cargo.toml` files allow and records them in the application's own lockfile. The application is responsible for auditing them.
 * **Tracking.** Dependabot opens one grouped pull request a week each for Cargo and GitHub Actions updates ([dependabot.yml](.github/dependabot.yml)), and sends alerts and security updates. cargo-audit and cargo-deny run on every pull request and nightly, and the nightly advisories check opens an issue when it fails.
+* **Vendored code.** `cedar-policy-core` contains a trimmed copy of chrono 0.4.45 in [cedar-policy-core/src/extensions/chrono](cedar-policy-core/src/extensions/chrono), which replaces the unmaintained chrono crate. Cedar maintains it like its own code: `unsafe` is forbidden and its tests run with the `cedar-policy-core` tests. Clippy lints are disabled for it to keep it close to upstream.
+* **Ignored advisories.** [.cargo/audit.toml](.cargo/audit.toml) makes cargo-audit ignore [RUSTSEC-2026-0543](https://rustsec.org/advisories/RUSTSEC-2026-0543) (chrono is unmaintained). Cargo.lock lists chrono only as an optional dependency of serde_with that no Cedar crate enables, so chrono is not compiled. cargo-deny checks the resolved dependency graph and does not report it. The entry should be removed once chrono no longer appears in Cargo.lock.
 
 #### Communication channels
 

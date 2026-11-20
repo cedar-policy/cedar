@@ -38,15 +38,13 @@ serde-wasm-bindgen = { version = "0.6", optional = true }
 tsify = { version = "0.5.8", optional = true }
 wasm-bindgen = { version = "0.2.97", optional = true }
 
-# datetime extension requires chrono
-chrono = { version = "0.4.45", optional = true, default-features = false }
 
 [features]
 # by default, enable all Cedar extensions
 default = ["ipaddr", "decimal", "datetime"]
 ipaddr = []
 decimal = []
-datetime = ["dep:chrono"]
+datetime = []
 
 # Enables `Arbitrary` implementations for several types in this crate
 arbitrary = ["dep:arbitrary"]

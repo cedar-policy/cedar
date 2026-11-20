@@ -22,6 +22,11 @@ pub mod ipaddr;
 #[cfg(feature = "decimal")]
 pub mod decimal;
 
+// Vendored copy of chrono 0.4.45, used by the `datetime` extension and by `cedar-policy-symcc`.
+// It is public only so that `cedar-policy-symcc` can use it; it is not part of the Cedar API.
+#[cfg(feature = "datetime")]
+#[doc(hidden)]
+pub mod chrono;
 #[cfg(feature = "datetime")]
 pub mod datetime;
 pub mod partial_evaluation;

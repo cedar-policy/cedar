@@ -17,7 +17,7 @@
 //! This module contains the Cedar 'datetime' extension.
 use std::{fmt::Display, sync::Arc};
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
+use super::chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -360,8 +360,8 @@ impl From<DateTime> for RepresentableExtensionValue {
 
 impl From<NaiveDateTime> for DateTime {
     fn from(value: NaiveDateTime) -> Self {
-        let delta = chrono::DateTime::from_naive_utc_and_offset(value, chrono::Utc)
-            - chrono::DateTime::UNIX_EPOCH;
+        let delta = super::chrono::DateTime::from_naive_utc_and_offset(value, super::chrono::Utc)
+            - super::chrono::DateTime::UNIX_EPOCH;
         Self {
             epoch: delta.num_milliseconds(),
         }
@@ -774,7 +774,7 @@ pub fn extension() -> Extension {
 mod tests {
     use std::{str::FromStr, sync::Arc};
 
-    use chrono::NaiveDateTime;
+    use crate::extensions::chrono::NaiveDateTime;
     use cool_asserts::assert_matches;
     use nonempty::nonempty;
 

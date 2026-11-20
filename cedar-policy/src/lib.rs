@@ -33,8 +33,7 @@
 //! - `decimal` — Decimal number extension functions (`decimal`, `lessThan`,
 //!   `lessThanOrEqual`, `greaterThan`, `greaterThanOrEqual`).
 //! - `datetime` — Date and time extension functions (`datetime`, `duration`,
-//!   `offset`, `durationSince`, `toDate`, `toTime`). Enables the `chrono`
-//!   dependency.
+//!   `offset`, `durationSince`, `toDate`, `toTime`).
 //!
 //! ## Optional features
 //!

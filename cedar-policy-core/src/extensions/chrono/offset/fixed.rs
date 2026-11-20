@@ -1,0 +1,92 @@
+// This is a part of Chrono.
+// See README.md and LICENSE.txt for details.
+//
+// This file is `src/offset/fixed.rs` from chrono 0.4.45 (https://github.com/chronotope/chrono),
+// Copyright (c) 2014--2026, Kang Seonghoon and contributors, used under the
+// Apache License, Version 2.0 (see the LICENSE file at the root of the Cedar repository).
+// Modified by Cedar Contributors: `crate::` paths rewritten to `crate::extensions::chrono::`; doc
+//   examples removed; code behind chrono's Cargo features (not enabled in Cedar) removed; code not
+//   used by Cedar removed.
+
+//! The time zone which has a fixed offset from UTC.
+
+use core::fmt;
+
+use super::{MappedLocalTime, Offset, TimeZone};
+use crate::extensions::chrono::naive::NaiveDateTime;
+
+/// The time zone with fixed offset, from UTC-23:59:59 to UTC+23:59:59.
+///
+/// Using the [`TimeZone`](crate::extensions::chrono::offset::TimeZone) methods
+/// on a `FixedOffset` struct is the preferred way to construct
+/// `DateTime<FixedOffset>` instances. See the [`east_opt`](crate::extensions::chrono::offset::FixedOffset::east_opt)
+/// method.
+#[derive(PartialEq, Eq, Hash, Copy, Clone)]
+pub struct FixedOffset {
+    local_minus_utc: i32,
+}
+
+impl FixedOffset {
+    /// Makes a new `FixedOffset` for the Eastern Hemisphere with given timezone difference.
+    /// The negative `secs` means the Western Hemisphere.
+    ///
+    /// Returns `None` on the out-of-bound `secs`.
+    #[must_use]
+    pub(crate) const fn east_opt(secs: i32) -> Option<FixedOffset> {
+        if -86_400 < secs && secs < 86_400 {
+            Some(FixedOffset {
+                local_minus_utc: secs,
+            })
+        } else {
+            None
+        }
+    }
+
+    /// Returns the number of seconds to add to convert from UTC to the local time.
+    #[inline]
+    pub const fn local_minus_utc(&self) -> i32 {
+        self.local_minus_utc
+    }
+}
+
+impl TimeZone for FixedOffset {
+    type Offset = FixedOffset;
+
+    fn from_offset(offset: &FixedOffset) -> FixedOffset {
+        *offset
+    }
+
+    fn offset_from_local_datetime(&self, _local: &NaiveDateTime) -> MappedLocalTime<FixedOffset> {
+        MappedLocalTime::Single(*self)
+    }
+
+    fn offset_from_utc_datetime(&self, _utc: &NaiveDateTime) -> FixedOffset {
+        *self
+    }
+}
+
+impl Offset for FixedOffset {
+    fn fix(&self) -> FixedOffset {
+        *self
+    }
+}
+
+impl fmt::Debug for FixedOffset {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let offset = self.local_minus_utc;
+        let (sign, offset) = if offset < 0 {
+            ('-', -offset)
+        } else {
+            ('+', offset)
+        };
+        let sec = offset.rem_euclid(60);
+        let mins = offset.div_euclid(60);
+        let min = mins.rem_euclid(60);
+        let hour = mins.div_euclid(60);
+        if sec == 0 {
+            write!(f, "{sign}{hour:02}:{min:02}")
+        } else {
+            write!(f, "{sign}{hour:02}:{min:02}:{sec:02}")
+        }
+    }
+}

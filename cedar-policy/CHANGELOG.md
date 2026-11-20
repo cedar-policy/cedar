@@ -18,6 +18,8 @@ Cedar Language Version: TBD
 
 - Validating a large policy set with many errors is faster, as hashing a source location no longer hashes the
   whole policy text (#2598).
+- The `datetime` extension no longer depends on the unmaintained `chrono` crate. The parts of `chrono` 0.4.45
+  that Cedar uses are now vendored in `cedar-policy-core`. Datetime behavior is unchanged.
 
 ### Fixed
 
