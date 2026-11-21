@@ -1123,6 +1123,11 @@ fn convert_expr_error_to_parse_error<Build: ExprBuilderInfallibleBuild>(
     Err(error)
 }
 
+/// Render CST syntax for a single-line diagnostic, escaping line breaks in string literals.
+fn display_cst_for_error(cst: &impl std::fmt::Display) -> String {
+    cst.to_string().replace('\n', "\\n")
+}
+
 /// Result type of conversion when we expect an Expr, Var, Name, or String.
 ///
 /// During conversion it is useful to keep track of expression that may be used
@@ -1188,7 +1193,7 @@ where
     }
 
     /// Variables, names (with no prefixes), and string literals can all be used as record attributes
-    pub(crate) fn into_valid_attr(self) -> Result<SmolStr> {
+    pub(crate) fn into_valid_attr(self, source: &Node<Option<cst::Expr>>) -> Result<SmolStr> {
         match self {
             Self::Var { var, .. } => Ok(construct_string_from_var(var)),
             Self::Name { name, loc } => name.into_valid_attr(loc),
@@ -1198,11 +1203,11 @@ where
                         .map(|e| ToASTError::new(ToASTErrorKind::Unescape(e), loc.clone()).into()),
                 )
             }),
-            Self::Expr { expr, loc } => Err(ToASTError::new(
-                ToASTErrorKind::InvalidAttribute(expr.to_string().into()),
-                loc,
-            )
-            .into()),
+            Self::Expr { .. } => Err(source
+                .to_ast_err(ToASTErrorKind::InvalidAttribute(
+                    display_cst_for_error(source.try_as_inner()?).into(),
+                ))
+                .into()),
             Self::BoolLit { val, loc } => Err(ToASTError::new(
                 ToASTErrorKind::ReservedIdentifier(if val {
                     cst::Ident::True
@@ -1215,7 +1220,7 @@ where
         }
     }
 
-    pub(crate) fn into_pattern(self) -> Result<Vec<PatternElem>> {
+    pub(crate) fn into_pattern(self, source: &Node<Option<cst::Add>>) -> Result<Vec<PatternElem>> {
         match &self {
             Self::StrLit { lit, .. } => to_pattern(lit).map_err(|escape_errs| {
                 ParseErrors::new_from_nonempty(
@@ -1228,8 +1233,10 @@ where
             Self::Name { name, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidPattern(name.to_string()))
                 .into()),
-            Self::Expr { expr, .. } => Err(self
-                .to_ast_err(ToASTErrorKind::InvalidPattern(expr.to_string()))
+            Self::Expr { .. } => Err(source
+                .to_ast_err(ToASTErrorKind::InvalidPattern(display_cst_for_error(
+                    source.try_as_inner()?,
+                )))
                 .into()),
             Self::BoolLit { val, .. } => Err(self
                 .to_ast_err(ToASTErrorKind::InvalidPattern(val.to_string()))
@@ -1426,7 +1433,7 @@ impl Node<Option<cst::Relation>> {
             }
             cst::Relation::Like { target, pattern } => {
                 let maybe_target = target.to_expr::<Build>();
-                let maybe_pattern = pattern.to_expr_or_special::<Build>()?.into_pattern();
+                let maybe_pattern = pattern.to_expr_or_special::<Build>()?.into_pattern(pattern);
                 let (target, pattern) = flatten_tuple_2(maybe_target, maybe_pattern)?;
                 Ok(ExprOrSpecial::Expr {
                     expr: Build::new()
@@ -2244,7 +2251,7 @@ impl Node<Option<cst::RecInit>> {
     fn to_init<Build: ExprBuilderInfallibleBuild>(&self) -> Result<(SmolStr, Build::Expr)> {
         let lit = self.try_as_inner()?;
 
-        let maybe_attr = lit.0.to_expr_or_special::<Build>()?.into_valid_attr();
+        let maybe_attr = lit.0.to_expr_or_special::<Build>()?.into_valid_attr(&lit.0);
         let maybe_value = lit.1.to_expr::<Build>();
 
         flatten_tuple_2(maybe_attr, maybe_value)
@@ -3223,6 +3230,66 @@ mod tests {
             .exactly_one_underline("354")
             .build(),
         );
+    }
+
+    #[test]
+    fn parenthesized_special_expression_errors() {
+        for (src, message, underline, help) in [
+            (
+                r#"principal like ("*")"#,
+                r#"right hand side of a `like` expression must be a pattern literal, but got `("*")`"#,
+                r#"("*")"#,
+                None,
+            ),
+            (
+                "principal like (\n(\"*\")\n)",
+                r#"right hand side of a `like` expression must be a pattern literal, but got `(("*"))`"#,
+                "(\n(\"*\")\n)",
+                None,
+            ),
+            (
+                "principal like (\"a\nb\")",
+                r#"right hand side of a `like` expression must be a pattern literal, but got `("a\nb")`"#,
+                "(\"a\nb\")",
+                None,
+            ),
+            (
+                "{(\"a\nb\"): 1}",
+                r#"invalid attribute name: ("a\nb")"#,
+                "(\"a\nb\")",
+                Some("attribute names can either be identifiers or string literals"),
+            ),
+            (
+                r#"principal like ("a\nb\\c")"#,
+                r#"right hand side of a `like` expression must be a pattern literal, but got `("a\nb\\c")`"#,
+                r#"("a\nb\\c")"#,
+                None,
+            ),
+            (
+                r#"{("attr"): 1}"#,
+                r#"invalid attribute name: ("attr")"#,
+                r#"("attr")"#,
+                Some("attribute names can either be identifiers or string literals"),
+            ),
+            (
+                "{(\n(principal)\n): 1}",
+                "invalid attribute name: ((principal))",
+                "(\n(principal)\n)",
+                Some("attribute names can either be identifiers or string literals"),
+            ),
+        ] {
+            let cst = text_to_cst::parse_expr(src).expect("valid CST");
+            let ast_errors = cst.to_expr::<ast::ExprBuilder<()>>().unwrap_err();
+            let est_errors = cst.to_expr::<crate::est::Builder>().unwrap_err();
+            for errors in [ast_errors, est_errors] {
+                let mut expected =
+                    ExpectedErrorMessageBuilder::error(message).exactly_one_underline(underline);
+                if let Some(help) = help {
+                    expected = expected.help(help);
+                }
+                expect_exactly_one_error(src, &errors, &expected.build());
+            }
+        }
     }
 
     #[test]
