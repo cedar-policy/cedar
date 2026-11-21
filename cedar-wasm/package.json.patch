@@ -36,6 +36,7 @@
     "./web": {
       "import": "./web/cedar_wasm.js",
       "types": "./web/cedar_wasm.d.ts"
-    }
+    },
+    "./web/cedar_wasm_bg.wasm": "./web/cedar_wasm_bg.wasm"
   }
 }
