@@ -22,6 +22,7 @@ pub mod evaluator;
 pub mod request;
 pub mod residual;
 pub mod response;
+pub mod value;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
@@ -106,20 +107,19 @@ mod tests {
 
     use crate::ast::{Annotation, AnyId, BinaryOp, Literal, PolicyID, Value, ValueKind, Var};
     use crate::tpe::residual::{Residual, ResidualKind};
+    use crate::tpe::value::AttrState;
     use crate::validator::ValidatorSchema;
     use crate::{
         ast::{EntityUID, PolicySet},
         extensions::Extensions,
         parser::parse_policyset,
     };
-    use std::{
-        collections::{BTreeMap, HashSet},
-        sync::Arc,
-    };
+    use std::collections::HashSet;
 
     use crate::tpe::{
         entities::{PartialEntities, PartialEntity},
         request::{PartialEntityUID, PartialRequest},
+        value::PartialRecord,
     };
 
     use super::is_authorized;
@@ -273,10 +273,7 @@ action Delete appliesTo {
                 ty: "Document".parse().unwrap(),
                 eid: None,
             },
-            Some(Arc::new(BTreeMap::from_iter(std::iter::once((
-                "hasMFA".into(),
-                true.into(),
-            ))))),
+            Some(std::iter::once(("hasMFA".into(), AttrState::Value(Value::from(true)))).collect()),
             &rfc_schema(),
         )
         .unwrap()
@@ -287,7 +284,7 @@ action Delete appliesTo {
         PartialEntities::from_entities(
             [PartialEntity::new(
                 r#"User::"Alice""#.parse().unwrap(),
-                Some(BTreeMap::new()),
+                Some(PartialRecord::new()),
                 Some(HashSet::new()),
                 None,
                 &schema,
@@ -374,7 +371,7 @@ action Delete appliesTo {
                 ty: "Document".parse().unwrap(),
                 eid: None,
             },
-            Some(Arc::new(BTreeMap::new())),
+            Some(PartialRecord::new()),
             &schema,
         )
         .unwrap();
@@ -390,7 +387,6 @@ action Delete appliesTo {
 #[cfg(test)]
 mod tinytodo {
     use std::collections::HashSet;
-    use std::{collections::BTreeMap, sync::Arc};
 
     use crate::ast::{BinaryOp, EntityUID};
     use crate::tpe::residual::{Residual, ResidualKind};
@@ -402,6 +398,7 @@ mod tinytodo {
     use crate::tpe::{
         entities::PartialEntities,
         request::{PartialEntityUID, PartialRequest},
+        value::PartialRecord,
     };
 
     use super::is_authorized;
@@ -512,7 +509,7 @@ when { principal in resource.editors };
                 ty: "List".parse().unwrap(),
                 eid: None,
             },
-            Some(Arc::new(BTreeMap::new())),
+            Some(PartialRecord::new()),
             &schema(),
         )
         .unwrap()
