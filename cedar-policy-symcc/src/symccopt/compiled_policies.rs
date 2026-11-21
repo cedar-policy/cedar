@@ -44,6 +44,9 @@ pub struct CompiledPolicy {
     pub(crate) footprint: BTreeSet<Term>,
     /// acyclicity constraints for this policy
     pub(crate) acyclicity: BTreeSet<Term>,
+    /// transitivity constraints for every pair of footprint terms, computed
+    /// once here so verification queries don't recompute them
+    pub(crate) transitivity: BTreeSet<Term>,
 }
 
 impl CompiledPolicy {
@@ -104,12 +107,15 @@ impl CompiledPolicy {
             .iter()
             .map(|term| symcc::enforcer::acyclicity(term, &symenv.entities))
             .collect();
+        let transitivity =
+            symccopt::enforcer::transitivity_constraints(&footprint, &footprint, &symenv).collect();
         Ok(Self {
             term,
             symenv,
             policy,
             footprint,
             acyclicity,
+            transitivity,
         })
     }
 
