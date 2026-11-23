@@ -26,6 +26,8 @@ Cedar Language Version: TBD
   but an eid that is not one of the declared choices, as it already does for the equivalent static policy. Such a link
   would have been reported as a warning, and results in a policy that never applies (#2715).
 - Added calls to `stacker` to guard against stack overflows when computing the transitive closure of a deep entity hierarchy (#2718).
+- Schema errors list undefined types in lexicographic order by their displayed names. The first name
+  determines the help message and source location (#833).
 
 ## [4.15.0] - 2026-11-16
 
