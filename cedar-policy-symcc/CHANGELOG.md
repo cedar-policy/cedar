@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `CompiledPolicy` now computes its footprint transitivity constraints once at compile time, so repeated verification queries on the same compiled policy no longer recompute them (#2579).
+
 ## [0.9.0] - 2026-11-16
 
 Cedar Language Version: 4.7
