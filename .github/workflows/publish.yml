@@ -369,21 +369,11 @@ jobs:
               if: inputs.target == 'cli' || inputs.target == 'all'
               run: rustup update stable && rustup default stable
             # Installs into a fresh root so that no other `cedar` binary on the runner is checked.
-            # The sparse index can lag behind the API, so the install is retried.
             - name: Install the CLI from crates.io and check its version
               if: inputs.target == 'cli' || inputs.target == 'all'
               run: |
                   ROOT="$RUNNER_TEMP/cedar-cli"
-                  for attempt in 1 2 3; do
-                      if cargo install cedar-policy-cli --version "$CLI_VERSION" --locked --root "$ROOT"; then
-                          break
-                      fi
-                      if [[ "$attempt" == 3 ]]; then
-                          echo "::error::cargo install cedar-policy-cli --version $CLI_VERSION --locked failed 3 times."
-                          exit 1
-                      fi
-                      sleep 60
-                  done
+                  cargo install cedar-policy-cli --version "$CLI_VERSION" --locked --root "$ROOT"
                   # Prints e.g. `cedar-policy-cli 4.15.0`.
                   OUTPUT=$("$ROOT/bin/cedar" --version)
                   echo "cedar --version: $OUTPUT"
