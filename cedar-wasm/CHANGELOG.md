@@ -5,6 +5,7 @@
 ### Added
 
 - `checkParsePolicySetJsonStr`, `checkParseSchemaJsonStr`, `checkParseEntitiesJsonStr` and `checkParseContextJsonStr` bindings, which take JSON strings as input and report the location of errors in the JSON syntax. (#1317)
+- `@cedar-policy/cedar-wasm/web/cedar_wasm_bg.wasm` is now listed in the package `exports`, so bundlers that need the compiled module as a separate import (such as Cloudflare Workers) can resolve it. (#2682)
 
 ## 4.15.0
 
