@@ -20,7 +20,7 @@
 
 use std::str::FromStr;
 
-use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
+use jiff::{civil, fmt::strtime};
 use miette::Diagnostic;
 use num_bigint::{BigInt, BigUint, ParseBigIntError, Sign};
 use thiserror::Error;
@@ -50,9 +50,6 @@ pub enum DatetimeError {
     /// Datetime parse error.
     #[error("unable to parse `{0}` as a Datetime")]
     DatetimeParseError(String),
-    /// Chrono internal parse error.
-    #[error("chrono parse error")]
-    ChronoParseError(#[from] chrono::ParseError),
     /// Integer overflow during parsing.
     #[error("integer overflow during parsing")]
     IntegerOverflowDuringParsing,
@@ -136,7 +133,14 @@ impl Datetime {
             {
                 Some((time, ms_and_tz)) => match time.split(':').collect::<Vec<_>>().as_slice() {
                     [h, m, s] => {
-                        h.len() == 2 && m.len() == 2 && s.len() == 2 && !ms_and_tz.contains(':')
+                        h.len() == 2
+                            && m.len() == 2
+                            && s.len() == 2
+                            // jiff's `%3f` also takes 1-2 digits, and its `%z` takes `+hhmmss`
+                            && matches!(
+                                ms_and_tz.replace(|c: char| c.is_ascii_digit(), "d").as_str(),
+                                "Z" | ".dddZ" | "+dddd" | "-dddd" | ".ddd+dddd" | ".ddd-dddd"
+                            )
                     }
                     _ => false,
                 },
@@ -179,48 +183,31 @@ impl FromStr for Datetime {
         const DATE_ONLY: &str = "%Y-%m-%d";
         const DATE_UTC: &str = "%Y-%m-%dT%H:%M:%SZ";
         const DATE_UTC_MILLIS: &str = "%Y-%m-%dT%H:%M:%S.%3fZ";
-        // The documentation states that %z accepts TZ specified as +xxxx or -xxxx
-        // but in practice also accepts +xx:xx and -xx::xx. Thus we need to independently
-        // Validate date strings with TZ do not contain ':' in TZ.
         const DATE_WITH_OFFSET: &str = "%Y-%m-%dT%H:%M:%S%z";
         const DATE_WITH_OFFSET_MILLIS: &str = "%Y-%m-%dT%H:%M:%S.%3f%z";
 
         const MAX_OFFSET_SECONDS: i32 = 86400; // 24 hours in seconds
 
         // Try parsing with each format
-        #[expect(
-            clippy::unwrap_used,
-            reason = "Should be able to construct a datetime with hour = 0, minute = 0, seconds = 0"
-        )]
-        // Cannot parse a datetime from just date format so use NaiveDate then append time == midnight
-        let datetime = NaiveDate::parse_from_str(s, DATE_ONLY)
-            .map(|date| date.and_hms_opt(0, 0, 0).unwrap())
-            // Datetime expects TZ info to be provided in date string regardless of format str. Use NaiveDatetime for default 'Z' TZ
-            .or_else(|_| NaiveDateTime::parse_from_str(s, DATE_UTC))
-            .or_else(|_| NaiveDateTime::parse_from_str(s, DATE_UTC_MILLIS))
-            // Convert NaiveDatetimes to UTC datetimes
-            .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc))
-            // Parse date strings that include time zones.
-            .or_else(|_| {
-                DateTime::parse_from_str(s, DATE_WITH_OFFSET).map(|dt| dt.with_timezone(&Utc))
-            })
-            .or_else(|_| {
-                DateTime::parse_from_str(s, DATE_WITH_OFFSET_MILLIS)
-                    .map(|dt| dt.with_timezone(&Utc))
-            })?;
-
-        // Check if the original timezone offset is within bounds (need to parse again for offset checks)
-        let offset = if let Ok(dt) = DateTime::parse_from_str(s, DATE_WITH_OFFSET) {
-            dt.offset().local_minus_utc()
-        } else if let Ok(dt) = DateTime::parse_from_str(s, DATE_WITH_OFFSET_MILLIS) {
-            dt.offset().local_minus_utc()
-        } else {
-            0 // UTC or local time
-        };
+        let err = || DatetimeError::DatetimeParseError(s.to_string());
+        let tm = strtime::parse(DATE_ONLY, s)
+            .or_else(|_| strtime::parse(DATE_UTC, s))
+            .or_else(|_| strtime::parse(DATE_UTC_MILLIS, s))
+            .or_else(|_| strtime::parse(DATE_WITH_OFFSET, s))
+            .or_else(|_| strtime::parse(DATE_WITH_OFFSET_MILLIS, s))
+            .map_err(|_| err())?;
+        let offset = tm.offset().map_or(0, |o| o.seconds());
+        // Not via `jiff::Timestamp`: its range ends at 9999-12-30T22:00Z, before
+        // the latest datetime Cedar accepts.
+        let since_epoch = tm
+            .to_datetime()
+            .map_err(|_| err())?
+            .duration_since(civil::DateTime::constant(1970, 1, 1, 0, 0, 0, 0));
 
         if offset.abs() < MAX_OFFSET_SECONDS {
             Ok(Self {
-                val: datetime.timestamp_millis(),
+                val: (since_epoch.as_secs() - i64::from(offset)) * 1000
+                    + i64::from(since_epoch.subsec_millis()),
             })
         } else {
             Err(DatetimeError::DatetimeParseError(s.to_string()))
@@ -431,6 +418,7 @@ mod tests {
     fn tests_for_valid_datetime_strings() {
         test_valid_datetime("2022-10-10", 1665360000000);
         test_valid_datetime("1969-12-31", -86400000);
+        test_valid_datetime("9999-12-31T23:59:59.999-2359", 253402387139999);
         test_valid_datetime("1969-12-31T23:59:59Z", -1000);
         test_valid_datetime("1969-12-31T23:59:59.001Z", -999);
         test_valid_datetime("1969-12-31T23:59:59.999Z", -1);
@@ -489,6 +477,7 @@ mod tests {
         test_invalid_datetime("2024-01-01T31:02:03Z", "invalid hour range");
         test_invalid_datetime("2024-01-01T01:60:03Z", "invalid minute range");
         test_invalid_datetime("2016-12-31T23:59:60Z", "leap second");
+        test_invalid_datetime("2024-10-15T11:38:02 +1134", "space before offset");
         test_invalid_datetime("2016-12-31T23:59:61Z", "invalid second range");
         test_invalid_datetime("2024-01-01T00:00:00", "timezone not specified");
         test_invalid_datetime("2024-01-01T00:00:00T", "separator is not timezone");

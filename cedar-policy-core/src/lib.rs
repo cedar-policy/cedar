@@ -35,7 +35,7 @@
 //! - `decimal` — Decimal number extension functions (`decimal`, `lessThan`,
 //!   `lessThanOrEqual`, `greaterThan`, `greaterThanOrEqual`).
 //! - `datetime` — Date and time extension functions (`datetime`, `duration`,
-//!   `offset`, `durationSince`, `toDate`, `toTime`). Enables the `chrono`
+//!   `offset`, `durationSince`, `toDate`, `toTime`). Enables the `jiff`
 //!   dependency.
 //!
 //! ## Optional features
