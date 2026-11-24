@@ -339,7 +339,7 @@ action w in [g, r];
     );
 }
 
-/// Error: an external can't be an enumerated type.
+/// An external declaration may not resolve to an enumerated entity type.
 #[test]
 fn an_external_entity_cannot_resolve_to_an_enum() {
     link_err(
@@ -787,7 +787,7 @@ entity B { x: String };
     );
 }
 
-/// Link resolves to an enum.
+/// Linking an external declaration to an enum is rejected.
 #[test]
 fn an_external_may_not_resolve_to_an_enum_across_a_link() {
     link_err(
@@ -800,6 +800,17 @@ entity A in E;
 entity E enum ["x"];
 "#,
         "externalIsEnum",
+    );
+}
+
+/// Equal enum definitions may use different source orders.
+#[test]
+fn enum_values_may_be_declared_in_different_orders() {
+    link_ok(
+        "enum_values_may_be_declared_in_different_orders",
+        r#"entity E enum ["x", "y"];"#,
+        r#"entity E enum ["y", "x"];"#,
+        r#"entity E enum ["x", "y"];"#,
     );
 }
 
@@ -818,13 +829,11 @@ entity decimal;
     );
 }
 
-/// Neither input has the forbidden shape on its own: `p` declares nothing
-/// `external` and `c` declares no enum. Linking them would give the external
-/// `E` the enum `F` as an ancestor, which no schema may hold.
+/// Linking can give an external entity type a transitive enum ancestor.
 #[test]
-fn a_link_may_not_give_an_external_an_enum_ancestor() {
-    link_err(
-        "a_link_may_not_give_an_external_an_enum_ancestor",
+fn a_link_may_give_an_external_an_enum_ancestor() {
+    link_ok(
+        "a_link_may_give_an_external_an_enum_ancestor",
         r#"
 entity F enum ["x"];
 entity M in [F];
@@ -834,8 +843,26 @@ external entity M;
 external entity E in [M];
 entity Leaf { e: E };
 "#,
-        "externalWithEnumAncestor",
+        r#"
+entity F enum ["x"];
+entity M in [F];
+external entity E in [M, F];
+entity Leaf { e: E };
+"#,
     );
+}
+
+#[test]
+fn linking_with_a_shared_enum_ancestor_is_associative() {
+    let schema = |text| Schema::from_cedarschema_str(text).expect("valid schema").0;
+    let p = schema(r#"entity E enum ["x"]; external entity X; entity Y in [X, E];"#);
+    let c = schema("external entity X; external entity Y in X;");
+    let d = schema(r#"entity E enum ["x"]; entity X in E;"#);
+    let link = |a, b| Schema::schema_link([a, b]).expect("schemas link");
+    let left = link(link(p.clone(), c.clone()), d.clone());
+    let right = link(p, link(c, d));
+    assert_same_schema("both groupings", &left, &right);
+    assert!(left.is_complete());
 }
 
 /// Link with the extensions active. They are an argument to the link rather
