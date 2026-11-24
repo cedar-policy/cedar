@@ -22,6 +22,16 @@ Cedar Language Version: TBD
   agree, independent of declaration order.
 - External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
   An external declaration still cannot be resolved by linking it to an enum definition.
+- Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+
+### Fixed
+
+- The validator now rejects a template-linked policy whose slot is filled with an entity of an enumerated entity type
+  but an eid that is not one of the declared choices, as it already does for the equivalent static policy. Such a link
+  would have been reported as a warning, and results in a policy that never applies (#2715).
+- Added calls to `stacker` to guard against stack overflows when computing the transitive closure of a deep entity hierarchy (#2718).
+- Schema errors list undefined types in lexicographic order by their displayed names. The first name
+  determines the help message and source location (#833).
 
 ## [4.15.0] - 2026-11-16
 
@@ -38,6 +48,12 @@ Cedar Language Version: 4.7
   avoiding re-parsing ids (#2659).
 - The policy formatter now writes attributes that are valid identifiers without quotes, so `principal["name"]`
   becomes `principal.name` and `principal has "name"` becomes `principal has name` (#2118).
+- In the protobuf experimental feature, a protobuf `Schema` message has a new field `type_defs`, and `Type`
+  a new variant `type_ref` that represents a reference to a type definition: a shared record type is encoded
+  once as a type_def and referred to. Nested shared records now have an encoding linear in the schema size
+  instead of exponential. A type converted on its own, outside a `Schema` message, has no `type_defs` and is
+  still encoded as its expansion.
+  Previous encodings still decode, but readers older than this change can't decode a `type_ref`.
 
 ### Added
 
@@ -103,6 +119,8 @@ Cedar Language Version: 4.6
 - `EntityUid::from_str()` is faster (~15-30x on the `EntityUid parsing` benchmark), as it no longer
   parses the string and renders the result back out to check that the input was normalized. The same
   optimization was applied to `from_normalized_str()` for `InternalName`, `UnreservedId` and `AnyId`.
+- `Authorizer::is_authorized()` is faster (~1.8x on the `is_authorized` benchmark, ~3x on a
+  1,000-policy set), as each policy's condition is now built once instead of on every evaluation.
 - Remove support for policy templates in the deprecated `entity-manifest` feature. Policy templates
   were previously accepted, but slots were not included in the manifest.
 

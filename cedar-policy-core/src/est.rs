@@ -89,7 +89,7 @@ impl Policy {
     /// Fill in any slots in the policy using the values in `vals`. Throws an
     /// error if `vals` doesn't contain a necessary mapping, but does not throw
     /// an error if `vals` contains unused mappings -- and in particular if
-    /// `self` is an inline policy (in which case it is returned unchanged).
+    /// `self` is a static policy (in which case it is returned unchanged).
     pub fn link(self, vals: &HashMap<ast::SlotId, EntityUidJson>) -> Result<Self, LinkingError> {
         Ok(Policy {
             effect: self.effect,

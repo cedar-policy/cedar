@@ -1713,6 +1713,20 @@ fn test_run_tests_samples(
 }
 
 #[test]
+fn test_run_tests_bare_test_file_name() {
+    cargo::cargo_bin_cmd!("cedar")
+        .current_dir("sample-data/tiny_sandboxes/sample1")
+        .arg("run-tests")
+        .arg("--policies")
+        .arg("policy.cedar")
+        .arg("--tests")
+        .arg("tests-entities-file.json")
+        .assert()
+        .code(0)
+        .stdout(predicate::str::contains("1 passed, 0 failed"));
+}
+
+#[test]
 #[cfg(feature = "tpe")]
 fn test_tpe() {
     let policies: &str = "sample-data/tpe_rfc/policies.cedar";

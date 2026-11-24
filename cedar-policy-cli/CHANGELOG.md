@@ -5,6 +5,10 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 
 ## Unreleased
 
+### Fixed
+
+- `run-tests` now loads entity files referenced by test cases when `--tests` is a bare file name such as `tests.json`, instead of failing with "failed to canonicalize test file directory" (#2697).
+
 ## 4.15.0
 
 ### Fixed

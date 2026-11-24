@@ -27,7 +27,7 @@
 use super::arc_ord::ArcOrd;
 use std::collections::{BTreeMap, BTreeSet};
 
-use cedar_policy_core::ast::{Expr, ExprKind};
+use cedar_policy_core::ast::{BinaryOp, Expr, ExprKind};
 
 use super::{
     compiler::compile,
@@ -39,10 +39,20 @@ use super::{
     type_abbrevs::EntityType,
 };
 
-/// Helper function used by `footprint()`.
-/// In Lean this is defined inline inside `footprint()`, but in Rust, you can't
-/// define closures that take generic arguments (like `impl IntoIterator`), so
-/// we define it as a standalone function.
+/// Returns the compiled term of `x` if it has option-entity type.
+fn of_entity(x: &Expr, env: &SymEnv) -> Box<dyn Iterator<Item = Term>> {
+    match compile(x, env) {
+        Ok(t) => {
+            if t.type_of().is_option_entity_type() {
+                Box::new(std::iter::once(t))
+            } else {
+                Box::new(std::iter::empty())
+            }
+        }
+        Err(_) => Box::new(std::iter::empty()),
+    }
+}
+
 fn of_branch<'a>(
     x1: &Expr,
     ft1: impl IntoIterator<Item = Term> + 'a,
@@ -58,16 +68,50 @@ fn of_branch<'a>(
     }
 }
 
-/// Returns the terms corresponding to subexpressions of `x` of the following form:
+/// Returns true if `x` compiles to `⊙true`, `⊙false`, or `.none`
+fn compiles_to_bool_or_none(x: &Expr, env: &SymEnv) -> bool {
+    // This is the un-optimized symbolic compiler, so calling a full `compile`
+    // for every subexpressions is rather inefficient, but fine.
+    match compile(x, env) {
+        Ok(Term::Some(t)) => matches!(*t, Term::Prim(TermPrim::Bool(_))),
+        Ok(Term::None(_)) => true,
+        _ => false,
+    }
+}
+
+/// Returns the terms that the compiled term of `x` may evaluate to when it
+/// evaluates to an entity. These are the compiled leaves (variables, entity
+/// literals, attribute accesses, and `getTag` expressions) reachable through the
+/// branches of `if` expressions in `x`. No other expression evaluates to an entity.
 ///
-///   * A variable term with an entity type
-///   * An entity reference literal
-///   * An attribute access expression with an entity type
-///   * A binary (`getTag`) expression with an entity type
-///
-/// These are the only basic expressions in Cedar that may evaluate to an entity.
-/// All other expressions that evaluate to an entity are build up from the above
-/// basic expressions.
+/// All returned terms are of type `TermType.option .entity`.
+fn value_footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<Item = Term> + 'a> {
+    if compiles_to_bool_or_none(x, env) {
+        return Box::new(std::iter::empty());
+    }
+    match x.expr_kind() {
+        ExprKind::If {
+            test_expr,
+            then_expr,
+            else_expr,
+        } => of_branch(
+            test_expr,
+            std::iter::empty(),
+            value_footprint(then_expr, env),
+            value_footprint(else_expr, env),
+            env,
+        ),
+        ExprKind::Lit(_)
+        | ExprKind::Var(_)
+        | ExprKind::GetAttr { .. }
+        | ExprKind::BinaryApp { .. } => of_entity(x, env),
+        _ => Box::new(std::iter::empty()),
+    }
+}
+
+/// Returns the terms whose ancestors the compiled term of `x` may read. Only
+/// `in` reads ancestors, and only those of its first operand, so this is the
+/// union of `value_footprint(x1)` over subexpressions `x1 in x2` of `x`.
 ///
 /// All returned terms are of type `TermType.option .entity`.
 //
@@ -80,21 +124,12 @@ fn of_branch<'a>(
     reason = "pattern may or may not be unreachable depending on whether `tolerant-ast` feature of cedar-policy-core is enabled"
 )]
 pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<Item = Term> + 'a> {
-    let of_entity = |x: &Expr| -> Box<dyn Iterator<Item = Term>> {
-        match compile(x, env) {
-            Ok(t) => {
-                if t.type_of().is_option_entity_type() {
-                    Box::new(std::iter::once(t))
-                } else {
-                    Box::new(std::iter::empty())
-                }
-            }
-            Err(_) => Box::new(std::iter::empty()),
-        }
-    };
+    if compiles_to_bool_or_none(x, env) {
+        return Box::new(std::iter::empty());
+    }
     #[expect(clippy::unimplemented, reason = "Should fail at an earlier stage")]
     match x.expr_kind() {
-        ExprKind::Lit(_) | ExprKind::Var(_) => of_entity(x),
+        ExprKind::Lit(_) | ExprKind::Var(_) => Box::new(std::iter::empty()),
         ExprKind::If {
             test_expr,
             then_expr,
@@ -120,13 +155,17 @@ pub(crate) fn footprint<'a>(x: &'a Expr, env: &'a SymEnv) -> Box<dyn Iterator<It
             footprint(right, env),
             env,
         ),
-        ExprKind::BinaryApp { arg1, arg2, .. } => Box::new(
-            of_entity(x)
-                .chain(footprint(arg1, env))
-                .chain(footprint(arg2, env)),
+        ExprKind::BinaryApp { op, arg1, arg2 } => Box::new(
+            (if *op == BinaryOp::In {
+                value_footprint(arg1, env)
+            } else {
+                Box::new(std::iter::empty())
+            })
+            .chain(footprint(arg1, env))
+            .chain(footprint(arg2, env)),
         ),
-        ExprKind::GetAttr { expr, .. } => Box::new(of_entity(x).chain(footprint(expr, env))),
-        ExprKind::HasAttr { expr, .. }
+        ExprKind::GetAttr { expr, .. }
+        | ExprKind::HasAttr { expr, .. }
         | ExprKind::ExtHasAttr { expr, .. }
         | ExprKind::UnaryApp { arg: expr, .. }
         | ExprKind::Like { expr, .. }

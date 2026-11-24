@@ -136,6 +136,7 @@ fn run_tests_inner(args: &RunTestsArgs) -> Result<CedarExitCode> {
 
     let test_file_dir = Path::new(&args.tests)
         .parent()
+        .filter(|dir| !dir.as_os_str().is_empty())
         .unwrap_or_else(|| Path::new("."));
 
     let mut total_fails: usize = 0;

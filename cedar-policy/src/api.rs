@@ -3158,7 +3158,7 @@ impl PolicySet {
         }
     }
 
-    /// Add an static policy to the `PolicySet`. To add a template instance, use
+    /// Add a static policy to the `PolicySet`. To add a template instance, use
     /// `link` instead. This function will return an error (and not modify
     /// the `PolicySet`) if a template-linked policy is passed in.
     pub fn add(&mut self, policy: Policy) -> Result<(), PolicySetError> {
@@ -4317,9 +4317,9 @@ impl Policy {
         policy_src: &str,
         depth_limit: Option<usize>,
     ) -> Result<Self, ParseErrors> {
-        let inline_ast =
+        let static_ast =
             parser::parse_policy_with_depth_limit(id.map(Into::into), policy_src, depth_limit)?;
-        let (_, ast) = ast::Template::link_static_policy(inline_ast);
+        let (_, ast) = ast::Template::link_static_policy(static_ast);
         Ok(Self {
             ast,
             lossless: LosslessPolicy::policy_or_template_text(Some(policy_src)),
