@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `datetime` strings with whitespace, such as `2024-10-15T11:38:02 +1134`, are rejected, as they are by
-  `cedar-policy` and the Cedar specification.
+- `datetime` strings with whitespace or a sign in a field, such as `2024-10-15T11:38:02 +1134`,
+  `2024-01-01T 1:02:03Z` or `+024-10-15`, are rejected, as they are by `cedar-policy` and the Cedar specification.
 
 ## [0.9.0] - 2026-11-16
 

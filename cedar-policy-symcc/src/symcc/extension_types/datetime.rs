@@ -120,9 +120,11 @@ impl Datetime {
 
     /// Returns true iff s contains the expected delimiters within one of our accepted datetime str formats
     fn check_component_len(s: &str) -> bool {
+        // jiff's numeric fields also accept a sign or leading whitespace
+        let digits = |s: &str, len: usize| s.len() == len && s.bytes().all(|b| b.is_ascii_digit());
         let check_date_component = |s: &str| -> bool {
             match s.split('-').collect::<Vec<_>>().as_slice() {
-                [year, month, day] => year.len() == 4 && month.len() == 2 && day.len() == 2,
+                [year, month, day] => digits(year, 4) && digits(month, 2) && digits(day, 2),
                 _ => false,
             }
         };
@@ -133,9 +135,9 @@ impl Datetime {
             {
                 Some((time, ms_and_tz)) => match time.split(':').collect::<Vec<_>>().as_slice() {
                     [h, m, s] => {
-                        h.len() == 2
-                            && m.len() == 2
-                            && s.len() == 2
+                        digits(h, 2)
+                            && digits(m, 2)
+                            && digits(s, 2)
                             // jiff's `%3f` also takes 1-2 digits, and its `%z` takes `+hhmmss`
                             && matches!(
                                 ms_and_tz.replace(|c: char| c.is_ascii_digit(), "d").as_str(),
@@ -478,6 +480,8 @@ mod tests {
         test_invalid_datetime("2024-01-01T01:60:03Z", "invalid minute range");
         test_invalid_datetime("2016-12-31T23:59:60Z", "leap second");
         test_invalid_datetime("2024-10-15T11:38:02 +1134", "space before offset");
+        test_invalid_datetime("2024-01-01T 1:02:03Z", "space-padded hour");
+        test_invalid_datetime("+024-10-15", "sign-padded year");
         test_invalid_datetime("2016-12-31T23:59:61Z", "invalid second range");
         test_invalid_datetime("2024-01-01T00:00:00", "timezone not specified");
         test_invalid_datetime("2024-01-01T00:00:00T", "separator is not timezone");
