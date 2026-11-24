@@ -1,0 +1,10 @@
+[
+  {
+    "uid": { "type": "User", "id": "Alice" },
+    "attrs": {
+      "name": "Alice",
+      "nickname": { "__extn": { "fn": "partial", "arg": "absent" } }
+    },
+    "parents": []
+  }
+]

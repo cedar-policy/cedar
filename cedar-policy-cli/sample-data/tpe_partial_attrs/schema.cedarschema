@@ -1,0 +1,12 @@
+entity User = {
+  "name": String,
+  "nickname"?: String,
+};
+
+entity Document;
+
+action View appliesTo {
+  principal: [User],
+  resource: [Document],
+  context: { }
+};
