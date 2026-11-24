@@ -307,6 +307,82 @@ jobs:
               run: cargo publish -p cedar-policy-core -p cedar-policy-formatter -p cedar-policy -p cedar-policy-symcc -p cedar-policy-cli
               env:
                   CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+    # After a successful publish, check that every crate published by this run is available on
+    # crates.io, and for the CLI that `cargo install` works and the installed binary has the
+    # published version. This job uses no environment, so re-running it needs no approval.
+    verify-crates-io:
+        needs: [publish-core, publish-symcc, publish-cli, publish-all]
+        # Without a status check function, this job would be skipped because three of its `needs`
+        # are always skipped. Exactly one publish job runs; proceed only if it succeeded.
+        if: >-
+            !cancelled() &&
+            (needs.publish-core.result == 'success' ||
+             needs.publish-symcc.result == 'success' ||
+             needs.publish-cli.result == 'success' ||
+             needs.publish-all.result == 'success')
+        runs-on: ubuntu-latest
+        steps:
+            # Only used to find out whether publish-core also published cedar-policy-validator,
+            # which it does when the tag still has that crate.
+            - name: Checkout tag
+              if: inputs.target == 'core'
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: refs/tags/${{ inputs.tag }}
+                  sparse-checkout: cedar-policy-validator
+                  path: __tag
+            - name: Checkout main (for scripts)
+              uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+              with:
+                  ref: main
+                  sparse-checkout: .github/scripts
+                  path: __main
+            # The script only uses the standard library, so the runner's python3 is enough.
+            # The list of crates must match the `cargo publish` commands in the publish jobs above.
+            - name: Wait for crates on crates.io
+              run: |
+                  crates=()
+                  case "$TARGET" in
+                      core)
+                          crates=("cedar-policy-core=$CORE_VERSION" "cedar-policy-formatter=$CORE_VERSION" "cedar-policy=$CORE_VERSION")
+                          if [[ -f __tag/cedar-policy-validator/Cargo.toml ]]; then
+                              crates+=("cedar-policy-validator=$CORE_VERSION")
+                          fi
+                          ;;
+                      symcc)
+                          crates=("cedar-policy-symcc=$SYMCC_VERSION")
+                          ;;
+                      cli)
+                          crates=("cedar-policy-cli=$CLI_VERSION")
+                          ;;
+                      all)
+                          crates=("cedar-policy-core=$CORE_VERSION" "cedar-policy-formatter=$CORE_VERSION" "cedar-policy=$CORE_VERSION" "cedar-policy-symcc=$SYMCC_VERSION" "cedar-policy-cli=$CLI_VERSION")
+                          ;;
+                  esac
+                  python3 __main/.github/scripts/wait-for-published.py crates "${crates[@]}" --initial-delay 60 --interval 30 --timeout 600
+              env:
+                  TARGET: ${{ inputs.target }}
+                  CORE_VERSION: ${{ inputs.core_version }}
+                  SYMCC_VERSION: ${{ inputs.symcc_version }}
+                  CLI_VERSION: ${{ inputs.cli_version }}
+            - name: Configure rust toolchain
+              if: inputs.target == 'cli' || inputs.target == 'all'
+              run: rustup update stable && rustup default stable
+            # Installs into a fresh root so that no other `cedar` binary on the runner is checked.
+            - name: Install the CLI from crates.io and check its version
+              if: inputs.target == 'cli' || inputs.target == 'all'
+              run: |
+                  ROOT="$RUNNER_TEMP/cedar-cli"
+                  cargo install cedar-policy-cli --version "$CLI_VERSION" --locked --root "$ROOT"
+                  # Prints e.g. `cedar-policy-cli 4.15.0`.
+                  OUTPUT=$("$ROOT/bin/cedar" --version)
+                  echo "cedar --version: $OUTPUT"
+                  if [[ "${OUTPUT##* }" != "$CLI_VERSION" ]]; then
+                      echo "::error::The installed cedar binary reports '$OUTPUT', expected version $CLI_VERSION."
+                      exit 1
+                  fi
+              env:
+                  CLI_VERSION: ${{ inputs.cli_version }}
     # After a successful publish of core and/or symcc, open a PR against 'main' that replaces
     # the "Coming soon" placeholder (written by cargo-release, see scripts/new_minor.sh)
     # in the released versions' CHANGELOG.md headings with today's date.
