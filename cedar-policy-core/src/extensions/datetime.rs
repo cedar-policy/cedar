@@ -17,7 +17,8 @@
 //! This module contains the Cedar 'datetime' extension.
 use std::{fmt::Display, sync::Arc};
 
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime, TimeDelta};
+use jiff::civil::{Date, Time};
+use jiff::SignedDuration;
 use miette::Diagnostic;
 use smol_str::SmolStr;
 use thiserror::Error;
@@ -358,12 +359,11 @@ impl From<DateTime> for RepresentableExtensionValue {
     }
 }
 
-impl From<NaiveDateTime> for DateTime {
-    fn from(value: NaiveDateTime) -> Self {
-        let delta = chrono::DateTime::from_naive_utc_and_offset(value, chrono::Utc)
-            - chrono::DateTime::UNIX_EPOCH;
+/// From the duration since the Unix epoch
+impl From<SignedDuration> for DateTime {
+    fn from(delta: SignedDuration) -> Self {
         Self {
-            epoch: delta.num_milliseconds(),
+            epoch: delta.as_secs() * 1000 + i64::from(delta.subsec_millis()),
         }
     }
 }
@@ -573,7 +573,11 @@ impl Ord for UTCOffset {
     }
 }
 
-fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
+// Datetimes are measured from this civil datetime, not via `jiff::Timestamp`:
+// its range ends at 9999-12-30T22:00Z, before the latest datetime Cedar accepts.
+const EPOCH: jiff::civil::DateTime = jiff::civil::DateTime::constant(1970, 1, 1, 0, 0, 0, 0);
+
+fn parse_datetime(s: &str) -> Result<SignedDuration, DateTimeParseError> {
     // Get date first
     let (date_str, [year, month, day]) = constants::DATE_PATTERN
         .captures(s)
@@ -588,24 +592,17 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         reason = "`year`, `month`, and `day` should be all valid given the limit on the number of digits."
     )]
     let date = || {
-        NaiveDate::from_ymd_opt(
+        Date::new(
             year.parse().unwrap(),
             month.parse().unwrap(),
             day.parse().unwrap(),
         )
-        .ok_or_else(|| DateTimeParseError::InvalidDate(date_str.into()))
+        .map_err(|_| DateTimeParseError::InvalidDate(date_str.into()))
     };
 
     // A complete match; simply return
     if date_str.len() == s.len() {
-        #[expect(
-            clippy::unwrap_used,
-            reason = "`0`s should be all valid given the limit on the number of digits."
-        )]
-        return Ok(NaiveDateTime::new(
-            date()?,
-            NaiveTime::from_hms_opt(0, 0, 0).unwrap(),
-        ));
+        return Ok(date()?.to_datetime(Time::midnight()).duration_since(EPOCH));
     }
 
     // Get hour, minute, and second
@@ -620,8 +617,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         clippy::unwrap_used,
         reason = "`h`, `m`, and `sec` should be all valid given the limit on the number of digits."
     )]
-    let (h, m, sec): (u32, u32, u32) =
-        (h.parse().unwrap(), m.parse().unwrap(), sec.parse().unwrap());
+    let (h, m, sec): (i8, i8, i8) = (h.parse().unwrap(), m.parse().unwrap(), sec.parse().unwrap());
 
     // Get millisecond and offset
     #[expect(clippy::string_slice, reason = "`hms_str` is a prefix of `s`")]
@@ -629,7 +625,7 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     let captures = constants::MS_AND_OFFSET_PATTERN
         .captures(s)
         .ok_or(DateTimeParseError::InvalidMSOffsetPattern)?;
-    let ms: u32 = if captures.get(1).is_some() {
+    let ms: i32 = if captures.get(1).is_some() {
         #[expect(
             clippy::unwrap_used,
             reason = "should be valid given the limit on the number of digits."
@@ -640,11 +636,11 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
     };
 
     let date = date()?;
-    let time = NaiveTime::from_hms_milli_opt(h, m, sec, ms).ok_or_else(|| {
+    let time = Time::new(h, m, sec, ms * 1_000_000).map_err(|_| {
         #[expect(clippy::string_slice, reason = "match for HMS_PATTERN must start with ASCII character `T`. Slicing `[1..]` skips this character.")]
         DateTimeParseError::InvalidHMS(hms_str[1..].into())
     })?;
-    let offset: Result<TimeDelta, DateTimeParseError> = if captures.get(4).is_some() {
+    let offset: Result<SignedDuration, DateTimeParseError> = if captures.get(4).is_some() {
         let positive = &captures[5] == "+";
         #[expect(
             clippy::unwrap_used,
@@ -659,18 +655,14 @@ fn parse_datetime(s: &str) -> Result<NaiveDateTime, DateTimeParseError> {
         };
         if offset.is_valid() {
             let offset_in_secs = offset.to_seconds();
-            #[expect(
-                clippy::unwrap_used,
-                reason = "should be valid because the limit on the values of offsets."
-            )]
-            Ok(TimeDelta::new(-offset_in_secs, 0).unwrap())
+            Ok(SignedDuration::from_secs(-offset_in_secs))
         } else {
             Err(DateTimeParseError::InvalidOffset((offset_hour, offset_min)))
         }
     } else {
-        Ok(TimeDelta::default())
+        Ok(SignedDuration::ZERO)
     };
-    Ok(NaiveDateTime::new(date, time) + offset?)
+    Ok(date.to_datetime(time).duration_since(EPOCH) + offset?)
 }
 
 /// Construct the extension
@@ -774,7 +766,6 @@ pub fn extension() -> Extension {
 mod tests {
     use std::{str::FromStr, sync::Arc};
 
-    use chrono::NaiveDateTime;
     use cool_asserts::assert_matches;
     use nonempty::nonempty;
 
@@ -795,54 +786,84 @@ mod tests {
         parser::parse_expr,
     };
 
-    use super::{constants::DATETIME_CONSTRUCTOR_NAME, DateTime};
+    use super::{constants::DATETIME_CONSTRUCTOR_NAME, DateTime, EPOCH};
+
+    #[test]
+    fn test_parse_year_bounds() {
+        // Beyond the range of `jiff::Timestamp`, which ends at 9999-12-30T22:00Z
+        for (s, epoch) in [
+            ("9999-12-31", 253_402_214_400_000),
+            ("9999-12-31T23:59:59.999-2359", 253_402_387_139_999),
+            ("0000-01-01T00:00:00+2359", -62_167_305_540_000),
+        ] {
+            assert_eq!(DateTime::from(parse_datetime(s).unwrap()).epoch, epoch);
+        }
+    }
 
     #[test]
     fn test_parse_pos() {
         let s = "2024-10-15";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T00:00:00").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T00:00:00")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T11:38:02Z";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T11:38:02").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T11:38:02")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T11:38:02.101Z";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T11:38:02.101").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T11:38:02.101")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T11:38:02.101+1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T00:04:02.101").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T00:04:02.101")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T11:38:02.101-1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T23:12:02.101").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T23:12:02.101")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T11:38:02+1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T00:04:02").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T00:04:02")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T11:38:02-1134";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T23:12:02").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T23:12:02")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T23:59:00+2359";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T00:00:00").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T00:00:00")
+                .unwrap()
+                .duration_since(EPOCH)
         );
         let s = "2024-10-15T00:00:00-2359";
         assert_eq!(
             parse_datetime(s).unwrap(),
-            NaiveDateTime::from_str("2024-10-15T23:59:00").unwrap()
+            jiff::civil::DateTime::from_str("2024-10-15T23:59:00")
+                .unwrap()
+                .duration_since(EPOCH)
         );
     }
 

@@ -23,6 +23,8 @@ Cedar Language Version: TBD
 - External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
   An external declaration still cannot be resolved by linking it to an enum definition.
 - Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+- The `datetime` extension uses `jiff` instead of `chrono`, which RustSec flags as unmaintained
+  (RUSTSEC-2026-0543) (#2707).
 
 ### Fixed
 

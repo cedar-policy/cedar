@@ -1,0 +1,5 @@
+[advisories]
+# chrono (unmaintained) is only in Cargo.lock as an optional dependency of
+# serde_with that Cedar does not enable, so it is never built. Remove once
+# serde_with drops it (#2720).
+ignore = ["RUSTSEC-2026-0543"]
