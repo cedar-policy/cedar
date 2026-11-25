@@ -14,8 +14,48 @@
  * limitations under the License.
  */
 
-//! Transitive closure with `cedar_verified_core`, which works on graphs
-//! over dense `usize` indices.
+//! `compute_tc` and `repair_tc` with `cedar_verified_core`, which works on
+//! graphs over dense `usize` indices.
+//!
+//! # Trusted
+//!
+//! This file is not verified. The theorems of `cedar_verified_core` carry
+//! over to `nodes` only if it meets the obligations below. Each names what
+//! backs it.
+//!
+//! - Keys and indices are in bijection: `keys` has no duplicates and `idx`
+//!   maps `keys[i]` to `i`. Tests `index_graph_postconditions` and
+//!   `index_fix_postconditions`.
+//! - `index_graph`: `g.len() == keys.len()`; for `i < nodes.len()`, `keys[i]`
+//!   is the `i`-th key of `nodes` and `g[i]` is its `out_edges` as indices;
+//!   the other keys are edge targets that are not keys of `nodes`, with
+//!   empty rows. So `wf(g)` holds. `debug_assert_eq!` on the lengths, test
+//!   `index_graph_postconditions`.
+//! - `index_fix`: `g.len() == keys.len()`; `keys[..n]` are the keys of
+//!   `to_fix` that are keys of `nodes`, in `to_fix` order; `g[i]` is the
+//!   `out_edges` of `keys[i]` for `i < n` and for each target of those rows
+//!   that is a key of `nodes`; the other rows are empty. `debug_assert_eq!`
+//!   on the lengths, test `index_fix_postconditions`.
+//! - `index_fix` gives a graph `g` with `restricts(g0, g, 0..n)`, for any
+//!   indexing `g0` of the whole graph that extends `keys`. This follows from
+//!   the previous item. Test `verified_repair_restricted_matches_full` in
+//!   `transitive_closure.rs` compares the result with `repair_full`, the
+//!   repair of the whole graph.
+//! - Iteration order: in `compute_tc`, `nodes.iter_mut()` visits the keys in
+//!   the order of `nodes.keys()` in `index_graph`, so row `i` is written to
+//!   `keys[i]`. `debug_assert!(keys.get(i) == Some(k))`.
+//! - `add_edge_to(k)` adds `k` to `out_edges` and no other edge, and is
+//!   idempotent. Not tested; each `TCNode` impl does a `HashSet::insert`
+//!   (`Entity` and `Arc<Entity>` in `ast/entity.rs` through
+//!   `add_indirect_ancestor`, `PartialEntity` in `tpe/entities.rs`,
+//!   `ValidatorActionId` in `validator/schema/action.rs`,
+//!   `ValidatorEntityType` in `validator/schema/entity_type.rs`).
+//! - A cycle is reported with the map key `keys[u]`, and the default path
+//!   reports `get_key()`. They agree when each map key equals its node's
+//!   `get_key()`; the maps of the impls above are keyed by the uid or name
+//!   that `get_key()` returns. Tests `verified_compute_tc_oracle` and
+//!   `verified_repair_tc_oracle` compare the results and the error key with
+//!   the default path.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Display};
@@ -50,15 +90,7 @@ fn push_row<'a, K, V>(
     g.push(row);
 }
 
-/// The graph of `nodes` over indices. Trusted postconditions:
-/// - `keys` has no duplicates, and `idx` is a bijection between `keys` and
-///   `0..keys.len()`;
-/// - for `i < nodes.len()`, `keys[i]` is the `i`-th key of `nodes` in
-///   iteration order, and `g[i]` lists the out-edges of `keys[i]` as indices,
-///   in `out_edges` order;
-/// - for `i >= nodes.len()`, `keys[i]` is an edge target that is not a key of
-///   `nodes`, and `g[i]` is empty;
-/// - `g.len() == keys.len()`.
+/// The graph of `nodes` over indices: `keys` and `g` as in the module doc.
 fn index_graph<K, V>(nodes: &HashMap<K, V>) -> (Vec<K>, Vec<Vec<usize>>)
 where
     K: Clone + Eq + Hash,
@@ -80,18 +112,7 @@ where
 }
 
 /// The graph of `nodes` restricted to `to_fix` and the targets of their
-/// rows, over indices. Returns `keys`, `g` and `n`. Trusted postconditions:
-/// - `keys` has no duplicates, and `idx` is a bijection between `keys` and
-///   `0..keys.len()`;
-/// - `keys[..n]` are the keys of `to_fix` that are keys of `nodes`, in
-///   `to_fix` iteration order;
-/// - `g[i]` lists the out-edges of `keys[i]` as indices, in `out_edges` order,
-///   for `i < n` and for every `i` that is a target of a row `g[j]`, `j < n`,
-///   and a key of `nodes`; every other row is empty;
-/// - `g.len() == keys.len()`.
-///
-/// So `g` is `restricts(g0, g, 0..n)` of `cedar_verified_core::tc` for any
-/// indexing `g0` of the whole graph that extends `keys`.
+/// rows, over indices: `keys`, `g` and `n` as in the module doc.
 fn index_fix<K, V>(nodes: &HashMap<K, V>, to_fix: &HashSet<K>) -> (Vec<K>, Vec<Vec<usize>>, usize)
 where
     K: Clone + Eq + Hash,
@@ -124,11 +145,9 @@ where
     (keys, g, n)
 }
 
-/// [`super::compute_tc`] with `cedar_verified_core::transitive_closure`.
-///
-/// Trusted: `keys` and `g` are as documented on `index_graph`; `iter_mut`
-/// visits the keys in index order; `add_edge_to` is idempotent and adds no
-/// edge other than its argument.
+/// [`super::compute_tc`] with `cedar_verified_core::transitive_closure`:
+/// writes the new edges of each row with `add_edge_to` and, if
+/// `enforce_dag`, reports the key of the smallest index on a cycle.
 pub(super) fn compute_tc<K, V>(nodes: &mut HashMap<K, V>, enforce_dag: bool) -> Result<(), K>
 where
     K: Clone + Eq + Hash + Debug + Display,
@@ -162,12 +181,12 @@ where
 /// graph of `index_fix` instead of the whole graph.
 ///
 /// When the whole graph has no cycle and its rows outside `nodes_to_fix`
-/// are closed, `lemma_repair_restrict` and R4 of `repair_closure` give that
-/// the repaired rows are the closure of the whole graph at `nodes_to_fix`,
-/// and D2 that no cycle is reported. On every input, each added edge is a
-/// path of the whole graph, and a reported node is on a cycle of the whole
-/// graph. Outside these preconditions, equality with a repair on the whole
-/// graph is not proved; `verified_repair_restricted_matches_full` tests it.
+/// are closed, `lemma_repair_restrict` and R4 give that the repaired rows
+/// are the closure of the whole graph at `nodes_to_fix`, and D2 that no
+/// cycle is reported. Otherwise, equality with a repair of the whole graph
+/// is not proved; `verified_repair_restricted_matches_full` tests it. On
+/// every input, each added edge, a reported self-edge included, is a path of
+/// the whole graph.
 pub(super) fn repair_tc<K, V>(
     nodes_to_fix: &HashSet<K>,
     nodes: &mut HashMap<K, V>,
@@ -181,10 +200,9 @@ where
     repair_indexed(&keys, g, &(0..n).collect(), nodes, enforce_dag)
 }
 
-/// Repairs the rows of `fix` in `g` and writes the added edges back to
-/// `nodes`. Trusted: `keys[i]` is the key of index `i`, `fix` holds indices
-/// of keys of `nodes`, and `g.len() == keys.len()`; `add_edge_to` adds no
-/// edge other than its argument.
+/// Repairs the rows of `fix` in `g` and writes the appended edges back to
+/// `nodes`. Requires `g.len() == keys.len()`, `keys[i]` the key of index
+/// `i`, and `fix` indices of keys of `nodes`.
 fn repair_indexed<K, V>(
     keys: &[K],
     mut g: Vec<Vec<usize>>,

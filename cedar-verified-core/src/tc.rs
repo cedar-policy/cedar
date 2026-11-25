@@ -14,17 +14,30 @@
  * limitations under the License.
  */
 
-//! The transitive closure.
+//! The transitive closure and its repair.
 //!
-//! [`transitive_closure`] computes the components ([`crate::scc`]), then
-//! the successor components of each component, in increasing id order: by
-//! P1 an edge leaves component `c` only to a component `t < c`, whose
-//! successors are already known. Row `u` of the result lists the members of
+//! [`transitive_closure`] computes the SCCs ([`crate::scc`]), then the
+//! successor components of each component, in increasing id order: by P1 an
+//! edge leaves component `c` only to a component `t < c`, whose successors
+//! are already known (`succ_ok`). Row `u` of the result lists the members of
 //! the successor components of `u`'s component that are not targets of
-//! `g[u]`.
+//! `g[u]` (`row_minus`).
 //!
 //! [`repair_closure`] is a port of `compute_tc_internal` and `add_ancestors`
-//! in `cedar-policy-core` (with cycle detection on), without `stacker`.
+//! in `cedar-policy-core`, with cycle detection on. `add_ancestors` is a
+//! post-order DFS over an explicit stack of frames: a frame closes its row
+//! (`close_row`) after all its targets are closed, and its parent then
+//! appends that row to `buf` (`lemma_anc_after_child`, `lemma_anc_append`).
+//! The top frame satisfies `anc_loop`, each suspended frame `anc_frozen`, and
+//! a finished search `anc_post`. The ghost `dag` holds when the input has no
+//! cycle and its rows outside `fix` are closed; under `dag`, `pending` and
+//! `kept` give that every seen row that is not yet closed is the current
+//! node's row or the row of a node that reaches it, which gives R4. The loop
+//! terminates by the lexicographic decreases
+//! `(n - count_seen(seen), fx.len(), anc_rem)`.
+//!
+//! `restricts` and `lemma_repair_restrict` relate a repair of a restricted
+//! graph to a repair of the whole graph.
 
 #[cfg(verus_keep_ghost)]
 use crate::graph::*;
@@ -878,10 +891,12 @@ spec fn kept(g0: Seq<Vec<usize>>, g1: Seq<Vec<usize>>, seen1: Seq<bool>, g2: Seq
         seen1[u] && !closed_at(g0, g1, u)
 }
 
+/// `v` is in `buf[start..]`.
 spec fn in_buf(buf: Seq<usize>, start: int, v: usize) -> bool {
     exists|k: int| start <= k < buf.len() && #[trigger] buf[k] == v
 }
 
+/// The number of `true` entries among the first `k` of `s`.
 spec fn count_seen(s: Seq<bool>, k: int) -> int
     decreases k,
 {
@@ -1008,8 +1023,8 @@ proof fn lemma_sound_init(g: Seq<Vec<usize>>)
     assert forall|u: int| 0 <= u < g.len() implies g[u]@.len() <= (#[trigger] g[u])@.len() by {}
 }
 
-/// The precondition of one DFS call at `x`.
-spec fn aa_pre(g0: Seq<Vec<usize>>, dag: bool, g: Seq<Vec<usize>>, seen: Seq<bool>, buf: Seq<usize>, x: int) -> bool {
+/// The precondition of a DFS frame at `x`.
+spec fn anc_pre(g0: Seq<Vec<usize>>, dag: bool, g: Seq<Vec<usize>>, seen: Seq<bool>, buf: Seq<usize>, x: int) -> bool {
     &&& sound(g0, g)
     &&& grown(g0, g)
     &&& 0 <= x < g.len()
@@ -1019,9 +1034,10 @@ spec fn aa_pre(g0: Seq<Vec<usize>>, dag: bool, g: Seq<Vec<usize>>, seen: Seq<boo
     &&& dag ==> pending(g0, g, seen, x)
 }
 
-/// What one DFS call at `x` from `(g1, seen1, buf1)` to `(g, seen, buf)`
-/// guarantees.
-spec fn aa_post(
+/// What a finished DFS frame at `x` guarantees, from its entry state
+/// `(g1, seen1, buf1)` to `(g, seen, buf)`: the ensures of `add_ancestors`
+/// without `mark`.
+spec fn anc_post(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1042,10 +1058,10 @@ spec fn aa_post(
     &&& dag ==> kept(g0, g1, seen1, g, seen)
 }
 
-/// The invariant of the edge loop of the call at `x` entered at
+/// The invariant of the edge loop of the frame at `x` entered at
 /// `(g1, seen1, buf1)`, after `j` edges.
 #[verifier::opaque]
-spec fn aa_loop(
+spec fn anc_loop(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1059,7 +1075,7 @@ spec fn aa_loop(
 ) -> bool {
     let n = g1.len();
     let start = buf1.len() as int;
-    &&& aa_pre(g0, dag, g1, seen1, buf1, x)
+    &&& anc_pre(g0, dag, g1, seen1, buf1, x)
     &&& 0 <= j <= g1[x]@.len()
     &&& sound(g0, g)
     &&& grown(g1, g)
@@ -1077,8 +1093,9 @@ spec fn aa_loop(
 }
 
 /// Frame `k` is suspended at its edge `fj[k]`, whose target is the node of
-/// frame `k + 1`; `cs[k]` is `seen` at the call, before the target was marked.
-spec fn aa_frozen(
+/// frame `k + 1`; `cs[k]` is `seen` when the frame above was pushed, before
+/// its node was marked seen.
+spec fn anc_frozen(
     g0: Seq<Vec<usize>>,
     dag: bool,
     eg: Seq<Seq<Vec<usize>>>,
@@ -1092,14 +1109,15 @@ spec fn aa_frozen(
     let x = fx[k] as int;
     let j = fj[k] as int;
     let a = fx[k + 1] as int;
-    &&& aa_loop(g0, dag, eg[k], es[k], eb[k], eg[k + 1], cs[k], eb[k + 1], x, j)
+    &&& anc_loop(g0, dag, eg[k], es[k], eb[k], eg[k + 1], cs[k], eb[k + 1], x, j)
     &&& j < eg[k][x]@.len()
     &&& eg[k][x]@[j] as int == a
     &&& !cs[k][a]
     &&& es[k + 1] == cs[k].update(a, true)
 }
 
-spec fn aa_rem(flen: Seq<usize>, fj: Seq<usize>) -> int {
+/// The number of edges left in the top frame.
+spec fn anc_rem(flen: Seq<usize>, fj: Seq<usize>) -> int {
     if fj.len() > 0 && flen.len() == fj.len() {
         flen[fj.len() - 1] - fj[fj.len() - 1]
     } else {
@@ -1107,18 +1125,18 @@ spec fn aa_rem(flen: Seq<usize>, fj: Seq<usize>) -> int {
     }
 }
 
-proof fn lemma_aa_enter(g0: Seq<Vec<usize>>, dag: bool, g: Seq<Vec<usize>>, seen: Seq<bool>, buf: Seq<usize>, x: int)
+proof fn lemma_anc_enter(g0: Seq<Vec<usize>>, dag: bool, g: Seq<Vec<usize>>, seen: Seq<bool>, buf: Seq<usize>, x: int)
     requires
-        aa_pre(g0, dag, g, seen, buf, x),
+        anc_pre(g0, dag, g, seen, buf, x),
     ensures
-        aa_loop(g0, dag, g, seen, buf, g, seen, buf, x, 0),
+        anc_loop(g0, dag, g, seen, buf, g, seen, buf, x, 0),
 {
-    reveal(aa_loop);
+    reveal(anc_loop);
     assert forall|u: int| 0 <= u < g.len() implies g[u]@.len() <= (#[trigger] g[u])@.len() by {}
     assert(grown(g, g));
 }
 
-proof fn lemma_aa_facts(
+proof fn lemma_anc_facts(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1131,7 +1149,7 @@ proof fn lemma_aa_facts(
     j: int,
 )
     requires
-        aa_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
+        anc_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
     ensures
         g.len() == g1.len(),
         g0.len() == g1.len(),
@@ -1145,11 +1163,11 @@ proof fn lemma_aa_facts(
         buf1.len() <= buf.len(),
         forall|k: int| 0 <= k < buf.len() ==> (#[trigger] buf[k] as int) < g.len(),
 {
-    reveal(aa_loop);
+    reveal(anc_loop);
 }
 
-/// Before a call on an unseen target.
-proof fn lemma_aa_child(
+/// Before pushing a frame for an unseen target.
+proof fn lemma_anc_child(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1162,13 +1180,13 @@ proof fn lemma_aa_child(
     j: int,
 )
     requires
-        aa_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
+        anc_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
         j < g1[x]@.len(),
         !seen[g1[x]@[j] as int],
     ensures
-        aa_pre(g0, dag, g, seen.update(g1[x]@[j] as int, true), buf, g1[x]@[j] as int),
+        anc_pre(g0, dag, g, seen.update(g1[x]@[j] as int, true), buf, g1[x]@[j] as int),
 {
-    reveal(aa_loop);
+    reveal(anc_loop);
     let n = g1.len();
     let a = g1[x]@[j] as int;
     assert(a < n && reach(g0, x, a));
@@ -1186,8 +1204,8 @@ proof fn lemma_aa_child(
     }
 }
 
-/// After the call on the target `a` of edge `j` returns.
-proof fn lemma_aa_after_child(
+/// After the frame of the target `a` of edge `j` finishes.
+proof fn lemma_anc_after_child(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1202,15 +1220,15 @@ proof fn lemma_aa_after_child(
     j: int,
 )
     requires
-        aa_loop(g0, dag, g1, seen1, buf1, ga, sa, buf, x, j),
+        anc_loop(g0, dag, g1, seen1, buf1, ga, sa, buf, x, j),
         j < g1[x]@.len(),
         !sa[g1[x]@[j] as int],
-        aa_post(g0, dag, ga, sa.update(g1[x]@[j] as int, true), buf, g2, seen2, buf, g1[x]@[j] as int),
+        anc_post(g0, dag, ga, sa.update(g1[x]@[j] as int, true), buf, g2, seen2, buf, g1[x]@[j] as int),
     ensures
-        aa_loop(g0, dag, g1, seen1, buf1, g2, seen2, buf, x, j),
+        anc_loop(g0, dag, g1, seen1, buf1, g2, seen2, buf, x, j),
         dag ==> closed_at(g0, g2, g1[x]@[j] as int),
 {
-    reveal(aa_loop);
+    reveal(anc_loop);
     let n = g1.len();
     let a = g1[x]@[j] as int;
     assert(a < n);
@@ -1233,7 +1251,7 @@ proof fn lemma_aa_after_child(
 }
 
 /// A target that is already seen is closed when the graph is a DAG.
-proof fn lemma_aa_seen(
+proof fn lemma_anc_seen(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1246,13 +1264,13 @@ proof fn lemma_aa_seen(
     j: int,
 )
     requires
-        aa_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
+        anc_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
         j < g1[x]@.len(),
         seen[g1[x]@[j] as int],
     ensures
         dag ==> closed_at(g0, g, g1[x]@[j] as int),
 {
-    reveal(aa_loop);
+    reveal(anc_loop);
     let a = g1[x]@[j] as int;
     assert(a < g1.len() && reach(g0, x, a));
     if dag && !closed_at(g0, g, a) {
@@ -1267,7 +1285,7 @@ proof fn lemma_aa_seen(
 }
 
 /// Appending the row of the target of edge `j` to `buf` finishes edge `j`.
-proof fn lemma_aa_append(
+proof fn lemma_anc_append(
     g0: Seq<Vec<usize>>,
     dag: bool,
     g1: Seq<Vec<usize>>,
@@ -1281,14 +1299,14 @@ proof fn lemma_aa_append(
     j: int,
 )
     requires
-        aa_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
+        anc_loop(g0, dag, g1, seen1, buf1, g, seen, buf, x, j),
         j < g1[x]@.len(),
         dag ==> closed_at(g0, g, g1[x]@[j] as int),
         buf2 == buf + g[g1[x]@[j] as int]@,
     ensures
-        aa_loop(g0, dag, g1, seen1, buf1, g, seen, buf2, x, j + 1),
+        anc_loop(g0, dag, g1, seen1, buf1, g, seen, buf2, x, j + 1),
 {
-    reveal(aa_loop);
+    reveal(anc_loop);
     let n = g1.len();
     let a = g1[x]@[j] as int;
     let start = buf1.len() as int;
@@ -1330,7 +1348,7 @@ proof fn lemma_aa_append(
 
 /// Frozen facts of frames below `m` depend only on entries `<= m` of `eg`,
 /// `es`, `eb`, `fx` and entries `< m` of `cs`, `fj`.
-proof fn lemma_aa_keep(
+proof fn lemma_anc_keep(
     g0: Seq<Vec<usize>>,
     dag: bool,
     eg1: Seq<Seq<Vec<usize>>>,
@@ -1348,14 +1366,14 @@ proof fn lemma_aa_keep(
     m: int,
 )
     requires
-        forall|k: int| 0 <= k < m ==> #[trigger] aa_frozen(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, k),
+        forall|k: int| 0 <= k < m ==> #[trigger] anc_frozen(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, k),
         forall|k: int| 0 <= k <= m ==> eg2[k] == eg1[k] && es2[k] == es1[k] && eb2[k] == eb1[k] && fx2[k] == fx1[k],
         forall|k: int| 0 <= k < m ==> cs2[k] == cs1[k] && fj2[k] == fj1[k],
     ensures
-        forall|k: int| 0 <= k < m ==> #[trigger] aa_frozen(g0, dag, eg2, es2, eb2, cs2, fx2, fj2, k),
+        forall|k: int| 0 <= k < m ==> #[trigger] anc_frozen(g0, dag, eg2, es2, eb2, cs2, fx2, fj2, k),
 {
-    assert forall|k: int| 0 <= k < m implies #[trigger] aa_frozen(g0, dag, eg2, es2, eb2, cs2, fx2, fj2, k) by {
-        assert(aa_frozen(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, k));
+    assert forall|k: int| 0 <= k < m implies #[trigger] anc_frozen(g0, dag, eg2, es2, eb2, cs2, fx2, fj2, k) by {
+        assert(anc_frozen(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, k));
         assert(eg2[k] == eg1[k] && es2[k] == es1[k] && eb2[k] == eb1[k] && fx2[k] == fx1[k]);
         assert(eg2[k + 1] == eg1[k + 1] && es2[k + 1] == es1[k + 1] && eb2[k + 1] == eb1[k + 1]
             && fx2[k + 1] == fx1[k + 1]);
@@ -1521,12 +1539,12 @@ fn union_from(row: &mut Vec<usize>, buf: &Vec<usize>, start: usize, mark: &mut V
     with Ghost(g0): Ghost<Seq<Vec<usize>>>, Ghost(dag): Ghost<bool>, Ghost(g1): Ghost<Seq<Vec<usize>>>,
         Ghost(seen1): Ghost<Seq<bool>>, Ghost(buf1): Ghost<Seq<usize>>, Ghost(seen): Ghost<Seq<bool>>
     requires
-        aa_loop(g0, dag, g1, seen1, buf1, old(g)@, seen, old(buf)@, x as int, g1[x as int]@.len() as int),
+        anc_loop(g0, dag, g1, seen1, buf1, old(g)@, seen, old(buf)@, x as int, g1[x as int]@.len() as int),
         start == buf1.len(),
         old(mark).len() == old(g).len(),
         forall|v: int| 0 <= v < old(mark).len() ==> !old(mark)@[v],
     ensures
-        aa_post(g0, dag, g1, seen1, buf1, final(g)@, seen, final(buf)@, x as int),
+        anc_post(g0, dag, g1, seen1, buf1, final(g)@, seen, final(buf)@, x as int),
         final(g).len() == old(g).len(),
         final(mark).len() == old(mark).len(),
         forall|v: int| 0 <= v < final(mark).len() ==> !final(mark)@[v],
@@ -1546,7 +1564,7 @@ fn close_row(
     proof! {
         assert(sound(g0, gl) && g1.len() == n && (x as int) < n && start <= bl.len()
             && forall|k: int| 0 <= k < bl.len() ==> (#[trigger] bl[k] as int) < n) by {
-            reveal(aa_loop);
+            reveal(anc_loop);
         }
     }
     let mut row: Vec<usize> = Vec::new();
@@ -1558,7 +1576,7 @@ fn close_row(
     g[x] = row;
     buf.truncate(start);
     proof! {
-        reveal(aa_loop);
+        reveal(anc_loop);
         assert(buf@ =~= buf1);
         let gf = g@;
         assert forall|u: int| 0 <= u < n && u != x implies gf[u] == gl[u] by {}
@@ -1625,11 +1643,11 @@ fn close_row(
 }
 
 /// The port of `add_ancestors` in `cedar-policy-core`: closes row `x` by
-/// visiting each target `a` of `x` that is not seen, then adding the row of
-/// each target to row `x`. `buf[start..]` collects the rows of the targets.
-/// The search is a post-order DFS over an explicit stack of frames: frame
-/// `k` has node `fx[k]`, next edge `fj[k]`, entry buffer length `fst[k]` and
-/// entry row length `flen[k]`.
+/// visiting each target of `x` that is not seen, then adding the row of
+/// each target to row `x`. `buf[start..]` of each frame collects the rows of
+/// its targets. Frame `k` has node `fx[k]`, next edge `fj[k]`, entry buffer
+/// length `fst[k]` and entry row length `flen[k]`; the ghost `eg[k]`,
+/// `es[k]` and `eb[k]` are `g`, `seen` and `buf` at its entry.
 #[cfg_attr(verus_keep_ghost, verus_spec(
     with Ghost(g0): Ghost<Seq<Vec<usize>>>, Ghost(dag): Ghost<bool>
     requires
@@ -1669,7 +1687,7 @@ fn add_ancestors(
         let ghost n = g.len() as int;
     }
     proof! {
-        lemma_aa_enter(g0, dag, gi, si, bi, x as int);
+        lemma_anc_enter(g0, dag, gi, si, bi, x as int);
     }
     let mut fx: Vec<usize> = Vec::new();
     let mut fj: Vec<usize> = Vec::new();
@@ -1706,11 +1724,11 @@ fn add_ancestors(
             fx.len() > 0 ==> eg[0] == gi && es[0] == si && eb[0] == bi && fx@[0] == x,
             forall|k: int| 0 <= k < fx.len() ==> (#[trigger] fx@[k] as int) < n && fst@[k] == eb[k].len()
                 && flen@[k] == eg[k][fx@[k] as int]@.len() && fj@[k] <= flen@[k],
-            fx.len() > 0 ==> aa_loop(g0, dag, eg[fx.len() - 1], es[fx.len() - 1], eb[fx.len() - 1],
+            fx.len() > 0 ==> anc_loop(g0, dag, eg[fx.len() - 1], es[fx.len() - 1], eb[fx.len() - 1],
                 g@, seen@, buf@, fx@[fx.len() - 1] as int, fj@[fx.len() - 1] as int),
-            forall|k: int| 0 <= k < fx.len() - 1 ==> #[trigger] aa_frozen(g0, dag, eg, es, eb, cs, fx@, fj@, k),
-            fx.len() == 0 ==> aa_post(g0, dag, gi, si, bi, g@, seen@, buf@, x as int),
-        decreases n - count_seen(seen@, n), fx.len(), aa_rem(flen@, fj@)
+            forall|k: int| 0 <= k < fx.len() - 1 ==> #[trigger] anc_frozen(g0, dag, eg, es, eb, cs, fx@, fj@, k),
+            fx.len() == 0 ==> anc_post(g0, dag, gi, si, bi, g@, seen@, buf@, x as int),
+        decreases n - count_seen(seen@, n), fx.len(), anc_rem(flen@, fj@)
     ))]
     while fx.len() > 0 {
         proof_decl! {
@@ -1725,7 +1743,7 @@ fn add_ancestors(
         let y = fx[t];
         let j = fj[t];
         proof! {
-            lemma_aa_facts(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, seen@, buf@, y as int, j as int);
+            lemma_anc_facts(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, seen@, buf@, y as int, j as int);
             lemma_count_seen_bound(seen@, n);
         }
         if j < flen[t] {
@@ -1735,14 +1753,14 @@ fn add_ancestors(
                     let ghost sa = seen@;
                 }
                 proof! {
-                    lemma_aa_child(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, sa, buf@, y as int, j as int);
+                    lemma_anc_child(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, sa, buf@, y as int, j as int);
                     lemma_count_seen_set(sa, n, a as int);
                 }
                 seen[a] = true;
                 proof! {
                     assert(seen@ == sa.update(a as int, true));
                     lemma_count_seen_bound(seen@, n);
-                    lemma_aa_enter(g0, dag, g@, seen@, buf@, a as int);
+                    lemma_anc_enter(g0, dag, g@, seen@, buf@, a as int);
                 }
                 fx.push(a);
                 fj.push(0);
@@ -1753,23 +1771,23 @@ fn add_ancestors(
                     es = es.push(seen@);
                     eb = eb.push(buf@);
                     cs = cs.push(sa);
-                    lemma_aa_keep(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, eg, es, eb, cs, fx@, fj@, t as int);
-                    assert(aa_frozen(g0, dag, eg, es, eb, cs, fx@, fj@, t as int));
+                    lemma_anc_keep(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, eg, es, eb, cs, fx@, fj@, t as int);
+                    assert(anc_frozen(g0, dag, eg, es, eb, cs, fx@, fj@, t as int));
                 }
             } else {
                 proof! {
-                    lemma_aa_seen(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, seen@, buf@, y as int, j as int);
+                    lemma_anc_seen(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, seen@, buf@, y as int, j as int);
                 }
                 proof_decl! {
                     let ghost bb = buf@;
                 }
                 append_row(buf, &g[a]);
                 proof! {
-                    lemma_aa_append(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, seen@, bb, buf@, y as int, j as int);
+                    lemma_anc_append(g0, dag, eg[t as int], es[t as int], eb[t as int], g@, seen@, bb, buf@, y as int, j as int);
                 }
                 fj[t] = j + 1;
                 proof! {
-                    lemma_aa_keep(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, eg, es, eb, cs, fx@, fj@, t as int);
+                    lemma_anc_keep(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, eg, es, eb, cs, fx@, fj@, t as int);
                 }
             }
         } else {
@@ -1789,23 +1807,23 @@ fn add_ancestors(
                 let p = t - 1;
                 let jp = fj[p];
                 proof! {
-                    assert(aa_frozen(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, p as int));
+                    assert(anc_frozen(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, p as int));
                     assert(jp == fj1[p as int]);
-                    lemma_aa_after_child(g0, dag, eg[p as int], es[p as int], eb[p as int], eg1[t as int], cs1[p as int],
+                    lemma_anc_after_child(g0, dag, eg[p as int], es[p as int], eb[p as int], eg1[t as int], cs1[p as int],
                         eb1[t as int], g@, seen@, fx1[p as int] as int, jp as int);
-                    lemma_aa_facts(g0, dag, eg[p as int], es[p as int], eb[p as int], g@, seen@, buf@, fx1[p as int] as int, jp as int);
+                    lemma_anc_facts(g0, dag, eg[p as int], es[p as int], eb[p as int], g@, seen@, buf@, fx1[p as int] as int, jp as int);
                 }
                 proof_decl! {
                     let ghost bb = buf@;
                 }
                 append_row(buf, &g[y]);
                 proof! {
-                    lemma_aa_append(g0, dag, eg[p as int], es[p as int], eb[p as int], g@, seen@, bb, buf@, fx1[p as int] as int, jp as int);
+                    lemma_anc_append(g0, dag, eg[p as int], es[p as int], eb[p as int], g@, seen@, bb, buf@, fx1[p as int] as int, jp as int);
                 }
                 fj[p] = jp + 1;
                 proof! {
                     cs = cs.drop_last();
-                    lemma_aa_keep(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, eg, es, eb, cs, fx@, fj@, p as int);
+                    lemma_anc_keep(g0, dag, eg1, es1, eb1, cs1, fx1, fj1, eg, es, eb, cs, fx@, fj@, p as int);
                 }
             }
         }

@@ -23,6 +23,7 @@ use std::hash::Hash;
 
 mod err;
 pub use err::*;
+// `verified-core`: the trusted adapter `transitive_closure/verified.rs` over `cedar-verified-core`.
 #[cfg(feature = "verified-core")]
 mod verified;
 use itertools::Itertools;

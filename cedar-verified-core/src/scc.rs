@@ -14,13 +14,22 @@
  * limitations under the License.
  */
 
-//! Strongly connected components (Tarjan's algorithm).
+//! Strongly connected components, by Tarjan's algorithm.
 //!
-//! `sccs` assigns every node a component id. Ids are assigned in
-//! completion order, so an edge never goes to a component with a larger id
-//! (P1), and two distinct nodes with the same id reach each other (P2).
-//! `members[c]` lists the nodes of component `c` (P3). Maximality of the
-//! components is not proved; the transitive closure does not need it.
+//! `sccs` numbers the components in completion order and proves P1–P3
+//! (`sccs_ok`): an edge never goes to a component with a larger id (P1), two
+//! distinct nodes of one component reach each other (P2), and `members[c]`
+//! is exactly the nodes of component `c` (P3). Maximality of the components
+//! is not proved; the transitive closure does not need it.
+//!
+//! `strongconnect` is the Tarjan search from one node, as a loop over an
+//! explicit stack of frames. The search state satisfies `inv` throughout.
+//! The top frame satisfies `loop_inv`, the invariant of its edge loop. Each
+//! suspended frame satisfies `frozen`: `loop_inv` from its entry state to the
+//! entry state of the frame above it, which stays true while the frames
+//! above run (`lemma_frozen_keep`). When the last frame finishes, `sc_post`,
+//! the contract of the search, holds. The loop terminates by the
+//! lexicographic decreases `(g.len() - st.next, fv.len(), sc_rem)`.
 
 #[cfg(verus_keep_ghost)]
 use crate::graph::*;
@@ -39,6 +48,9 @@ pub(crate) struct Sccs {
     pub(crate) members: Vec<Vec<usize>>,
 }
 
+/// The Tarjan search state: the discovery `index` of each node (`NONE` if
+/// unvisited), `on_stack`, the Tarjan `stack`, the component `comp` of each
+/// node (`NONE` if unassigned), the next index and the number of components.
 struct State {
     index: Vec<usize>,
     on_stack: Vec<bool>,
@@ -51,7 +63,7 @@ struct State {
 #[cfg(verus_keep_ghost)]
 verus! {
 
-/// P1-P3 for `s` on `g`.
+/// `s` gives every node of `g` a component, with P1–P3.
 pub(crate) open spec fn sccs_ok(g: Seq<Vec<usize>>, s: Sccs) -> bool {
     let n = g.len();
     &&& s.comp.len() == n
@@ -65,6 +77,7 @@ pub(crate) open spec fn sccs_ok(g: Seq<Vec<usize>>, s: Sccs) -> bool {
     &&& forall|x: int| 0 <= x < n ==> #[trigger] s.members@[s.comp@[x] as int]@.contains(x as usize)
 }
 
+/// The number of visited entries (not `NONE`) among the first `k` of `s`.
 spec fn count_vis(s: Seq<usize>, k: int) -> int
     decreases k,
 {
@@ -141,13 +154,15 @@ proof fn lemma_count_lt(s: Seq<usize>, k: int, u: int)
     lemma_count_bound(s.update(u, 0), k);
 }
 
-/// The invariant of the search state.
+/// The invariant of the search state: `wf(g)`, `lens` and `inv_q`.
 spec fn inv(g: Seq<Vec<usize>>, st: State) -> bool {
     &&& wf(g)
     &&& lens(g, st)
     &&& inv_q(g, st)
 }
 
+/// The lengths of the state vectors, and bounds on `next`, `ncomp` and the
+/// stack entries.
 spec fn lens(g: Seq<Vec<usize>>, st: State) -> bool {
     &&& g.len() <= usize::MAX
     &&& st.index.len() == g.len()
@@ -158,6 +173,9 @@ spec fn lens(g: Seq<Vec<usize>>, st: State) -> bool {
     &&& forall|i: int| 0 <= i < st.stack.len() ==> (#[trigger] st.stack@[i] as int) < g.len()
 }
 
+/// The quantified part of `inv`: `next` counts the visited nodes, a node is
+/// on the stack iff it is visited and unassigned, stack indices increase,
+/// and the assigned nodes satisfy P1 and P2.
 #[verifier::opaque]
 spec fn inv_q(g: Seq<Vec<usize>>, st: State) -> bool {
     let n = g.len();
@@ -193,8 +211,8 @@ spec fn frame(n: int, s0: State, s1: State) -> bool {
     &&& forall|i: int| 0 <= i < s0.stack.len() ==> #[trigger] s1.stack@[i] == s0.stack@[i]
 }
 
-/// What a call `strongconnect(v)` from `s0` to `s1` that returns `low`
-/// guarantees, besides `inv`.
+/// The contract of a search `strongconnect(v)` from `s0` to `s1` that
+/// returns the low-link `low`, besides `inv`.
 spec fn sc_post(g: Seq<Vec<usize>>, s0: State, s1: State, v: int, low: int) -> bool {
     let b = s0.stack.len() as int;
     &&& s1.next > s0.next
@@ -214,7 +232,7 @@ spec fn sc_post(g: Seq<Vec<usize>>, s0: State, s1: State, v: int, low: int) -> b
         out_ok(s1, #[trigger] g[s1.stack@[i] as int]@[j] as int, low)
 }
 
-/// The invariant of the edge loop of `strongconnect(v)`, entered from `s0`,
+/// The invariant of the edge loop of the frame of `v`, entered from `s0`,
 /// after `i` edges, with the current low-link `low`.
 #[verifier::opaque]
 spec fn loop_inv(g: Seq<Vec<usize>>, s0: State, st: State, v: int, low: int, i: int) -> bool {
@@ -567,7 +585,7 @@ proof fn lemma_pop_init(g: Seq<Vec<usize>>, sb: State, c: usize)
     assert(sb.stack@ =~= sb.stack@.subrange(0, sb.stack.len() as int));
 }
 
-/// A node popped by `strongconnect(v)` is `v` or on a cycle with `v`, and
+/// A node popped by the frame of `v` is `v` or on a cycle with `v`, and
 /// its edges go to assigned components or to popped nodes.
 proof fn lemma_popped_node(g: Seq<Vec<usize>>, s0: State, sb: State, v: int, x: int)
     requires
@@ -879,6 +897,7 @@ proof fn lemma_frozen_keep(
 
 } // verus!
 
+/// `n` copies of `x`.
 #[cfg_attr(verus_keep_ghost, verus_spec(r =>
     ensures
         r.len() == n,
@@ -898,6 +917,7 @@ pub(crate) fn filled(n: usize, x: usize) -> Vec<usize> {
     r
 }
 
+/// `n` copies of `false`.
 #[cfg_attr(verus_keep_ghost, verus_spec(r =>
     ensures
         r.len() == n,
@@ -917,6 +937,8 @@ pub(crate) fn filled_false(n: usize) -> Vec<bool> {
     r
 }
 
+/// Visits `v`: gives it the index `next`, pushes it on the stack, and
+/// returns the index.
 #[cfg_attr(verus_keep_ghost, verus_spec(r =>
     with Ghost(g): Ghost<Seq<Vec<usize>>>
     requires
@@ -1020,7 +1042,8 @@ fn leave_node(st: &mut State, v: usize, low: usize, base: usize) {
 
 /// Tarjan's search from `v`, with an explicit stack of frames: frame `k`
 /// has node `fv[k]`, next edge `fi[k]`, low-link `fl[k]` and entry stack
-/// length `fb[k]`.
+/// length `fb[k]`; the ghost `fs[k]` is the state at its entry. Returns the
+/// low-link of `v`.
 #[cfg_attr(verus_keep_ghost, verus_spec(ret =>
     requires
         inv(g@, *old(st)),

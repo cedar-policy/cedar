@@ -14,13 +14,13 @@
  * limitations under the License.
  */
 
-//! DAG checks on a transitive closure.
-//!
-//! [`first_self_loop`] returns the first node of `order` whose row contains
-//! itself. `lemma_repair_dag_check` states that, on the result of
-//! [`crate::repair_closure`] and the order `fix`, `Some` implies that the
-//! input has a cycle. The converse does not hold when no cycle goes through
-//! `fix`. [`crate::transitive_closure`] does its own DAG check.
+//! The DAG check of [`crate::repair_closure`]. `first_self_loop` returns
+//! the first node of `fix` whose repaired row contains itself, and
+//! `lemma_repair_dag_check` turns R3 into D1 (`Some` implies a cycle) and D2
+//! (an acyclic input gives `None`). The converse of D1 does not hold when no
+//! cycle goes through `fix`. [`crate::transitive_closure`] does not use this
+//! module: a node is on a cycle iff its component is among its own
+//! successor components.
 
 #[cfg(verus_keep_ghost)]
 use crate::graph::*;
@@ -87,10 +87,9 @@ pub(crate) fn first_self_loop(r: &Vec<Vec<usize>>, order: &Vec<usize>) -> Option
 #[cfg(verus_keep_ghost)]
 verus! {
 
-/// The DAG check of `repair_tc`: if every edge of `g1` is a path of `g0`
-/// (R3 of `repair_closure`), a self-edge in `g1` at a node of `fix` implies
-/// that `g0` has a cycle (D1). Equivalently, if `g0` has no cycle, no node
-/// of `fix` has a self-edge (D2).
+/// D1 and D2 of `repair_closure`: if every edge of `g1` is a path of `g0`
+/// (R3), a self-edge in `g1` at a node of `fix` implies that `g0` has a
+/// cycle, and if `g0` has no cycle, no node of `fix` has a self-edge.
 pub proof fn lemma_repair_dag_check(g0: Seq<Vec<usize>>, g1: Seq<Vec<usize>>, fix: Seq<usize>)
     requires
         g1.len() == g0.len(),
