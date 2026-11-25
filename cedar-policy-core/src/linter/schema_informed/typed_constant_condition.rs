@@ -37,7 +37,9 @@ fn singleton_bool(ty: &Option<Type>) -> Option<bool> {
 /// value in every environment's typed AST.
 pub(super) fn lint(per_env: &PerEnv<'_>, findings: &mut Vec<Finding>) {
     for i in 0..per_env.len() {
-        let sub = per_env.first(i);
+        let Some(sub) = per_env.source(i) else {
+            continue;
+        };
         // A *syntactically* constant sub-expression — a literal, or an operator
         // over constants like `1 > 2` — is the schema-free `constant-condition`
         // lint's job. This lint is for sub-expressions that are constant *only*
@@ -46,34 +48,123 @@ pub(super) fn lint(per_env: &PerEnv<'_>, findings: &mut Vec<Finding>) {
         if crate::linter::util::is_constant(sub) {
             continue;
         }
-        // Only the author's clause body, not scope-derived nodes.
-        if !per_env.in_clause(i) {
-            continue;
-        }
-        let Some(value) = singleton_bool(sub.data()) else {
+        // Same singleton value in every environment where it is evaluated.
+        let Some(value) = [true, false]
+            .into_iter()
+            .find(|v| per_env.all_envs(i, |e| singleton_bool(e.data()) == Some(*v)))
+        else {
             continue;
         };
-        // Same position, same singleton value, in every environment.
-        if per_env.all_envs(i, |e| singleton_bool(e.data()) == Some(value)) {
-            findings.push(
-                TypedConstantCondition {
-                    loc: sub.source_loc().cloned(),
-                    value,
-                }
-                .into(),
-            );
-        }
+        findings.push(
+            TypedConstantCondition {
+                loc: sub.source_loc().cloned(),
+                value,
+            }
+            .into(),
+        );
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::super::test_support::report;
+    use super::super::test_support::{report, report_with_schema};
     use crate::linter::Lint;
 
     #[track_caller]
     fn lint_report(src: &str) -> String {
         report(Lint::TypedConstantCondition, src)
+    }
+
+    /// `edit` admits both `User` and `Photo` principals, so `principal is User`
+    /// varies across `edit`'s environments.
+    const MIXED_SCHEMA: &str = r#"
+        entity User { name: String };
+        entity Photo;
+        action view appliesTo { principal: [User], resource: [Photo] };
+        action edit appliesTo { principal: [User, Photo], resource: [Photo] };
+    "#;
+
+    #[track_caller]
+    fn mixed_report(src: &str) -> String {
+        report_with_schema(Lint::TypedConstantCondition, MIXED_SCHEMA, src)
+    }
+
+    /// A condition that is `false` in some environments (where the typechecker
+    /// calls the policy `Irrelevant`) and `true` in the rest is not constant.
+    /// Dropping the `false` environments used to report it as always `true`.
+    #[test]
+    fn false_in_some_envs_is_not_constant() {
+        insta::assert_snapshot!(mixed_report(
+            r#"permit(principal, action, resource) when { principal is User };"#), @"");
+    }
+
+    /// `has` on an attribute declared nowhere, as the whole condition: the policy
+    /// is `false` in every environment, and the `has` is reported.
+    #[test]
+    fn has_undeclared_attr_whole_condition() {
+        insta::assert_snapshot!(mixed_report(
+            r#"permit(principal, action, resource) when { principal has bogus };"#), @r#"
+         ⚠ for policy `policy0`, this sub-expression is always `false` given the schema
+          ╭────
+        1 │ permit(principal, action, resource) when { principal has bogus };
+          ·                                            ───────────────────
+          ╰────
+         help: its type is a singleton in every request environment this policy applies to, so it has the same value for every request; remove it or replace it with the intended condition
+        "#);
+    }
+
+    /// The same, as the left of a `&&` (which then short-circuits, so the right
+    /// operand is never typed).
+    #[test]
+    fn has_undeclared_attr_short_circuits_and() {
+        insta::assert_snapshot!(mixed_report(
+            r#"permit(principal, action, resource) when { principal has bogus && principal.name == "x" };"#), @r#"
+         ⚠ for policy `policy0`, this sub-expression is always `false` given the schema
+          ╭────
+        1 │ permit(principal, action, resource) when { principal has bogus && principal.name == "x" };
+          ·                                            ────────────────────────────────────────────
+          ╰────
+         help: its type is a singleton in every request environment this policy applies to, so it has the same value for every request; remove it or replace it with the intended condition
+
+         ⚠ for policy `policy0`, this sub-expression is always `false` given the schema
+          ╭────
+        1 │ permit(principal, action, resource) when { principal has bogus && principal.name == "x" };
+          ·                                            ───────────────────
+          ╰────
+         help: its type is a singleton in every request environment this policy applies to, so it has the same value for every request; remove it or replace it with the intended condition
+        "#);
+    }
+
+    /// `principal is User || principal has bogus`: the `has` is evaluated only
+    /// for `Photo` principals (the `||` short-circuits for `User`s), and is
+    /// `false` there. Neither the `||` nor the `is` is constant.
+    #[test]
+    fn has_undeclared_attr_behind_short_circuit_or() {
+        insta::assert_snapshot!(mixed_report(
+            r#"permit(principal, action, resource) when { principal is User || principal has bogus };"#), @r#"
+         ⚠ for policy `policy0`, this sub-expression is always `false` given the schema
+          ╭────
+        1 │ permit(principal, action, resource) when { principal is User || principal has bogus };
+          ·                                                                 ───────────────────
+          ╰────
+         help: its type is a singleton in every request environment this policy applies to, so it has the same value for every request; remove it or replace it with the intended condition
+        "#);
+    }
+
+    /// The dead branch of an `if` with a constant guard is not evaluated, so it
+    /// is not compared (the typechecker fills that slot with a copy of the live
+    /// branch); the guard itself is reported.
+    #[test]
+    fn if_with_constant_guard() {
+        insta::assert_snapshot!(mixed_report(
+            r#"permit(principal, action == Action::"view", resource) when { if principal is User then principal.name == "a" else principal has bogus };"#), @r#"
+         ⚠ for policy `policy0`, this sub-expression is always `true` given the schema
+          ╭────
+        1 │ permit(principal, action == Action::"view", resource) when { if principal is User then principal.name == "a" else principal has bogus };
+          ·                                                                 ─────────────────
+          ╰────
+         help: its type is a singleton in every request environment this policy applies to, so it has the same value for every request; remove it or replace it with the intended condition
+        "#);
     }
 
     /// `principal is User` is always true: every principal of `view` is a `User`.

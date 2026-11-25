@@ -29,12 +29,12 @@ use super::PerEnv;
 /// type in every environment.
 pub(super) fn lint(per_env: &PerEnv<'_>, schema: &ValidatorSchema, findings: &mut Vec<Finding>) {
     for i in 0..per_env.len() {
-        let ExprKind::HasAttr { attr, .. } = per_env.first(i).expr_kind() else {
+        let Some(source) = per_env.source(i) else {
             continue;
         };
-        if !per_env.in_clause(i) {
+        let ExprKind::HasAttr { attr, .. } = source.expr_kind() else {
             continue;
-        }
+        };
         // The `has` is redundant only if `attr` is *required* on the target's type
         // in every environment. If the target's type is unknown, or the attribute
         // is optional, in even one environment, the guard is doing real work there
@@ -53,7 +53,7 @@ pub(super) fn lint(per_env: &PerEnv<'_>, schema: &ValidatorSchema, findings: &mu
         if required_everywhere {
             findings.push(
                 HasOnRequiredAttr {
-                    loc: per_env.first(i).source_loc().cloned(),
+                    loc: source.source_loc().cloned(),
                     attr: attr.clone(),
                 }
                 .into(),
