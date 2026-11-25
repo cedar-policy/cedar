@@ -1154,7 +1154,8 @@ mod parser_tests {
     action A in [B, C] appliesTo { principal: X, resource: [Y,]};
 "#,
         );
-        assert_matches!(res, Err(_));
+        // trailing commas are allowed in bracketed lists (RFC 71)
+        assert_matches!(res, Ok(_));
         let res = parse_schema(
             r#"
     action A in [B, C] appliesTo { principal: X, resource: [Y,Z]} attributes {};
@@ -3649,5 +3650,86 @@ mod external_declarations {
             ValidatorSchema::try_from(frag),
             Err(crate::validator::SchemaError::ActionNotDefined(_))
         );
+    }
+}
+
+/// RFC 71: trailing commas in bracketed lists (#1605)
+#[cfg(test)]
+mod trailing_commas {
+    use crate::extensions::Extensions;
+    use crate::validator::cedar_schema::parser::parse_cedar_schema_fragment;
+    use similar_asserts::assert_eq;
+
+    #[track_caller]
+    fn assert_same(with_comma: &str, without_comma: &str) {
+        let (with_comma, _) = parse_cedar_schema_fragment(with_comma, Extensions::none())
+            .unwrap_or_else(|e| panic!("should parse `{with_comma}`: {e:?}"));
+        let (without_comma, _) =
+            parse_cedar_schema_fragment(without_comma, Extensions::none()).expect("should parse");
+        assert_eq!(with_comma, without_comma);
+    }
+
+    #[track_caller]
+    fn assert_rejected(src: &str) {
+        assert!(
+            parse_cedar_schema_fragment(src, Extensions::none()).is_err(),
+            "should not parse `{src}`"
+        );
+    }
+
+    #[test]
+    fn entity_membership_list() {
+        assert_same(
+            "entity B, C; entity A in [B, C,];",
+            "entity B, C; entity A in [B, C];",
+        );
+        assert_same("entity B; entity A in [B,];", "entity B; entity A in [B];");
+    }
+
+    #[test]
+    fn external_entity_membership_list() {
+        assert_same(
+            "entity B; external entity A in [B,];",
+            "entity B; external entity A in [B];",
+        );
+    }
+
+    #[test]
+    fn enum_choices() {
+        assert_same(
+            r#"entity Color enum ["Red", "Green",];"#,
+            r#"entity Color enum ["Red", "Green"];"#,
+        );
+    }
+
+    #[test]
+    fn action_parents() {
+        assert_same(
+            r#"action "b", "c"; action a in ["b", "c",];"#,
+            r#"action "b", "c"; action a in ["b", "c"];"#,
+        );
+        assert_same(
+            r#"action b; external action a in [b,];"#,
+            r#"action b; external action a in [b];"#,
+        );
+    }
+
+    #[test]
+    fn applies_to_entity_lists() {
+        assert_same(
+            "entity A, B; action a appliesTo { principal: [A, B,], resource: [B,], };",
+            "entity A, B; action a appliesTo { principal: [A, B], resource: [B] };",
+        );
+    }
+
+    #[test]
+    fn lone_or_doubled_comma_rejected() {
+        assert_rejected("entity A in [,];");
+        assert_rejected("entity B; entity A in [B,,];");
+        assert_rejected(r#"entity Color enum [,];"#);
+        assert_rejected(r#"entity Color enum ["Red",,];"#);
+        assert_rejected(r#"action a in [,];"#);
+        // an empty list is still accepted by the grammar
+        assert!(crate::validator::cedar_schema::parser::parse_schema("entity A in [];").is_ok());
     }
 }
