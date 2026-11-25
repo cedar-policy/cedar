@@ -70,7 +70,7 @@ pub(crate) mod constants {
 
     // Global regex, initialized at first use
     pub static DECIMAL_REGEX: LazyLock<Regex> =
-        LazyLock::new(|| Regex::new(r"^(-?\d+)\.(\d+)$").unwrap());
+        LazyLock::new(|| Regex::new(r"^(-?[0-9]+)\.([0-9]+)$").unwrap());
 }
 
 /// Help message to display when a String was provided where a decimal value was expected.
@@ -143,7 +143,11 @@ impl Decimal {
         let l = checked_mul_pow(l, NUM_DIGITS)?;
 
         // convert the fractional component to i64 and multiply by `10 ^ (NUM_DIGITS - len)`
-        let len: u32 = r_str.len().try_into().map_err(|_| Error::Overflow)?;
+        let len: u32 = r_str
+            .chars()
+            .count()
+            .try_into()
+            .map_err(|_| Error::Overflow)?;
         if NUM_DIGITS < len {
             return Err(Error::TooManyDigits(str.as_ref().to_string()));
         }
@@ -714,5 +718,47 @@ mod tests {
         check_round_trip("123.4560");
         check_round_trip("-123.4560");
         check_round_trip("0.0");
+    }
+
+    #[test]
+    fn decimal_non_ascii_digits_fail_parse() {
+        let ext_array = [extension()];
+        let exts = Extensions::specific_extensions(&ext_array).unwrap();
+        let request = basic_request();
+        let entities = basic_entities();
+        let eval = Evaluator::new(request, &entities, &exts);
+
+        for input in [
+            "0.\u{0661}",                 // Arabic-Indic digit one in fractional part
+            "\u{0661}.0",                 // Arabic-Indic digit one in integer part
+            "-\u{0661}.\u{0662}",         // negative with Arabic-Indic digits
+            "0.\u{0661}\u{0662}\u{0663}", // 3 multi-byte fractional digits (6 bytes > NUM_DIGITS)
+            "0.\u{0967}",                 // Devanagari digit one
+            "1.\u{FF12}",                 // Fullwidth digit two
+            "0.\u{1D7CF}",                // Mathematical bold digit one (4-byte UTF-8)
+        ] {
+            assert_matches!(Decimal::from_str(input), Err(Error::FailedParse(s)) => {
+                assert_eq!(s, input);
+            });
+
+            let expr = parse_expr(&format!(r#"decimal("{input}")"#)).expect("parsing error");
+            assert_matches!(
+                eval.interpret_static_policy(&expr),
+                Err(EvaluationError::FailedExtensionFunctionExecution(
+                    evaluation_errors::ExtensionFunctionExecutionError {
+                        extension_name,
+                        msg,
+                        ..
+                    }
+                )) => {
+                    assert_eq!(
+                        extension_name,
+                        Name::parse_unqualified_name("decimal")
+                            .expect("should be a valid identifier")
+                    );
+                    assert_eq!(msg, format!("`{input}` is not a well-formed decimal value"));
+                }
+            );
+        }
     }
 }
