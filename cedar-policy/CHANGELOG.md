@@ -29,6 +29,9 @@ Cedar Language Version: TBD
 - External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
   An external declaration still cannot be resolved by linking it to an enum definition.
 - Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+- Errors found while reading a schema in the JSON format now say which entity type, common type or action they are in,
+  e.g. ``in entity type `User`: invalid name ``: unexpected end of input`` or ``in name of common type `My Type`: ...``.
+  (#435)
 
 ### Fixed
 
