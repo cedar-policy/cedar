@@ -29,6 +29,10 @@ Cedar Language Version: TBD
 - External entity types in partial schemas can now have enumerated entity types as direct or transitive ancestors.
   An external declaration still cannot be resolved by linking it to an enum definition.
 - Parse errors suggest `&&` and `||` for mistaken logical operators `and`, `or`, `&`, and `|` (#944).
+- `SchemaFragment::to_cedarschema` (and `Schema` conversion to the Cedar schema syntax) now accepts a schema in
+  which a common type shadows an entity type of the same name in the same namespace. It only returns
+  `NameCollisionsError` when a type explicitly refers to the shadowed entity type (`"type": "Entity"`),
+  including references nested in sets and records, since the Cedar syntax can't express that reference (#1272).
 
 ### Fixed
 

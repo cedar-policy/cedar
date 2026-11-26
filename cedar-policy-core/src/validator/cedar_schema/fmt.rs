@@ -414,19 +414,16 @@ impl UnconvertibleEntityTypeShapeError {
 
 /// Convert a [`json_schema::Fragment`] to a string containing the Cedar schema syntax
 ///
-/// As of this writing, this existing code throws an error if any
-/// fully-qualified name in a non-empty namespace is a valid common type and
-/// also a valid entity type.
+/// This throws an error if a type explicitly refers to an entity type
+/// (`"type": "Entity"`) whose fully-qualified name, in a non-empty namespace,
+/// is also the name of a common type in that namespace.
 //
-// Two notes:
-// 1) This check is more conservative than necessary. Schemas are allowed to
-// shadow an entity type with a common type declaration in the same namespace;
-// see RFCs 24 and 70. What the Cedar syntax can't express is if, in that
-// situation, we then specifically refer to the shadowed entity type name.  But
-// it's harder to walk all type references than it is to walk all type
-// declarations, so the conservative code here is fine; we can always make it
-// less conservative in the future without breaking people.
-// 2) This code is also likely the cause of #1063; see that issue
+// Schemas are allowed to shadow an entity type with a common type declaration
+// in the same namespace; see RFCs 24 and 70. What the Cedar syntax can't
+// express is a reference to the shadowed entity type in a type position, since
+// there the name resolves to the common type. Entity-only positions
+// (`in [...]`, `principal`, `resource`) can't refer to a common type, so they
+// are not affected. See #1272.
 pub fn json_schema_to_cedar_schema_str<N: Display>(
     json_schema: &json_schema::Fragment<N>,
 ) -> Result<String, ToCedarSchemaSyntaxError> {
@@ -449,7 +446,34 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
             .collect();
         name_collisions.extend(entity_types.intersection(&common_types).cloned());
     }
-    if let Some(non_empty_collisions) = NonEmpty::from_vec(name_collisions) {
+    let mut shadowed_references: Vec<InternalName> = Vec::new();
+    if !name_collisions.is_empty() {
+        for (ns_name, ns) in json_schema.0.iter() {
+            for ty in namespace_types(ns) {
+                for reference in ty.entity_type_references() {
+                    let reference = reference.to_string();
+                    // An unqualified reference is to an entity type in the
+                    // enclosing namespace when one with that name exists,
+                    // which is always the case for a collision there.
+                    let qualified = match ns_name {
+                        Some(ns_name) if !reference.contains("::") => {
+                            format!("{ns_name}::{reference}")
+                        }
+                        _ => reference,
+                    };
+                    if let Some(name) = name_collisions
+                        .iter()
+                        .find(|name| name.to_string() == qualified)
+                    {
+                        if !shadowed_references.contains(name) {
+                            shadowed_references.push(name.clone());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Some(non_empty_collisions) = NonEmpty::from_vec(shadowed_references) {
         return Err(NameCollisionsError {
             names: non_empty_collisions,
         }
@@ -491,6 +515,28 @@ pub fn json_schema_to_cedar_schema_str<N: Display>(
     }
 
     Ok(json_schema.to_string())
+}
+
+/// All the types written in a namespace: common type definitions, entity
+/// shapes and tags, and action contexts.
+fn namespace_types<N>(
+    ns: &json_schema::NamespaceDefinition<N>,
+) -> impl Iterator<Item = &json_schema::Type<N>> {
+    let common_types = ns.common_types.values().map(|ct| &ct.ty);
+    let entity_types = ns
+        .entity_types
+        .values()
+        .filter_map(|et| match &et.kind {
+            json_schema::EntityTypeKind::Standard(std) => Some(std),
+            json_schema::EntityTypeKind::Enum { .. } => None,
+        })
+        .flat_map(|std| std::iter::once(&std.shape.0).chain(std.tags.as_ref()));
+    let contexts = ns
+        .actions
+        .values()
+        .filter_map(|action| action.applies_to.as_ref())
+        .map(|applies_to| &applies_to.context.0);
+    common_types.chain(entity_types).chain(contexts)
 }
 
 #[cfg(test)]
@@ -903,5 +949,113 @@ namespace TinyTodo {
         assert_matches!(result, Err(crate::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::UnconvertibleEntityTypeShape(UnconvertibleEntityTypeShapeError{names})) => {
             assert_eq!(names, expected_names)
         });
+    }
+
+    /// A namespace where the common type `Foo` shadows the entity type `Foo`,
+    /// with `extra` added to the attributes of entity type `Bar`.
+    fn shadowing_schema(bar_attrs: &serde_json::Value) -> json_schema::Fragment<RawName> {
+        serde_json::from_value(serde_json::json!({
+            "NS": {
+                "commonTypes": {
+                    "Foo": { "type": "Record", "attributes": { "x": { "type": "Long" } } }
+                },
+                "entityTypes": {
+                    "Foo": { "memberOfTypes": ["Bar"] },
+                    "Bar": { "shape": { "type": "Record", "attributes": bar_attrs } }
+                },
+                "actions": {
+                    "view": { "appliesTo": { "principalTypes": ["Foo"], "resourceTypes": ["Bar"] } }
+                }
+            }
+        }))
+        .unwrap()
+    }
+
+    #[track_caller]
+    fn assert_shadowed(fragment: &json_schema::Fragment<RawName>, expected: &[&str]) {
+        let expected = NonEmpty::from_vec(
+            expected
+                .iter()
+                .map(|n| n.parse::<InternalName>().unwrap())
+                .collect(),
+        )
+        .unwrap();
+        assert_matches!(
+            fragment.to_cedarschema(),
+            Err(crate::validator::cedar_schema::fmt::ToCedarSchemaSyntaxError::NameCollisions(err)) => {
+                assert_eq!(err.names().cloned().collect::<Vec<_>>(), expected.into_iter().collect::<Vec<_>>());
+            }
+        );
+    }
+
+    /// #1272: a common type may shadow an entity type, so this converts as
+    /// long as no type explicitly refers to the shadowed entity type.
+    #[test]
+    fn shadowed_entity_type_without_reference_converts() {
+        let fragment = shadowing_schema(&serde_json::json!({
+            "common": { "type": "Foo" },
+            "other": { "type": "Entity", "name": "Bar" },
+            "nested": { "type": "Set", "element": { "type": "Entity", "name": "NS::Bar" } }
+        }));
+        let cedar_schema = fragment.to_cedarschema().expect("should convert");
+        let (parsed, _) =
+            parse_cedar_schema_fragment(&cedar_schema, Extensions::none()).expect("should parse");
+        let ns = parsed
+            .0
+            .get(&Some("NS".parse().unwrap()))
+            .expect("namespace NS");
+        assert!(ns.common_types.keys().any(|k| k.to_string() == "Foo"));
+        assert!(ns.entity_types.contains_key(&"Foo".parse().unwrap()));
+    }
+
+    #[test]
+    fn shadowed_entity_type_reference_fails_conversion() {
+        assert_shadowed(
+            &shadowing_schema(&serde_json::json!({
+                "owner": { "type": "Entity", "name": "Foo" }
+            })),
+            &["NS::Foo"],
+        );
+    }
+
+    #[test]
+    fn nested_shadowed_entity_type_reference_fails_conversion() {
+        assert_shadowed(
+            &shadowing_schema(&serde_json::json!({
+                "owners": {
+                    "type": "Set",
+                    "element": {
+                        "type": "Record",
+                        "attributes": { "owner": { "type": "Entity", "name": "NS::Foo" } }
+                    }
+                }
+            })),
+            &["NS::Foo"],
+        );
+    }
+
+    #[test]
+    fn shadowed_entity_type_reference_from_other_namespace_fails_conversion() {
+        let mut fragment = shadowing_schema(&serde_json::json!({}));
+        let other: json_schema::Fragment<RawName> = serde_json::from_value(serde_json::json!({
+            "Other": {
+                "entityTypes": {},
+                "actions": {
+                    "edit": {
+                        "appliesTo": {
+                            "principalTypes": ["NS::Bar"],
+                            "resourceTypes": ["NS::Bar"],
+                            "context": {
+                                "type": "Record",
+                                "attributes": { "who": { "type": "Entity", "name": "NS::Foo" } }
+                            }
+                        }
+                    }
+                }
+            }
+        }))
+        .unwrap();
+        fragment.0.extend(other.0);
+        assert_shadowed(&fragment, &["NS::Foo"]);
     }
 }
