@@ -19,6 +19,8 @@ Cedar Language Version: TBD
 - Implemented [RFC 71 (trailing commas)](https://github.com/cedar-policy/rfcs/blob/main/text/0071-trailing-commas.md)
   for bracketed lists in the Cedar schema syntax: entity type lists (`in [A, B,]`, `principal: [A, B,]`),
   action parent lists (`in ["a", "b",]`) and enum choices (`enum ["a", "b",]`). (#1605)
+- `SchemaFragment::entity_type_attribute_annotations` and `SchemaFragment::entity_type_attribute_annotation`
+  get the annotations of an entity type attribute, including attributes nested in record types, by attribute path (#1404).
 
 ### Changed
 
