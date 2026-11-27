@@ -8,6 +8,7 @@ Changes to the Cedar language, which are likely to affect users of the CLI, are 
 ### Fixed
 
 - `run-tests` now loads entity files referenced by test cases when `--tests` is a bare file name such as `tests.json`, instead of failing with "failed to canonicalize test file directory" (#2697).
+- A policy or template without an `@id` annotation no longer makes the policy set fail to load with "duplicate template or policy id" when its generated id (`policy0`, `policy1`, ...) is also used in an `@id` annotation. It gets a fresh generated id instead (#2732).
 
 ## 4.15.0
 
