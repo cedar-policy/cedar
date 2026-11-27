@@ -1,0 +1,12 @@
+---
+source: cedar-policy-formatter/src/pprint/fmt.rs
+expression: formatted
+input_file: cedar-policy-cli/sample-data/tpe_partial_attrs/policies.cedar
+---
+@id("has-nickname")
+permit (
+  principal,
+  action == Action::"View",
+  resource
+)
+when { principal has nickname };

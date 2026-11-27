@@ -1,0 +1,9 @@
+[
+  {
+    "uid": { "type": "User", "id": "Alice" },
+    "attrs": {
+      "name": "Alice"
+    },
+    "parents": []
+  }
+]
