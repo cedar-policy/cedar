@@ -548,9 +548,9 @@ fn create_entity_map(
 
 /// Adds an entry to the specified map associating the EntityUID of the specified entity
 /// to the specified entity. Checks whether there is an entity already in the map
-/// with the same EntityUID as the specified entity. If such an entity is found and is
-/// not structurally equal to the specified entity produces an error. Otherwise,
-/// if a structurally equal entity is found, the state of the map is unchanged.
+/// with the same EntityUID as the specified entity. If such an entity is found and
+/// does not declare the same data as the specified entity produces an error. Otherwise,
+/// if an identical entity is found, the state of the map is unchanged.
 fn update_entity_map(
     map: &mut HashMap<EntityUID, Arc<Entity>>,
     entity: Arc<Entity>,
@@ -561,9 +561,10 @@ fn update_entity_map(
             if allow_override {
                 occupied_entry.insert(entity);
             } else {
-                // Check whether the occupying entity is structurally equal to the
-                // entity being processed
-                if !entity.deep_eq(occupied_entry.get()) {
+                // Check whether the occupying entity declares the same data as the
+                // entity being processed. Its ancestors may already include those
+                // computed for the transitive closure, so they are not compared.
+                if !entity.declared_eq(occupied_entry.get()) {
                     let entry = occupied_entry.remove_entry();
                     return Err(EntitiesError::duplicate(entry.0));
                 }
@@ -1172,6 +1173,65 @@ mod json_parsing_tests {
             .err()
             .unwrap();
 
+        assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &r#"Test::"jeff""#.parse().unwrap()));
+    }
+
+    /// jeff in team, team in org: jeff's ancestors in the structure include org
+    fn jeff_in_team_in_org(parser: &EntityJsonParser<'_, '_>) -> Entities {
+        let json = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : [{ "type" : "Test", "id" : "team" }]},
+            {"uid":{ "type" : "Test", "id" : "team" }, "attrs" : {}, "parents" : [{ "type" : "Test", "id" : "org" }]},
+            {"uid":{ "type" : "Test", "id" : "org" }, "attrs" : {}, "parents" : []}]);
+        parser
+            .from_json_value(json)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+    }
+
+    #[test]
+    fn add_consistent_duplicate_with_indirect_ancestors() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // The same jeff as in the structure, whose ancestors there also include org
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : [{ "type" : "Test", "id" : "team" }]}]);
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
+        let original = jeff_in_team_in_org(&parser);
+        let original_size = original.entities.len();
+        let es = original
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .unwrap();
+        assert_eq!(es.entities.len(), original_size);
+    }
+
+    #[test]
+    fn add_inconsistent_duplicate_parents() {
+        let parser: EntityJsonParser<'_, '_> =
+            EntityJsonParser::new(None, Extensions::all_available(), TCComputation::ComputeNow);
+        // jeff directly in org as well: parents that differ from the structure's
+        // jeff, though they equal his ancestors there
+        let new = serde_json::json!([
+            {"uid":{ "type" : "Test", "id" : "jeff" }, "attrs" : {}, "parents" : [{ "type" : "Test", "id" : "team" }, { "type" : "Test", "id" : "org" }]}]);
+        let addl_entities = parser
+            .iter_from_json_value(new)
+            .unwrap_or_else(|e| panic!("{:?}", &miette::Report::new(e)))
+            .map(Arc::new);
+        let err = jeff_in_team_in_org(&parser)
+            .add_entities(
+                addl_entities,
+                None::<&NoEntitiesSchema>,
+                TCComputation::ComputeNow,
+                Extensions::all_available(),
+            )
+            .err()
+            .unwrap();
         assert_matches!(err, EntitiesError::Duplicate(d) => assert_eq!(d.euid(), &r#"Test::"jeff""#.parse().unwrap()));
     }
 
