@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-use cedar_policy::{Policy, PolicySet, Template};
+use cedar_policy::{Policy, PolicyId, PolicySet, Template};
 use clap::{Args, ValueEnum};
 use miette::{miette, IntoDiagnostic, NamedSource, Report, Result, WrapErr};
-use std::{path::Path, str::FromStr};
+use std::{collections::HashSet, path::Path, str::FromStr};
 
 use crate::{
     add_template_links_to_set, add_template_links_to_set_if_exists, read_from_file_or_stdin,
@@ -190,32 +190,44 @@ enum JsonPolicyType {
 }
 
 /// Renames policies and templates based on (@id("new_id") annotation.
-/// If no such annotation exists, it keeps the current id.
+/// If no such annotation exists, it keeps the current id, unless that id is
+/// also requested by an `@id` annotation, in which case it gets a fresh id.
 ///
 /// This will rename template-linked policies to the id of their template, which may
 /// cause id conflicts, so only call this function before instancing
 /// templates into the policy set.
 fn rename_from_id_annotation(ps: &PolicySet) -> Result<PolicySet> {
+    let annotated_ids: HashSet<PolicyId> = ps
+        .templates()
+        .filter_map(|t| t.annotation("id"))
+        .chain(ps.policies().filter_map(|p| p.annotation("id")))
+        .map(PolicyId::new)
+        .collect();
+    // The parser generates the ids `policy0`, `policy1`, ... in file order, so
+    // every generated id has an index below the size of the policy set. Fresh
+    // ids start at that size and so cannot collide with a generated id.
+    let mut next_index = ps.templates().count() + ps.policies().count();
+    let mut new_id = |annotation: Option<&str>, id: &PolicyId| match annotation {
+        Some(anno) => PolicyId::new(anno),
+        None if annotated_ids.contains(id) => loop {
+            let fresh_id = PolicyId::new(format!("policy{next_index}"));
+            next_index += 1;
+            if !annotated_ids.contains(&fresh_id) {
+                break fresh_id;
+            }
+        },
+        None => id.clone(),
+    };
     let mut new_ps = PolicySet::new();
-    let t_iter = ps.templates().map(|t| match t.annotation("id") {
-        None => Ok(t.clone()),
-        Some(anno) => anno.parse().map(|a| t.new_id(a)),
-    });
-    for t in t_iter {
-        let template = t.unwrap_or_else(|never| match never {});
+    for t in ps.templates() {
         new_ps
-            .add_template(template)
+            .add_template(t.new_id(new_id(t.annotation("id"), t.id())))
             .wrap_err("failed to add template to policy set")?;
     }
-    let p_iter = ps.policies().map(|p| match p.annotation("id") {
-        None => Ok(p.clone()),
-        Some(anno) => anno.parse().map(|a| p.new_id(a)),
-    });
-    for p in p_iter {
-        let policy = p.unwrap_or_else(|never| match never {});
+    for p in ps.policies() {
         new_ps
-            .add(policy)
-            .wrap_err("failed to add template to policy set")?;
+            .add(p.new_id(new_id(p.annotation("id"), p.id())))
+            .wrap_err("failed to add policy to policy set")?;
     }
     Ok(new_ps)
 }
@@ -224,6 +236,7 @@ fn rename_from_id_annotation(ps: &PolicySet) -> Result<PolicySet> {
 mod tests {
     use super::*;
     use crate::utils::test_utils::{render_err, TEMPFILE_FILTER};
+    use cedar_policy::Effect;
     use std::io::Write;
 
     #[test]
@@ -240,6 +253,83 @@ mod tests {
               ·     ┬
               ·     ╰── expected `(`
               ╰────
+            ");
+        });
+    }
+
+    /// Read `policies` as a Cedar policy set and return the ids, sorted
+    fn policy_ids(policies: &str) -> Vec<String> {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(policies.as_bytes()).unwrap();
+        let ps = read_cedar_policy_set(Some(f.path())).unwrap();
+        let mut ids: Vec<String> = ps
+            .templates()
+            .map(|t| t.id().to_string())
+            .chain(ps.policies().map(|p| p.id().to_string()))
+            .collect();
+        ids.sort();
+        ids
+    }
+
+    #[test]
+    fn id_annotation_equal_to_generated_id() {
+        // The second policy is parsed as `policy1`, the id the first one asks for
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(
+            br#"@id("policy1") permit(principal, action, resource);
+forbid(principal, action, resource);"#,
+        )
+        .unwrap();
+        let ps = read_cedar_policy_set(Some(f.path())).unwrap();
+        let ids: Vec<(String, Effect)> = ps
+            .policies()
+            .map(|p| (p.id().to_string(), p.effect()))
+            .collect();
+        assert_eq!(
+            ids,
+            vec![
+                ("policy1".to_owned(), Effect::Permit),
+                ("policy2".to_owned(), Effect::Forbid)
+            ]
+        );
+
+        // In the other order there is no conflict and the generated id is kept
+        assert_eq!(
+            policy_ids(
+                r#"forbid(principal, action, resource);
+@id("policy1") permit(principal, action, resource);"#
+            ),
+            vec!["policy0", "policy1"]
+        );
+    }
+
+    #[test]
+    fn id_annotation_fresh_id_avoids_other_ids() {
+        // The template is parsed as `policy0`. `policy3` is the first unused
+        // generated id but is taken by an annotation, so the template gets `policy4`.
+        assert_eq!(
+            policy_ids(
+                r#"permit(principal == ?principal, action, resource);
+@id("policy0") permit(principal, action, resource);
+@id("policy3") permit(principal, action, resource);"#
+            ),
+            vec!["policy0", "policy3", "policy4"]
+        );
+    }
+
+    #[test]
+    fn id_annotation_duplicate() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(
+            br#"@id("a") permit(principal, action, resource);
+@id("a") forbid(principal, action, resource);"#,
+        )
+        .unwrap();
+        let err = read_cedar_policy_set(Some(f.path())).unwrap_err();
+        insta::with_settings!({filters => vec![TEMPFILE_FILTER]}, {
+            insta::assert_snapshot!(render_err(&err), @"
+            × failed to add policy to policy set
+            ╰─▶ duplicate template or policy id `a`
             ");
         });
     }
