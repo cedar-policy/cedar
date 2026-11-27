@@ -18,6 +18,7 @@ use crate::ast::{EntityType, Name, Type};
 use itertools::Itertools;
 use smol_str::SmolStr;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// Possible types that schema-based parsing can expect for Cedar values.
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
@@ -61,7 +62,7 @@ pub enum SchemaType {
 #[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct AttributeType {
     /// Type of the attribute
-    pub(crate) attr_type: SchemaType,
+    pub(crate) attr_type: Arc<SchemaType>,
     /// Is the attribute required
     pub(crate) required: bool,
 }
@@ -104,7 +105,7 @@ impl AttributeType {
     /// Construct a new required attribute type
     pub fn required(attr_type: SchemaType) -> Self {
         Self {
-            attr_type,
+            attr_type: Arc::new(attr_type),
             required: true,
         }
     }
@@ -112,7 +113,7 @@ impl AttributeType {
     /// Construct a new optional attribute type
     pub fn optional(attr_type: SchemaType) -> Self {
         Self {
-            attr_type,
+            attr_type: Arc::new(attr_type),
             required: false,
         }
     }

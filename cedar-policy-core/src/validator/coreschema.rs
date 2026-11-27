@@ -131,8 +131,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
             reason = "`attr_type` is taken from a `ValidatorEntityType` which was constructed from a schema"
         )]
         let core_schema_type: entities::SchemaType = attr_type
-            .clone()
-            .try_into()
+            .to_core_schema_type()
             .expect("failed to convert validator type into Core SchemaType");
         debug_assert!(attr_type.is_consistent_with(&core_schema_type));
         Some(core_schema_type)
@@ -145,8 +144,7 @@ impl entities::EntityTypeDescription for EntityTypeDescription {
             reason = "`tag_type` is taken from a `ValidatorEntityType` which was constructed from a schema"
         )]
         let core_schema_type: entities::SchemaType = tag_type
-            .clone()
-            .try_into()
+            .to_core_schema_type()
             .expect("failed to convert validator type into Core SchemaType");
         debug_assert!(tag_type.is_consistent_with(&core_schema_type));
         Some(core_schema_type)
@@ -705,8 +703,7 @@ impl entities::ContextSchema for ContextSchema {
             reason = "By `ContextSchema` invariant, `self.0` is representable as a schema type"
         )]
         self.0
-            .clone()
-            .try_into()
+            .to_core_schema_type()
             .expect("failed to convert validator type into Core SchemaType")
     }
 }

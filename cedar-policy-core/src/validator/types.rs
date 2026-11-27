@@ -209,6 +209,15 @@ impl Type {
 
     /// Implements a subtype relation for the type structure.
     pub(crate) fn is_subtype(ty0: &Type, ty1: &Type, mode: ValidationMode) -> bool {
+        Type::is_subtype_memo(ty0, ty1, mode, &mut MemoSubtyping::default())
+    }
+
+    fn is_subtype_memo<'a>(
+        ty0: &'a Type,
+        ty1: &'a Type,
+        mode: ValidationMode,
+        memo: &mut MemoSubtyping<'a>,
+    ) -> bool {
         match (ty0, ty1) {
             // Never is a subtype of every type.
             (Type::Never, _) => true,
@@ -228,7 +237,7 @@ impl Type {
                     element_type: e_ty1,
                 },
             ) => match (e_ty0, e_ty1) {
-                (Some(e_ty0), Some(e_ty1)) => Type::is_subtype(e_ty0, e_ty1, mode),
+                (Some(e_ty0), Some(e_ty1)) => Type::is_subtype_memo(e_ty0, e_ty1, mode, memo),
                 (Some(_), None) => true,
                 (None, Some(_)) => false,
                 (None, None) => true,
@@ -256,8 +265,8 @@ impl Type {
                 // depth subtyping only. We apply this same restriction in
                 // strict mode, i.e., strict mode applies depth subtyping but
                 // not width subtyping.
-                    && ((open1.is_open() && !mode.is_strict() && attrs0.is_subtype( attrs1, mode))
-                        || attrs0.is_subtype_depth_only( attrs1, mode))
+                    && ((open1.is_open() && !mode.is_strict() && attrs0.is_subtype( attrs1, mode, memo))
+                        || attrs0.is_subtype_depth_only( attrs1, mode, memo))
             }
 
             (Type::Entity(e0), Type::Entity(e1)) => EntityKind::is_subtype(e0, e1, mode),
@@ -278,9 +287,18 @@ impl Type {
         ty1: &Type,
         mode: ValidationMode,
     ) -> Result<Type, LubHelp> {
+        Type::least_upper_bound_memo(ty0, ty1, mode, &mut MemoSubtyping::default())
+    }
+
+    fn least_upper_bound_memo<'a>(
+        ty0: &'a Type,
+        ty1: &'a Type,
+        mode: ValidationMode,
+        memo: &mut MemoSubtyping<'a>,
+    ) -> Result<Type, LubHelp> {
         match (ty0, ty1) {
-            _ if Type::is_subtype(ty0, ty1, mode) => Ok(ty1.clone()),
-            _ if Type::is_subtype(ty1, ty0, mode) => Ok(ty0.clone()),
+            _ if Type::is_subtype_memo(ty0, ty1, mode, memo) => Ok(ty1.clone()),
+            _ if Type::is_subtype_memo(ty1, ty0, mode, memo) => Ok(ty0.clone()),
 
             (Type::Bool(_), Type::Bool(_)) => Ok(Type::primitive_boolean()),
 
@@ -304,7 +322,9 @@ impl Type {
                 Type::Set {
                     element_type: Some(te1),
                 },
-            ) => Ok(Type::set(Type::least_upper_bound(te0, te1, mode)?.into())),
+            ) => Ok(Type::set(
+                Type::least_upper_bound_memo(te0, te1, mode, memo)?.into(),
+            )),
 
             (
                 Type::Record {
@@ -316,7 +336,7 @@ impl Type {
                     open_attributes: open1,
                 },
             ) => {
-                let attrs = Attributes::least_upper_bound(attrs0, attrs1, mode)?;
+                let attrs = Attributes::least_upper_bound(attrs0, attrs1, mode, memo)?;
 
                 // Even though this function will never be called when the
                 // records are in a subtype relation, it is still possible that
@@ -530,12 +550,20 @@ impl Type {
     /// Meaning, is there at least some value that could have this `SchemaType` and
     /// this validator type simultaneously.
     pub(crate) fn is_consistent_with(&self, core_type: &CoreSchemaType) -> bool {
+        self.is_consistent_with_memo(core_type, &mut HashMap::new())
+    }
+
+    fn is_consistent_with_memo<'a>(
+        &'a self,
+        core_type: &'a CoreSchemaType,
+        memo: &mut HashMap<(RecordId<'a>, OpenTag, CoreRecordId<'a>, bool), bool>,
+    ) -> bool {
         match core_type {
             CoreSchemaType::Bool => matches!(self, Type::Bool(_)),
             CoreSchemaType::Long => matches!(self, Type::Long),
             CoreSchemaType::String => matches!(self, Type::String),
             CoreSchemaType::Set { element_ty } => {
-                matches!(self, Type::Set { element_type: Some(element_type) } if element_type.is_consistent_with(element_ty))
+                matches!(self, Type::Set { element_type: Some(element_type) } if element_type.is_consistent_with_memo(element_ty, memo))
             }
             CoreSchemaType::EmptySet => {
                 // for any given validator Set type, there is some value (namely, the empty set)
@@ -550,7 +578,11 @@ impl Type {
                     attrs: self_attrs,
                     open_attributes: self_open,
                 } => {
-                    core_attrs.iter().all(|(k, core_attr_ty)| {
+                    let key = (self_attrs.id(), *self_open, ByRef(core_attrs), *core_open);
+                    if let Some(result) = memo.get(&key) {
+                        return *result;
+                    }
+                    let result = core_attrs.iter().all(|(k, core_attr_ty)| {
                         match self_attrs.get_attr(k) {
                             Some(self_attr_ty) => {
                                 // both have the attribute, doesn't matter
@@ -558,7 +590,7 @@ impl Type {
                                 // optional
                                 self_attr_ty
                                     .attr_type
-                                    .is_consistent_with(core_attr_ty.schema_type())
+                                    .is_consistent_with_memo(core_attr_ty.schema_type(), memo)
                             }
                             None => {
                                 // core_attrs has the attribute, self_attrs does not.
@@ -575,7 +607,7 @@ impl Type {
                                 // optional
                                 self_attr_ty
                                     .attr_type
-                                    .is_consistent_with(core_attr_ty.schema_type())
+                                    .is_consistent_with_memo(core_attr_ty.schema_type(), memo)
                             }
                             None => {
                                 // self_attrs has the attribute, core_attrs does not.
@@ -584,7 +616,9 @@ impl Type {
                                 !self_attr_ty.is_required || *core_open
                             }
                         }
-                    })
+                    });
+                    memo.insert(key, result);
+                    result
                 }
                 _ => false,
             },
@@ -806,6 +840,24 @@ impl Display for Type {
 impl TryFrom<Type> for CoreSchemaType {
     type Error = String;
     fn try_from(ty: Type) -> Result<CoreSchemaType, String> {
+        ty.to_core_schema_type()
+    }
+}
+
+impl Type {
+    /// Convert to a [`CoreSchemaType`] with the same sharing.
+    ///
+    /// # Errors
+    ///
+    /// If `self` contains `Never`, `AnyEntity`, or a LUB of several entity types.
+    pub(crate) fn to_core_schema_type(&self) -> Result<CoreSchemaType, String> {
+        Type::to_core_schema_type_memo(self, &mut HashMap::new())
+    }
+
+    fn to_core_schema_type_memo<'a>(
+        ty: &'a Type,
+        memo: &mut HashMap<(RecordId<'a>, OpenTag), Arc<CoreSchemaType>>,
+    ) -> Result<CoreSchemaType, String> {
         match ty {
             Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
             Type::Bool(_) => Ok(CoreSchemaType::Bool),
@@ -814,7 +866,11 @@ impl TryFrom<Type> for CoreSchemaType {
             Type::Set {
                 element_type: Some(element_type),
             } => Ok(CoreSchemaType::Set {
-                element_ty: Box::new(CoreSchemaType::try_from(element_type.as_ref().clone())?),
+                // Cloning a record copies its map of `Arc`s, not its expansion.
+                element_ty: Box::new(Arc::unwrap_or_clone(Type::to_core_schema_type_shared(
+                    element_type,
+                    memo,
+                )?)),
             }),
             Type::Set { element_type: None } => Ok(CoreSchemaType::EmptySet),
             Type::Entity(kind @ EntityKind::AnyEntity) => Err(format!(
@@ -828,12 +884,12 @@ impl TryFrom<Type> for CoreSchemaType {
                     attrs
                         .iter()
                         .map(|(k, v)| {
-                            let schema_type = v.attr_type.as_ref().clone().try_into()?;
+                            let schema_type = Type::to_core_schema_type_shared(&v.attr_type, memo)?;
                             Ok((
                                 k.clone(),
-                                match v.is_required {
-                                    true => CoreAttributeType::required(schema_type),
-                                    false => CoreAttributeType::optional(schema_type),
+                                CoreAttributeType {
+                                    attr_type: schema_type,
+                                    required: v.is_required,
                                 },
                             ))
                         })
@@ -841,13 +897,34 @@ impl TryFrom<Type> for CoreSchemaType {
                 },
                 open_attrs: open_attributes.is_open(),
             }),
-            Type::Entity(EntityKind::Entity(lub)) => match lub.into_single_entity() {
-                Some(name) => Ok(CoreSchemaType::Entity { ty: name }),
+            Type::Entity(EntityKind::Entity(lub)) => match lub.get_single_entity() {
+                Some(name) => Ok(CoreSchemaType::Entity { ty: name.clone() }),
                 None => Err(
                     "non-singleton LUB type is not representable in core::SchemaType".to_string(),
                 ),
             },
-            Type::ExtensionType { name } => Ok(CoreSchemaType::Extension { name }),
+            Type::ExtensionType { name } => Ok(CoreSchemaType::Extension { name: name.clone() }),
+        }
+    }
+
+    fn to_core_schema_type_shared<'a>(
+        ty: &'a Type,
+        memo: &mut HashMap<(RecordId<'a>, OpenTag), Arc<CoreSchemaType>>,
+    ) -> Result<Arc<CoreSchemaType>, String> {
+        match ty {
+            Type::Record {
+                attrs,
+                open_attributes,
+            } => {
+                let key = (attrs.id(), *open_attributes);
+                if let Some(converted) = memo.get(&key) {
+                    return Ok(Arc::clone(converted));
+                }
+                let converted = Arc::new(Type::to_core_schema_type_memo(ty, memo)?);
+                memo.insert(key, Arc::clone(&converted));
+                Ok(converted)
+            }
+            _ => Type::to_core_schema_type_memo(ty, memo).map(Arc::new),
         }
     }
 }
@@ -996,7 +1073,7 @@ impl EntityLUB {
 
 /// Represents the attributes of a record or entity type. Each attribute has an
 /// identifier, a flag indicating weather it is required, and a type.
-#[derive(Hash, Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Attributes {
     /// Attributes map
     attrs: Arc<BTreeMap<SmolStr, AttributeType>>,
@@ -1044,58 +1121,92 @@ impl Attributes {
         RecordId(ByRef(self.attrs.as_ref()))
     }
 
-    pub(crate) fn is_subtype(&self, other: &Attributes, mode: ValidationMode) -> bool {
+    fn is_subtype<'a>(
+        &'a self,
+        other: &'a Attributes,
+        mode: ValidationMode,
+        memo: &mut MemoSubtyping<'a>,
+    ) -> bool {
+        // Subtyping is reflexive.
+        if Arc::ptr_eq(&self.attrs, &other.attrs) {
+            return true;
+        }
+        let key = (self.id(), other.id());
+        if let Some(result) = memo.subtype.get(&key) {
+            return *result;
+        }
         // For a one record type to subtype another, all the attributes of the
         // second must be present in the first, and each attribute types must
         // subtype the corresponding attribute type. If an attribute in the
         // first is not required (optional), then that attribute must also be
         // optional in the second.
-        other.attrs.iter().all(|(k, other_ty)| {
+        let result = other.attrs.iter().all(|(k, other_ty)| {
             self.attrs
                 .get(k)
-                .map(|self_ty| AttributeType::is_subtype(self_ty, other_ty, mode))
+                .map(|self_ty| AttributeType::is_subtype(self_ty, other_ty, mode, memo))
                 .unwrap_or(false)
-        })
+        });
+        memo.subtype.insert(key, result);
+        result
     }
 
     // Determine if the attributes subtype while only allowing for depth
     // subtyping. This forbids width subtyping, so there may not be attributes
     // present in the subtype that do not exist in the super type.
-    pub(crate) fn is_subtype_depth_only(&self, other: &Attributes, mode: ValidationMode) -> bool {
-        other.attrs.len() == self.attrs.len() && self.is_subtype(other, mode)
-    }
-
-    pub(crate) fn least_upper_bound(
-        attrs0: &Attributes,
-        attrs1: &Attributes,
+    fn is_subtype_depth_only<'a>(
+        &'a self,
+        other: &'a Attributes,
         mode: ValidationMode,
-    ) -> Result<Attributes, LubHelp> {
-        if mode.is_strict() {
-            Self::strict_least_upper_bound(attrs0, attrs1)
-        } else {
-            Ok(Self::permissive_least_upper_bound(attrs0, attrs1))
-        }
+        memo: &mut MemoSubtyping<'a>,
+    ) -> bool {
+        other.attrs.len() == self.attrs.len() && self.is_subtype(other, mode, memo)
     }
 
-    fn attributes_lub_iter<'a>(
+    fn least_upper_bound<'a>(
         attrs0: &'a Attributes,
         attrs1: &'a Attributes,
         mode: ValidationMode,
-    ) -> impl Iterator<Item = Result<(&'a SmolStr, AttributeType), LubHelp>> + 'a {
+        memo: &mut MemoSubtyping<'a>,
+    ) -> Result<Attributes, LubHelp> {
+        let key = (attrs0.id(), attrs1.id());
+        if let Some(result) = memo.lub.get(&key) {
+            return result.clone();
+        }
+        let result = if mode.is_strict() {
+            Self::strict_least_upper_bound(attrs0, attrs1, memo)
+        } else {
+            Ok(Self::permissive_least_upper_bound_memo(
+                attrs0, attrs1, memo,
+            ))
+        };
+        memo.lub.insert(key, result.clone());
+        result
+    }
+
+    fn attributes_lub_iter<'a, 'm>(
+        attrs0: &'a Attributes,
+        attrs1: &'a Attributes,
+        mode: ValidationMode,
+        memo: &'m mut MemoSubtyping<'a>,
+    ) -> impl Iterator<Item = Result<(&'a SmolStr, AttributeType), LubHelp>> + 'm {
         attrs0.attrs.iter().map(move |(attr, ty0)| {
             let ty1 = attrs1.attrs.get(attr).ok_or(LubHelp::RecordWidth)?;
-            Ok((attr, AttributeType::least_upper_bound(ty0, ty1, mode)?))
+            Ok((
+                attr,
+                AttributeType::least_upper_bound(ty0, ty1, mode, memo)?,
+            ))
         })
     }
 
-    pub(crate) fn strict_least_upper_bound(
-        attrs0: &Attributes,
-        attrs1: &Attributes,
+    fn strict_least_upper_bound<'a>(
+        attrs0: &'a Attributes,
+        attrs1: &'a Attributes,
+        memo: &mut MemoSubtyping<'a>,
     ) -> Result<Attributes, LubHelp> {
         if attrs0.attrs.len() != attrs1.attrs.len() {
             return Err(LubHelp::RecordWidth);
         }
-        Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Strict)
+        Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Strict, memo)
             .map(|r| r.map(|(k, v)| (k.clone(), v)))
             .collect::<Result<Vec<_>, _>>()
             .map(Attributes::with_attributes)
@@ -1105,10 +1216,50 @@ impl Attributes {
         attrs0: &Attributes,
         attrs1: &Attributes,
     ) -> Attributes {
+        Self::permissive_least_upper_bound_memo(attrs0, attrs1, &mut MemoSubtyping::default())
+    }
+
+    fn permissive_least_upper_bound_memo<'a>(
+        attrs0: &'a Attributes,
+        attrs1: &'a Attributes,
+        memo: &mut MemoSubtyping<'a>,
+    ) -> Attributes {
         Attributes::with_attributes(
-            Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Permissive)
+            Self::attributes_lub_iter(attrs0, attrs1, ValidationMode::Permissive, memo)
                 .flat_map(|r| r.map(|(k, v)| (k.clone(), v))),
         )
+    }
+}
+
+impl PartialEq for Attributes {
+    fn eq(&self, other: &Self) -> bool {
+        MemoComparator::default().attrs_eq(self, other)
+    }
+}
+
+impl Eq for Attributes {}
+
+impl PartialOrd for Attributes {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Attributes {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        MemoComparator::default().attrs_cmp(self, other)
+    }
+}
+
+// Ignores the attribute types, so hashing is O(width) and not the size of the
+// expansion. This is consistent with `Eq`.
+impl std::hash::Hash for Attributes {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.attrs.len().hash(state);
+        for (name, attr) in self.attrs.iter() {
+            name.hash(state);
+            attr.is_required.hash(state);
+        }
     }
 }
 
@@ -1324,12 +1475,13 @@ impl AttributeType {
     }
 
     /// Get the least upper bound of two [`AttributeType`]s
-    fn least_upper_bound(
-        ty0: &AttributeType,
-        ty1: &AttributeType,
+    fn least_upper_bound<'a>(
+        ty0: &'a AttributeType,
+        ty1: &'a AttributeType,
         mode: ValidationMode,
+        memo: &mut MemoSubtyping<'a>,
     ) -> Result<AttributeType, LubHelp> {
-        Type::least_upper_bound(&ty0.attr_type, &ty1.attr_type, mode).and_then(|lub| {
+        Type::least_upper_bound_memo(&ty0.attr_type, &ty1.attr_type, mode, memo).and_then(|lub| {
             let is_lub_required = ty0.is_required() && ty1.is_required();
             if mode.is_strict() && ty0.is_required() != ty1.is_required() {
                 Err(LubHelp::AttributeQualifier)
@@ -1340,13 +1492,18 @@ impl AttributeType {
     }
 
     /// Is `ty0` a subtype of `ty1`?
-    fn is_subtype(ty0: &AttributeType, ty1: &AttributeType, mode: ValidationMode) -> bool {
+    fn is_subtype<'a>(
+        ty0: &'a AttributeType,
+        ty1: &'a AttributeType,
+        mode: ValidationMode,
+        memo: &mut MemoSubtyping<'a>,
+    ) -> bool {
         let qualifier_subtype = if mode.is_strict() {
             ty0.is_required() == ty1.is_required()
         } else {
             ty0.is_required() || !ty1.is_required()
         };
-        qualifier_subtype && Type::is_subtype(&ty0.attr_type, &ty1.attr_type, mode)
+        qualifier_subtype && Type::is_subtype_memo(&ty0.attr_type, &ty1.attr_type, mode, memo)
     }
 }
 
@@ -1354,6 +1511,8 @@ impl AttributeType {
 /// can't be reused while the `RecordId` exists, which makes it a sound memo key.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RecordId<'a>(ByRef<'a, BTreeMap<SmolStr, AttributeType>>);
+
+type CoreRecordId<'a> = ByRef<'a, BTreeMap<SmolStr, CoreAttributeType>>;
 
 impl std::fmt::Debug for RecordId<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1418,6 +1577,162 @@ impl<'a> SharedRecords<'a> {
             } => self.add_type(vis, element_type),
             _ => {}
         }
+    }
+}
+
+/// Tables for subtyping and least upper bounds.
+///
+/// Each pair of records is visited once for a given table, and the lub or subtype information
+/// is recorded. The keys don't include the mode, so a table is only valid for one mode.
+#[derive(Default)]
+struct MemoSubtyping<'a> {
+    subtype: HashMap<(RecordId<'a>, RecordId<'a>), bool>,
+    lub: HashMap<(RecordId<'a>, RecordId<'a>), Result<Attributes, LubHelp>>,
+}
+
+/// Tables for equality and ordering.
+#[derive(Default)]
+struct MemoComparator<'a> {
+    eq: HashMap<(RecordId<'a>, RecordId<'a>), bool>,
+    cmp: HashMap<(RecordId<'a>, RecordId<'a>), std::cmp::Ordering>,
+}
+
+impl<'a> MemoComparator<'a> {
+    fn type_eq(&mut self, ty0: &'a Type, ty1: &'a Type) -> bool {
+        match (ty0, ty1) {
+            (Type::Never, Type::Never)
+            | (Type::Long, Type::Long)
+            | (Type::String, Type::String) => true,
+            (Type::Bool(b0), Type::Bool(b1)) => b0 == b1,
+            (Type::Entity(k0), Type::Entity(k1)) => k0 == k1,
+            (Type::Set { element_type: e0 }, Type::Set { element_type: e1 }) => match (e0, e1) {
+                (Some(e0), Some(e1)) => Arc::ptr_eq(e0, e1) || self.type_eq(e0, e1),
+                (None, None) => true,
+                (Some(_), None) | (None, Some(_)) => false,
+            },
+            (
+                Type::Record {
+                    attrs: attrs0,
+                    open_attributes: open0,
+                },
+                Type::Record {
+                    attrs: attrs1,
+                    open_attributes: open1,
+                },
+            ) => open0 == open1 && self.attrs_eq(attrs0, attrs1),
+            (Type::ExtensionType { name: n0 }, Type::ExtensionType { name: n1 }) => n0 == n1,
+            _ => false,
+        }
+    }
+
+    fn attrs_eq(&mut self, attrs0: &'a Attributes, attrs1: &'a Attributes) -> bool {
+        if Arc::ptr_eq(&attrs0.attrs, &attrs1.attrs) {
+            return true;
+        }
+        let key = (attrs0.id(), attrs1.id());
+        if let Some(result) = self.eq.get(&key) {
+            return *result;
+        }
+        let result = attrs0.attrs.len() == attrs1.attrs.len()
+            && attrs0
+                .attrs
+                .iter()
+                .zip(attrs1.attrs.iter())
+                .all(|((k0, ty0), (k1, ty1))| {
+                    // `AttributeType` equality ignores the source location.
+                    k0 == k1
+                        && ty0.is_required == ty1.is_required
+                        && (Arc::ptr_eq(&ty0.attr_type, &ty1.attr_type)
+                            || self.type_eq(&ty0.attr_type, &ty1.attr_type))
+                });
+        self.eq.insert(key, result);
+        result
+    }
+
+    fn type_cmp(&mut self, ty0: &'a Type, ty1: &'a Type) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        match (ty0, ty1) {
+            (Type::Bool(b0), Type::Bool(b1)) => b0.cmp(b1),
+            (Type::Entity(k0), Type::Entity(k1)) => k0.cmp(k1),
+            (Type::Set { element_type: e0 }, Type::Set { element_type: e1 }) => match (e0, e1) {
+                (Some(e0), Some(e1)) => {
+                    if Arc::ptr_eq(e0, e1) {
+                        Ordering::Equal
+                    } else {
+                        self.type_cmp(e0, e1)
+                    }
+                }
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+            },
+            (
+                Type::Record {
+                    attrs: attrs0,
+                    open_attributes: open0,
+                },
+                Type::Record {
+                    attrs: attrs1,
+                    open_attributes: open1,
+                },
+            ) => self
+                .attrs_cmp(attrs0, attrs1)
+                .then_with(|| open0.cmp(open1)),
+            (Type::ExtensionType { name: n0 }, Type::ExtensionType { name: n1 }) => n0.cmp(n1),
+            // Different constructors, or the same constructor without fields.
+            _ => ty0.cmp(ty1),
+        }
+    }
+
+    /// Lexicographic order on the `(name, attribute type)` entries, as for a
+    /// `BTreeMap`.
+    fn attrs_cmp(&mut self, attrs0: &'a Attributes, attrs1: &'a Attributes) -> std::cmp::Ordering {
+        use std::cmp::Ordering;
+        if Arc::ptr_eq(&attrs0.attrs, &attrs1.attrs) {
+            return Ordering::Equal;
+        }
+        let key = (attrs0.id(), attrs1.id());
+        if let Some(result) = self.cmp.get(&key) {
+            return *result;
+        }
+        let mut result = Ordering::Equal;
+        let mut entries0 = attrs0.attrs.iter();
+        let mut entries1 = attrs1.attrs.iter();
+        loop {
+            match (entries0.next(), entries1.next()) {
+                (None, None) => break,
+                (None, Some(_)) => {
+                    result = Ordering::Less;
+                    break;
+                }
+                (Some(_), None) => {
+                    result = Ordering::Greater;
+                    break;
+                }
+                (Some((k0, ty0)), Some((k1, ty1))) => {
+                    // The order of the fields of `AttributeType`, as in its
+                    // derived `Ord`.
+                    let entry = k0
+                        .cmp(k1)
+                        .then_with(|| {
+                            if Arc::ptr_eq(&ty0.attr_type, &ty1.attr_type) {
+                                Ordering::Equal
+                            } else {
+                                self.type_cmp(&ty0.attr_type, &ty1.attr_type)
+                            }
+                        })
+                        .then_with(|| ty0.is_required.cmp(&ty1.is_required));
+                    #[cfg(feature = "extended-schema")]
+                    let entry = entry.then_with(|| ty0.loc.cmp(&ty1.loc));
+                    if entry != Ordering::Equal {
+                        result = entry;
+                        break;
+                    }
+                }
+            }
+        }
+        self.cmp.insert(key, result);
+        result
     }
 }
 
@@ -2641,5 +2956,612 @@ mod test {
     #[cfg(feature = "extended-schema")]
     fn test_matches_name() {
         assert!(Type::is_primitive("Long"))
+    }
+}
+
+#[cfg(test)]
+mod sharing_tests {
+    use super::*;
+    use cool_asserts::assert_matches;
+
+    /// The recursions before memoization, copied from the previous version of this
+    /// file, to test the memoized ones against.
+    mod tree {
+        use super::super::*;
+
+        pub(super) fn is_subtype(ty0: &Type, ty1: &Type, mode: ValidationMode) -> bool {
+            match (ty0, ty1) {
+                // Never is a subtype of every type.
+                (Type::Never, _) => true,
+
+                (Type::Bool(BoolType::True | BoolType::False), Type::Bool(BoolType::AnyBool)) => {
+                    true
+                }
+                (Type::Bool(b0), Type::Bool(b1)) => b0 == b1,
+
+                (Type::Long, Type::Long) => true,
+                (Type::String, Type::String) => true,
+
+                // A set type is a subtype other set type when its element type is a subtype.
+                (
+                    Type::Set {
+                        element_type: e_ty0,
+                    },
+                    Type::Set {
+                        element_type: e_ty1,
+                    },
+                ) => match (e_ty0, e_ty1) {
+                    (Some(e_ty0), Some(e_ty1)) => is_subtype(e_ty0, e_ty1, mode),
+                    (Some(_), None) => true,
+                    (None, Some(_)) => false,
+                    (None, None) => true,
+                },
+
+                (
+                    Type::Record {
+                        attrs: attrs0,
+                        open_attributes: open0,
+                    },
+                    Type::Record {
+                        attrs: attrs1,
+                        open_attributes: open1,
+                    },
+                ) => {
+                    // Closed attributes subtype open attributes. A record type with
+                    // open attributes may contain a value that is not in a record
+                    // type with closed attributes, so open attribute record types
+                    // can never subtype closed attribute record types.
+                    (!open0.is_open() || open1.is_open())
+                    // When `ty1` has open attributes, width subtyping applies since
+                    // there may be attributes in `ty0` that are not listed in
+                    // `ty1`.  When `ty1` is closed, a subtype of `ty1` may not have
+                    // any attributes that are not listed in `ty1`, so we apply
+                    // depth subtyping only. We apply this same restriction in
+                    // strict mode, i.e., strict mode applies depth subtyping but
+                    // not width subtyping.
+                        && ((open1.is_open() && !mode.is_strict() && attrs_is_subtype(attrs0, attrs1, mode))
+                            || attrs_is_subtype_depth_only(attrs0, attrs1, mode))
+                }
+
+                (Type::Entity(e0), Type::Entity(e1)) => EntityKind::is_subtype(e0, e1, mode),
+
+                // Subtypes between extension types only occurs when the extension
+                // types are the same.
+                (Type::ExtensionType { .. }, Type::ExtensionType { .. }) => ty0 == ty1,
+
+                // If none of the above apply, then ty0 is not a subtype of ty1.
+                _ => false,
+            }
+        }
+
+        pub(super) fn least_upper_bound(
+            ty0: &Type,
+            ty1: &Type,
+            mode: ValidationMode,
+        ) -> Result<Type, LubHelp> {
+            match (ty0, ty1) {
+                _ if is_subtype(ty0, ty1, mode) => Ok(ty1.clone()),
+                _ if is_subtype(ty1, ty0, mode) => Ok(ty0.clone()),
+
+                (Type::Bool(_), Type::Bool(_)) => Ok(Type::primitive_boolean()),
+
+                // `None` as an element type represents the top type for the set
+                // element, so every other set is a subtype of set<None>, making a
+                // least upper bound containing set<None> and another set type
+                // equal to set<None>. This case should be impossible due to the
+                // subtype checks in the first two match cases, but we handle it
+                // explicitly as an alternative to panicking if it occurs.
+                (Type::Set { element_type: None }, Type::Set { .. })
+                | (Type::Set { .. }, Type::Set { element_type: None }) => {
+                    Ok(Type::Set { element_type: None })
+                }
+
+                // The least upper bound of two set types is a set with
+                // an element type that is the element type least upper bound.
+                (
+                    Type::Set {
+                        element_type: Some(te0),
+                    },
+                    Type::Set {
+                        element_type: Some(te1),
+                    },
+                ) => Ok(Type::set(least_upper_bound(te0, te1, mode)?.into())),
+
+                (
+                    Type::Record {
+                        attrs: attrs0,
+                        open_attributes: open0,
+                    },
+                    Type::Record {
+                        attrs: attrs1,
+                        open_attributes: open1,
+                    },
+                ) => {
+                    let attrs = attrs_least_upper_bound(attrs0, attrs1, mode)?;
+
+                    // Even though this function will never be called when the
+                    // records are in a subtype relation, it is still possible that
+                    // the LUB attribute set is the same the attribute key sets for
+                    // `ty0` and `ty1`. This occurs when `ty0` and `ty1` have
+                    // identical attribute keys sets with all corresponding
+                    // attributes having a LUB while at least one pair of
+                    // corresponding attributes is not in a subtype relation.
+                    // E.g., Given `{a: true}` and `{a: false}`, the LUB is `{a: bool}`,
+                    // and we know that `a` is the only attribute for this (closed)
+                    // record even though neither is subtype of the other.
+                    let open_attributes = if open0.is_open()
+                        || open1.is_open()
+                        || (!mode.is_strict() // In strict mode we know the key sets must be equal if a LUB exists, so we skip this check.
+                            && attrs.keys().collect::<BTreeSet<_>>()
+                                != (attrs0.keys().chain(attrs1.keys()).collect::<BTreeSet<_>>()))
+                    {
+                        OpenTag::OpenAttributes
+                    } else {
+                        OpenTag::ClosedAttributes
+                    };
+                    Ok(Type::Record {
+                        attrs,
+                        open_attributes,
+                    })
+                }
+
+                (Type::Entity(e0), Type::Entity(e1)) => {
+                    Ok(Type::Entity(EntityKind::least_upper_bound(e0, e1, mode)?))
+                }
+
+                (Type::Entity(_), Type::Record { .. }) | (Type::Record { .. }, Type::Entity(_)) => {
+                    Err(LubHelp::EntityRecord)
+                }
+                _ => Err(LubHelp::None),
+            }
+        }
+
+        pub(super) fn is_consistent_with(this: &Type, core_type: &CoreSchemaType) -> bool {
+            match core_type {
+                CoreSchemaType::Bool => matches!(this, Type::Bool(_)),
+                CoreSchemaType::Long => matches!(this, Type::Long),
+                CoreSchemaType::String => matches!(this, Type::String),
+                CoreSchemaType::Set { element_ty } => {
+                    matches!(this, Type::Set { element_type: Some(element_type) } if is_consistent_with(element_type, element_ty))
+                }
+                CoreSchemaType::EmptySet => {
+                    // for any given validator Set type, there is some value (namely, the empty set)
+                    // that could have the EmptySet CoreSchemaType and that validator Set type.
+                    matches!(this, Type::Set { .. })
+                }
+                CoreSchemaType::Record {
+                    attrs: core_attrs,
+                    open_attrs: core_open,
+                } => match this {
+                    Type::Record {
+                        attrs: self_attrs,
+                        open_attributes: self_open,
+                    } => {
+                        core_attrs.iter().all(|(k, core_attr_ty)| {
+                            match self_attrs.get_attr(k) {
+                                Some(self_attr_ty) => {
+                                    // both have the attribute, doesn't matter
+                                    // if one or both consider it required or
+                                    // optional
+                                    is_consistent_with(
+                                        &self_attr_ty.attr_type,
+                                        core_attr_ty.schema_type(),
+                                    )
+                                }
+                                None => {
+                                    // core_attrs has the attribute, self_attrs does not.
+                                    // if required in core_attrs, incompatible.
+                                    // otherwise fine
+                                    !core_attr_ty.is_required() || self_open.is_open()
+                                }
+                            }
+                        }) && self_attrs.iter().all(|(k, self_attr_ty)| {
+                            match core_attrs.get(k) {
+                                Some(core_attr_ty) => {
+                                    // both have the attribute, doesn't matter
+                                    // if one or both consider it required or
+                                    // optional
+                                    is_consistent_with(
+                                        &self_attr_ty.attr_type,
+                                        core_attr_ty.schema_type(),
+                                    )
+                                }
+                                None => {
+                                    // self_attrs has the attribute, core_attrs does not.
+                                    // if required in self_attrs, incompatible.
+                                    // otherwise fine
+                                    !self_attr_ty.is_required || *core_open
+                                }
+                            }
+                        })
+                    }
+                    _ => false,
+                },
+                CoreSchemaType::Entity { ty: concrete_name } => match this {
+                    Type::Entity(kind) => match kind {
+                        EntityKind::Entity(lub) => {
+                            lub.lub_elements.iter().any(|n| n == concrete_name)
+                        }
+                        EntityKind::AnyEntity => true,
+                    },
+                    _ => false,
+                },
+                CoreSchemaType::Extension { name } => {
+                    matches!(this, Type::ExtensionType { name: n } if name == n)
+                }
+            }
+        }
+
+        pub(super) fn to_core(ty: Type) -> Result<CoreSchemaType, String> {
+            match ty {
+                Type::Never => Err("'Never' type is not representable in core::SchemaType".into()),
+                Type::Bool(_) => Ok(CoreSchemaType::Bool),
+                Type::Long => Ok(CoreSchemaType::Long),
+                Type::String => Ok(CoreSchemaType::String),
+                Type::Set {
+                    element_type: Some(element_type),
+                } => Ok(CoreSchemaType::Set {
+                    element_ty: Box::new(to_core(element_type.as_ref().clone())?),
+                }),
+                Type::Set { element_type: None } => Ok(CoreSchemaType::EmptySet),
+                Type::Entity(kind @ EntityKind::AnyEntity) => Err(format!(
+                    "any-entity type is not representable in core::SchemaType: {kind:?}"
+                )),
+                Type::Record {
+                    attrs,
+                    open_attributes,
+                } => Ok(CoreSchemaType::Record {
+                    attrs: {
+                        attrs
+                            .iter()
+                            .map(|(k, v)| {
+                                let schema_type = to_core(v.attr_type.as_ref().clone())?;
+                                Ok((
+                                    k.clone(),
+                                    match v.is_required {
+                                        true => CoreAttributeType::required(schema_type),
+                                        false => CoreAttributeType::optional(schema_type),
+                                    },
+                                ))
+                            })
+                            .collect::<Result<_, String>>()?
+                    },
+                    open_attrs: open_attributes.is_open(),
+                }),
+                Type::Entity(EntityKind::Entity(lub)) => match lub.into_single_entity() {
+                    Some(name) => Ok(CoreSchemaType::Entity { ty: name }),
+                    None => Err(
+                        "non-singleton LUB type is not representable in core::SchemaType"
+                            .to_string(),
+                    ),
+                },
+                Type::ExtensionType { name } => Ok(CoreSchemaType::Extension { name }),
+            }
+        }
+
+        fn attrs_is_subtype(this: &Attributes, other: &Attributes, mode: ValidationMode) -> bool {
+            other.attrs.iter().all(|(k, other_ty)| {
+                this.attrs
+                    .get(k)
+                    .map(|this_ty| attr_is_subtype(this_ty, other_ty, mode))
+                    .unwrap_or(false)
+            })
+        }
+
+        fn attrs_is_subtype_depth_only(
+            this: &Attributes,
+            other: &Attributes,
+            mode: ValidationMode,
+        ) -> bool {
+            other.attrs.len() == this.attrs.len() && attrs_is_subtype(this, other, mode)
+        }
+
+        fn attrs_least_upper_bound(
+            attrs0: &Attributes,
+            attrs1: &Attributes,
+            mode: ValidationMode,
+        ) -> Result<Attributes, LubHelp> {
+            let lubs = attrs0.attrs.iter().map(|(attr, ty0)| {
+                let ty1 = attrs1.attrs.get(attr).ok_or(LubHelp::RecordWidth)?;
+                Ok((attr.clone(), attr_least_upper_bound(ty0, ty1, mode)?))
+            });
+            if mode.is_strict() {
+                if attrs0.attrs.len() != attrs1.attrs.len() {
+                    return Err(LubHelp::RecordWidth);
+                }
+                lubs.collect::<Result<Vec<_>, _>>()
+                    .map(Attributes::with_attributes)
+            } else {
+                Ok(Attributes::with_attributes(
+                    lubs.flat_map(|r: Result<_, LubHelp>| r),
+                ))
+            }
+        }
+
+        fn attr_least_upper_bound(
+            ty0: &AttributeType,
+            ty1: &AttributeType,
+            mode: ValidationMode,
+        ) -> Result<AttributeType, LubHelp> {
+            least_upper_bound(&ty0.attr_type, &ty1.attr_type, mode).and_then(|lub| {
+                let is_lub_required = ty0.is_required() && ty1.is_required();
+                if mode.is_strict() && ty0.is_required() != ty1.is_required() {
+                    Err(LubHelp::AttributeQualifier)
+                } else {
+                    Ok(AttributeType::new(lub.into(), is_lub_required))
+                }
+            })
+        }
+
+        fn attr_is_subtype(ty0: &AttributeType, ty1: &AttributeType, mode: ValidationMode) -> bool {
+            let qualifier_subtype = if mode.is_strict() {
+                ty0.is_required() == ty1.is_required()
+            } else {
+                ty0.is_required() || !ty1.is_required()
+            };
+            qualifier_subtype && is_subtype(&ty0.attr_type, &ty1.attr_type, mode)
+        }
+
+        /// `Type` without sharing. The constructors and fields are in the same
+        /// order as in `Type`.
+        #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+        pub(super) enum Derived {
+            Never,
+            Bool(BoolType),
+            Long,
+            String,
+            Entity(EntityKind),
+            Set(Option<Box<Derived>>),
+            Record(BTreeMap<SmolStr, DerivedAttr>, OpenTag),
+            Ext(Name),
+        }
+
+        /// `AttributeType` without sharing.
+        #[derive(PartialOrd, Ord, Educe, Debug)]
+        #[educe(PartialEq, Eq, Hash)]
+        pub(super) struct DerivedAttr {
+            ty: Derived,
+            is_required: bool,
+            #[cfg(feature = "extended-schema")]
+            #[educe(PartialEq(ignore), Hash(ignore))]
+            loc: Option<Loc>,
+        }
+
+        pub(super) fn derived(ty: &Type) -> Derived {
+            match ty {
+                Type::Never => Derived::Never,
+                Type::Bool(b) => Derived::Bool(b.clone()),
+                Type::Long => Derived::Long,
+                Type::String => Derived::String,
+                Type::Entity(k) => Derived::Entity(k.clone()),
+                Type::Set { element_type } => {
+                    Derived::Set(element_type.as_ref().map(|t| Box::new(derived(t))))
+                }
+                Type::Record {
+                    attrs,
+                    open_attributes,
+                } => Derived::Record(
+                    attrs
+                        .iter()
+                        .map(|(k, v)| {
+                            let attr = DerivedAttr {
+                                ty: derived(&v.attr_type),
+                                is_required: v.is_required,
+                                #[cfg(feature = "extended-schema")]
+                                loc: v.loc.clone(),
+                            };
+                            (k.clone(), attr)
+                        })
+                        .collect(),
+                    *open_attributes,
+                ),
+                Type::ExtensionType { name } => Derived::Ext(name.clone()),
+            }
+        }
+    }
+
+    /// `T0 = {a: leaf}` and `Ti = {a: T(i-1), b: T(i-1)}`, with sharing.
+    fn shared_chain(n: usize, leaf: Type) -> Type {
+        let mut ty = Type::record_with_required_attributes(
+            [("a".into(), Arc::new(leaf))],
+            OpenTag::ClosedAttributes,
+        );
+        for _ in 0..n {
+            let child = Arc::new(ty);
+            ty = Type::record_with_required_attributes(
+                [("a".into(), Arc::clone(&child)), ("b".into(), child)],
+                OpenTag::ClosedAttributes,
+            );
+        }
+        ty
+    }
+
+    /// A copy of `ty` that shares no records.
+    fn unshare(ty: &Type) -> Type {
+        match ty {
+            Type::Set {
+                element_type: Some(element_type),
+            } => Type::set(Arc::new(unshare(element_type))),
+            Type::Record {
+                attrs,
+                open_attributes,
+            } => Type::Record {
+                attrs: Attributes::with_attributes(attrs.iter().map(|(k, v)| {
+                    (
+                        k.clone(),
+                        AttributeType {
+                            attr_type: Arc::new(unshare(&v.attr_type)),
+                            ..v.clone()
+                        },
+                    )
+                })),
+                open_attributes: *open_attributes,
+            },
+            _ => ty.clone(),
+        }
+    }
+
+    fn hash_of(ty: &Type) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        ty.hash(&mut hasher);
+        hasher.finish()
+    }
+
+    /// A xorshift generator, so that the property test is deterministic.
+    struct Rng(u64);
+
+    impl Rng {
+        fn below(&mut self, n: usize) -> usize {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            (self.0 % n as u64) as usize
+        }
+    }
+
+    /// Random types up to depth 3. Children are picked from the types made so
+    /// far, so the types share records, and some are unshared copies.
+    fn random_types(rng: &mut Rng) -> Vec<Type> {
+        let mut tys = vec![
+            Type::Never,
+            Type::singleton_boolean(true),
+            Type::singleton_boolean(false),
+            Type::primitive_boolean(),
+            Type::primitive_long(),
+            Type::primitive_string(),
+            Type::entity_lub(["A"]),
+            Type::entity_lub(["B"]),
+            Type::entity_lub(["A", "B"]),
+            Type::any_entity_reference(),
+            Type::extension("decimal".parse().unwrap()),
+            Type::any_set(),
+        ];
+        let mut depth = vec![0; tys.len()];
+        for _ in 0..40 {
+            let i = rng.below(tys.len());
+            let (ty, d) = match rng.below(5) {
+                0 => (Type::set(Arc::new(tys[i].clone())), depth[i]),
+                1 => (unshare(&tys[i]), depth[i]),
+                _ => {
+                    let mut d = 0;
+                    let mut attrs: Vec<(SmolStr, AttributeType)> = Vec::new();
+                    for k in ["a", "b", "c"] {
+                        if rng.below(3) > 0 {
+                            let j = rng.below(tys.len());
+                            d = d.max(depth[j]);
+                            let required = rng.below(3) > 0;
+                            let attr = AttributeType::new(Arc::new(tys[j].clone()), required);
+                            #[cfg(feature = "extended-schema")]
+                            let attr = AttributeType {
+                                loc: (rng.below(3) > 0).then(|| Loc::new(rng.below(2), "a")),
+                                ..attr
+                            };
+                            attrs.push((k.into(), attr));
+                        }
+                    }
+                    let open = if rng.below(4) == 0 {
+                        OpenTag::OpenAttributes
+                    } else {
+                        OpenTag::ClosedAttributes
+                    };
+                    (Type::record_with_attributes(attrs, open), d + 1)
+                }
+            };
+            if d <= 3 {
+                tys.push(ty);
+                depth.push(d);
+            }
+        }
+        tys
+    }
+
+    #[test]
+    fn memoized_recursions_agree_with_tree_recursions() {
+        for seed in 1..=20 {
+            let tys = random_types(&mut Rng(seed));
+            let cores: Vec<_> = tys
+                .iter()
+                .filter_map(|t| tree::to_core(t.clone()).ok())
+                .collect();
+            for t0 in &tys {
+                assert_eq!(t0.to_core_schema_type(), tree::to_core(t0.clone()));
+                for core in &cores {
+                    assert_eq!(
+                        t0.is_consistent_with(core),
+                        tree::is_consistent_with(t0, core)
+                    );
+                }
+                for t1 in &tys {
+                    let (d0, d1) = (tree::derived(t0), tree::derived(t1));
+                    assert_eq!(t0 == t1, d0 == d1);
+                    assert_eq!(t0.cmp(t1), d0.cmp(&d1));
+                    if t0 == t1 {
+                        assert_eq!(hash_of(t0), hash_of(t1));
+                    }
+                    for mode in [ValidationMode::Strict, ValidationMode::Permissive] {
+                        assert_eq!(
+                            Type::is_subtype(t0, t1, mode),
+                            tree::is_subtype(t0, t1, mode),
+                            "{t0} <: {t1} in {mode:?}"
+                        );
+                        assert_eq!(
+                            Type::least_upper_bound(t0, t1, mode).map(|t| tree::derived(&t)),
+                            tree::least_upper_bound(t0, t1, mode).map(|t| tree::derived(&t)),
+                            "lub of {t0} and {t1} in {mode:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn deep_sharing_is_polynomial() {
+        let n = 60;
+        let t = shared_chain(n, Type::primitive_long());
+        // `u` shares no records with `t`.
+        let u = shared_chain(n, Type::primitive_long());
+        let w = shared_chain(n, Type::primitive_string());
+
+        assert_eq!(t, u);
+        assert_ne!(t, w);
+        assert_eq!(t.cmp(&u), std::cmp::Ordering::Equal);
+        assert_ne!(t.cmp(&w), std::cmp::Ordering::Equal);
+        assert_eq!(hash_of(&t), hash_of(&u));
+        for mode in [ValidationMode::Strict, ValidationMode::Permissive] {
+            assert!(Type::is_subtype(&t, &u, mode));
+            assert!(!Type::is_subtype(&t, &w, mode));
+            assert_eq!(Type::least_upper_bound(&t, &u, mode), Ok(u.clone()));
+        }
+        assert_matches!(
+            Type::least_upper_bound(&t, &w, ValidationMode::Strict),
+            Err(_)
+        );
+        // The permissive lub drops the leaves and is shared like `t` and `w`.
+        let lub = Type::least_upper_bound(&t, &w, ValidationMode::Permissive).unwrap();
+        let mut nodes = HashSet::new();
+        let mut stack = vec![&lub];
+        while let Some(ty) = stack.pop() {
+            if let Type::Record { attrs, .. } = ty {
+                if nodes.insert(attrs.id()) {
+                    stack.extend(attrs.iter().map(|(_, a)| a.attr_type.as_ref()));
+                }
+            }
+        }
+        assert_eq!(nodes.len(), n + 1);
+
+        let core = t.to_core_schema_type().unwrap();
+        assert!(t.is_consistent_with(&core));
+        let mut core_nodes = HashSet::new();
+        let mut stack = vec![&core];
+        while let Some(ty) = stack.pop() {
+            if let CoreSchemaType::Record { attrs, .. } = ty {
+                if core_nodes.insert(std::ptr::from_ref(attrs)) {
+                    stack.extend(attrs.values().map(|a| a.schema_type()));
+                }
+            }
+        }
+        assert_eq!(core_nodes.len(), n + 1);
     }
 }
