@@ -2588,7 +2588,7 @@ pub(crate) struct StringifiedPolicySet {
 }
 
 /// Represents a set of `Policy`s
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct PolicySet {
     /// AST representation. Technically partially redundant with the other fields.
     /// Internally, we ensure that the duplicated information remains consistent.
@@ -3440,6 +3440,33 @@ impl std::fmt::Display for PolicySet {
             }
         }
         Ok(())
+    }
+}
+
+/// Shows every policy and template as Cedar text keyed by id, and the template
+/// of every template-linked policy, in place of the internal representation,
+/// which repeats the source text in every source location.
+impl std::fmt::Debug for PolicySet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        struct Text<'a, T>(&'a T);
+        impl<T: std::fmt::Display> std::fmt::Debug for Text<'_, T> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                self.0.fmt(f)
+            }
+        }
+        fn by_id<T>(map: &LinkedHashMap<PolicyId, T>) -> BTreeMap<&str, Text<'_, T>> {
+            map.iter().map(|(id, p)| (id.as_ref(), Text(p))).collect()
+        }
+        let links: BTreeMap<&str, &str> = self
+            .policies
+            .iter()
+            .filter_map(|(id, p)| Some((id.as_ref(), p.template_id()?.as_ref())))
+            .collect();
+        f.debug_struct("PolicySet")
+            .field("policies", &by_id(&self.policies))
+            .field("templates", &by_id(&self.templates))
+            .field("links", &links)
+            .finish()
     }
 }
 
